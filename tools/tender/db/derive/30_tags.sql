@@ -28,7 +28,7 @@ CREATE TABLE tag (
 );
 
 -- contract lines per company within the 3-year window (by effective date)
-CREATE TEMP TABLE w3 AS
+CREATE TEMP TABLE w3 ON COMMIT DROP AS
 SELECT s.party_key, c.* FROM contract_supplier s JOIN contract c ON c.id = s.contract_id
 WHERE c.effective_date >= current_date - interval '3 years';
 
