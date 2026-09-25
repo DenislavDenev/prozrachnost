@@ -98,7 +98,7 @@ def test_ownership_cycle_terminates(built):
 
 def test_same_name_two_people_and_birthdate_not_joined(built):
     assert built.one("SELECT count(*) n FROM live.person WHERE name = 'ИВАН ИВАНОВ ПЕТРОВ'")["n"] == 2
-    assert built.one("SELECT count(*) n FROM live.edge WHERE holder LIKE 'l:%'")["n"] == 1
+    assert built.one("SELECT count(*) n FROM live.edge WHERE holder LIKE 'l:%%'")["n"] == 1
     assert built.one("SELECT count(*) n FROM live.person WHERE name = 'JOHN SMITH'")["n"] == 0
 
 
@@ -106,7 +106,7 @@ def test_joint_contract_marked_and_single_bid_counted(built):
     assert built.one("SELECT bool_and(joint) j FROM live.contract_supplier s JOIN live.contract c ON c.id = s.contract_id "
                      "WHERE c.unp = 'U3'")["j"] is True
     ind = built.indicators("eik:" + A)
-    assert ind["known"] == ind["single"] == 3
+    assert ind["known"] == ind["single"] == 1          # 3-year window: only the 2024 contract
 
 
 def test_latin_search_finds_cyrillic_person(built):
