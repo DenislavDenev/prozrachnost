@@ -100,7 +100,9 @@ function radial(nodes, edges, focus, W, H) {
 }
 function network(host, focus) {
   const svg = host.querySelector('.canvas svg'), g = svg.querySelector('g'), det = host.querySelector('.det'), note = host.querySelector('.cap');
-  const W = 980, H = 600; svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  // phones get a portrait canvas so node labels stay readable instead of shrinking a landscape one
+  const narrow = svg.parentElement.clientWidth < 700, W = narrow ? 560 : 980, H = narrow ? 900 : 600;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const st = { view: 'all', at: null, sel: null, data: null };
   async function load() {
     const q = new URLSearchParams({ focus, view: st.view }); if (st.at) q.set('at', st.at + '-07-01');
