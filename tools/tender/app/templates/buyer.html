@@ -22,7 +22,7 @@
   <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ b.contracts | num }}</div></div><a class="btn" href="/buyers/{{ b.eik }}.csv">Всички като CSV</a></div>
     {% with show_supplier=True %}{% include "_contracts.html" %}{% endwith %}</section>
 </div>
-<script type="application/json" id="data">{{ {"by_year": b.by_year, "suppliers": b.suppliers, "procedures": b.procedures, "offers": b.offers} | json | safe }}</script>
+<script type="application/json" id="data">{{ {"by_year": b.by_year, "suppliers": b.suppliers_top, "procedures": b.procedures, "offers": b.offers} | json | safe }}</script>
 {% endblock %}
 {% block scripts %}
 <script>

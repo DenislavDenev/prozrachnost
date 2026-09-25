@@ -220,7 +220,7 @@ def buyer(eik):
     b["by_year"] = rows(f"""SELECT extract(year FROM effective_date)::int y, count(*) n, round({SUM}) eur,
         round(100.0 * count(*) FILTER (WHERE offers_count = 1) / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
         FROM live.contract c WHERE buyer_eik = %s AND effective_date IS NOT NULL GROUP BY 1 ORDER BY 1""", eik)
-    b["suppliers"] = rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({SUM}) eur
+    b["suppliers_top"] = rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({SUM}) eur
         FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id WHERE c.buyer_eik = %s
         GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", eik)
     b["procedures"] = rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,
@@ -273,20 +273,25 @@ def translit(q):
 
 
 def search(q, kind=None, limit=40):
+    """Trigram search over live.search_item; each term is its own index-backed query."""
     q = q.strip()
     if not q:
         return []
-    terms = {q.upper()}
+    terms = [q.upper()]
     if any("a" <= ch.lower() <= "z" for ch in q):
-        terms.add(translit(q).upper())
+        terms.append(translit(q).upper())
     kinds = [kind] if kind else ["buyer", "company", "person", "tender"]
-    refs = [q, "eik:" + q]  # an exact ЕИК or УНП jumps to the top
-    return rows("""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM (
-        SELECT kind, ref, label, sub, weight, greatest(similarity(key, t), CASE WHEN ref = ANY(%s) THEN 1 ELSE 0 END) sim
-        FROM live.search_item, unnest(%s::text[]) t
-        WHERE kind = ANY(%s) AND (key %% t OR key LIKE '%%' || t || '%%' OR ref = ANY(%s))) x
-        GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s""",
-                refs, list(terms), kinds, refs, limit)
+    parts, args = ["SELECT kind, ref, label, sub, weight, 1.0 sim FROM live.search_item WHERE ref = ANY(%s) AND kind = ANY(%s)"], [[q, "eik:" + q], kinds]
+    for t in terms:
+        parts.append("SELECT kind, ref, label, sub, weight, similarity(key, %s) sim FROM live.search_item "
+                     "WHERE kind = ANY(%s) AND key %% %s")
+        args += [t, kinds, t]
+        parts.append("SELECT kind, ref, label, sub, weight, 0.35 sim FROM live.search_item "
+                     "WHERE kind = ANY(%s) AND key LIKE %s")
+        args += [kinds, "%" + t.replace("%", "") + "%"]
+    sql = f"""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM ({' UNION ALL '.join(parts)}) x
+              GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s"""
+    return rows(sql, *args, limit)
 
 
 if __name__ == "__main__":
