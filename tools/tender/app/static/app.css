@@ -110,8 +110,8 @@ svg.ch { width: 100%; height: auto; display: block; overflow: visible; }
 .tl .who small { display: block; color: var(--ink-3); font-weight: 400; font-size: 13px; }
 .tl .lane { position: relative; border-top: 1px solid var(--line-2); }
 .tl .b { position: absolute; height: 22px; line-height: 22px; padding: 0 8px; font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: var(--bar-r); }
-.tl .b.own { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 3px 0 0 var(--accent); }
-.tl .b.mg { background: var(--slate-soft); color: var(--ink-2); box-shadow: inset 3px 0 0 var(--slate); }
+.tl .b.own { background: var(--accent-soft); color: var(--accent-ink); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.tl .b.mg { background: var(--slate-soft); color: var(--ink-2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--slate) 40%, transparent); }
 .tl .b.end { opacity: .7; }
 
 /* network */
