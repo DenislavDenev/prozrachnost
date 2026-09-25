@@ -201,3 +201,6 @@ a.tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-
 .ge.end { stroke-dasharray: 4 5; }
 @media (max-width: 900px) { .hero { grid-template-columns: minmax(0, 1fr); gap: 20px; } .dl { grid-template-columns: minmax(0, 1fr); gap: 2px; } .dl dd { margin-bottom: 10px; } }
 @media (max-width: 720px) { .wrap-f { padding: 18px 16px 32px; } .h1s { font-size: 24px; } }
+.photo { margin: 0; flex: none; } .photo img { display: block; width: 96px; height: 120px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); }
+.photo figcaption { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; max-width: 96px; }
+.grow { flex: 1; min-width: 0; }

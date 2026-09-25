@@ -1,7 +1,7 @@
 """CLI for n8n and humans: python -m ingest.run --step <name> [--budget SECONDS]
 
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
-               tr-seed, tr-read, tr-changes, tr-names (tr)
+               tr-seed, tr-read, tr-changes, tr-names (tr) | enrich (enrich)
 Prints one JSON line with the stats; exit code 1 on failure.
 """
 import argparse
@@ -9,7 +9,7 @@ import datetime as dt
 import json
 import sys
 
-from . import build, db, tr_worker
+from . import build, db, enrich, tr_worker
 
 BUILD = {"eop": build.step_eop, "fx": build.step_fx, "normalize": build.step_normalize,
          "derive": build.step_derive, "publish": build.step_publish}
@@ -53,6 +53,12 @@ def main():
                 for pass_no, lag in ((1, 1), (2, 14)):
                     day = today - dt.timedelta(days=lag)
                     stats[f"pass{pass_no}_{day}"] = tr_worker.enqueue_changes(conn, day, pass_no)
+                out.update(stats)
+        elif a.step == "enrich":
+            with db.job(a.step, lane="enrich") as (conn, stats):
+                enrich.public_figure_candidates(conn, stats)
+                enrich.commons_license(conn, stats)
+                enrich.articles(conn, stats, budget_s=a.budget)
                 out.update(stats)
         elif a.step == "tr-names":
             with db.job(a.step, lane="tr") as (conn, stats):

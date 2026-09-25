@@ -98,6 +98,7 @@ def company(key):
         UNION ALL SELECT e.code, e.code, 'editorial', e.note FROM ed.tag e
         WHERE e.entity_type = 'company' AND e.entity_id = %s AND e.removed_at IS NULL""", k, k)
     c["indicators"] = indicators(k)
+    c["articles"] = articles("company", k)
     node = "c:" + c["eik"][:9] if c.get("eik") else None
     c["roles"] = rows("""SELECT e.holder, e.holder_kind, e.holder_name, e.role, e.view, e.share, e.share_pct,
         e.valid_from, e.valid_to, e.uncertain_after, e.entry_no, n.ref person_id,
@@ -105,6 +106,11 @@ def company(key):
         FROM live.edge e LEFT JOIN live.node n ON n.id = e.holder WHERE e.company = %s
         ORDER BY e.holder, e.valid_from""", node) if node else []
     return c
+
+
+def articles(kind, ref):
+    return rows("""SELECT url, title, source, published_at FROM ed.article WHERE entity_type = %s AND entity_id = %s
+                   AND status = 'confirmed' ORDER BY published_at DESC NULLS LAST LIMIT 20""", kind, ref)
 
 
 def indicators(key):
@@ -152,6 +158,9 @@ def person(pid):
         LEFT JOIN live.company_stats s ON s.key = co.key
         WHERE e.holder = %s ORDER BY e.valid_from""", holder)
     p["modes"] = person_modes(holder)
+    p["figure"] = one("""SELECT * FROM ed.public_figure WHERE person_id = %s AND status = 'confirmed'
+                         ORDER BY reviewed_at DESC LIMIT 1""", pid)
+    p["articles"] = articles("person", pid)
     p["contracts"] = rows("""SELECT DISTINCT ON (c.effective_date, c.id) c.id, c.unp, c.effective_date, c.subject,
         b.name buyer, c.buyer_eik, round(c.amount_eur) eur, c.offers_count, co.name company_name, co.key company_key
         FROM live.edge e JOIN live.node_contract k ON k.node = e.company JOIN live.contract c ON c.id = k.contract_id

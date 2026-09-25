@@ -45,6 +45,8 @@
     <div class="stack" id="stack"></div><div class="key" id="offers"></div>
     <div class="ph" style="margin:28px 0 14px"><h2>Основни възложители</h2></div><div class="hb" id="buyers"></div></section>
 
+  {% if c.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
+    <ul class="results">{% for a in c.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
   <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ c.contracts | num }}</div></div><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">Всички като CSV</a></div>
     {% include "_contracts.html" %}</section>
   {% endif %}

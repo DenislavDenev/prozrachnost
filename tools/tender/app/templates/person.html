@@ -6,8 +6,10 @@
 {% set m = p.modes %}
 <div class="crumbs"><a href="/search?kind=person">Лица</a> / {{ p.name | tc }}</div>
 <div class="head">
-  <div><h1>{{ p.name | tc }}</h1>
-    <div class="meta"><span>Лице</span><span><b>{{ comps | length }}</b> дружества</span><span>{{ active | length }} с действащи роли</span>
+  {% if p.figure and p.figure.photo_file %}<figure class="photo"><img src="https://commons.wikimedia.org/wiki/Special:FilePath/{{ p.figure.photo_file | urlencode }}?width=240" alt="{{ p.name | tc }}" width="96" height="120">
+    <figcaption>{{ p.figure.photo_license or 'Wikimedia Commons' }}</figcaption></figure>{% endif %}
+  <div class="grow"><h1>{{ p.name | tc }}</h1>
+    <div class="meta"><span>Лице</span>{% if p.figure %}<span><a class="l" href="https://www.wikidata.org/wiki/{{ p.figure.wikidata_qid }}" rel="noopener">{{ p.figure.description or 'публична фигура' }}</a></span>{% endif %}<span><b>{{ comps | length }}</b> дружества</span><span>{{ active | length }} с действащи роли</span>
       {% if p.roles %}<span>в регистъра от {{ p.roles[0].valid_from.year }}</span>{% endif %}</div></div>
   <div class="acts"><a class="btn" href="/legal#корекции-и-възражения">Сигнал за неточност</a></div>
 </div>
@@ -37,6 +39,8 @@
         <div class="why">Дружества с действаща роля към днес, с всичките им договори. Стойност {{ m.current.eur | big }}.</div></div>
     </div></section>
 
+  {% if p.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
+    <ul class="results">{% for a in p.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
   <section class="p s12"><div class="ph"><div><h2>Последни договори по време на ролите му</h2><div class="sub">Само дружества, в които лицето има роля към датата на договора</div></div></div>
     <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Дружество · възложител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
     {% for k in p.contracts %}<tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>

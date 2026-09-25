@@ -9,7 +9,11 @@ from urllib.parse import quote
 
 import markdown
 import markdown.extensions.toc
-from fastapi import FastAPI, HTTPException, Request
+import os
+import secrets
+
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -220,6 +224,44 @@ def csv_response(rows, name):
         w.writerows(rows)
     return StreamingResponse(iter(["﻿" + buf.getvalue()]), media_type="text/csv; charset=utf-8",
                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+basic = HTTPBasic()
+
+
+def admin(creds: HTTPBasicCredentials = Depends(basic)):
+    """HTTP Basic for the review queue; disabled unless TENDER_ADMIN_PASSWORD is set (see deploy/README)."""
+    pw = os.environ.get("TENDER_ADMIN_PASSWORD")
+    if not pw or not (secrets.compare_digest(creds.username, "admin") and secrets.compare_digest(creds.password, pw)):
+        raise HTTPException(401, headers={"WWW-Authenticate": "Basic"})
+    return creds.username
+
+
+@app.get("/admin/review", response_class=HTMLResponse)
+def review(request: Request, who: str = Depends(admin)):
+    figures = Q.rows("""SELECT f.*, p.name person_name,
+        (SELECT count(DISTINCT e.company) FROM live.edge e WHERE e.holder = 'p:' || f.person_id) companies
+        FROM ed.public_figure f JOIN tr.person p ON p.id = f.person_id WHERE f.status = 'candidate'
+        ORDER BY f.label LIMIT 100""")
+    arts = Q.rows("""SELECT a.*, coalesce(p.name, c.name) entity_name FROM ed.article a
+        LEFT JOIN tr.person p ON a.entity_type = 'person' AND p.id = a.entity_id
+        LEFT JOIN live.company c ON a.entity_type = 'company' AND c.key = a.entity_id
+        WHERE a.status = 'candidate' ORDER BY a.published_at DESC NULLS LAST LIMIT 100""")
+    return page(request, "review.html", figures=figures, arts=arts, nav="")
+
+
+@app.post("/admin/review/{kind}", response_class=HTMLResponse)
+def review_decide(kind: str, key: str = Form(...), decision: str = Form(...), who: str = Depends(admin)):
+    if decision not in ("confirmed", "rejected") or kind not in ("figure", "article"):
+        raise HTTPException(400)
+    with Q.connect() as conn:
+        if kind == "figure":
+            pid, qid = key.split("|", 1)
+            conn.execute("UPDATE ed.public_figure SET status=%s, reviewed_by=%s, reviewed_at=now() WHERE person_id=%s AND wikidata_qid=%s",
+                         (decision, who, pid, qid))
+        else:
+            conn.execute("UPDATE ed.article SET status=%s, reviewed_by=%s, reviewed_at=now() WHERE id=%s", (decision, who, int(key)))
+    return HTMLResponse(f'<span class="mut">{"потвърдено" if decision == "confirmed" else "отхвърлено"}</span>')
 
 
 @app.exception_handler(404)
