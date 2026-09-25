@@ -345,7 +345,7 @@ def fetch_deed(uic):
     if not UIC9.match(uic):
         raise RegistryError(f"not a partida ЕИК: {uic}")
     try:
-        return get(f"{TR_BASE}/deeds/{uic}", accept="application/xml", timeout=60)
+        return get(f"{TR_BASE}/deeds/{uic}", accept="application/xml", timeout=15, retries=4, delay=2)
     except Gone:
         return None
 
@@ -366,7 +366,7 @@ def search_holders(name, page=1, page_size=100):
         q = {"target": target, "limit": page_size, "offset": (page - 1) * page_size}
         url = f"{TR_BASE}/deeds/search?{urllib.parse.urlencode(q)}"
     try:
-        raw = json.loads(get(url, accept="application/json", timeout=60))
+        raw = json.loads(get(url, accept="application/json", timeout=15, retries=4, delay=2))
     except Exception:
         if _legacy_search:
             raise

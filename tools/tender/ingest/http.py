@@ -9,9 +9,8 @@ class Gone(Exception):
     """The resource does not exist (403/404): a source gap, not a failure."""
 
 
-def get(url, accept="*/*", timeout=120, retries=5):
+def get(url, accept="*/*", timeout=120, retries=5, delay=5):
     """GET with backoff on 429/5xx; honours Retry-After. Raises Gone on 403/404."""
-    delay = 5
     for attempt in range(retries):
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": accept})
         try:
