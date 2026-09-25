@@ -5,3 +5,7 @@ __pycache__/
 .env
 .pytest_cache/
 node_modules/
+/.impeccable/mocks/
+/.impeccable/*.json
+/.impeccable/questions/
+/.impeccable/review/
