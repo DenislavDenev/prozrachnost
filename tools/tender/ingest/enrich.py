@@ -27,7 +27,7 @@ SELECT ?p ?label ?desc ?img WHERE {
 
 def wikidata_people():
     url = WIKIDATA + "?" + urllib.parse.urlencode({"query": SPARQL, "format": "json"})
-    data = json.loads(get(url, accept="application/sparql-results+json", timeout=180))
+    data = json.loads(get(url, accept="application/sparql-results+json", timeout=150, retries=2, delay=30))  # ~90 s query
     out = {}
     for b in data["results"]["bindings"]:
         qid = b["p"]["value"].rsplit("/", 1)[-1]
@@ -79,7 +79,10 @@ def commons_license(conn, stats):
 
 def gdelt(query, maxrecords=50):
     q = {"query": query, "mode": "artlist", "format": "json", "maxrecords": maxrecords, "sort": "datedesc", "timespan": "3months"}
-    raw = get(GDELT + "?" + urllib.parse.urlencode(q), timeout=60, retries=3, delay=15)
+    try:
+        raw = get(GDELT + "?" + urllib.parse.urlencode(q), timeout=30, retries=1)
+    except RuntimeError:  # rate limited or slow: skip this target, the next weekly run tries again
+        return []
     try:
         return json.loads(raw).get("articles", [])
     except ValueError:  # GDELT answers plain text for queries it rejects (too short, too common)
