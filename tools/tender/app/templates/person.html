@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name | tc }} · Тендер{% endblock %}
+{% block main %}
+{% set comps = p.roles | map(attribute='company') | unique | list %}
+{% set active = p.roles | selectattr('valid_to', 'none') | map(attribute='company') | unique | list %}
+{% set m = p.modes %}
+<div class="crumbs"><a href="/search?kind=person">Лица</a> / {{ p.name | tc }}</div>
+<div class="head">
+  <div><h1>{{ p.name | tc }}</h1>
+    <div class="meta"><span>Лице</span><span><b>{{ comps | length }}</b> дружества</span><span>{{ active | length }} с действащи роли</span>
+      {% if p.roles %}<span>в регистъра от {{ p.roles[0].valid_from.year }}</span>{% endif %}</div></div>
+  <div class="acts"><a class="btn" href="/legal#корекции-и-възражения">Сигнал за неточност</a></div>
+</div>
+<p class="lede">Вписан в <b>{{ comps | length }} дружества</b> в Търговския регистър.
+  {% if m.all_history.n %}Свързаните с него дружества имат <b>{{ m.all_history.n | num }} договора</b> за <b>{{ m.all_history.eur | big }}</b>;
+  <b>{{ m.at_contract_date.n | num }}</b> от тях са сключени, докато той има роля в съответното дружество.{% else %}Нито едно от тях няма договори в ЦАИС ЕОП от 2020 г. насам.{% endif %}</p>
+<div class="asof">Търговски регистър · ЕГН, адреси и дати на раждане не се показват · регистърни факти, не оценка</div>
+
+<div class="grid">
+  <section class="p s12 net" id="net">
+    <div class="side"><div><h2>Мрежа от свързани лица и дружества</h2><div class="sub">Дружествата на лицето и другите лица в тях</div></div>
+      <div><div class="lb">Изглед</div><div class="tabs"><button data-view="all" aria-pressed="true">Всички</button><button data-view="ownership" aria-pressed="false">Собственост</button><button data-view="management" aria-pressed="false">Управление</button></div></div>
+      <div><div class="lb">Време</div><label class="chk"><input type="checkbox"> Само действащи към година</label><div class="yr"><input type="range" min="2008" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" disabled aria-label="Година"><output>—</output></div></div>
+      {% include "_net_key.html" %}
+      <div class="caveat">Кликни лице или фирма, за да видиш ролите и периодите. Връзка в регистъра не означава контрол. <span class="cap"></span></div></div>
+    <div class="canvas"><svg role="img" aria-label="Мрежа от свързани лица и дружества"><g></g></svg><div class="det" aria-live="polite"></div></div>
+  </section>
+
+  <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
+  <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж · <a class="l" href="/methodology#2-време">режими</a></div></div></div>
+    <div class="modes">
+      <div class="mode"><div><b>Към датата на договора</b> <span class="cnt" style="font-weight:500">основен</span></div><div class="n">{{ m.at_contract_date.n | num }}</div>
+        <div class="why">Само договори, сключени докато лицето има роля в дружеството. Стойност {{ m.at_contract_date.eur | big }}.</div></div>
+      <div class="mode"><div><b>Всички исторически връзки</b></div><div class="n">{{ m.all_history.n | num }}</div>
+        <div class="why">Всички договори на дружества, в които някога е имал роля. Включва периоди без негово участие. Стойност {{ m.all_history.eur | big }}.</div></div>
+      <div class="mode"><div><b>Само действащи роли днес</b></div><div class="n">{{ m.current.n | num }}</div>
+        <div class="why">Дружества с действаща роля към днес, с всичките им договори. Стойност {{ m.current.eur | big }}.</div></div>
+    </div></section>
+
+  <section class="p s12"><div class="ph"><div><h2>Последни договори по време на ролите му</h2><div class="sub">Само дружества, в които лицето има роля към датата на договора</div></div></div>
+    <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Дружество · възложител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
+    {% for k in p.contracts %}<tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
+      <td class="hide-s mut"><a class="u" href="/companies/{{ k.company_key | q }}">{{ k.company_name | tc }}</a><br><a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a></td>
+      <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong">{{ k.eur | eur }}</td></tr>
+    {% else %}<tr><td colspan="5" class="mut">Няма договори, сключени по време на ролите му.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+<script type="application/json" id="data">{{ {"roles": p.roles, "node": "p:" ~ p.id} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA, by = new Map();
+for (const r of D.roles) { if (!by.has(r.company)) by.set(r.company, []); by.get(r.company).push(r); }
+timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].company_name || 'ЕИК ' + rs[0].eik), href: rs[0].company_key ? '/companies/' + rs[0].company_key : '#',
+  sub: rs[0].contracts ? `${nf.format(rs[0].contracts)} договора` : 'без договори', roles: rs })));
+network($('net'), D.node);
+</script>
+{% endblock %}

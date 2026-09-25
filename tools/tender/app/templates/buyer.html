@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ b.name | tc }} · Тендер{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/buyers">Възложители</a> / {{ b.name | tc }}</div>
+<div class="head">
+  <div><h1>{{ b.name | tc }}</h1>
+    <div class="meta"><span>ЕИК <b>{{ b.eik }}</b></span>{% if b.type %}<span>{{ b.type }}</span>{% endif %}{% if b.main_activity %}<span>{{ b.main_activity }}</span>{% endif %}</div></div>
+  <div class="acts"><a class="btn" href="/buyers/{{ b.eik }}.csv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>CSV</a></div>
+</div>
+<p class="lede">Сключил <b>{{ b.contracts | num }} договора</b> за <b>{{ b.amount_eur | big }}</b> с <b>{{ b.suppliers | num }} изпълнители</b>
+  между {{ b.first_contract.year if b.first_contract else '—' }} и {{ b.last_contract.year if b.last_contract else '—' }} г.</p>
+<div class="asof">ЦАИС ЕОП към {{ fresh.eop_last_day | date }}</div>
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
+    <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>
+    <svg class="ch" id="years" viewBox="0 0 720 250" role="img" aria-label="Договори по години"></svg></section>
+  <section class="p s4"><div class="ph"><div><h2>Договори с една оферта</h2><div class="sub">Дял по години</div></div></div>
+    <svg class="ch" id="single" viewBox="0 0 400 250" role="img" aria-label="Дял на договорите с една оферта"></svg></section>
+  <section class="p s6"><div class="ph"><div><h2>Основни изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div></div><div class="hb" id="sup"></div></section>
+  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой · черта = дял с една оферта</div></div></div><div class="hb" id="proc"></div>
+    <div class="ph" style="margin:28px 0 12px"><h2>Конкуренция</h2></div><div class="stack" id="stack"></div><div class="key" id="offers"></div></section>
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ b.contracts | num }}</div></div><a class="btn" href="/buyers/{{ b.eik }}.csv">Всички като CSV</a></div>
+    {% with show_supplier=True %}{% include "_contracts.html" %}{% endwith %}</section>
+</div>
+<script type="application/json" id="data">{{ {"by_year": b.by_year, "suppliers": b.suppliers, "procedures": b.procedures, "offers": b.offers} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA;
+barTabs($('t-years'), $('years'), D.by_year);
+line($('single'), D.by_year, 'single_pct', null);
+hbars($('sup'), D.suppliers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${eur(r.eur)}<small>${r.n} дог.</small>` });
+hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една</small>` });
+offersStack($('stack'), $('offers'), D.offers);
+</script>
+{% endblock %}

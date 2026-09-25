@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Тендер · обществените поръчки в България{% endblock %}
+{% block main %}
+{% set t = d.totals %}
+<section class="hero">
+  <div>
+    <h1>Кой печели обществените поръчки в България</h1>
+    <p class="lede"><b>{{ t.contracts | num }} договора</b> за <b>{{ t.eur | big }}</b> от <b>{{ t.buyers | num }} възложители</b>
+      към <b>{{ t.companies | num }} изпълнители</b> от 2020 г. насам. Почти всеки втори договор е сключен с <b>единствен участник</b>.</p>
+    <div class="asof">ЦАИС ЕОП към {{ fresh.eop_last_day | date }} · обновява се всеки ден</div>
+  </div>
+  <div>
+    <form class="bigfind" action="/search" role="search">
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true" style="width:20px;height:20px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input name="q" placeholder="Община, фирма, лице или ЕИК" aria-label="Търсене"><button class="btn go">Търси</button>
+    </form>
+    <div class="eg">Например: <a href="/search?q=Община+Варна">Община Варна</a><a href="/search?q=Софарма+Трейдинг">Софарма Трейдинг</a><a href="/search?q=103267194">103267194</a></div>
+  </div>
+</section>
+
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Стойност на договорите по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
+    <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>
+    <svg class="ch" id="years" viewBox="0 0 720 250" role="img" aria-label="Стойност на договорите по години"></svg></section>
+  <section class="p s4"><div class="ph"><div><h2>Договори с една оферта</h2><div class="sub">Дял от договорите с известен брой оферти</div></div></div>
+    <svg class="ch" id="single" viewBox="0 0 400 250" role="img" aria-label="Дял на договорите с една оферта по години"></svg>
+    <div class="sub" style="margin-top:10px">Пунктирът е средното за периода: <b id="avg" style="color:var(--ink)"></b></div></section>
+
+  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой договори · черта = дял с една оферта</div></div></div><div class="hb" id="proc"></div></section>
+  <section class="p s6"><div class="ph"><div><h2>Сектори</h2><div class="sub">По стойност · черта = дял с една оферта</div></div></div><div class="hb" id="sect"></div></section>
+
+  <section class="p s6"><div class="ph"><div><h2>Най-големи възложители</h2><div class="sub">2020–днес</div></div><a class="l" href="/buyers">Всички</a></div><div class="hb" id="buyers"></div></section>
+  <section class="p s6"><div class="ph"><div><h2>Най-големи изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div><a class="l" href="/companies">Всички</a></div><div class="hb" id="comps"></div></section>
+
+  <section class="p s12"><div class="ph"><div><h2>Най-големи договори през последните 60 дни</h2></div></div>
+    <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Възложител · изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
+    {% for k in d.recent_big %}
+      <tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
+        <td class="hide-s mut"><a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a><br>{{ k.supplier | tc }}</td>
+        <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td>
+        <td class="n strong">{{ k.eur | big }}</td></tr>
+    {% endfor %}</tbody></table></section>
+</div>
+<script type="application/json" id="data">{{ d | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA, Y = D.by_year;
+barTabs($('t-years'), $('years'), Y);
+const w = Y.filter((r) => r.single_pct != null), avg = Math.round(w.reduce((a, r) => a + r.single_pct * r.n, 0) / w.reduce((a, r) => a + r.n, 0) * 10) / 10;
+line($('single'), Y, 'single_pct', avg); $('avg').textContent = avg.toLocaleString('bg-BG') + '%';
+hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/search?kind=tender&q=' + encodeURIComponent(r.p),
+  right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една оферта</small>` });
+hbars($('sect'), D.sectors, { name: (r) => r.name, val: (r) => r.eur, marker: (r) => r.single_pct, right: (r) => `${short(+r.eur)} €<small>${r.single_pct}% с една</small>` });
+hbars($('buyers'), D.top_buyers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
+hbars($('comps'), D.top_companies, { name: (r) => tc(r.name.replace(/^"|"$/g, '')), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
+</script>
+{% endblock %}

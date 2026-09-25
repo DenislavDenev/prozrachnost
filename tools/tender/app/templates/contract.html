@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Договор {{ c.contract_number or c.id }} · Тендер{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/tenders/{{ c.unp }}">Поръчка {{ c.unp }}</a> / договор {{ c.contract_number or '' }}</div>
+<div class="head"><div><h1 class="h1s">{{ c.subject or c.tender_name }}</h1>
+  <div class="meta"><span>Договор <b>{{ c.contract_number or '—' }}</b></span><span>{{ c.effective_date | date }}{% if c.date_basis == 'publication' %} (дата на публикуване){% endif %}</span>
+    <span>УНП <a class="l" href="/tenders/{{ c.unp }}">{{ c.unp }}</a></span>{% if c.lot_no %}<span>обособена позиция {{ c.lot_no }}</span>{% endif %}</div></div>
+  <div class="acts"><a class="btn" href="/contracts/{{ c.id }}.json">JSON</a></div></div>
+
+<div class="grid">
+  <section class="p s8"><h2>Стойност</h2>
+    <dl class="dl">
+      <dt>Първоначална</dt><dd>{{ c.value_initial | num(2) }} {{ c.currency or '' }}{% if c.value_initial_eur and c.currency != 'EUR' %} <span class="mut">= {{ c.value_initial_eur | eur }}</span>{% endif %}</dd>
+      {% if c.value_current is not none %}<dt>Текуща, с анексите</dt><dd>{{ c.value_current | num(2) }} {{ c.currency or '' }}</dd>{% endif %}
+      <dt>Сумира се като</dt><dd class="strong">{{ c.amount_eur | eur }}{% if c.is_framework %} <span class="warn">рамково споразумение, не влиза в сумите</span>{% endif %}</dd>
+      {% if c.value_flag != 'ok' %}<dt>Проверка на стойността</dt><dd class="warn">{{ c.value_flag | flag }}</dd>{% endif %}
+      <dt>Прогнозна стойност</dt><dd>{{ c.estimated_value | num(2) }} {{ c.estimate_currency or '' }}</dd>
+      <dt>Оферти</dt><dd>{{ c.offers_count if c.offers_count is not none else 'неизвестно' }}{% if c.disqualified_offers_count %} · {{ c.disqualified_offers_count }} отстранени{% endif %}{% if c.sme_offers_count is not none %} · {{ c.sme_offers_count }} от МСП{% endif %}</dd>
+      <dt>Процедура</dt><dd>{{ c.procedure_type or '—' }}{% if c.award_method %} · {{ c.award_method }}{% endif %}</dd>
+      {% if c.direct_award_justification %}<dt>Основание за пряко възлагане</dt><dd>{{ c.direct_award_justification }}</dd>{% endif %}
+      <dt>CPV</dt><dd>{{ c.cpv or '—' }} {{ c.cpv_description or '' }}</dd>
+      {% if c.is_eu_funded %}<dt>Европейско финансиране</dt><dd>{{ c.european_program or 'да' }}</dd>{% endif %}
+    </dl></section>
+  <section class="p s4"><h2>Страни</h2>
+    <dl class="dl one-col"><dt>Възложител</dt><dd><a class="l" href="/buyers/{{ c.buyer_eik }}">{{ c.buyer_name | tc }}</a></dd>
+      <dt>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</dt>
+      <dd>{% for s in c.suppliers %}<div><a class="l" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% if s.eik %} <span class="mut">{{ s.eik }}</span>{% endif %}</div>{% endfor %}
+        {% if c.suppliers | length > 1 %}<div class="mut">Дяловете не се публикуват; договорът е в пълен размер при всеки член.</div>{% endif %}</dd>
+      {% if c.subcontracts %}<dt>Подизпълнители</dt><dd>{% for s in c.subcontracts %}<div><a class="l" href="/companies/{{ s.party_key | q }}">{{ s.name | tc }}</a>{% if s.percent %} · {{ s.percent | num }}%{% endif %}</div>{% endfor %}</dd>{% endif %}
+    </dl></section>
+
+  {% if c.amendments %}<section class="p s12"><h2>Анекси</h2>
+    <table><thead><tr><th>Публикуван</th><th>Причина</th><th class="n">Преди</th><th class="n">След</th><th class="n">Разлика</th></tr></thead><tbody>
+    {% for a in c.amendments %}<tr><td class="mut nw">{{ a.published_at | date }}</td><td>{{ a.reason or '' }}<div class="mut clamp">{{ a.description or '' }}</div></td>
+      <td class="n">{{ a.last_value | num(2) }}</td><td class="n">{{ a.current_value | num(2) }}</td><td class="n strong">{{ a.difference | num(2) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+
+  <section class="p s12"><h2>Източник</h2>
+    <p class="mut">{% if c.source %}Файл „{{ c.source.key }}“ от {{ c.source.day | date }} в отворените данни на ЦАИС ЕОП (sha256 {{ c.source.sha256[:12] }}…).{% endif %}
+      {% if c.notice_id %}Обявление № {{ c.notice_id }}.{% endif %} Стойностите са както са публикувани, без ДДС.</p></section>
+</div>
+{% endblock %}

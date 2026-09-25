@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set full = (c.name | tc) ~ (' ' ~ (c.legal_form | form) if c.legal_form else '') %}
+{% block title %}{{ full }} · Тендер{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/companies">Фирми</a> / {{ full }}</div>
+<div class="head">
+  <div><h1>{{ full }}</h1>
+    <div class="meta">{% if c.eik %}<span>ЕИК <b>{{ c.eik }}</b></span>{% endif %}{% if c.seat %}<span>{{ c.seat }}</span>{% endif %}
+      {% if c.registered_on %}<span>в регистъра от {{ c.registered_on.year }}</span>{% endif %}{% if c.capital_eur %}<span>капитал {{ c.capital_eur | eur }}</span>{% endif %}
+      {% if c.deed_status == 'E' %}<span class="warn">заличена</span>{% endif %}{% if c.is_public_body %}<span>публичен възложител</span>{% endif %}</div></div>
+  <div class="acts">
+    <a class="btn" href="/companies/{{ c.key | q }}/contracts.csv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>CSV</a>
+    {% if c.eik and c.eik|length == 9 %}<a class="btn go" href="https://portal.registryagency.bg/CR/bg/Reports/ActiveConditionTabResult?uic={{ c.eik }}" rel="noopener" target="_blank"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Партида в ТР</a>{% endif %}
+  </div>
+</div>
+{% if c.contracts %}
+<p class="lede">Спечелила <b>{{ c.contracts | num }} договора</b> за <b>{{ c.amount_eur | big }}</b> от <b>{{ c.buyers | num }} възложители</b>
+  между {{ c.first_contract.year }} и {{ c.last_contract.year }} г.{% if c.cpv and c.cpv[0].d %}, най-често за <b>{{ c.cpv[0].d | lower }}</b>{% endif %}.
+  {% if c.joint_contracts %}{{ c.joint_contracts }} от тях са съвместни и са в пълен размер.{% endif %}</p>
+{% else %}<p class="lede">Няма договори като изпълнител в ЦАИС ЕОП от 2020 г. насам.</p>{% endif %}
+<div class="asof">ЦАИС ЕОП към {{ fresh.eop_last_day | date }}{% if c.tr_fetched_at %} · партидата в ТР прочетена {{ c.tr_fetched_at | date }}{% else %} · партидата в ТР още не е прочетена{% endif %}</div>
+
+<div class="grid">
+  {% if c.contracts %}
+  <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
+    <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>
+    <svg class="ch" id="years" viewBox="0 0 720 250" role="img" aria-label="Договори по години"></svg></section>
+  <section class="p s4"><div class="ph"><div><h2>Индикатори</h2><div class="sub">Последните 3 години · <a class="l" href="/methodology#4-тагове">как се смятат</a></div></div></div>
+    <div class="ind" id="ind"></div>
+    <div class="flags">{% for t in c.tags %}<div class="{{ 'w' if t.kind == 'statistical' }}"><span><b>{{ t.label }}</b>. {{ t.reason }}</span></div>{% else %}<div>Няма автоматични тагове по методологията</div>{% endfor %}</div></section>
+  {% endif %}
+
+  <section class="p s12 net" id="net">
+    <div class="side"><div><h2>Мрежа от свързани лица и дружества</h2><div class="sub">Регистърни връзки от Търговския регистър, до 2 стъпки</div></div>
+      <div><div class="lb">Изглед</div><div class="tabs"><button data-view="all" aria-pressed="true">Всички</button><button data-view="ownership" aria-pressed="false">Собственост</button><button data-view="management" aria-pressed="false">Управление</button></div></div>
+      <div><div class="lb">Време</div><label class="chk"><input type="checkbox"> Само действащи към година</label><div class="yr"><input type="range" min="2008" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" disabled aria-label="Година"><output>—</output></div></div>
+      {% include "_net_key.html" %}
+      <div class="caveat">Кликни лице или фирма, за да видиш ролите и периодите. Връзка в регистъра не означава контрол. <span class="cap"></span></div></div>
+    <div class="canvas"><svg role="img" aria-label="Мрежа от свързани лица и дружества"><g></g></svg><div class="det" aria-live="polite"></div></div>
+  </section>
+
+  <section class="p s7"><div class="ph"><div><h2>Лица в дружеството</h2><div class="sub">Роли по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
+  {% if c.contracts %}
+  <section class="p s5"><div class="ph"><div><h2>Конкуренция</h2><div class="sub">Брой оферти по договорите</div></div></div>
+    <div class="stack" id="stack"></div><div class="key" id="offers"></div>
+    <div class="ph" style="margin:28px 0 14px"><h2>Основни възложители</h2></div><div class="hb" id="buyers"></div></section>
+
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ c.contracts | num }}</div></div><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">Всички като CSV</a></div>
+    {% include "_contracts.html" %}</section>
+  {% endif %}
+</div>
+<script type="application/json" id="data">{{ {"by_year": c.by_year, "offers": c.offers, "buyers": c.buyers_top, "ind": c.indicators, "roles": c.roles, "node": ("c:" ~ c.eik[:9]) if c.eik else None} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA;
+if ($('years')) {
+  barTabs($('t-years'), $('years'), D.by_year);
+  const I = D.ind, rows = [];
+  if (I.known) rows.push({ t: 'Единствен участник', v: I.single / I.known, thr: .6, why: `${I.single} от ${I.known} договора с известен брой оферти` });
+  if (I.top_share != null) rows.push({ t: 'Концентрация при един възложител', v: I.top_share, thr: .5, why: `${Math.round(I.top_share * 100)}% от стойността е при ${tc(I.top_buyer || '')}` });
+  $('ind').innerHTML = rows.map((d) => `<div><div class="t"><b>${d.t}</b><b>${Math.round(d.v * 100)}%</b></div><div class="meter" role="img" aria-label="${Math.round(d.v * 100)}% при праг ${d.thr * 100}%"><i class="${d.v >= d.thr ? 'w' : ''}" style="width:${d.v * 100}%"></i><s style="left:${d.thr * 100}%"></s></div><div class="why">${esc(d.why)}. Праг ${d.thr * 100}%.</div></div>`).join('') || '<p class="mut">Няма договори през последните 3 години.</p>';
+  offersStack($('stack'), $('offers'), D.offers);
+  hbars($('buyers'), D.buyers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${eur(r.eur)}<small>${r.n} дог.</small>` });
+}
+const by = new Map(); for (const r of D.roles) { if (!by.has(r.holder)) by.set(r.holder, []); by.get(r.holder).push(r); }
+timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].holder_name), roles: rs,
+  href: rs[0].person_id && rs[0].holder.startsWith('p:') ? '/persons/' + rs[0].person_id : rs[0].holder.startsWith('c:') ? '/companies/' + rs[0].holder.slice(2) : '#',
+  sub: rs[0].others ? `още ${rs[0].others} дружества` : '', text: (r) => (ROLE[r.role] || r.role) + (r.share ? ' · дял ' + r.share : '') })));
+if (D.node) network($('net'), D.node); else $('net').remove();
+</script>
+{% endblock %}

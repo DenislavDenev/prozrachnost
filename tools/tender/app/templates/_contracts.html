@@ -1,0 +1,9 @@
+<table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">{{ 'Изпълнител' if show_supplier else 'Възложител' }}</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
+{% for k in contracts %}
+<tr><td class="mut nw">{{ k.effective_date | date }}</td>
+  <td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject or '—' }}</a><div class="mut">УНП <a class="u" href="/tenders/{{ k.unp }}">{{ k.unp }}</a>{% if k.awarded_to_group %} · обединение{% endif %}{% if k.annex_count %} · {{ k.annex_count }} анекса{% endif %}{% if k.is_framework %} · рамково, не се сумира{% endif %}{% if k.value_flag != 'ok' %} · <span class="warn">{{ k.value_flag | flag }}</span>{% endif %}</div></td>
+  <td class="hide-s mut">{% if show_supplier %}{{ k.supplier | tc }}{% else %}<a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a>{% endif %}</td>
+  <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td>
+  <td class="n strong">{{ k.eur | eur }}</td></tr>
+{% else %}<tr><td colspan="5" class="mut">Няма договори.</td></tr>{% endfor %}
+</tbody></table>

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">{{ title }}</h1>
+<p class="sub">Подредени по обща стойност на договорите, 2020–днес</p>
+<section class="p" style="margin-top:20px">
+<table><thead><tr><th>#</th><th>{{ 'Възложител' if kind == 'buyer' else 'Фирма' }}</th><th class="hide-s">{{ 'Вид' if kind == 'buyer' else 'Седалище' }}</th>
+  <th class="n">Договори</th><th class="n hide-s">{{ 'Изпълнители' if kind == 'buyer' else 'Възложители' }}</th><th class="n">Стойност</th></tr></thead><tbody>
+{% for r in rows %}<tr><td class="mut">{{ offset + loop.index }}</td>
+  <td><a class="u strong" href="{{ '/buyers/' ~ r.eik if kind == 'buyer' else '/companies/' ~ (r.key | q) }}">{{ r.name | tc }}</a><div class="mut">{{ r.eik or '' }}</div></td>
+  <td class="hide-s mut">{{ r.type if kind == 'buyer' else (r.seat or '') }}</td><td class="n">{{ r.contracts | num }}</td>
+  <td class="n hide-s">{{ (r.suppliers if kind == 'buyer' else r.buyers) | num }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>{% endfor %}
+</tbody></table>
+<div class="pager">{% if offset %}<a class="btn" href="?offset={{ [offset - 50, 0] | max }}">← Предишни</a>{% endif %}{% if rows | length == 50 %}<a class="btn" href="?offset={{ offset + 50 }}">Следващи →</a>{% endif %}</div>
+</section>
+{% endblock %}

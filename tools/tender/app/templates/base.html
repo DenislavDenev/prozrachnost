@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Тендер{% endblock %}</title>
+<meta name="description" content="Обществените поръчки в България: възложители, фирми, лица и връзките между тях, с източник за всяко твърдение.">
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' fill='%230b7a5e'/%3E%3C/svg%3E">
+<script src="/static/htmx.min.js" defer></script>
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#main">Към съдържанието</a>
+<header class="bar"><div class="bar-in">
+  <a class="word" href="/"><i></i>Тендер</a>
+  <nav class="menu" aria-label="Основна навигация">
+    {% for t, h in [("Табло", "/"), ("Възложители", "/buyers"), ("Фирми", "/companies"), ("Лица", "/search?kind=person"), ("Поръчки", "/search?kind=tender"), ("Методология", "/methodology")] %}
+    <a href="{{ h }}" class="{{ 'on' if nav == t }}" {% if nav == t %}aria-current="page"{% endif %}>{{ t }}</a>
+    {% endfor %}
+  </nav>
+  <form class="find" action="/search" role="search">
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input name="q" placeholder="Фирма, лице, ЕИК, УНП" aria-label="Търсене" autocomplete="off"
+           hx-get="/search" hx-trigger="input changed delay:250ms" hx-target="#suggest" hx-swap="innerHTML">
+    <div id="suggest" class="suggest"></div>
+  </form>
+</div></header>
+<main id="main" class="wrap">
+{% block main %}{% endblock %}
+</main>
+<footer class="foot"><div class="wrap-f">
+  <span><b>Тендер</b> · независим портал за обществените поръчки</span>
+  <span>ЦАИС ЕОП към {{ fresh.eop_last_day | date }}{% if fresh.tr_last_read %} · Търговски регистър към {{ fresh.tr_last_read | date }}{% endif %}</span>
+  <a class="l" href="/sources">Източници и покритие</a><a class="l" href="/methodology">Методология</a><a class="l" href="/legal">Лични данни</a>
+</div></footer>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
