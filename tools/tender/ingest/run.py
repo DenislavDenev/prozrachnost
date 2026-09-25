@@ -40,7 +40,7 @@ def main():
                     BUILD[name](conn, stats)
                     out[name] = stats
         elif a.step == "tr-seed":
-            with db.job(a.step, lane="tr") as (conn, stats):
+            with db.job(a.step, lane="seed") as (conn, stats):
                 stats["queued"] = tr_worker.seed_from_contracts(conn)
                 out.update(stats)
         elif a.step == "tr-read":
@@ -61,6 +61,8 @@ def main():
         else:
             ap.error(f"unknown step {a.step}")
         out["ok"] = True
+    except db.Busy as e:
+        out.update(ok=True, skipped=str(e))
     except Exception as e:  # noqa: BLE001 - reported to n8n as JSON, non-zero exit
         out.update(ok=False, error=repr(e)[:2000])
     print(json.dumps(out, default=str, ensure_ascii=False))

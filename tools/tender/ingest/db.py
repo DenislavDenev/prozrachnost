@@ -41,7 +41,11 @@ def migrate(conn):
 
 
 # one step at a time per lane: 'build' (eop -> publish) and 'tr' (register reads) run independently
-LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703}
+LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703, "seed": 7_070_704}
+
+
+class Busy(RuntimeError):
+    """Another step of the same lane holds the lock; the caller reports this as skipped."""
 
 
 @contextlib.contextmanager
@@ -51,7 +55,7 @@ def job(step, lane="build", inputs=None, rule_versions=None):
     conn = connect(autocommit=True)
     if not conn.execute("SELECT pg_try_advisory_lock(%s)", (lock,)).fetchone()[0]:
         conn.close()
-        raise RuntimeError(f"another '{lane}' step is running")
+        raise Busy(f"another '{lane}' step is running")
     run_id = conn.execute(
         "INSERT INTO ops.job_run(step, code_sha, inputs, rule_versions) VALUES (%s,%s,%s,%s) RETURNING id",
         (step, code_sha(), json.dumps(inputs or {}), json.dumps(rule_versions or {}))).fetchone()[0]
