@@ -272,4 +272,4 @@ details.more[open] > summary { margin-bottom: 14px; }
 .tree .tg { align-self: start; } .tree .mk { align-self: start; margin-top: 6px; }
 .fbtn { display: flex; align-items: center; gap: 16px; height: 38px; }
 .fbtn .reset { align-self: center; }
-td.side { max-width: 190px; overflow-wrap: anywhere; }
+td.side { width: 170px; min-width: 150px; overflow-wrap: break-word; }
