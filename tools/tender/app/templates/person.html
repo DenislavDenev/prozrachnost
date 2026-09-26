@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ p.name | tc }} · Тендер{% endblock %}
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.34.3/cytoscape.min.js" defer></script>
+<script src="/static/vazby.js?v={{ v }}" defer></script>
+{% endblock %}
 {% block main %}
 {% set comps = p.roles | map(attribute='company') | unique | list %}
 {% set active = p.roles | selectattr('valid_to', 'none') | map(attribute='company') | unique | list %}
@@ -19,7 +23,9 @@
 <div class="asof">Търговски регистър · ЕГН, адреси и дати на раждане не се показват · регистърни факти, не оценка</div>
 
 <div class="grid">
-  {% set node = "p:" ~ p.id %}{% if node %}{% include "_net.html" %}{% endif %}
+  <section class="p s12" id="net"><div class="ph"><div><h2>Свързани лица и дружества</h2>
+    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.</div></div></div>
+    {% include "_vazby.html" %}</section>
 
   <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
   <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж</div></div></div>
@@ -49,6 +55,6 @@ const D = DATA, by = new Map();
 for (const r of D.roles) { if (!by.has(r.company)) by.set(r.company, []); by.get(r.company).push(r); }
 timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].company_name || 'ЕИК ' + rs[0].eik), href: rs[0].company_key ? '/companies/' + rs[0].company_key : '#',
   sub: rs[0].contracts ? `${nf.format(rs[0].contracts)} договора` : 'без договори', roles: rs })));
-links($('net'), D.node);
+addEventListener('load', () => vazby(D.node));
 </script>
 {% endblock %}

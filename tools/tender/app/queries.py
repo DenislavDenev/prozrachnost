@@ -231,41 +231,6 @@ def network(focus, view="all", at=None, depth=2, max_nodes=500):
     return {"edges": edges, "capped": n[0] > max_nodes, "beyond": n[1] > 0, "nodes": min(n[0], max_nodes)}
 
 
-def lineage(node, view="all", at=None, exclude=()):
-    """Children of one node in the lineage tree: every node linked to it by a registry edge in the
-    chosen view (valid on `at` when given), except the nodes already on the path from the root.
-    One row per neighbour, with all the roles that link them and what lies behind it."""
-    views = {"all": ["ownership", "management"], "ownership": ["ownership"], "management": ["management"]}[view]
-    valid = "AND e.valid_from <= %(at)s AND (e.valid_to IS NULL OR e.valid_to > %(at)s)" if at else ""
-    sql = f"""
-      WITH l AS (
-        SELECT CASE WHEN e.holder = %(n)s THEN e.company ELSE e.holder END AS id,
-               e.holder = %(n)s AS down, e.role, e.share, e.valid_from, e.valid_to, e.uncertain_after, e.holder_kind
-        FROM live.edge e WHERE (e.holder = %(n)s OR e.company = %(n)s) AND e.view = ANY(%(views)s) {valid}
-      )
-      SELECT l.id, max(nd.kind) kind, coalesce(max(nd.label), max(e2.holder_name)) name, max(nd.ref) ref,
-             bool_or(l.down) down,
-             json_agg(json_build_object('role', l.role, 'share', l.share, 'from', l.valid_from, 'to', l.valid_to,
-                      'open', l.uncertain_after IS NULL, 'down', l.down) ORDER BY l.valid_from) roles,
-             max(cs.contracts) contracts, max(cs.amount_eur) eur,
-             (SELECT count(DISTINCT CASE WHEN x.holder = l.id THEN x.company ELSE x.holder END)
-                FROM live.edge x WHERE (x.holder = l.id OR x.company = l.id) AND x.view = ANY(%(views)s)) - 1 AS more,
-             bool_or(l.valid_to IS NULL AND l.uncertain_after IS NULL) active
-      FROM l LEFT JOIN live.node nd ON nd.id = l.id
-      LEFT JOIN live.company_stats cs ON cs.key = nd.ref AND nd.kind = 'company'
-      LEFT JOIN LATERAL (SELECT holder_name FROM live.edge WHERE holder = l.id LIMIT 1) e2 ON true
-      WHERE l.id <> ALL(%(ex)s)
-      GROUP BY l.id ORDER BY active DESC, max(cs.amount_eur) DESC NULLS LAST, name"""
-    return rows_named(sql, {"n": node, "views": views, "at": at, "ex": list(exclude)})
-
-
-def rows_named(sql, params):
-    with connect() as conn:
-        cur = conn.execute(sql, params)
-        cols = [d.name for d in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
-
-
 def node_info(node):
     return one("""SELECT n.id, n.kind, n.label name, n.ref, cs.contracts, cs.amount_eur eur FROM live.node n
                   LEFT JOIN live.company_stats cs ON cs.key = n.ref AND n.kind = 'company' WHERE n.id = %s""", node)

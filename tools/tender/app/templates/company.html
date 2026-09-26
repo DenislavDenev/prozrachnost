@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% set full = (c.name | tc) ~ (' ' ~ (c.legal_form | form) if c.legal_form else '') %}
 {% block title %}{{ full }} · Тендер{% endblock %}
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.34.3/cytoscape.min.js" defer></script>
+<script src="/static/vazby.js?v={{ v }}" defer></script>
+{% endblock %}
 {% block main %}
 <div class="crumbs"><a href="/companies">Фирми</a> / {{ full }}</div>
 <div class="head">
@@ -31,7 +35,9 @@
     <div class="flags">{% for t in c.tags %}<div class="{{ 'w' if t.kind == 'statistical' }}"><span><b>{{ t.label }}</b>. {{ t.reason }}</span></div>{% else %}<div>Няма автоматични тагове по методологията</div>{% endfor %}</div></section>
   {% endif %}
 
-  {% set node = ("c:" ~ c.eik[:9]) if c.eik else "" %}{% if node %}{% include "_net.html" %}{% endif %}
+  {% if c.eik %}<section class="p s12" id="net"><div class="ph"><div><h2>Свързани лица и дружества</h2>
+    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.</div></div></div>
+    {% include "_vazby.html" %}</section>{% endif %}
 
   <section class="p s7"><div class="ph"><div><h2>Лица в дружеството</h2><div class="sub">Роли по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
   {% if c.contracts %}
@@ -63,6 +69,6 @@ const by = new Map(); for (const r of D.roles) { if (!by.has(r.holder)) by.set(r
 timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].holder_name), roles: rs,
   href: rs[0].person_id && rs[0].holder.startsWith('p:') ? '/persons/' + rs[0].person_id : rs[0].holder.startsWith('c:') ? '/companies/' + rs[0].holder.slice(2) : '#',
   sub: rs[0].others ? `още ${rs[0].others} дружества` : '', text: (r) => (ROLE[r.role] || r.role) + (r.share ? ' · дял ' + r.share : '') })));
-if (D.node) links($('net'), D.node);
+if (D.node) addEventListener('load', () => vazby(D.node));
 </script>
 {% endblock %}

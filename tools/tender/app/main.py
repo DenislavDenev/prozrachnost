@@ -396,21 +396,6 @@ def map_detail(mid: str, frm: str = "", to: str = "", scope: str = "all"):
     return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
 
 
-@app.get("/lineage.json")
-def lineage(node: str, view: str = "all", at: str | None = None, path: str = ""):
-    """Children of `node` in the lineage tree; `path` is the comma list of nodes above it."""
-    ok = re.compile(r"[pcfl]:[\w:-]+")
-    ex = [x for x in path.split(",") if x]
-    if view not in ("all", "ownership", "management") or not ok.fullmatch(node) or not all(ok.fullmatch(x) for x in ex):
-        raise HTTPException(400)
-    if at and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", at):
-        raise HTTPException(400)
-    out = {"children": Q.lineage(node, view, at, ex + [node])}
-    if not ex:
-        out["root"] = Q.node_info(node)
-    return JSONResponse(json.loads(json.dumps(out, default=jdefault)))
-
-
 @app.get("/buyers", response_class=HTMLResponse)
 def buyers(request: Request):
     L = Listing(request, {"name": ("b.name", "asc"), "type": ("b.type", "asc"), "contracts": ("s.contracts", "desc"),
