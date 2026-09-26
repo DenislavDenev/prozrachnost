@@ -8,7 +8,7 @@ record (a contract, a change). One request per second; the raw answer is kept gz
 
 check() is the daily validity check that runs before the reads (step eop-check): fixed canary
 procedures must give the same offers, the answer must have the expected shape, and the offers read
-must match offersCount of the contracts. A failed canary or shape means the service changed: the
+must not come back empty where the contracts report offers. A failed canary or shape means the service changed: the
 reads stop and the repair agent is called (n8n); nothing is lost, the queue waits.
 """
 import datetime as dt
@@ -186,21 +186,22 @@ def check(conn):
         except Exception as e:
             rep["canary"][tid] = {"error": f"{type(e).__name__}: {e}"[:300]}
             ok = False
-    # completeness: offers read vs offersCount of the contracts of the same lot, for procedures read in the
-    # last week; mismatches are read again (once), and a majority of mismatches means the reader is wrong
+    # completeness, per procedure read in the last week: offersCount of its contracts vs the offers read.
+    # The two sources differ often by one offer (withdrawn, paper, counted by the buyer), so that is only
+    # reported; the symptom of a broken reader is no offers at all where the contracts say there were some.
     rows = conn.execute("""WITH c AS (
-          SELECT t.tender_id::bigint tid, coalesce(c.lot_no, 0) lot, max(c.offers_count) n FROM live.contract c
-          JOIN live.tender t ON t.unp = c.unp WHERE c.offers_count IS NOT NULL AND t.tender_id ~ '^[0-9]+$' GROUP BY 1, 2),
-        o AS (SELECT tender_id tid, lot_no lot, count(*) n FROM eopsvc.offer GROUP BY 1, 2)
-        SELECT c.tid, c.lot, c.n, coalesce(o.n, 0) FROM c JOIN eopsvc.queue q ON q.tender_id = c.tid
-        LEFT JOIN o ON o.tid = c.tid AND o.lot = c.lot
+          SELECT t.tender_id::bigint tid, sum(c.offers_count) n FROM live.contract c JOIN live.tender t ON t.unp = c.unp
+          WHERE c.offers_count > 0 AND t.tender_id ~ '^[0-9]+$' GROUP BY 1),
+        o AS (SELECT tender_id tid, count(*) n FROM eopsvc.offer GROUP BY 1)
+        SELECT c.tid, c.n, coalesce(o.n, 0) FROM c JOIN eopsvc.queue q ON q.tender_id = c.tid LEFT JOIN o ON o.tid = c.tid
         WHERE q.status = 'done' AND q.fetched_at > now() - interval '7 days'""").fetchall()
-    bad = [r for r in rows if r[2] != r[3]]
-    rep["completeness"] = {"compared": len(rows), "mismatch": len(bad), "examples": [list(r) for r in bad[:10]]}
-    if bad:
+    empty = [r for r in rows if r[2] == 0]
+    rep["completeness"] = {"compared": len(rows), "equal": sum(r[1] == r[2] for r in rows), "none_read": len(empty),
+                           "examples": [list(r) for r in empty[:10]]}
+    if empty:
         conn.execute("""UPDATE eopsvc.queue SET status = 'pending', reason = 'recheck', next_at = now() + interval '1 day'
-            WHERE tender_id = ANY(%s) AND reason <> 'recheck'""", ([r[0] for r in bad],))
-    if len(rows) >= 20 and len(bad) > len(rows) / 2:
+            WHERE tender_id = ANY(%s) AND reason <> 'recheck'""", ([r[0] for r in empty],))
+    if len(rows) >= 20 and len(empty) > len(rows) / 2:
         ok = False
     rep["ok"] = ok
     conn.execute("INSERT INTO eopsvc.check_run (ok, report) VALUES (%s, %s)", (ok, json.dumps(rep, default=str)))
