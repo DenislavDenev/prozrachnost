@@ -1,6 +1,7 @@
 """Read-only queries against schema `live`. Money sums follow docs/methodology.md:
 amount_eur, frameworks excluded from sums, one contract counted once."""
 import datetime as dt
+import re
 import time
 from functools import lru_cache
 
@@ -463,7 +464,7 @@ def search(q, kind=None, limit=40):
     parts, args = ["SELECT kind, ref, label, sub, weight, 1.0 sim FROM live.search_item WHERE ref = ANY(%s) AND kind = ANY(%s)"], [[q, "eik:" + q], kinds]
     # trigram similarity only on names: procedure subjects are long and would each match many trigrams,
     # so procedures are found by substring (and by УНП) only
-    names = [k for k in kinds if k != "tender"]
+    names = [k for k in kinds if k != "tender"] if not re.fullmatch(r"[\d\s\-]+", q) else []  # numbers: ЕИК / УНП, exact or substring
     for t in terms:
         if names:
             parts.append("SELECT kind, ref, label, sub, weight, similarity(key, %s) sim FROM live.search_item "
