@@ -50,8 +50,8 @@ barTabs($('t-years'), $('years'), Y);
 const w = Y.filter((r) => r.single_pct != null), avg = Math.round(w.reduce((a, r) => a + r.single_pct * r.n, 0) / w.reduce((a, r) => a + r.n, 0) * 10) / 10;
 line($('single'), Y, 'single_pct', avg); $('avg').textContent = avg.toLocaleString('bg-BG') + '%';
 hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/contracts?procedure=' + encodeURIComponent(r.p),
-  right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една оферта</small>` });
-hbars($('sect'), D.sectors, { name: (r) => r.name, val: (r) => r.eur, marker: (r) => r.single_pct, href: (r) => '/contracts?sector=' + r.d, right: (r) => `${short(+r.eur)} €<small>${r.single_pct}% с една</small>` });
+  right: (r) => `${nf.format(r.n)}<small>${pct(r.single_pct)} с една оферта</small>` });
+hbars($('sect'), D.sectors, { name: (r) => r.name, val: (r) => r.eur, marker: (r) => r.single_pct, href: (r) => '/contracts?sector=' + r.d, right: (r) => `${short(+r.eur)} €<small>${pct(r.single_pct)} с една</small>` });
 hbars($('buyers'), D.top_buyers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
 hbars($('comps'), D.top_companies, { name: (r) => tc(r.name.replace(/^"|"$/g, '')), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
 </script>

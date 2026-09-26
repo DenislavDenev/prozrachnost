@@ -30,7 +30,7 @@ const D = DATA;
 barTabs($('t-years'), $('years'), D.by_year);
 line($('single'), D.by_year, 'single_pct', null);
 hbars($('sup'), D.suppliers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${eur(r.eur)}<small>${r.n} дог.</small>` });
-hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/contracts?buyer={{ b.eik }}&procedure=' + encodeURIComponent(r.p), right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една</small>` });
+hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/contracts?buyer={{ b.eik }}&procedure=' + encodeURIComponent(r.p), right: (r) => `${nf.format(r.n)}<small>${pct(r.single_pct)} с една</small>` });
 offersStack($('stack'), $('offers'), D.offers);
 </script>
 {% endblock %}
