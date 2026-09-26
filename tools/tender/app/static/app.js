@@ -201,7 +201,7 @@ function lineage(host, focus, st) {
       : '';
     const h = href(c);
     li.innerHTML = `<div class="row">${c.more > 0 ? `<button class="tg" aria-expanded="false" aria-label="Разгъни ${esc2(c.name)}"></button>` : '<span class="tg-x"></span>'}
-      <span class="mk ${isCo ? 'c' : 'p'} ${isCo && c.contracts ? 'on' : ''}"></span>
+      <span class="mk ${isCo ? 'co' : 'pe'} ${isCo && c.contracts ? 'on' : ''}"></span>
       ${h ? `<a class="nm u" href="${h}">${esc2(c.name)}</a>` : `<span class="nm">${esc2(c.name)}</span>`}
       <span class="rl">${phrase(c, parent)}</span>
       <span class="fx">${facts}${c.more > 0 ? `<small>${nf.format(c.more)} ${c.more === 1 ? 'връзка' : 'връзки'} по-нататък</small>` : ''}${again ? '<small>вече е в дървото</small>' : ''}</span></div>`;
@@ -228,7 +228,7 @@ function lineage(host, focus, st) {
     const d = await (await fetch('/lineage.json?' + q)).json();
     const r = d.root || { id: focus, name: '', kind: '' }, isCo = focus.startsWith('c:');
     seen.set(focus, 1);
-    box.innerHTML = `<ul class="root"><li data-id="${focus}" data-path=""><div class="row top"><span class="tg-x"></span><span class="mk ${isCo ? 'c' : 'p'} ${r.contracts ? 'on' : ''}"></span>
+    box.innerHTML = `<ul class="root"><li data-id="${focus}" data-path=""><div class="row top"><span class="tg-x"></span><span class="mk ${isCo ? 'co' : 'pe'} ${r.contracts ? 'on' : ''}"></span>
       <span class="nm">${esc2(r.name)}</span><span class="rl"></span><span class="fx">${isCo ? (r.contracts ? `${nf.format(r.contracts)} дог. · ${big(+r.eur || 0)}` : 'без договори') : ''}</span></div><ul></ul></li></ul>`;
     const ul = box.querySelector('.root > li > ul'), me = { id: focus, name: r.name, kind: isCo ? 'company' : 'person' };
     d.children.forEach((c) => ul.append(row(c, me, [focus])));

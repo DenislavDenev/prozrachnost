@@ -248,7 +248,7 @@ details.more[open] > summary { margin-bottom: 14px; }
 .tree .tg::before { content: '+'; font-weight: 600; } .tree .tg[aria-expanded="true"]::before { content: '−'; }
 .tree .tg:hover { background: var(--line-2); color: var(--ink); } .tree .tg:focus-visible { outline: 2px solid var(--accent); }
 .tree .mk { width: 9px; height: 9px; align-self: center; background: var(--ink-4); }
-.tree .mk.p { border-radius: 50%; background: var(--slate); } .tree .mk.c { border-radius: 2px; } .tree .mk.c.on { background: var(--accent); }
+.tree .mk.pe { border-radius: 50%; background: var(--slate); } .tree .mk.co { border-radius: 2px; } .tree .mk.co.on { background: var(--accent); }
 .tree .nm { font-weight: 600; }
 .tree .rl { display: flex; flex-wrap: wrap; gap: 2px 10px; color: var(--ink-2); font-size: 13.5px; }
 .tree .rl span { padding-left: 10px; background: linear-gradient(var(--slate), var(--slate)) 0 50% / 6px 2px no-repeat; }
