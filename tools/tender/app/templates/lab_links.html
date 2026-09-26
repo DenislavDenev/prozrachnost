@@ -9,8 +9,15 @@
 .lab-tabs small { font-weight: 400; color: var(--ink-4); margin-left: 6px; }
 .lab-note { font-size: 14px; color: var(--ink-2); max-width: 90ch; margin: 0 0 16px; }
 /* layers */
-.layers { overflow-x: auto; }
-.layers svg { display: block; font-family: var(--font-body); }
+.lab-head .grow { flex: 1; }
+.ltools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; font-size: 13.5px; }
+.ltools #lzoom { min-width: 44px; text-align: center; }
+.vp { position: relative; height: 72vh; min-height: 480px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); cursor: grab; touch-action: none; background: var(--surface); }
+.vp.grab { cursor: grabbing; } .vp:focus-visible { outline: 2px solid var(--accent); }
+.vp svg { position: absolute; left: 0; width: 100%; font-family: var(--font-body); }
+.vp .lhead { top: 0; height: 30px; background: var(--surface); border-bottom: 1px solid var(--line-2); z-index: 1; }
+.vp .lbody { top: 0; height: 100%; }
+.vp .pin { position: absolute; right: 12px; top: 42px; width: 320px; max-height: calc(100% - 60px); overflow: auto; background: var(--surface); margin: 0; box-shadow: 0 8px 24px rgba(0,0,0,.08); z-index: 2; cursor: auto; }
 .layers .lh { font: 600 12.5px var(--font-body); fill: var(--ink-3); text-transform: none; }
 .layers .ln { fill: none; stroke-width: 1.3; opacity: .28; }
 .layers .ln.own { stroke: var(--accent); } .layers .ln.mg { stroke: var(--slate); } .layers .ln.end { stroke-dasharray: 3 4; }
@@ -18,7 +25,7 @@
 .layers .nd.share rect { stroke: var(--amber); stroke-width: 1.5; }
 .layers .nd .t { font-size: 13px; font-weight: 600; fill: var(--ink); } .layers .nd .m { font-size: 11.5px; fill: var(--ink-3); }
 .layers .nd .k { fill: var(--slate); } .layers .nd .k.co { fill: var(--ink-4); } .layers .nd .k.co.on { fill: var(--accent); }
-.layers.hot .ln { opacity: .05; } .layers.hot .ln.on { opacity: .9; stroke-width: 2; } .layers.hot .nd { opacity: .3; } .layers.hot .nd.on { opacity: 1; }
+.layers .hot .ln { opacity: .05; } .layers .hot .ln.on { opacity: .9; stroke-width: 2; } .layers .hot .nd { opacity: .3; } .layers .hot .nd.on { opacity: 1; }
 .layers .more { font-size: 12.5px; fill: var(--ink-3); }
 .pin { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 14px; display: none; }
 .pin.on { display: block; } .pin h3 { font-size: 16px; margin-bottom: 6px; } .pin li { color: var(--ink-2); }
@@ -68,14 +75,20 @@
   <a class="l" href="?node=c:201090465">Интермедика Груп</a>
   <a class="l" href="?node=c:175026992">Корект Финанс</a>
   <a class="l" href="?node=c:831642181">Софарма Трейдинг</a>
-  <span>или добави <code>?node=c:ЕИК</code> / <code>?node=p:id</code> от адреса на профил</span></div>
+  <span>или добави <code>?node=c:ЕИК</code> / <code>?node=p:id</code> от адреса на профил</span>
+  <span class="grow"></span><span>Стъпки:</span><div class="tabs" id="depth" role="group" aria-label="Брой стъпки">{% for d in [2, 3, 4, 5] %}<button data-d="{{ d }}" aria-pressed="{{ 'true' if d == 3 else 'false' }}">{{ d }}</button>{% endfor %}</div></div>
 <div class="lab-tabs" role="group">
   <button data-v="layers" aria-pressed="true">1. Слоеве<small>вместо графа</small></button>
   <button data-v="matrix" aria-pressed="false">2. Матрица<small>вместо графа</small></button>
   <button data-v="table" aria-pressed="false">3. Таблица на обхвата<small>вместо дървото</small></button>
   <button data-v="cards" aria-pressed="false">4. Карти<small>вместо дървото</small></button>
 </div>
-<section class="p" id="v-layers"><p class="lab-note">Колони по разстояние от обекта. Хората и фирмите, които свързват две или повече дружества от предишната колона, са най-горе с жълта рамка: това са общите звена. Посочи възел, за да видиш само неговите връзки; кликни, за да го закачиш.</p><div class="layers" id="layers"></div><div class="pin" id="pin"></div></section>
+<section class="p" id="v-layers"><p class="lab-note">Колони по разстояние от обекта, до последната стъпка. Хората и фирмите, които свързват две или повече от предишната колона, са най-горе с жълта рамка. Посочи възел, за да видиш само неговите връзки; кликни, за да го закачиш.</p>
+  <div class="ltools"><button class="btn sm" id="lzout" aria-label="Намали">−</button><span id="lzoom" class="mut">100%</span><button class="btn sm" id="lzin" aria-label="Увеличи">+</button>
+    <button class="btn sm" id="lfitw">По ширина</button><button class="btn sm" id="lfita">Цялата мрежа</button>
+    <label class="chk"><input type="checkbox" id="lall"> Всички възли</label>
+    <span class="mut">Колелце: нагоре-надолу · Shift + колелце: наляво-надясно · Ctrl + колелце: мащаб · влачене с мишката</span></div>
+  <div class="layers vp" id="lvp" tabindex="0" aria-label="Слоеве на връзките"></div><p class="mut" id="lcap" style="margin-top:8px"></p></section>
 <section class="p" id="v-matrix" hidden><p class="lab-note">Редове: дружествата до две стъпки. Колони: лицата и фирмите, които имат роля в повече от едно от тях (жълто), после останалите. Клетката е ролята: квадрат за собственост, кръг за управление, бледо за прекратена.</p><div class="mx" id="matrix"></div>
   <div class="mxkey"><span><i class="own" style="background:var(--accent);border-radius:2px"></i>собственост</span><span><i style="background:var(--slate);border-radius:50%"></i>управление</span><span><i style="background:var(--accent);border-radius:2px;opacity:.35"></i>прекратена</span></div></section>
 <section class="p reach" id="v-table" hidden><p class="lab-note">Всяко дружество до три стъпки, с пътя, по който е свързано. Подреждане с клик на колона, филтри и CSV.</p><div id="table"></div></section>
@@ -85,49 +98,58 @@
 <script>
 const FOCUS = {{ node | tojson }};
 (async () => {
-  const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: FOCUS, view: 'all', depth: 3 }))).json();
-  // ---------- graph ----------
-  const N = new Map(), A = new Map();
-  const kindOf = (id, hk) => id.startsWith('c:') || id.startsWith('f:') ? 'c' : 'p';
-  const add = (id, o) => { if (!N.has(id)) N.set(id, { id, kind: kindOf(id), ...o }); else Object.entries(o).forEach(([k, v]) => { if (v != null && N.get(id)[k] == null) N.get(id)[k] = v; }); if (!A.has(id)) A.set(id, new Map()); };
-  for (const e of d.edges) {
-    add(e.holder, { name: tc(e.holder_name), ref: e.holder_ref, n: e.holder_contracts, eur: e.holder_eur });
-    add(e.company, { name: tc(e.company_name || 'ЕИК ' + e.company.slice(2)), ref: e.company_ref, n: e.company_contracts, eur: e.company_eur });
-    const r = { role: e.role, share: e.share, from: e.valid_from, to: e.valid_to, open: !e.uncertain_after, holder: e.holder, company: e.company, active: !e.valid_to && !e.uncertain_after };
-    for (const [a, b] of [[e.holder, e.company], [e.company, e.holder]]) { if (!A.get(a).has(b)) A.get(a).set(b, []); A.get(a).get(b).push(r); }
+  // ---------- graph (shared by the four variants; reloaded when the depth changes) ----------
+  let N, A, dist, par, meta;
+  const kindOf = (id) => id.startsWith('c:') || id.startsWith('f:') ? 'c' : 'p';
+  async function build(depth) {
+    const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: FOCUS, view: 'all', depth }))).json();
+    N = new Map(); A = new Map(); meta = d;
+    const add = (id, o) => { if (!N.has(id)) N.set(id, { id, kind: kindOf(id), ...o }); else Object.entries(o).forEach(([k, v]) => { if (v != null && N.get(id)[k] == null) N.get(id)[k] = v; }); if (!A.has(id)) A.set(id, new Map()); };
+    for (const e of d.edges) {
+      add(e.holder, { name: tc(e.holder_name), ref: e.holder_ref, n: e.holder_contracts, eur: e.holder_eur });
+      add(e.company, { name: tc(e.company_name || 'ЕИК ' + e.company.slice(2)), ref: e.company_ref, n: e.company_contracts, eur: e.company_eur });
+      const r = { role: e.role, share: e.share, from: e.valid_from, to: e.valid_to, open: !e.uncertain_after, holder: e.holder, company: e.company, active: !e.valid_to && !e.uncertain_after };
+      for (const [a, b] of [[e.holder, e.company], [e.company, e.holder]]) { if (!A.get(a).has(b)) A.get(a).set(b, []); A.get(a).get(b).push(r); }
+    }
+    dist = new Map([[FOCUS, 0]]); par = new Map();
+    if (!N.has(FOCUS)) return false;
+    const q = [FOCUS];
+    while (q.length) { const x = q.shift(); for (const y of A.get(x).keys()) if (!dist.has(y)) { dist.set(y, dist.get(x) + 1); par.set(y, x); q.push(y); } }
+    return true;
   }
-  if (!N.has(FOCUS)) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
-  const dist = new Map([[FOCUS, 0]]), par = new Map(), q = [FOCUS];
-  while (q.length) { const x = q.shift(); for (const y of A.get(x).keys()) if (!dist.has(y)) { dist.set(y, dist.get(x) + 1); par.set(y, x); q.push(y); } }
   const href = (n) => n.ref ? (n.kind === 'p' ? '/persons/' + n.ref : '/companies/' + n.ref) : null;
   const roleTxt = (r) => (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '') + ' ' + span({ valid_from: r.from, valid_to: r.to, uncertain_after: r.open ? null : 1 });
   const own = (rs) => rs.some((r) => OWN.has(r.role)), live = (rs) => rs.some((r) => r.active);
   const money = (n) => n.kind === 'c' ? (n.n ? `${nf.format(n.n)} дог. · ${big(+n.eur || 0)}` : 'без договори') : `в ${[...A.get(n.id).keys()].filter((k) => N.get(k).kind === 'c').length} дружества`;
   const byVal = (a, b) => (live(A.get(FOCUS).get(b.id) || []) - live(A.get(FOCUS).get(a.id) || [])) || ((+b.eur || 0) - (+a.eur || 0)) || a.name.localeCompare(b.name);
+  const depthOf = () => +document.querySelector('#depth [aria-pressed="true"]').dataset.d;
 
-  // ---------- 1. layers ----------
+  // ---------- 1. layers: one column per step, zoom and pan in both directions ----------
+  const LZ = { k: 1, x: 0, y: 0, W: 0, H: 0 };
   function layers() {
-    const cols = [[N.get(FOCUS)], [], [], []];
-    for (const [id, k] of dist) if (k > 0 && k < 4) cols[k].push(N.get(id));
-    cols[1].sort(byVal);
-    const shown = [cols[0], cols[1].slice(0, 60)];
-    shown[1].hidden = cols[1].length - shown[1].length;
-    for (let k = 2; k < 4; k++) {
-      // a node that links two or more of the previous column is a shared link: it goes first
+    const depth = Math.max(...dist.values()), all = $('lall').checked;
+    const cols = Array.from({ length: depth + 1 }, () => []);
+    for (const [id, k] of dist) cols[k].push(N.get(id));
+    cols[1]?.sort(byVal);
+    const shown = [cols[0].map((n) => ({ ...n }))];
+    shown[0].hidden = 0;
+    for (let k = 1; k <= depth; k++) {
+      // a node that links two or more of the previous column is a shared link: it goes first;
+      // the rest follow the order of what they hang from, so lines cross as little as possible
       const idx = new Map(shown[k - 1].map((n, i) => [n.id, i]));
       const c = cols[k].map((n) => { const ls = [...A.get(n.id).keys()].filter((x) => idx.has(x));
         return { n, l: ls.length, bc: ls.reduce((s, x) => s + idx.get(x), 0) / Math.max(1, ls.length) }; }).filter((x) => x.l > 0);
       c.sort((a, b) => (b.l >= 2) - (a.l >= 2) || (a.l >= 2 && b.l >= 2 ? b.l - a.l : a.bc - b.bc) || ((+b.n.eur || 0) - (+a.n.eur || 0)));
-      const keep = c.filter((x) => x.l >= 2 || k === 2 || (x.n.kind === 'c' && x.n.n));
-      shown[k] = keep.slice(0, k === 2 ? 40 : 30).map((x) => ({ ...x.n, share: x.l >= 2, links: x.l }));
+      const keep = all ? c : c.filter((x, i) => k === 1 || x.l >= 2 || (x.n.kind === 'c' && x.n.n) || i < 25).slice(0, 80);
+      shown[k] = keep.map((x) => ({ ...x.n, share: k > 1 && x.l >= 2, links: x.l }));
       shown[k].hidden = cols[k].length - shown[k].length;
     }
-    const heads = ['Обект', 'Пряко свързани', 'Следваща стъпка', 'Трета стъпка'];
-    const CW = 250, GAP = 56, RH = 48, TOP = 34, NH = 40, W = 4 * CW + 3 * GAP;
-    const H = TOP + Math.max(...shown.map((c) => c.length + (c.hidden ? 1 : 0))) * RH + 10;
+    const heads = ['Обект', 'Пряко свързани', ...Array.from({ length: Math.max(0, depth - 1) }, (_, i) => `${i + 2}-ра стъпка`)];
+    const CW = 250, GAP = 70, RH = 48, NH = 40, TOP = 8;
+    const W = shown.length * CW + (shown.length - 1) * GAP, H = TOP + Math.max(...shown.map((c) => c.length + (c.hidden ? 1 : 0))) * RH + 20;
     const pos = new Map();
     shown.forEach((c, k) => c.forEach((n, i) => pos.set(n.id, { x: k * (CW + GAP), y: TOP + i * RH })));
-    let es = '', ns = '';
+    let es = '', ns = '', hs = '';
     const seen = new Set();
     for (const [a, p] of pos) for (const [b, rs] of A.get(a)) {
       const pb = pos.get(b); if (!pb || pb.x <= p.x || seen.has(a + b)) continue; seen.add(a + b);
@@ -135,22 +157,64 @@ const FOCUS = {{ node | tojson }};
       es += `<path class="ln ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" data-a="${a}" data-b="${b}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"><title>${esc(rs.map(roleTxt).join(', '))}</title></path>`;
     }
     shown.forEach((c, k) => {
-      ns += `<text class="lh" x="${k * (CW + GAP)}" y="16">${heads[k]} · ${nf.format(c.length + (c.hidden || 0))}</text>`;
+      hs += `<text class="lh" data-x="${k * (CW + GAP)}" y="19">${heads[k]} · ${nf.format(c.length + (c.hidden || 0))}</text>`;
       c.forEach((n) => { const p = pos.get(n.id), nm = n.name.length > 31 ? n.name.slice(0, 30) + '…' : n.name;
         ns += `<g class="nd ${n.share ? 'share' : ''}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${CW}" height="${NH}" rx="4"/>
           ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${p.x + 10}" y="${p.y + 10}" width="9" height="9" rx="2"/>` : `<circle class="k" cx="${p.x + 14.5}" cy="${p.y + 14.5}" r="4.5"/>`}
           <text class="t" x="${p.x + 26}" y="${p.y + 18}">${esc(nm)}</text><text class="m" x="${p.x + 26}" y="${p.y + 33}">${esc(money(n))}${n.share ? ' · свързва ' + n.links : ''}</text></g>`; });
-      if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още ${k === 3 ? 'без договори' : ''}</text>`;
+      if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още (включи „Всички възли“)</text>`;
     });
-    const box = $('layers'); box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${es}${ns}</svg>`;
+    const vp = $('lvp');
+    vp.innerHTML = `<svg class="lhead"><g>${hs}</g></svg><svg class="lbody"><g>${es}${ns}</g></svg><div class="pin" id="pin"></div>`;
+    Object.assign(LZ, { W, H });
+    fit('width');
+    $('lcap').textContent = meta.capped ? `Мрежата е по-голяма: показани са най-близките ${nf.format(meta.nodes)} възела.` : meta.beyond ? 'Има още връзки след последната колона: увеличи броя стъпки.' : 'Показани са всички връзки до последната.';
     let pinned = null;
-    const hl = (id) => { box.classList.toggle('hot', !!id); box.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); if (!id) return;
-      box.querySelector(`.nd[data-id="${id}"]`)?.classList.add('on');
-      box.querySelectorAll(`.ln[data-a="${id}"], .ln[data-b="${id}"]`).forEach((l) => { l.classList.add('on'); box.querySelector(`.nd[data-id="${l.dataset.a === id ? l.dataset.b : l.dataset.a}"]`)?.classList.add('on'); }); };
-    box.onmouseover = (e) => { const g = e.target.closest('.nd'); if (!pinned) hl(g?.dataset.id); };
-    box.onmouseleave = () => { if (!pinned) hl(null); };
-    box.onclick = (e) => { const g = e.target.closest('.nd'); pinned = g && pinned !== g.dataset.id ? g.dataset.id : null; hl(pinned); pin(pinned); };
+    const body = vp.querySelector('.lbody');
+    const hl = (id) => { body.classList.toggle('hot', !!id); body.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); if (!id) return;
+      body.querySelector(`.nd[data-id="${id}"]`)?.classList.add('on');
+      body.querySelectorAll(`.ln[data-a="${id}"], .ln[data-b="${id}"]`).forEach((l) => { l.classList.add('on'); body.querySelector(`.nd[data-id="${l.dataset.a === id ? l.dataset.b : l.dataset.a}"]`)?.classList.add('on'); }); };
+    body.onmouseover = (e) => { if (!LZ.drag) { const g = e.target.closest('.nd'); if (!pinned) hl(g?.dataset.id); } };
+    body.onmouseleave = () => { if (!pinned) hl(null); };
+    body.onclick = (e) => { if (LZ.moved) return; const g = e.target.closest('.nd'); pinned = g && pinned !== g.dataset.id ? g.dataset.id : null; hl(pinned); pin(pinned); };
   }
+  function apply() {
+    const vp = $('lvp'), w = vp.clientWidth, h = vp.clientHeight - 30;
+    // keep the drawing on screen: at most a quarter of the viewport of empty space on each side
+    LZ.x = Math.min(w / 4, Math.max(w * 3 / 4 - LZ.W * LZ.k, LZ.x));
+    LZ.y = Math.min(h / 4, Math.max(h * 3 / 4 - LZ.H * LZ.k, LZ.y));
+    vp.querySelector('.lbody g')?.setAttribute('transform', `translate(${LZ.x},${LZ.y + 30}) scale(${LZ.k})`);
+    vp.querySelectorAll('.lhead .lh').forEach((t) => t.setAttribute('x', LZ.x + (+t.dataset.x) * LZ.k));
+    $('lzoom').textContent = Math.round(LZ.k * 100) + '%';
+  }
+  function zoom(f, cx, cy) {
+    const vp = $('lvp'), k = Math.min(2.5, Math.max(0.08, LZ.k * f));
+    cx ??= vp.clientWidth / 2; cy ??= vp.clientHeight / 2;
+    LZ.x = cx - (cx - LZ.x) * (k / LZ.k); LZ.y = (cy - 30) - ((cy - 30) - LZ.y) * (k / LZ.k); LZ.k = k; apply();
+  }
+  function fit(how) {
+    const vp = $('lvp'), w = vp.clientWidth - 24, h = vp.clientHeight - 54;
+    LZ.k = Math.min(1, how === 'all' ? Math.min(w / LZ.W, h / LZ.H) : w / LZ.W); LZ.x = 12; LZ.y = 8; apply();
+  }
+  function pan() {
+    const vp = $('lvp');
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) { const r = vp.getBoundingClientRect(); zoom(Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top); return; }
+      LZ.x -= e.shiftKey ? e.deltaY : e.deltaX; LZ.y -= e.shiftKey ? 0 : e.deltaY; apply();
+    }, { passive: false });
+    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; LZ.drag = { x: e.clientX - LZ.x, y: e.clientY - LZ.y, sx: e.clientX, sy: e.clientY }; LZ.moved = false; vp.setPointerCapture(e.pointerId); vp.classList.add('grab'); });
+    vp.addEventListener('pointermove', (e) => { if (!LZ.drag) return; if (Math.abs(e.clientX - LZ.drag.sx) + Math.abs(e.clientY - LZ.drag.sy) > 4) LZ.moved = true; LZ.x = e.clientX - LZ.drag.x; LZ.y = e.clientY - LZ.drag.y; apply(); });
+    vp.addEventListener('pointerup', () => { LZ.drag = null; vp.classList.remove('grab'); setTimeout(() => { LZ.moved = false; }, 0); });
+    vp.addEventListener('keydown', (e) => { const s = 60; if (e.key === '+' || e.key === '=') zoom(1.25); else if (e.key === '-') zoom(0.8);
+      else if (e.key === 'ArrowDown') { LZ.y -= s; apply(); } else if (e.key === 'ArrowUp') { LZ.y += s; apply(); }
+      else if (e.key === 'ArrowRight') { LZ.x -= s; apply(); } else if (e.key === 'ArrowLeft') { LZ.x += s; apply(); } else return; e.preventDefault(); });
+    $('lzin').onclick = () => zoom(1.25); $('lzout').onclick = () => zoom(0.8);
+    $('lfitw').onclick = () => fit('width'); $('lfita').onclick = () => fit('all');
+    $('lall').onchange = layers;
+    addEventListener('resize', apply);
+  }
+
   function pin(id) {
     const el = $('pin'); if (!id) { el.classList.remove('on'); return; }
     const n = N.get(id), h = href(n);
@@ -190,7 +254,7 @@ const FOCUS = {{ node | tojson }};
         steps.push({ name: N.get(p[i]).name, role: rs.map((r) => (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '')).join(', '), who: rs[0].holder === p[i] ? 'up' : 'down' }); }
       const b = tb[c.id] || {};
       return { c, k: dist.get(c.id), steps, active, n: c.n || 0, eur: +c.eur || 0, buyer: b.name ? tc(b.name) : '', beik: b.eik }; });
-    const st = { sort: 'eur', dir: -1, k: 3, act: false, con: false, q: '' };
+    const st = { sort: 'eur', dir: -1, k: Math.max(...dist.values()), act: false, con: false, q: '' };
     const cols = [['name', 'Дружество'], ['k', 'Стъпки'], ['path', 'Как е свързано'], ['active', 'Сега'], ['n', 'Договори'], ['eur', 'Стойност'], ['buyer', 'Основен възложител']];
     const pathHtml = (r) => [N.get(FOCUS).name, ...r.steps.map((s) => s.name)].map((nm, i) => i === 0 ? `<b>${esc(nm)}</b>` : `<em> → ${esc(r.steps[i - 1].role)} → </em><b>${esc(nm)}</b>`).join('');
     const val = (r, k) => k === 'name' ? r.c.name : k === 'path' ? r.steps.length : k === 'active' ? +r.active : r[k];
@@ -198,7 +262,7 @@ const FOCUS = {{ node | tojson }};
       let v = rows.filter((r) => r.k <= st.k && (!st.act || r.active) && (!st.con || r.n) && (!st.q || (r.c.name + ' ' + r.steps.map((s) => s.name).join(' ')).toLowerCase().includes(st.q)));
       v.sort((a, b) => { const x = val(a, st.sort), y = val(b, st.sort); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * st.dir; });
       $('table').innerHTML = `<div class="ctl"><input type="search" placeholder="Търси дружество или лице" value="${esc(st.q)}" id="rq">
-        <label>До <select id="rk">${[1, 2, 3].map((k) => `<option ${k === st.k ? 'selected' : ''}>${k}</option>`).join('')}</select> стъпки</label>
+        <label>До <select id="rk">${Array.from({ length: Math.max(...dist.values()) }, (_, i) => i + 1).map((k) => `<option ${k === st.k ? 'selected' : ''}>${k}</option>`).join('')}</select> стъпки</label>
         <label class="chk"><input type="checkbox" id="ra" ${st.act ? 'checked' : ''}> само действащи връзки</label>
         <label class="chk"><input type="checkbox" id="rc" ${st.con ? 'checked' : ''}> само с договори</label>
         <span class="mut">${nf.format(v.length)} дружества · ${big(v.reduce((s, r) => s + r.eur, 0))}</span><span style="flex:1"></span><button class="btn sm" id="rcsv">CSV</button></div>
@@ -233,7 +297,12 @@ const FOCUS = {{ node | tojson }};
           ${kids.length > 14 ? `<li class="mut">и още ${kids.length - 14}</li>` : ''}${kids.length ? '' : '<li class="mut">няма други прочетени връзки</li>'}</ul></div>`; }).join('');
   }
 
-  const done = {};
+  let done = {};
+  if (!(await build(3))) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
+  pan();
+  $('depth').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return;
+    $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    await build(+b.dataset.d); done = {}; show(document.querySelector('.lab-tabs [aria-pressed="true"]').dataset.v); };
   const show = (v) => { document.querySelectorAll('.lab-tabs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
     ['layers', 'matrix', 'table', 'cards'].forEach((x) => $('v-' + x).hidden = x !== v);
     if (!done[v]) { done[v] = 1; ({ layers, matrix, table, cards })[v](); } };

@@ -202,7 +202,7 @@ def network(focus, view="all", at=None, depth=2, max_nodes=500):
         SELECT CASE WHEN e.holder = w.node THEN e.company ELSE e.holder END, w.d + 1
         FROM walk w JOIN live.edge e ON (e.holder = w.node OR e.company = w.node)
         WHERE w.d < %(depth)s AND e.view = ANY(%(views)s) {valid}
-      ), nodes AS (SELECT node, min(d) d FROM walk GROUP BY node LIMIT %(cap)s)
+      ), nodes AS (SELECT node, min(d) d FROM walk GROUP BY node ORDER BY min(d), node LIMIT %(cap)s)
       SELECT e.holder, e.company, e.holder_kind, e.holder_name, e.role, e.share, e.valid_from, e.valid_to,
              e.uncertain_after, hn.ref holder_ref, cn.label company_name, cn.ref company_ref,
              (SELECT count(*) FROM live.node_contract k WHERE k.node = e.company) company_contracts,
