@@ -206,6 +206,8 @@ def network(focus, view="all", at=None, depth=2, max_nodes=500):
       SELECT e.holder, e.company, e.holder_kind, e.holder_name, e.role, e.share, e.valid_from, e.valid_to,
              e.uncertain_after, hn.ref holder_ref, cn.label company_name, cn.ref company_ref,
              (SELECT count(*) FROM live.node_contract k WHERE k.node = e.company) company_contracts,
+             (SELECT amount_eur FROM live.company_stats s WHERE s.key = cn.ref) company_eur,
+             (SELECT amount_eur FROM live.company_stats s WHERE s.key = hn.ref AND hn.kind = 'company') holder_eur,
              (SELECT count(*) FROM live.node_contract k WHERE k.node = e.holder) holder_contracts
       FROM live.edge e JOIN nodes a ON a.node = e.holder JOIN nodes b ON b.node = e.company
       LEFT JOIN live.node hn ON hn.id = e.holder LEFT JOIN live.node cn ON cn.id = e.company
@@ -262,6 +264,14 @@ def rows_named(sql, params):
 def node_info(node):
     return one("""SELECT n.id, n.kind, n.label name, n.ref, cs.contracts, cs.amount_eur eur FROM live.node n
                   LEFT JOIN live.company_stats cs ON cs.key = n.ref AND n.kind = 'company' WHERE n.id = %s""", node)
+
+
+def top_buyers(nodes):
+    """Main buyer of each company node, by contract value (for the reach table)."""
+    return {r["node"]: r for r in rows("""SELECT DISTINCT ON (k.node) k.node, b.name, c.buyer_eik eik, round(sum(c.amount_eur)) eur
+        FROM live.node_contract k JOIN live.contract c ON c.id = k.contract_id LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+        WHERE k.node = ANY(%s) AND NOT c.is_framework GROUP BY k.node, b.name, c.buyer_eik
+        ORDER BY k.node, sum(c.amount_eur) DESC NULLS LAST""", list(nodes))}
 
 
 # ---------- buyer / contract / tender ----------

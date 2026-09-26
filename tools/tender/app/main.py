@@ -189,12 +189,27 @@ def tender(request: Request, unp: str):
 
 
 @app.get("/network.json")
-def network(focus: str, view: str = "all", at: str | None = None):
-    if view not in ("all", "ownership", "management") or not re.fullmatch(r"[pcfl]:[\w:-]+", focus):
+def network(focus: str, view: str = "all", at: str | None = None, depth: int = 2):
+    if view not in ("all", "ownership", "management") or not re.fullmatch(r"[pcfl]:[\w:-]+", focus) or not 1 <= depth <= 3:
         raise HTTPException(400)
     if at and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", at):
         raise HTTPException(400)
-    return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at), default=jdefault)))
+    return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at, depth=depth, max_nodes=800 if depth == 3 else 500),
+                                              default=jdefault)))
+
+
+@app.get("/lab/links", response_class=HTMLResponse)
+def lab_links(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
+    """Prototypes of the links section (four variants side by side); not linked from the menu."""
+    if not re.fullmatch(r"[pcfl]:[\w:-]+", node):
+        raise HTTPException(400)
+    return page(request, "lab_links.html", node=node, info=Q.node_info(node), nav="")
+
+
+@app.get("/lab/top-buyers.json")
+def lab_top_buyers(nodes: str):
+    ids = [x for x in nodes.split(",") if re.fullmatch(r"c:\d{9}", x)][:1000]
+    return JSONResponse(json.loads(json.dumps(Q.top_buyers(ids), default=jdefault)))
 
 
 class Listing:
