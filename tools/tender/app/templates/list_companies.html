@@ -4,11 +4,12 @@
 {% block main %}
 <h1 class="h1s">Фирми</h1>
 <p class="sub">Изпълнители с поне един договор от 2020 г. насам. Съвместните договори са в пълен размер при всеки участник.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/companies">
   <label class="fld grow"><span>Име или ЕИК</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Софарма"></label>
   <label class="fld"><span>Седалище</span><input name="seat" value="{{ L.get('seat') }}" placeholder="напр. Пловдив"></label>
   {{ keep(L, ['sort', 'dir']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/companies">Изчисти</a>{% endif %}
-</form>
+</form></details>
 {{ count(L, 'фирми') }}
 <section class="p">
 <table><thead><tr>{{ th(L, 'name', 'Фирма') }}{{ th(L, 'seat', 'Седалище', 'hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}

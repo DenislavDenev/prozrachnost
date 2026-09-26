@@ -1,4 +1,5 @@
-/* Тендер: design system, variant 1 „София“ (see design/README.md). */
+/* Тендер: design system, variant 1 „София“ (see design/README.md). Light only: the site is white by decision. */
+:root { color-scheme: light; }
 :root {
   --accent: #0b7a5e; --accent-2: #0e9170; --accent-soft: #e2f2ec; --accent-ink: #075842;
   --slate: #6b7a8c; --slate-soft: #eceff3; --amber: #b25b06; --amber-soft: #fcefd9;
@@ -10,14 +11,6 @@
   --font-head: 'Sofia Sans Semi Condensed', sans-serif; --font-body: 'Sofia Sans', sans-serif;
   --head-w: 700; --head-track: -.01em; --h1: 40px; --h2: 19px; --lede: 21px; --lede-font: var(--font-body);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --accent: #3cc49c; --accent-2: #57d3ae; --accent-soft: #123529; --accent-ink: #86e2c4;
-    --slate: #8795a6; --slate-soft: #1f2630; --amber: #f0b04a; --amber-soft: #38290f;
-    --ink: #eef0f3; --ink-2: #b7bdc6; --ink-3: #8c939d; --ink-4: #646b75;
-    --line: #272c33; --line-2: #1e2329; --surface: #15181c; --surface-2: #1a1e23; --page: #0e1013;
-  }
-    }
 * { box-sizing: border-box; }
 html { background: var(--page); color: var(--ink); font: 400 16px/1.55 var(--font-body); font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; }
 body { margin: 0; }
@@ -60,7 +53,6 @@ h2 { font-size: var(--h2); line-height: 1.25; }
   border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; transition: border-color .15s, background .15s; }
 .btn:hover { border-color: var(--ink-4); }
 .btn.go { background: var(--accent); border-color: var(--accent); color: #fff; } .btn.go:hover { background: var(--accent-2); }
-@media (prefers-color-scheme: dark) { .btn.go { color: #04241b; } }
 
 .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); margin-top: 30px; }
 .p { background: var(--panel-bg); border: var(--panel-border); box-shadow: var(--panel-shadow); border-radius: var(--radius); padding: var(--panel-pad); min-width: 0; }
@@ -227,3 +219,5 @@ th.n a.sort { flex-direction: row-reverse; }
 /* the amber single-bid tick of the horizontal bars, drawn inline where it is explained */
 .tick { display: inline-block; width: 2px; height: 13px; background: var(--amber); border-radius: 1px; vertical-align: -2px; margin: 0 3px 0 1px; }
 @media (max-width: 720px) { .fld { min-width: 0; flex: 1 1 140px; } .fld input:not([type=checkbox]), .fld select { max-width: none; width: 100%; } }
+.filt > summary { display: none; }
+@media (max-width: 720px) { .filt > summary { display: inline-flex; margin-top: 14px; list-style: none; } .filt > summary::-webkit-details-marker { display: none; } }

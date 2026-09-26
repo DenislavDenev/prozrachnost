@@ -4,6 +4,7 @@
 {% block main %}
 <h1 class="h1s">Поръчки</h1>
 <p class="sub">Процедурите в ЦАИС ЕОП по УНП. Датата е на обявлението, а ако то липсва в отворените данни, на първия договор.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/tenders">
   <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. ремонт на училище"></label>
   <label class="fld grow"><span>Възложител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
@@ -15,7 +16,7 @@
     {% for v, l in [('contracted', 'С договор'), ('open', 'Без договор'), ('cancelled', 'Прекратени')] %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
   {{ period(L) }}
   {{ keep(L, ['sort', 'dir', 'buyer']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}
-</form>
+</form></details>
 {{ count(L, 'поръчки') }}
 <section class="p">
 <table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'subject', 'Предмет') }}{{ th(L, 'buyer', 'Възложител', 'hide-s') }}{{ th(L, 'procedure', 'Процедура', 'hide-s') }}

@@ -175,3 +175,7 @@ function network(host, focus) {
   at.onchange = set; at.oninput = () => { out.textContent = at.value; }; on.onchange = set;
   load();
 }
+
+// list filters fold away on phones unless a filter is set
+if (matchMedia('(max-width: 720px)').matches && !/[?&](?!sort=|dir=|offset=)[^=&]+=[^&]/.test(location.search))
+  document.querySelectorAll('details.filt').forEach((d) => { d.open = false; });

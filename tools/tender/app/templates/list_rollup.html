@@ -4,9 +4,10 @@
 {% block main %}
 <h1 class="h1s">{{ title }}</h1>
 <p class="sub">Договорите по {{ 'вид процедура' if kind == 'procedure' else 'сектор (първите две цифри на CPV кода)' }} за избрания период. Стойността е без таваните на рамкови споразумения. Делът с една оферта е от договорите с известен брой оферти.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/{{ 'procedures' if kind == 'procedure' else 'sectors' }}">
   {{ period(L) }}{{ keep(L, ['sort', 'dir']) }}<button class="btn go">Покажи</button>
-</form>
+</form></details>
 {{ count(L, 'реда') }}
 <section class="p">
 <table><thead><tr>{{ th(L, 'name', 'Процедура' if kind == 'procedure' else 'Сектор') }}{{ th(L, 'n', 'Договори', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}{{ th(L, 'single', 'С една оферта', 'n') }}</tr></thead><tbody>

@@ -3,6 +3,7 @@
 {% block title %}Договори · Тендер{% endblock %}
 {% block main %}
 <h1 class="h1s">Договори</h1>
+<details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/contracts">
   <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. асфалт"></label>
   <label class="fld grow"><span>Възложител или изпълнител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
@@ -15,7 +16,7 @@
     <label class="chk"><input type="checkbox" name="single" value="1" {{ 'checked' if L.get('single') }}> с една оферта</label>
     <label class="chk"><input type="checkbox" name="clean" value="1" {{ 'checked' if L.get('clean') }}> без рамкови и съмнителни стойности</label></div>
   {{ keep(L, ['sort', 'dir', 'buyer', 'company']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}
-</form>
+</form></details>
 {% if L.get('buyer') or L.get('company') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else 'изпълнител ' ~ L.get('company') }} · <a class="l" href="{{ L.href(buyer=None, company=None, offset=None) }}">покажи всички</a></p>{% endif %}
 {{ count(L, 'договора') }}
 <section class="p">
