@@ -21,7 +21,7 @@
 {% block scripts %}
 <script>
 (async () => {
-  const geo = await (await fetch('/static/bg-municipalities.json')).json();
+  const geo = await (await fetch('/static/bg-municipalities.json?v={{ v }}')).json();
   const svg = $('bgmap'), g = svg.querySelector('g'), side = $('side');
   svg.setAttribute('viewBox', `-6 -6 1012 ${geo.h + 12}`);
   const st = { k: 'eur', sel: null, data: null };

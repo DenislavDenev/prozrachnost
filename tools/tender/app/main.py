@@ -105,7 +105,9 @@ T.env.filters.update(eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc
                      q=lambda s: quote(s, safe=":"))
 
 
-T.env.globals.update(fields=fields, ocds_fields=ocds_fields)
+# static assets carry their newest mtime as ?v=, so a deploy is never served from a stale browser cache
+ASSET_V = str(int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*"))))
+T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V)
 
 
 def page(request, name, **ctx):
