@@ -123,7 +123,7 @@ const FOCUS = {{ node | tojson }};
       shown[k].hidden = cols[k].length - shown[k].length;
     }
     const heads = ['Обект', 'Пряко свързани', 'Следваща стъпка', 'Трета стъпка'];
-    const CW = 262, GAP = 64, RH = 48, TOP = 34, NH = 40, W = 4 * CW + 3 * GAP;
+    const CW = 250, GAP = 56, RH = 48, TOP = 34, NH = 40, W = 4 * CW + 3 * GAP;
     const H = TOP + Math.max(...shown.map((c) => c.length + (c.hidden ? 1 : 0))) * RH + 10;
     const pos = new Map();
     shown.forEach((c, k) => c.forEach((n, i) => pos.set(n.id, { x: k * (CW + GAP), y: TOP + i * RH })));
@@ -140,7 +140,7 @@ const FOCUS = {{ node | tojson }};
         ns += `<g class="nd ${n.share ? 'share' : ''}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${CW}" height="${NH}" rx="4"/>
           ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${p.x + 10}" y="${p.y + 10}" width="9" height="9" rx="2"/>` : `<circle class="k" cx="${p.x + 14.5}" cy="${p.y + 14.5}" r="4.5"/>`}
           <text class="t" x="${p.x + 26}" y="${p.y + 18}">${esc(nm)}</text><text class="m" x="${p.x + 26}" y="${p.y + 33}">${esc(money(n))}${n.share ? ' · свързва ' + n.links : ''}</text></g>`; });
-      if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още ${k === 3 ? '(без договори и без общи връзки)' : ''}</text>`;
+      if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още ${k === 3 ? 'без договори' : ''}</text>`;
     });
     const box = $('layers'); box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${es}${ns}</svg>`;
     let pinned = null;
