@@ -21,13 +21,13 @@
 {% macro tiles(col=false) %}
 <div class="tiles {{ 'col' if col }}">
   <div class="tile"><span>Възложител</span><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></div>
-  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else '—' }}</b></div>
-  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else '—' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
-  <div class="tile"><span>Оферти</span><b>{{ n_offers if n_offers else '—' }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}</div>
-  <div class="tile"><span>Процедура</span><b>{{ t.procedure_type or '—' }}</b></div>
-  <div class="tile"><span>Критерий</span><b>{{ method or '—' }}</b></div>
-  <div class="tile"><span>Вид</span><b>{{ t.contract_type or '—' }}</b></div>
-  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else '—' }}</b></div>
+  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else 'няма данни' }}</b></div>
+  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else 'няма данни' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span><b>{{ n_offers if n_offers else 'няма данни' }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}</div>
+  <div class="tile"><span>Процедура</span><b>{{ t.procedure_type or 'няма данни' }}</b></div>
+  <div class="tile"><span>Критерий</span><b>{{ method or 'няма данни' }}</b></div>
+  <div class="tile"><span>Вид</span><b>{{ t.contract_type or 'няма данни' }}</b></div>
+  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else 'няма данни' }}</b></div>
   {% if t.is_eu_funded %}<div class="tile"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small>{{ t.european_program }}</small>{% endif %}</div>{% endif %}
 </div>{% endmacro %}
 
@@ -54,8 +54,8 @@
 {{ tiles() }}
 <section class="p"><h2>Как протече</h2>
 <ol class="flow">
-  <li><b>Обявена</b><span class="mut">{{ t.published_at | date if t.published_at else '—' }}</span><div>Прогнозна стойност {{ t.estimated_eur | big if t.estimated_eur else 'не е посочена' }}. {{ t.procedure_type or '' }}.</div></li>
-  <li><b>Срок за оферти</b><span class="mut">{{ t.submission_deadline | date if t.submission_deadline else '—' }}</span></li>
+  <li><b>Обявена</b><span class="mut">{{ t.published_at | date if t.published_at else 'няма данни' }}</span><div>Прогнозна стойност {{ t.estimated_eur | big if t.estimated_eur else 'не е посочена' }}. {{ t.procedure_type or '' }}.</div></li>
+  <li><b>Срок за оферти</b><span class="mut">{{ t.submission_deadline | date if t.submission_deadline else 'няма данни' }}</span></li>
   {% for l in lots %}
   <li><b>{{ 'Оферти' if lots | length == 1 else 'Оферти · позиция ' ~ l.lot_no }}</b><span class="mut">{{ l.offers | length }}</span>
     {% if l.title and lots | length > 1 %}<div class="mut">{{ l.title }}</div>{% endif %}
@@ -76,7 +76,7 @@
       {% for l in lots %}{% set o = b.cells.get(l.lot_no) %}<td class="n {{ 'won' if o and o.won }}" data-v="{{ o.price_eur if o and o.price_eur is not none else '' }}">{% if o %}{{ o.price_eur | eur if o.price_eur is not none else '•' }}{% if o.price_eur and l.estimated_eur %}<small>{{ (100 * o.price_eur / l.estimated_eur) | num }}%</small>{% endif %}{% endif %}</td>{% endfor %}
       <td class="n">{{ b.cells.values() | selectattr('won') | list | length }}</td></tr>
     {% else %}<tr><td colspan="{{ lots | length + 2 }}" class="mut">Офертите още не са прочетени от ЦАИС ЕОП.</td></tr>{% endfor %}
-    <tr class="est"><td class="mut">Прогнозна стойност</td>{% for l in lots %}<td class="n mut">{{ l.estimated_eur | eur if l.estimated_eur else '—' }}</td>{% endfor %}<td></td></tr>
+    <tr class="est"><td class="mut">Прогнозна стойност</td>{% for l in lots %}<td class="n mut">{{ l.estimated_eur | eur if l.estimated_eur else 'няма данни' }}</td>{% endfor %}<td></td></tr>
     </tbody></table></div>
     <p class="mut">• оферта без отворена цена (отстранена преди отварянето на цените). Процентът е спрямо прогнозната стойност на позицията.</p></section>
   <aside class="p s4">{{ tiles(true) }}</aside>

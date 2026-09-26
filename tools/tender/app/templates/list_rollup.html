@@ -14,7 +14,7 @@
 {% for r in rows %}{% set href = '/contracts?' ~ ('procedure=' ~ (r.k | urlencode) if kind == 'procedure' else 'sector=' ~ r.k) ~ ('&from=' ~ L.get('from') if L.get('from') else '') ~ ('&to=' ~ L.get('to') if L.get('to') else '') %}
 <tr><td><a class="u strong" href="{{ href }}">{{ r.name }}</a>{% if kind == 'sector' %}<div class="mut">CPV {{ r.k }}</div>{% endif %}</td>
   <td class="n">{{ r.n | num }}</td><td class="n strong">{{ r.eur | big }}</td>
-  <td class="n">{{ (r.single_pct | num(1)) ~ '%' if r.single_pct is not none else '—' }}</td></tr>
+  <td class="n">{{ (r.single_pct | num(1)) ~ '%' if r.single_pct is not none else 'няма данни' }}</td></tr>
 {% else %}<tr><td colspan="4" class="mut">Няма договори за периода.</td></tr>{% endfor %}
 </tbody></table>
 </section>

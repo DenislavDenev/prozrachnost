@@ -6,5 +6,5 @@
   <a class="btn" href="{{ href }}">Всички плащания</a></div>
   {% set con = {} %}{% for r in by_year %}{% set _ = con.update({r.y: r.eur}) %}{% endfor %}
   <table class="sortable"><thead><tr><th>Година</th><th class="n">Договорено</th><th class="n">Платено</th><th class="n">Плащания</th></tr></thead><tbody>
-  {% for r in paid %}<tr><td>{{ r.y }}</td><td class="n" data-v="{{ con.get(r.y, '') }}">{{ con.get(r.y) | big if con.get(r.y) else '—' }}</td><td class="n strong" data-v="{{ r.eur }}">{{ r.eur | big }}</td><td class="n">{{ r.n | num }}</td></tr>{% endfor %}
+  {% for r in paid %}<tr><td>{{ r.y }}</td><td class="n" data-v="{{ con.get(r.y, '') }}">{{ con.get(r.y) | big if con.get(r.y) else 'няма данни' }}</td><td class="n strong" data-v="{{ r.eur }}">{{ r.eur | big }}</td><td class="n">{{ r.n | num }}</td></tr>{% endfor %}
   </tbody></table></section>{% endif %}{% endmacro %}

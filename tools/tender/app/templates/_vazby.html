@@ -3,7 +3,7 @@
 <div class="vz-legend" id="legend" aria-label="Легенда"></div>
 <div class="vz-top">
   <button class="btn sm go" id="play">▶ Пусни годините</button>
-  <span class="yr"><label class="chk"><input type="checkbox" id="byyear"> Към година</label><b id="yout">—</b>
+  <span class="yr"><label class="chk"><input type="checkbox" id="byyear"> Към година</label><b id="yout">няма данни</b>
     <input type="range" id="year" min="2000" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" aria-label="Година"></span>
   <label class="chk"><input type="checkbox" id="onlylive"> Само действащи днес</label>
   <button class="btn sm" id="fit">Фокус</button><button class="btn sm" id="undo" disabled>Назад</button><button class="btn sm" id="full" aria-pressed="false">На цял екран</button>

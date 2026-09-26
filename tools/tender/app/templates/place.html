@@ -4,7 +4,7 @@
 <div class="crumbs"><a href="/map">Карта</a>{% for h, t in up | reverse %} / <a href="{{ h }}">{{ t }}</a>{% endfor %} / {{ place_name }}</div>
 <div class="head"><div><h1>{{ place_name }}</h1><div class="meta"><span>{{ kind }}</span>{% if not aid[0].isdigit() %}<span>NUTS <b>{{ aid }}</b></span>{% endif %}</div></div>
   <div class="acts"><a class="btn" href="/contracts?{{ param }}={{ aid }}">Всички договори</a></div></div>
-<p class="lede"><b>{{ s.n | num }} договора</b> за <b>{{ s.eur | big }}</b> на <b>{{ s.buyers | num }} възложители</b> с място тук; {{ s.single_pct | default('—', true) }}% от тях с една оферта.</p>
+<p class="lede"><b>{{ s.n | num }} договора</b> за <b>{{ s.eur | big }}</b> на <b>{{ s.buyers | num }} възложители</b> с място тук; {% if s.single_pct is not none %}{{ s.single_pct }}% от тях с една оферта.{% else %}Делът с една оферта не е наличен.{% endif %}</p>
 <div class="grid">
   <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
     <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>

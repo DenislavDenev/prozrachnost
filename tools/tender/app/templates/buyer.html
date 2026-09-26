@@ -8,7 +8,7 @@
   <div class="acts"><a class="btn" href="/buyers/{{ b.eik }}.csv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>CSV</a></div>
 </div>
 <p class="lede">Сключил <b>{{ b.contracts | num }} договора</b> за <b>{{ b.amount_eur | big }}</b> с <b>{{ b.suppliers | num }} изпълнители</b>
-  между {{ b.first_contract.year if b.first_contract else '—' }} и {{ b.last_contract.year if b.last_contract else '—' }} г.</p>
+  между {{ b.first_contract.year if b.first_contract else 'няма данни' }} и {{ b.last_contract.year if b.last_contract else 'няма данни' }} г.</p>
 <div class="asof">ЦАИС ЕОП към {{ fresh.eop_last_day | date }}</div>
 <div class="grid">
   <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>

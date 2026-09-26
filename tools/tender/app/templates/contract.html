@@ -4,7 +4,7 @@
 {% block main %}
 <div class="crumbs"><a href="/contracts">Договори</a> / <a href="/tenders/{{ c.unp }}">поръчка {{ c.unp }}</a> / договор {{ c.contract_number or '' }}</div>
 <div class="head"><div><h1 class="h1s">{{ c.subject or c.tender_name }}</h1>
-  <div class="meta"><span>Договор <b>{{ c.contract_number or '—' }}</b></span><span>{{ c.effective_date | date }}{% if c.date_basis == 'publication' %} (дата на публикуване){% endif %}</span>
+  <div class="meta"><span>Договор <b>{{ c.contract_number or 'няма данни' }}</b></span><span>{{ c.effective_date | date }}{% if c.date_basis == 'publication' %} (дата на публикуване){% endif %}</span>
     <span>УНП <a class="l" href="/tenders/{{ c.unp }}">{{ c.unp }}</a></span>{% if c.lot_no %}<span>обособена позиция {{ c.lot_no }}</span>{% endif %}</div></div>
   <div class="acts"><a class="btn" href="/contracts/{{ c.id }}.json">JSON</a></div></div>
 
@@ -13,10 +13,10 @@
   <div class="tile"><span>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</span>{% for s in c.suppliers %}<a class="u" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% endfor %}</div>
   <div class="tile"><span>Възложител</span><a class="u" href="/buyers/{{ c.buyer_eik }}">{{ c.buyer_name | tc }}</a></div>
   <div class="tile"><span>Стойност</span><b>{{ cur | eur if cur is not none else (c.value_initial | eurc(c.currency)) }}</b>{% if c.annex_count %}<small>с {{ c.annex_count }} анекса</small>{% endif %}</div>
-  <div class="tile"><span>Прогнозна</span><b>{{ c.estimated_eur | eur if c.estimated_eur else '—' }}</b>{% if c.estimate_ratio %}<small class="{{ 'warn' if c.estimate_ratio >= 2 }}">договорът е {{ c.estimate_ratio | num(2) }}× прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Прогнозна</span><b>{{ c.estimated_eur | eur if c.estimated_eur else 'няма данни' }}</b>{% if c.estimate_ratio %}<small class="{{ 'warn' if c.estimate_ratio >= 2 }}">договорът е {{ c.estimate_ratio | num(2) }}× прогнозната</small>{% endif %}</div>
   <div class="tile"><span>Дата</span><b>{{ c.effective_date | date }}</b>{% if c.date_basis == 'publication' %}<small>дата на публикуване</small>{% endif %}</div>
-  <div class="tile"><span>Оферти</span><b>{{ c.offers_count if c.offers_count is not none else '—' }}</b>{% if c.disqualified_offers_count %}<small>{{ c.disqualified_offers_count }} отстранени</small>{% endif %}</div>
-  <div class="tile"><span>Процедура</span><b>{{ c.procedure_type or '—' }}</b>{% if c.award_method %}<small>{{ c.award_method }}</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span><b>{{ c.offers_count if c.offers_count is not none else 'няма данни' }}</b>{% if c.disqualified_offers_count %}<small>{{ c.disqualified_offers_count }} отстранени</small>{% endif %}</div>
+  <div class="tile"><span>Процедура</span><b>{{ c.procedure_type or 'няма данни' }}</b>{% if c.award_method %}<small>{{ c.award_method }}</small>{% endif %}</div>
   {% if c.contract_period_days %}<div class="tile"><span>Срок</span><b>{{ c.contract_period_days | num }} дни</b></div>{% endif %}
   {% if c.is_eu_funded %}<div class="tile"><span>Финансиране</span><b>ЕС</b>{% if c.european_program %}<small>{{ c.european_program }}</small>{% endif %}</div>{% endif %}
 </div>
@@ -50,7 +50,7 @@
   <section class="p s12"><details class="more"><summary><h2>Допълнителна информация</h2><span class="sub">Всички публикувани полета на договора, историята на публикациите и източникът</span></summary>
     {% if c.records %}<dl class="dl rec">{% for label, key, val, cur2 in fields(c.records[-1].rec) %}<dt>{{ label }}</dt><dd>{% if cur2 is not none or key in ('estimatedValue', 'contractValue') %}{{ val | eurc(cur2) }}{% else %}{{ val }}{% endif %}</dd>{% endfor %}</dl>{% endif %}
     {% if c.records | length > 1 %}<h3 class="h3s">Публикации</h3><table class="sortable"><thead><tr><th>Ден</th><th>Вид</th><th class="n">Обявление</th></tr></thead><tbody>
-      {% for r in c.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or '—' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+      {% for r in c.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or 'няма данни' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
     <p class="mut">{% if c.source %}Файл „{{ c.source.key }}“ от {{ c.source.day | date }} в отворените данни на ЦАИС ЕОП (sha256 {{ c.source.sha256[:12] }}…).{% endif %}
       {% if c.notice_id %}Обявление № {{ c.notice_id }}.{% endif %} Стойностите са без ДДС, както са публикувани, превърнати в евро.</p>
   </details></section>

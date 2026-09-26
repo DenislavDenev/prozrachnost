@@ -21,14 +21,14 @@
 {# equal tiles; a long one takes two places instead of stretching the row #}
 <div class="tiles">
   <div class="tile {{ 'wide' if (t.buyer_name or '') | length > 38 }}"><span>Възложител</span><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></div>
-  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else '—' }}</b></div>
-  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else '—' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else 'няма данни' }}</b></div>
+  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else 'няма данни' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
   <div class="tile"><span>Оферти</span>{% if n_offers %}<b>{{ n_offers }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}
-    {% elif n_reported %}<b>{{ n_reported }}</b><small>по договорите; цените още не са прочетени</small>{% else %}<b>—</b>{% endif %}</div>
-  <div class="tile {{ 'wide' if (t.procedure_type or '') | length > 30 }}"><span>Процедура</span><b>{{ t.procedure_type or '—' }}</b></div>
-  <div class="tile {{ 'wide' if (method or '') | length > 30 }}"><span>Критерий</span><b>{{ method or '—' }}</b></div>
-  <div class="tile"><span>Вид</span><b>{{ t.contract_type or '—' }}</b></div>
-  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else '—' }}</b></div>
+    {% elif n_reported %}<b>{{ n_reported }}</b><small>по договорите; цените още не са прочетени</small>{% else %}<b>няма данни</b>{% endif %}</div>
+  <div class="tile {{ 'wide' if (t.procedure_type or '') | length > 30 }}"><span>Процедура</span><b>{{ t.procedure_type or 'няма данни' }}</b></div>
+  <div class="tile {{ 'wide' if (method or '') | length > 30 }}"><span>Критерий</span><b>{{ method or 'няма данни' }}</b></div>
+  <div class="tile"><span>Вид</span><b>{{ t.contract_type or 'няма данни' }}</b></div>
+  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else 'няма данни' }}</b></div>
   {% if t.is_eu_funded %}<div class="tile {{ 'wide' if t.european_program }}"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small title="{{ t.european_program }}">{{ t.european_program }}</small>{% endif %}</div>{% endif %}
 </div>
 
@@ -77,7 +77,7 @@
 <section class="p"><details class="more"><summary><h2>Допълнителна информация</h2><span class="sub">Всички публикувани полета на обявлението и историята на публикациите</span></summary>
   {% if header %}<dl class="dl rec">{% for label, key, val, cur in fields(rec) %}<dt>{{ label }}</dt><dd>{% if cur is not none or key in ('estimatedValue', 'contractValue') %}{{ val | eurc(cur) }}{% else %}{{ val }}{% endif %}</dd>{% endfor %}</dl>{% endif %}
   {% if t.records | length > 1 %}<h3 class="h3s">Публикации</h3><table class="sortable"><thead><tr><th>Ден</th><th>Вид</th><th class="n">Обявление</th></tr></thead><tbody>
-    {% for r in t.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or '—' }}{% if r.rec.isLot == 'Да' %} · позиция{% endif %}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+    {% for r in t.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or 'няма данни' }}{% if r.rec.isLot == 'Да' %} · позиция{% endif %}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
 </details></section>
 {% endblock %}
 {% block scripts %}

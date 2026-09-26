@@ -39,18 +39,18 @@ FLAG = {"review": "≥ 10× прогнозната стойност", "value_low
 
 def fnum(v, d=0):
     if v is None:
-        return "—"
+        return "няма данни"
     s = f"{float(v):,.{d}f}".replace(",", " ").replace(".", ",")
     return s
 
 
 def feur(v):
-    return "—" if v is None else fnum(v) + " €"
+    return "няма данни" if v is None else fnum(v) + " €"
 
 
 def fbig(v):
     if v is None:
-        return "—"
+        return "няма данни"
     v = float(v)
     if v >= 1e9:
         return fnum(v / 1e9, 1).rstrip("0").rstrip(",") + " млрд. €"
@@ -78,11 +78,11 @@ def feurc(v, currency, d=2):
     e = to_eur(v, currency)
     if e is not None:
         return fnum(e, d) + " €"
-    return "—" if v in (None, "") else f"{v} {currency or ''}".strip()
+    return "няма данни" if v in (None, "") else f"{v} {currency or ''}".strip()
 
 
 def fdate(v):
-    return v.strftime("%d.%m.%Y") if v else "—"
+    return v.strftime("%d.%m.%Y") if v else "няма данни"
 
 
 def tc(s):

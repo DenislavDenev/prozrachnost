@@ -17,7 +17,7 @@
   {{ th(L, 'since', 'В регистъра от', 'n hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
 {% for r in rows %}<tr><td><a class="u strong" href="/persons/{{ r.id }}">{{ r.name | tc }}</a></td>
   <td class="n">{{ r.companies | num }}</td><td class="n hide-s">{{ r.active | num }}</td>
-  <td class="n hide-s mut">{{ r.first_role.year if r.first_role else '—' }}</td>
+  <td class="n hide-s mut">{{ r.first_role.year if r.first_role else 'няма данни' }}</td>
   <td class="n">{{ r.contracts | num }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>
 {% else %}<tr><td colspan="6" class="mut">Няма лица по тези филтри.</td></tr>{% endfor %}
 </tbody></table>

@@ -81,7 +81,7 @@
 {% endblock %}
 {% block main %}
 <div class="crumbs">Лаборатория / варианти на секцията „Свързани лица и дружества“</div>
-<p class="lab-note" style="margin-top:6px"><b>Най-ново:</b> <a class="l" href="/lab/vazby?node={{ node | urlencode }}">Визуален регистър</a> (по rejstrik.penize.cz) · <a class="l" href="/lab/explore?node={{ node | urlencode }}">Изследване на връзките</a> — изгледът по проучването (стъпки, разгъване, свити големи възли, собственост отгоре надолу, вградено „Свържи“, текстова таблица).</p>
+<p class="lab-note" style="margin-top:6px"><b>Най-ново:</b> <a class="l" href="/lab/vazby?node={{ node | urlencode }}">Визуален регистър</a> (по rejstrik.penize.cz) · <a class="l" href="/lab/explore?node={{ node | urlencode }}">Изследване на връзките</a>: изгледът по проучването (стъпки, разгъване, свити големи възли, собственост отгоре надолу, вградено „Свържи“, текстова таблица).</p>
 <h1 class="h1s">{{ (info.name or node) | tc }}</h1>
 <div class="lab-head"><span>Опитай с:</span>
   <a class="l" href="?node=p:01M3D2GEZYEKNZ4B6HSXW20CPK">Калин Пешов</a>
@@ -378,7 +378,7 @@ const FOCUS = {{ node | tojson }};
       ${cols.map((c) => { const u = href(c.n); return `<th class="col ${c.rs.length > 1 ? 'share' : ''}" title="${esc(c.n.name)}: в ${c.rs.length} от дружествата">${u ? `<a href="${u}">` : ''}<div>${esc(c.n.name)}</div>${u ? '</a>' : ''}</th>`; }).join('')}
       <th class="rowh" style="min-width:130px;text-align:right">Договори</th></tr></thead><tbody>`;
     for (const r of rows) { const u = href(r);
-      h += `<tr><th class="rowh">${u ? `<a class="u" href="${u}">${esc(r.name)}</a>` : esc(r.name)}<small>${dist.get(r.id) === 0 ? 'обектът' : dist.get(r.id) === 1 ? 'пряко свързано' : 'през едно звено'}</small></th>${cols.map((c) => cell(c.n, r.id)).join('')}<td class="v">${r.n ? big(+r.eur || 0) : '—'}</td></tr>`; }
+      h += `<tr><th class="rowh">${u ? `<a class="u" href="${u}">${esc(r.name)}</a>` : esc(r.name)}<small>${dist.get(r.id) === 0 ? 'обектът' : dist.get(r.id) === 1 ? 'пряко свързано' : 'през едно звено'}</small></th>${cols.map((c) => cell(c.n, r.id)).join('')}<td class="v">${r.n ? big(+r.eur || 0) : 'няма данни'}</td></tr>`; }
     $('matrix').innerHTML = h + '</tbody></table>' + (colsAll.length > cols.length ? `<p class="mut" style="padding:8px">Показани са първите ${cols.length} от ${colsAll.length} колони.</p>` : '');
   }
 
@@ -407,7 +407,7 @@ const FOCUS = {{ node | tojson }};
         <span class="mut">${nf.format(v.length)} дружества · ${big(v.reduce((s, r) => s + r.eur, 0))}</span><span style="flex:1"></span><button class="btn sm" id="rcsv">CSV</button></div>
         <table><thead><tr>${cols.map(([k, l]) => `<th class="${['n', 'eur', 'k'].includes(k) ? 'n' : ''}" aria-sort="${st.sort === k ? (st.dir > 0 ? 'ascending' : 'descending') : 'none'}"><a class="sort" href="#" data-k="${k}">${l}</a></th>`).join('')}</tr></thead><tbody>
         ${v.slice(0, 400).map((r) => { const u = href(r.c); return `<tr><td>${u ? `<a class="u strong" href="${u}">${esc(r.c.name)}</a>` : esc(r.c.name)}</td><td class="n">${r.k}</td><td class="path">${pathHtml(r)}</td>
-          <td class="${r.active ? '' : 'mut'}">${r.active ? 'действаща' : 'минала'}</td><td class="n">${r.n ? nf.format(r.n) : '—'}</td><td class="n strong">${r.n ? big(r.eur) : '—'}</td>
+          <td class="${r.active ? '' : 'mut'}">${r.active ? 'действаща' : 'минала'}</td><td class="n">${r.n ? nf.format(r.n) : 'няма данни'}</td><td class="n strong">${r.n ? big(r.eur) : 'няма данни'}</td>
           <td class="mut">${r.beik ? `<a class="u" href="/buyers/${r.beik}">${esc(r.buyer)}</a>` : ''}</td></tr>`; }).join('')}</tbody></table>`;
       $('rq').oninput = (e) => { st.q = e.target.value.toLowerCase(); const p = e.target.selectionStart; draw(); $('rq').focus(); $('rq').setSelectionRange(p, p); };
       $('rk').onchange = (e) => { st.k = +e.target.value; draw(); };

@@ -9,7 +9,7 @@
 {% macro history(recs) %}{% if recs | length > 1 %}
 <section class="p s12"><div class="ph"><div><h2>Публикации</h2><div class="sub">Всички записи за {{ 'поръчката' if recs[0].kind == 'tenders' else 'договора' }} в отворените данни, по ред</div></div></div>
   <table class="sortable"><thead><tr><th>Ден</th><th>Вид</th><th>Позиция</th><th class="n">Обявление</th></tr></thead><tbody>
-  {% for r in recs %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or r.rec.procedureType or '—' }}</td><td class="mut">{{ r.rec.lotIdentifier or '—' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}
+  {% for r in recs %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or r.rec.procedureType or 'няма данни' }}</td><td class="mut">{{ r.rec.lotIdentifier or 'няма данни' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}
   </tbody></table></section>{% endif %}{% endmacro %}
 
 {% macro ocds(recs) %}{% if recs %}{% set rel = recs[-1].rec %}{% set t = rel.tender or {} %}

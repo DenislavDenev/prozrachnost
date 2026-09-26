@@ -6,10 +6,10 @@ const ROLE = { manager: 'управител', sole_owner: 'едноличен с
   verification_commission: 'член на проверителна комисия' };
 const OWN = new Set(['partner', 'sole_owner', 'trader']);
 const nf = new Intl.NumberFormat('bg-BG', { maximumFractionDigits: 0 });
-const eur = (v) => v == null ? '—' : nf.format(v) + ' €';
+const eur = (v) => v == null ? 'няма данни' : nf.format(v) + ' €';
 const unit = (v, d, u) => (v / d).toLocaleString('bg-BG', { maximumFractionDigits: 1 }) + u;
-const big = (v) => v == null ? '—' : v >= 1e9 ? unit(v, 1e9, ' млрд. €') : v >= 1e6 ? unit(v, 1e6, ' млн. €') : eur(v);
-const pct = (v) => v == null ? '—' : (+v).toLocaleString('bg-BG') + '%';
+const big = (v) => v == null ? 'няма данни' : v >= 1e9 ? unit(v, 1e9, ' млрд. €') : v >= 1e6 ? unit(v, 1e6, ' млн. €') : eur(v);
+const pct = (v) => v == null ? 'няма данни' : (+v).toLocaleString('bg-BG') + '%';
 const short = (v) => v >= 1e9 ? unit(v, 1e9, ' млрд.') : v >= 1e6 ? unit(v, 1e6, ' млн.') : v >= 1e3 ? Math.round(v / 1e3) + ' хил.' : nf.format(v);
 const yr = (s) => s ? +String(s).slice(0, 4) : null;
 const span = (r) => r.valid_to ? `${yr(r.valid_from)}–${yr(r.valid_to)}` : r.uncertain_after ? `${yr(r.valid_from)}–?` : `от ${yr(r.valid_from)}`;

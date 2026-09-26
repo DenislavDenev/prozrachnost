@@ -152,7 +152,7 @@ async function vazby(FOCUS, opts = {}) {
       cy.edges().forEach((ed) => { const on = ed.hasClass('path'); ed.toggleClass('mute', !on); if (on) { ed.toggleClass('gone', ed.hasClass('off')); ed.removeClass('off'); } });
     });
     else cy.elements().removeClass('mute route gone');
-    $('yout').textContent = S.year ?? '—';
+    $('yout').textContent = S.year ?? 'няма избрана година';
     $('ybadge').textContent = S.year ? String(S.year) : S.live ? 'днес' : 'всички години';
     $('ybadge').classList.toggle('dim', !S.year);
     route();
