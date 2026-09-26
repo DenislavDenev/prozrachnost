@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ name }} · Тендер{% endblock %}
+{% block title %}{{ place_name }} · Тендер{% endblock %}
 {% block main %}
-<div class="crumbs"><a href="/map">Карта</a>{% for h, t in up | reverse %} / <a href="{{ h }}">{{ t }}</a>{% endfor %} / {{ name }}</div>
-<div class="head"><div><h1>{{ name }}</h1><div class="meta"><span>{{ kind }}</span>{% if not aid[0].isdigit() %}<span>NUTS <b>{{ aid }}</b></span>{% endif %}</div></div>
+<div class="crumbs"><a href="/map">Карта</a>{% for h, t in up | reverse %} / <a href="{{ h }}">{{ t }}</a>{% endfor %} / {{ place_name }}</div>
+<div class="head"><div><h1>{{ place_name }}</h1><div class="meta"><span>{{ kind }}</span>{% if not aid[0].isdigit() %}<span>NUTS <b>{{ aid }}</b></span>{% endif %}</div></div>
   <div class="acts"><a class="btn" href="/contracts?{{ param }}={{ aid }}">Всички договори</a></div></div>
 <p class="lede"><b>{{ s.n | num }} договора</b> за <b>{{ s.eur | big }}</b> на <b>{{ s.buyers | num }} възложители</b> с място тук; {{ s.single_pct | default('—', true) }}% от тях с една оферта.</p>
 <div class="grid">

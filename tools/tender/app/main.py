@@ -442,7 +442,7 @@ def place(request: Request, aid: str):
     by_year = Q.rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} WHERE {cond} AND {Q.YEARS} GROUP BY 1 ORDER BY 1""", *a0)
     param = "municipality" if aid[0].isdigit() else "area"
-    return page(request, "place.html", aid=aid, name=name, kind=kind, up=up, s=stats, buyers=buyers, suppliers=suppliers,
+    return page(request, "place.html", aid=aid, place_name=name, kind=kind, up=up, s=stats, buyers=buyers, suppliers=suppliers,
                 by_year=by_year, param=param, nav="Карта")
 
 
