@@ -208,6 +208,8 @@ def network(focus, view="all", at=None, depth=2, max_nodes=500):
              (SELECT count(*) FROM live.node_contract k WHERE k.node = e.company) company_contracts,
              (SELECT amount_eur FROM live.company_stats s WHERE s.key = cn.ref) company_eur,
              (SELECT amount_eur FROM live.company_stats s WHERE s.key = hn.ref AND hn.kind = 'company') holder_eur,
+             (SELECT count(*) FROM live.edge x WHERE x.holder = e.holder OR x.company = e.holder) holder_links,
+             (SELECT count(*) FROM live.edge x WHERE x.holder = e.company OR x.company = e.company) company_links,
              (SELECT count(*) FROM live.node_contract k WHERE k.node = e.holder) holder_contracts
       FROM live.edge e JOIN nodes a ON a.node = e.holder JOIN nodes b ON b.node = e.company
       LEFT JOIN live.node hn ON hn.id = e.holder LEFT JOIN live.node cn ON cn.id = e.company

@@ -232,6 +232,33 @@ def connect_page(request: Request, n: list[str] = Query([]), q: str = "", active
     return page(request, "connect.html", ids=ids, chosen=chosen, cands=cands, q=q, res=res, active=active, hubs=hubs, nav="Свържи")
 
 
+@app.get("/connect.json")
+def connect_json(n: list[str] = Query([]), active: str = "", hubs: str = ""):
+    ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))[:6]
+    if len(ids) < 2:
+        raise HTTPException(400)
+    return JSONResponse(json.loads(json.dumps(Q.connections(ids, active=bool(active), skip_hubs=bool(hubs)), default=jdefault)))
+
+
+@app.get("/find.json")
+def find_json(q: str = ""):
+    """Search hits that exist in the registry network, as node ids (for the explorer and „Свържи“)."""
+    out = []
+    for r in (Q.search(q, None) if q.strip() else []):
+        node = node_of(r["kind"], r["ref"])
+        if node:
+            out.append({"node": node, "kind": r["kind"], "label": tc(r["label"]), "sub": r["sub"]})
+    return JSONResponse(out[:12])
+
+
+@app.get("/lab/explore", response_class=HTMLResponse)
+def lab_explore(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
+    """Prototype of the links explorer built from the research (steps, expand, hubs, hierarchy, connect)."""
+    if not NODE_ID.fullmatch(node):
+        raise HTTPException(400)
+    return page(request, "lab_explore.html", node=node, info=Q.node_info(node), nav="")
+
+
 @app.get("/lab/links", response_class=HTMLResponse)
 def lab_links(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
     """Prototypes of the links section (four variants side by side); not linked from the menu."""
