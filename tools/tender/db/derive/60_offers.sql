@@ -39,3 +39,35 @@ LEFT JOIN company co ON co.key = 'eik:' || o.bidder_eik;
 
 CREATE INDEX ON offer (unp, lot_no);
 CREATE INDEX ON offer (company_key);
+
+-- tags from the offers (methodology 4, 7b); per company, last 3 years of offers
+INSERT INTO tag_def VALUES
+ ('not_lowest_win', 'statistical', 'Печели без най-ниската цена',
+  'позиции с критерий „най-ниска цена“, спечелени с оферта над най-ниската отворена цена', 3, 2, NULL, 'v1'),
+ ('frequent_loser', 'statistical', 'Често участва, не печели',
+  'позиции с оферта от фирмата / спечелени от тях', 3, 10, 0, 'v1');
+
+CREATE TEMP TABLE lot_low ON COMMIT DROP AS
+SELECT o.unp, o.lot_no, min(o.price_eur) AS low,
+       bool_or(c.award_method ILIKE '%цена%' AND c.award_method NOT ILIKE '%качество%') AS price_only
+FROM offer o LEFT JOIN contract c ON c.unp = o.unp
+WHERE o.price_eur IS NOT NULL AND o.submitted_at >= current_date - interval '3 years'
+GROUP BY 1, 2;
+
+INSERT INTO tag
+SELECT 'company', o.company_key, 'not_lowest_win',
+       format('%s пъти за последните 3 г. спечели позиция с критерий „най-ниска цена“ с оферта над най-ниската', count(*)),
+       jsonb_build_object('lots', count(*), 'unps', (array_agg(DISTINCT o.unp))[1:20], 'window_years', 3)
+FROM offer o JOIN lot_low l ON l.unp = o.unp AND l.lot_no = o.lot_no
+WHERE o.won AND l.price_only AND o.company_key IS NOT NULL AND o.price_eur > l.low * 1.0001
+GROUP BY o.company_key HAVING count(*) >= 2
+ON CONFLICT DO NOTHING;
+
+INSERT INTO tag
+SELECT 'company', company_key, 'frequent_loser',
+       format('Участва с оферта в %s позиции за последните 3 г. и не спечели нито една', lots),
+       jsonb_build_object('lots', lots, 'window_years', 3)
+FROM (SELECT company_key, count(DISTINCT (unp, lot_no)) AS lots, bool_or(won) AS any_won FROM offer
+      WHERE company_key IS NOT NULL AND submitted_at >= current_date - interval '3 years' GROUP BY 1) x
+WHERE lots >= 10 AND NOT any_won
+ON CONFLICT DO NOTHING;

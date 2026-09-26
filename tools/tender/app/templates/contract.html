@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_record.html" import record, history, ocds %}
+{% from "_offers.html" import offers_table %}{% from "_flags.html" import flags %}
 {% block title %}Договор {{ c.contract_number or c.id }} · Тендер{% endblock %}
 {% block main %}
 <div class="crumbs"><a href="/contracts">Договори</a> / <a href="/tenders/{{ c.unp }}">поръчка {{ c.unp }}</a> / договор {{ c.contract_number or '' }}</div>
@@ -8,40 +8,59 @@
     <span>УНП <a class="l" href="/tenders/{{ c.unp }}">{{ c.unp }}</a></span>{% if c.lot_no %}<span>обособена позиция {{ c.lot_no }}</span>{% endif %}</div></div>
   <div class="acts"><a class="btn" href="/contracts/{{ c.id }}.json">JSON</a></div></div>
 
+{% set cur = c.value_current_eur if c.value_current_eur is not none else c.value_initial_eur %}
+<div class="tiles">
+  <div class="tile"><span>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</span>{% for s in c.suppliers %}<a class="u" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% endfor %}</div>
+  <div class="tile"><span>Възложител</span><a class="u" href="/buyers/{{ c.buyer_eik }}">{{ c.buyer_name | tc }}</a></div>
+  <div class="tile"><span>Стойност</span><b>{{ cur | eur if cur is not none else (c.value_initial | eurc(c.currency)) }}</b>{% if c.annex_count %}<small>с {{ c.annex_count }} анекса</small>{% endif %}</div>
+  <div class="tile"><span>Прогнозна</span><b>{{ c.estimated_eur | eur if c.estimated_eur else '—' }}</b>{% if c.estimate_ratio %}<small class="{{ 'warn' if c.estimate_ratio >= 2 }}">договорът е {{ c.estimate_ratio | num(2) }}× прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Дата</span><b>{{ c.effective_date | date }}</b>{% if c.date_basis == 'publication' %}<small>дата на публикуване</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span><b>{{ c.offers_count if c.offers_count is not none else '—' }}</b>{% if c.disqualified_offers_count %}<small>{{ c.disqualified_offers_count }} отстранени</small>{% endif %}</div>
+  <div class="tile"><span>Процедура</span><b>{{ c.procedure_type or '—' }}</b>{% if c.award_method %}<small>{{ c.award_method }}</small>{% endif %}</div>
+  {% if c.contract_period_days %}<div class="tile"><span>Срок</span><b>{{ c.contract_period_days | num }} дни</b></div>{% endif %}
+  {% if c.is_eu_funded %}<div class="tile"><span>Финансиране</span><b>ЕС</b>{% if c.european_program %}<small>{{ c.european_program }}</small>{% endif %}</div>{% endif %}
+</div>
+{% if c.value_flag not in ('ok', 'review') %}<p class="warn strong">Проверка на стойността: {{ c.value_flag | flag }}</p>{% endif %}
+{% if c.is_framework %}<p class="mut">Рамково споразумение: стойността е таван, не разход; не влиза в сумите.</p>{% endif %}
+
 <div class="grid">
-  <section class="p s8"><h2>Стойност</h2>
-    <dl class="dl">
-      <dt>Първоначална</dt><dd>{{ c.value_initial_eur | eur if c.value_initial_eur is not none else (c.value_initial | eurc(c.currency)) }}</dd>
-      {% if c.value_current is not none %}<dt>С анексите</dt><dd class="strong">{{ c.value_current_eur | eur if c.value_current_eur is not none else (c.value_current | eurc(c.currency)) }}</dd>{% endif %}
-      {% if c.estimated_eur %}<dt>Прогнозна</dt><dd>{{ c.estimated_eur | eur }}{% if c.estimate_ratio %} <span class="{{ 'warn' if c.estimate_ratio >= 2 else 'mut' }}">· договорът е {{ c.estimate_ratio | num(2) }}× прогнозната</span>{% endif %}</dd>{% endif %}
-      {% if c.is_framework %}<dt>Вид</dt><dd>рамково споразумение</dd>{% endif %}
-      {% if c.value_flag not in ('ok', 'review') %}<dt>Проверка на стойността</dt><dd class="warn">{{ c.value_flag | flag }}</dd>{% endif %}
-      <dt>Оферти</dt><dd>{{ c.offers_count if c.offers_count is not none else 'неизвестно' }}{% if c.disqualified_offers_count %} · {{ c.disqualified_offers_count }} отстранени{% endif %}{% if c.sme_offers_count is not none %} · {{ c.sme_offers_count }} от МСП{% endif %}</dd>
-      <dt>Процедура</dt><dd>{{ c.procedure_type or '—' }}{% if c.award_method %} · {{ c.award_method }}{% endif %}</dd>
-      {% if c.direct_award_justification %}<dt>Основание за пряко възлагане</dt><dd>{{ c.direct_award_justification }}</dd>{% endif %}
-      <dt>CPV</dt><dd>{{ c.cpv or '—' }} {{ c.cpv_description or '' }}</dd>
-      {% if c.contract_period_days %}<dt>Срок</dt><dd>{{ c.contract_period_days | num }} дни</dd>{% endif %}
-      {% if c.is_eu_funded %}<dt>Европейско финансиране</dt><dd>{{ c.european_program or 'да' }}</dd>{% endif %}
-    </dl></section>
-  <section class="p s4"><h2>Страни</h2>
-    <dl class="dl one-col"><dt>Възложител</dt><dd><a class="l" href="/buyers/{{ c.buyer_eik }}">{{ c.buyer_name | tc }}</a></dd>
-      <dt>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</dt>
-      <dd>{% for s in c.suppliers %}<div><a class="l" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% if s.eik %} <span class="mut">{{ s.eik }}</span>{% endif %}</div>{% endfor %}
-        {% if c.suppliers | length > 1 %}<div class="mut">Дяловете не се публикуват; договорът е в пълен размер при всеки член.</div>{% endif %}</dd>
-      {% if c.subcontracts %}<dt>Подизпълнители</dt><dd>{% for s in c.subcontracts %}<div><a class="l" href="/companies/{{ s.party_key | q }}">{{ s.name | tc }}</a>{% if s.percent %} · {{ s.percent | num }}%{% endif %}</div>{% endfor %}</dd>{% endif %}
-    </dl></section>
+  <section class="p s6"><h2>Стойност във времето</h2><div class="hb st" id="vals"></div></section>
+  <section class="p s6"><h2>Поръчката</h2>
+    <p><a class="u strong" href="/tenders/{{ c.unp | q }}">{{ c.tender_subject or c.unp }}</a></p>
+    <p class="mut">УНП {{ c.unp }}{% if c.lot %}{% if c.lot.lot_no %} · позиция {{ c.lot.lot_no }}{% if c.lot.title %}: {{ c.lot.title }}{% endif %}{% endif %}{% endif %}</p>
+    {% if c.siblings %}<h3 class="h3s">Другите договори по поръчката ({{ c.siblings | length }})</h3>
+      {% for k in c.siblings[:8] %}<div class="kline"><a class="u" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a> · {{ k.effective_date | date }} · <b>{{ k.eur | eur }}</b></div>{% endfor %}
+      {% if c.siblings | length > 8 %}<a class="l" href="/tenders/{{ c.unp | q }}">всички</a>{% endif %}{% endif %}
+    {% if c.subcontracts %}<h3 class="h3s">Подизпълнители</h3>{% for s in c.subcontracts %}<div class="kline"><a class="u" href="/companies/{{ s.party_key | q }}">{{ s.name | tc }}</a>{% if s.percent %} · {{ s.percent | num }}%{% endif %}</div>{% endfor %}{% endif %}
+  </section>
+
+  <section class="p s12"><div class="ph"><div><h2>Офертите за {{ 'позицията' if c.lot and c.lot.lot_no else 'поръчката' }}</h2>
+    <div class="sub">От страницата на поръчката в ЦАИС ЕОП. Зелено: спечелилата оферта.</div></div>
+    {% if c.unp_tender_id %}<a class="btn" href="https://app.eop.bg/today/{{ c.unp_tender_id }}" target="_blank" rel="noopener">Документи и оферти в ЦАИС ЕОП</a>{% endif %}</div>
+    {% if c.lot %}{{ offers_table(c.lot) }}{% else %}<p class="mut">Офертите още не са прочетени от ЦАИС ЕОП.</p>{% endif %}</section>
 
   {% if c.amendments %}<section class="p s12"><h2>Анекси</h2>
     <table class="sortable"><thead><tr><th>Публикуван</th><th>Изменение</th><th class="n">Преди</th><th class="n">След</th><th class="n">Разлика</th></tr></thead><tbody>
     {% for a in c.amendments %}<tr><td class="mut nw" data-v="{{ a.published_at }}">{{ a.published_at | date }}</td><td>{{ a.reason or '' }}<div class="mut">{{ a.description or '' }}</div></td>
       <td class="n" data-v="{{ a.last_value }}">{{ a.last_value | eurc(a.currency) }}</td><td class="n" data-v="{{ a.current_value }}">{{ a.current_value | eurc(a.currency) }}</td><td class="n strong" data-v="{{ a.difference }}">{{ a.difference | eurc(a.currency) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 
-  {{ ocds(c.ocds) }}
-  {% if c.records %}{{ record(c.records[-1]) }}{% endif %}
-  {{ history(c.records) }}
 
-  <section class="p s12"><h2>Източник</h2>
+  {% set rel = c.ocds[-1].rec if c.ocds else {} %}{% if rel.tender and rel.tender.description %}<section class="p s12"><h2>Описание</h2><div class="prose desc">{{ rel.tender.description }}</div></section>{% endif %}
+
+  <section class="p s12"><details class="more"><summary><h2>Допълнителна информация</h2><span class="sub">Всички публикувани полета на договора, историята на публикациите и източникът</span></summary>
+    {% if c.records %}<dl class="dl rec">{% for label, key, val, cur2 in fields(c.records[-1].rec) %}<dt>{{ label }}</dt><dd>{% if cur2 is not none or key in ('estimatedValue', 'contractValue') %}{{ val | eurc(cur2) }}{% else %}{{ val }}{% endif %}</dd>{% endfor %}</dl>{% endif %}
+    {% if c.records | length > 1 %}<h3 class="h3s">Публикации</h3><table class="sortable"><thead><tr><th>Ден</th><th>Вид</th><th class="n">Обявление</th></tr></thead><tbody>
+      {% for r in c.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or '—' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
     <p class="mut">{% if c.source %}Файл „{{ c.source.key }}“ от {{ c.source.day | date }} в отворените данни на ЦАИС ЕОП (sha256 {{ c.source.sha256[:12] }}…).{% endif %}
-      {% if c.notice_id %}Обявление № {{ c.notice_id }}.{% endif %} Стойностите са без ДДС, както са публикувани, превърнати в евро.</p></section>
+      {% if c.notice_id %}Обявление № {{ c.notice_id }}.{% endif %} Стойностите са без ДДС, както са публикувани, превърнати в евро.</p>
+  </details></section>
 </div>
+<script type="application/json" id="data">{{ {"vals": [
+  {"n": "Прогнозна", "v": c.estimated_eur},
+  {"n": "При подписване", "v": c.value_initial_eur},
+  {"n": "С анексите", "v": c.value_current_eur if c.annex_count else none}] | selectattr("v") | list} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>hbars($('vals'), DATA.vals, { name: (r) => r.n, val: (r) => +r.v, href: () => '#', right: (r) => eur(+r.v) });
+document.querySelectorAll('#vals a').forEach((a) => a.replaceWith(Object.assign(document.createElement('span'), { className: 'nm', textContent: a.textContent })));</script>
 {% endblock %}

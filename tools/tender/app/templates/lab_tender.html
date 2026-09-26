@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_record.html" import record, history %}
 {% from "_flags.html" import flags %}
+{% from "_offers.html" import offers_table %}
 {# Three ways to show one procedure (lab): A comparison of offers, B timeline, C participants x lots table.
    Shared: key facts as tiles, "more information" folded, offers from the ЦАИС ЕОП procedure page. #}
 {% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
@@ -30,17 +31,7 @@
   {% if t.is_eu_funded %}<div class="tile"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small>{{ t.european_program }}</small>{% endif %}</div>{% endif %}
 </div>{% endmacro %}
 
-{% macro offers_table(l) %}
-<table class="sortable"><thead><tr><th>Участник</th><th class="hide-s">Подадена</th><th class="n">Цена</th><th class="n hide-s">Спрямо прогнозната</th><th class="n">Спрямо най-ниската</th><th>Резултат</th></tr></thead><tbody>
-{% for o in l.offers %}<tr class="{{ 'win' if o.won }}"><td>{% if o.company_key %}<a class="u strong" href="/companies/{{ o.company_key | q }}">{{ o.bidder_name | tc }}</a>{% else %}<b>{{ o.bidder_name | tc }}</b>{% endif %}
-    {% if o.consortium %}<div class="mut">обединение: {{ o.consortium | map(attribute='name') | map('tc') | join(', ') }}</div>{% endif %}</td>
-  <td class="mut nw hide-s" data-v="{{ o.submitted_at }}">{{ o.submitted_at | date if o.submitted_at else '' }}</td>
-  <td class="n strong" data-v="{{ o.price_eur }}">{{ o.price_eur | eur if o.price_eur is not none else ('цената не е отворена' if not o.price_opened else '—') }}</td>
-  <td class="n hide-s" data-v="{{ o.price_eur / l.estimated_eur if o.price_eur and l.estimated_eur else '' }}">{{ ((100 * o.price_eur / l.estimated_eur) | num ~ '%') if o.price_eur and l.estimated_eur else '—' }}</td>
-  <td class="n" data-v="{{ o.price_eur - l.low if o.price_eur is not none and l.low is not none else '' }}">{% if o.price_eur is not none and l.low %}{{ 'най-ниска' if o.price_eur <= l.low + 0.01 else '+' ~ ((100 * (o.price_eur - l.low) / l.low) | num(1)) ~ '%' }}{% else %}—{% endif %}</td>
-  <td>{% if o.won %}<span class="st contracted">спечелила</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="6" class="mut">Офертите за тази позиция още не са прочетени от ЦАИС ЕОП.</td></tr>{% endfor %}
-</tbody></table>{% endmacro %}
+
 
 {% macro contracts_of(l) %}{% for k in l.contracts %}<div class="kline"><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a> · {{ k.effective_date | date }} · <b>{{ k.eur | eur }}</b>{{ flags(k) }}</div>{% endfor %}{% endmacro %}
 

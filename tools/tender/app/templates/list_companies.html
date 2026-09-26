@@ -3,18 +3,20 @@
 {% block title %}Фирми · Тендер{% endblock %}
 {% block main %}
 <h1 class="h1s">Фирми</h1>
-<p class="sub">Изпълнители с поне един договор от 2020 г. насам. Съвместните договори са в пълен размер при всеки участник.</p>
+<p class="sub">Изпълнители с поне един договор от 2020 г. насам. Съвместните договори са в пълен размер при всеки участник. <a class="l" href="/flags">Какво значат отбелязванията</a></p>
 <details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/companies">
   <label class="fld grow"><span>Име или ЕИК</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Софарма" data-combo="company" data-pick="go"></label>
   <label class="fld"><span>Седалище</span><input name="seat" value="{{ L.get('seat') }}" placeholder="напр. Пловдив"></label>
+  <label class="fld"><span>Отбелязване</span><select name="tag"><option value="">Всички</option>
+    {% for t in tags %}<option value="{{ t.code }}" {{ 'selected' if L.get('tag') == t.code }}>{{ t.label }} ({{ t.n | num }})</option>{% endfor %}</select></label>
   {{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/companies">Изчисти</a>{% endif %}</div>
 </form></details>
 {{ count(L, 'фирми') }}
 <section class="p">
 <table><thead><tr>{{ th(L, 'name', 'Фирма') }}{{ th(L, 'seat', 'Седалище', 'hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}
   {{ th(L, 'buyers', 'Възложители', 'n hide-s') }}{{ th(L, 'last', 'Последен', 'n hide-s') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
-{% for r in rows %}<tr><td><a class="u strong" href="/companies/{{ r.key | q }}">{{ r.name | tc }}{% if r.legal_form %} {{ r.legal_form | form }}{% endif %}</a><div class="mut">{{ ('ЕИК ' ~ r.eik) if r.eik else 'без ЕИК' }}</div></td>
+{% for r in rows %}<tr><td><a class="u strong" href="/companies/{{ r.key | q }}">{{ r.name | tc }}{% if r.legal_form %} {{ r.legal_form | form }}{% endif %}</a><div class="mut">{{ ('ЕИК ' ~ r.eik) if r.eik else 'без ЕИК' }}</div>{% if r.reason %}<div class="warn">{{ r.reason }}</div>{% endif %}</td>
   <td class="hide-s mut">{{ r.seat or '' }}</td><td class="n">{{ r.contracts | num }}</td>
   <td class="n hide-s">{{ r.buyers | num }}</td><td class="n hide-s mut">{{ r.last_contract | date }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>
 {% else %}<tr><td colspan="6" class="mut">Няма фирми по тези филтри.</td></tr>{% endfor %}

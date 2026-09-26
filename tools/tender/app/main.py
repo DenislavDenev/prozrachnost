@@ -498,9 +498,21 @@ def companies(request: Request):
                           "last": ("s.last_contract", "desc")}, "eur")
     contains(L, "q", "c.name", "c.eik")
     contains(L, "seat", "c.seat")
-    rows = L.fetch("""SELECT c.key, c.eik, c.name, c.legal_form, c.seat, s.contracts, s.amount_eur, s.buyers, s.last_contract
-                      FROM live.company c JOIN live.company_stats s USING (key) WHERE {where}""")
-    return page(request, "list_companies.html", L=L, rows=rows, nav="Фирми")
+    if L.get("tag"):
+        L.add("c.key IN (SELECT entity_id FROM live.tag WHERE entity_type = 'company' AND code = %s)", L.get("tag"))
+    rows = L.fetch("""SELECT c.key, c.eik, c.name, c.legal_form, c.seat, s.contracts, s.amount_eur, s.buyers, s.last_contract,
+                        (SELECT t.reason FROM live.tag t WHERE t.entity_type = 'company' AND t.entity_id = c.key AND t.code = %s) reason
+                      FROM live.company c JOIN live.company_stats s USING (key) WHERE {where}""".replace("%s", "'" + re.sub(r"[^a-z_]", "", L.get("tag")) + "'"))
+    tags = Q.cached("tag_defs", lambda: Q.rows("SELECT d.code, d.label, (SELECT count(*) FROM live.tag t WHERE t.code = d.code) n FROM live.tag_def d ORDER BY 1"))
+    return page(request, "list_companies.html", L=L, rows=rows, tags=tags, nav="Фирми")
+
+
+@app.get("/flags", response_class=HTMLResponse)
+def flags_index(request: Request):
+    """Every automatic tag: what it measures, how many companies have it, a link to them."""
+    defs = Q.rows("""SELECT d.*, (SELECT count(*) FROM live.tag t WHERE t.code = d.code) n FROM live.tag_def d
+                     ORDER BY d.kind DESC, n DESC""")
+    return page(request, "flags.html", defs=defs, nav="Фирми")
 
 
 @app.get("/persons", response_class=HTMLResponse)

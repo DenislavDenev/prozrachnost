@@ -401,21 +401,27 @@ def contract(cid):
                       c["source_day"], "contracts" if c["source"] == "eop" else "ocds")
     c["records"] = raw_records("contract", cid)
     c["ocds"] = raw_records("ocds", c["unp_tender_id"]) if c.get("unp_tender_id") else []
+    # the lot this contract belongs to (numbered as in ЦАИС ЕОП when read), with its offers and sibling contracts
+    t = tender(c["unp"], raw=False) if c.get("unp") else None
+    lots = tender_lots(t) if t else []
+    c["lot"] = next((l for l in lots if any(k["id"] == cid for k in l["contracts"])), None)
+    c["siblings"] = [k for k in (t["contracts"] if t else []) if k["id"] != cid]
     return c
 
 
-def tender(unp):
+def tender(unp, raw=True):
     t = one("SELECT t.*, b.name buyer_name FROM live.tender t LEFT JOIN live.buyer b ON b.eik = t.buyer_eik WHERE t.unp = %s", unp)
     if not t:
         return None
     t["lots"] = rows("SELECT * FROM live.lot WHERE unp = %s ORDER BY lot_no", unp)
     t["contracts"] = rows("""SELECT c.id, c.lot_no, c.effective_date, c.supplier_display supplier, s0.party_key supplier_key,
-        round(c.amount_eur) eur, c.offers_count, c.value_flag, c.estimate_ratio, c.is_framework, c.annex_count
+        round(c.amount_eur) eur, c.offers_count, c.value_flag, c.estimate_ratio, c.is_framework, c.annex_count, c.award_method
         FROM live.contract c LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0
         WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date""", unp)
     t["stats"] = one(f"""SELECT count(*) n, round({SUM}) eur FROM live.contract c WHERE c.unp = %s""", unp)
-    t["records"] = raw_records("tender", unp)
-    t["ocds"] = raw_records("ocds", t["tender_id"]) if t["tender_id"] else []
+    if raw:
+        t["records"] = raw_records("tender", unp)
+        t["ocds"] = raw_records("ocds", t["tender_id"]) if t["tender_id"] else []
     return t
 
 
