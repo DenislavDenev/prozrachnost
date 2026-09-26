@@ -26,13 +26,13 @@
     <svg class="ch" id="single" viewBox="0 0 400 250" role="img" aria-label="Дял на договорите с една оферта по години"></svg>
     <div class="sub" style="margin-top:10px">Пунктирът е средното за периода: <b id="avg" style="color:var(--ink)"></b></div></section>
 
-  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой договори · черта = дял с една оферта</div></div></div><div class="hb" id="proc"></div></section>
-  <section class="p s6"><div class="ph"><div><h2>Сектори</h2><div class="sub">По стойност · черта = дял с една оферта</div></div></div><div class="hb" id="sect"></div></section>
+  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой договори · <span class="tick" aria-hidden="true"></span> дял на договорите с една оферта</div></div><a class="l" href="/procedures">Всички</a></div><div class="hb" id="proc"></div></section>
+  <section class="p s6"><div class="ph"><div><h2>Сектори</h2><div class="sub">По стойност · <span class="tick" aria-hidden="true"></span> дял на договорите с една оферта</div></div><a class="l" href="/sectors">Всички</a></div><div class="hb" id="sect"></div></section>
 
   <section class="p s6"><div class="ph"><div><h2>Най-големи възложители</h2><div class="sub">2020–днес</div></div><a class="l" href="/buyers">Всички</a></div><div class="hb" id="buyers"></div></section>
   <section class="p s6"><div class="ph"><div><h2>Най-големи изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div><a class="l" href="/companies">Всички</a></div><div class="hb" id="comps"></div></section>
 
-  <section class="p s12"><div class="ph"><div><h2>Най-големи договори през последните 60 дни</h2></div></div>
+  <section class="p s12"><div class="ph"><div><h2>Най-големи договори през последните 60 дни</h2><div class="sub">Без рамкови споразумения и съмнителни стойности</div></div><a class="l" href="/contracts?days=60&amp;sort=eur&amp;dir=desc&amp;clean=1">Всички</a></div>
     <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Възложител · изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
     {% for k in d.recent_big %}
       <tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
@@ -49,9 +49,9 @@ const D = DATA, Y = D.by_year;
 barTabs($('t-years'), $('years'), Y);
 const w = Y.filter((r) => r.single_pct != null), avg = Math.round(w.reduce((a, r) => a + r.single_pct * r.n, 0) / w.reduce((a, r) => a + r.n, 0) * 10) / 10;
 line($('single'), Y, 'single_pct', avg); $('avg').textContent = avg.toLocaleString('bg-BG') + '%';
-hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/search?kind=tender&q=' + encodeURIComponent(r.p),
+hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/contracts?procedure=' + encodeURIComponent(r.p),
   right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една оферта</small>` });
-hbars($('sect'), D.sectors, { name: (r) => r.name, val: (r) => r.eur, marker: (r) => r.single_pct, right: (r) => `${short(+r.eur)} €<small>${r.single_pct}% с една</small>` });
+hbars($('sect'), D.sectors, { name: (r) => r.name, val: (r) => r.eur, marker: (r) => r.single_pct, href: (r) => '/contracts?sector=' + r.d, right: (r) => `${short(+r.eur)} €<small>${r.single_pct}% с една</small>` });
 hbars($('buyers'), D.top_buyers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
 hbars($('comps'), D.top_companies, { name: (r) => tc(r.name.replace(/^"|"$/g, '')), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${short(+r.eur)} €<small>${nf.format(r.n)} дог.</small>` });
 </script>

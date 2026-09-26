@@ -4,6 +4,7 @@ State lives in tr.* so a run can stop anywhere and resume."""
 import datetime as dt
 import gzip
 import hashlib
+import re
 import time
 
 from . import registry as R
@@ -56,7 +57,7 @@ def enqueue_changes(conn, day, pass_no):
         uics = [i["uic"] for i in res["items"]]
         if uics:
             touched += conn.execute(
-                "UPDATE tr.queue SET status='pending', reason='change', next_at=now(), attempts=0 "
+                "UPDATE tr.queue SET status='pending', next_at=now(), attempts=0 "
                 "WHERE eik = ANY(%s) AND status <> 'pending'", (uics,)).rowcount
         page += 1
         conn.execute("INSERT INTO tr.change_day(day, pass, next_page, done) VALUES (%s,%s,%s,%s) "
@@ -67,8 +68,19 @@ def enqueue_changes(conn, day, pass_no):
         time.sleep(30)  # the portal list is paced like SIGMA's (30 s per page)
 
 
-def store(conn, eik, xml):
-    """Persist one successful read: raw XML, deed facts, roles (replaced), persons."""
+def linked(conn, roles, persons):
+    """A partida found by name search belongs to the tracked set only if one of its holders is a
+    person hash or a company ЕИК we already hold; otherwise it is a namesake."""
+    hashes = [p["indent"] for p in persons]
+    eiks = [r["holder_id"] for r in roles if r["holder_kind"] == "entity" and R.UIC9.match(r["holder_id"] or "")]
+    return bool(conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM tr.person WHERE indent = ANY(%s)) "
+        "OR EXISTS (SELECT 1 FROM tr.deed WHERE status = 'ok' AND eik = ANY(%s))", (hashes, eiks)).fetchone()[0])
+
+
+def store(conn, eik, xml, require_link=False):
+    """Persist one successful read: raw XML, deed facts, roles (replaced), persons.
+    With require_link, an unlinked partida is recorded as 'unrelated' with no roles."""
     now = dt.datetime.now(dt.timezone.utc)
     if xml is None:
         conn.execute("INSERT INTO tr.deed(eik, status, fetched_at) VALUES (%s,'absent',%s) "
@@ -81,6 +93,12 @@ def store(conn, eik, xml):
     deed = R.parse_deed(xml, eik)
     facts = R.deed_facts(deed)
     roles, persons = R.roles_from_deed(eik, deed)
+    if require_link and not linked(conn, roles, persons):
+        conn.execute("INSERT INTO tr.deed(eik, status, fetched_at, name) VALUES (%s,'unrelated',%s,%s) "
+                     "ON CONFLICT (eik) DO UPDATE SET status='unrelated', fetched_at=EXCLUDED.fetched_at, "
+                     "name=EXCLUDED.name, error=NULL", (eik, now, facts["name"]))
+        conn.execute("DELETE FROM tr.role WHERE eik=%s", (eik,))
+        return []
     with conn.transaction():
         conn.execute(
             "INSERT INTO tr.deed(eik, status, fetched_at, sha256, name, legal_form, deed_status, seat, "
@@ -116,14 +134,14 @@ def process(conn, budget_s, stats):
     stats.setdefault("errors", 0)
     while time.monotonic() < deadline:
         row = conn.execute(
-            "SELECT eik, depth, attempts FROM tr.queue WHERE status='pending' AND next_at <= now() "
+            "SELECT eik, depth, attempts, reason FROM tr.queue WHERE status='pending' AND next_at <= now() "
             "ORDER BY priority, enqueued_at LIMIT 1").fetchone()
         if not row:
             break
-        eik, depth, attempts = row
+        eik, depth, attempts, reason = row
         try:
             xml = R.fetch_deed(eik)
-            roles = store(conn, eik, xml)
+            roles = store(conn, eik, xml, require_link=reason == "name_search")
         except Exception as e:  # noqa: BLE001 - recorded, retried with backoff
             attempts += 1
             status = "failed" if attempts >= MAX_ATTEMPTS else "pending"
@@ -148,30 +166,36 @@ def process(conn, budget_s, stats):
 
 
 def search_names(conn, budget_s, stats):
-    """Find partidas of known persons outside the tracked set: search each person's name, queue the
-    hits. Identity is confirmed later by the hash in the read partida, never by the name."""
+    """Find partidas outside the tracked set: search each person's name (their other companies) and
+    each company's name (companies it holds), queue the hits. The read partida is kept only if a
+    holder's hash or ЕИК links it (see store), never on the name alone."""
     deadline = time.monotonic() + budget_s
     stats.setdefault("names", 0)
     stats.setdefault("ambiguous", 0)
     stats.setdefault("queued", 0)
+    start_n = stats["names"]
     while time.monotonic() < deadline:
         row = conn.execute("""
-            SELECT p.name_key, min(p.name) FROM tr.person p
-            LEFT JOIN tr.name_search s ON s.name_key = p.name_key
-            WHERE p.name_key <> '' AND (s.name_key IS NULL OR s.searched_at < now() - %s)
-            GROUP BY p.name_key ORDER BY min(s.searched_at) NULLS FIRST LIMIT 1""",
-                           (NAME_SEARCH_EVERY,)).fetchone()
+            WITH t AS (SELECT name_key k, min(name) name FROM tr.person WHERE name_key <> '' GROUP BY 1
+                       UNION ALL SELECT 'eik:' || eik, name FROM tr.deed WHERE status = 'ok' AND name <> '')
+            SELECT t.k, t.name FROM t LEFT JOIN tr.name_search s ON s.name_key = t.k
+            WHERE s.name_key IS NULL OR s.searched_at < now() - %s
+            ORDER BY s.searched_at NULLS FIRST LIMIT 1""", (NAME_SEARCH_EVERY,)).fetchone()
         if not row:
             break
         key, name = row
+        is_company = key.startswith("eik:")
+        target = name if is_company else R.without_title(name)
+        want = company_key(name) if is_company else key
+        match = company_key if is_company else (lambda v: R.person_name_key(R.without_title(v)))
         try:
-            first = R.search_holders(R.without_title(name))
+            first = R.search_holders(target)
             total, items = first["total"], list(first["items"])
             status = "ambiguous" if total > MAX_NAME_HITS else "done"
             page = 2
             while status == "done" and len(items) < total:
                 time.sleep(PAUSE)
-                nxt = R.search_holders(R.without_title(name), page)
+                nxt = R.search_holders(target, page)
                 if not nxt["items"]:
                     break
                 items += nxt["items"]
@@ -185,7 +209,7 @@ def search_names(conn, budget_s, stats):
             continue
         if status == "done":
             for it in items:
-                if it["fieldIdent"] in R.ROLE_FIELDS and R.person_name_key(R.without_title(it["name"])) == key:
+                if it["fieldIdent"] in R.ROLE_FIELDS and match(it["name"]) == want and it["uic"] != key[4:]:
                     before = conn.execute("SELECT 1 FROM tr.queue WHERE eik=%s", (it["uic"],)).fetchone()
                     if not before:
                         enqueue(conn, it["uic"], "name_search", 4, 1)
@@ -197,3 +221,52 @@ def search_names(conn, budget_s, stats):
                      "searched_at=now()", (key, total, status))
         stats["names"] += 1
         time.sleep(PAUSE)
+    return stats["names"] - start_n
+
+
+FORMS = re.compile(r"\b(ЕООД|ООД|ЕАД|АД|ЕТ|КДА|КД|СД|ДЗЗД|АДСИЦ|LTD|GMBH|LLC|AG)\b")
+
+
+def company_key(value):
+    """Company name without quotes and legal form, letters and digits only: '"ДИВА - 90" ООД' -> 'ДИВА 90'."""
+    s = FORMS.sub(" ", str(value or "").upper())
+    return " ".join(re.findall(r"[^\W_]+", s))
+
+
+def work(conn, budget_s, stats):
+    """The whole 'tr' lane in one budget: read what is queued and, while the queue is idle, run name
+    searches (which queue more partidas), so the crawl does not wait for the night window."""
+    deadline = time.monotonic() + budget_s
+    while deadline - time.monotonic() > 30:
+        process(conn, deadline - time.monotonic(), stats)
+        left = deadline - time.monotonic()
+        if left < 30:
+            break
+        if not search_names(conn, min(left, 300), stats):
+            break  # nothing ready to read and nothing left to search
+
+
+def prune(conn):
+    """One-off: partidas read before the link rule stay only if they connect to a contract company
+    through person hashes or company ЕИКs; the rest become 'unrelated', with roles and orphan persons dropped."""
+    conn.execute("""CREATE TEMP TABLE conf AS SELECT DISTINCT left(eik, 9) eik FROM (
+        SELECT eik FROM live.contract_supplier UNION SELECT eik FROM live.subcontract) s
+        WHERE eik ~ '^[0-9]{9}([0-9]{4})?$'""")
+    conn.execute("CREATE UNIQUE INDEX ON conf (eik)")
+    conn.execute("""CREATE TEMP TABLE link AS SELECT eik, holder_id FROM tr.role
+        WHERE holder_id ~ '^[0-9a-f]{64}$' OR (holder_kind = 'entity' AND holder_id ~ '^[0-9]{9}$')""")
+    conn.execute("CREATE INDEX ON link (eik)")
+    conn.execute("CREATE INDEX ON link (holder_id)")
+    while conn.execute("""INSERT INTO conf SELECT x FROM (
+              SELECT b.eik x FROM conf c JOIN link a ON a.eik = c.eik JOIN link b ON b.holder_id = a.holder_id
+              UNION SELECT a.holder_id FROM conf c JOIN link a ON a.eik = c.eik WHERE a.holder_id ~ '^[0-9]{9}$'
+              UNION SELECT a.eik FROM conf c JOIN link a ON a.holder_id = c.eik) y
+            ON CONFLICT DO NOTHING""").rowcount:
+        pass
+    out = {"unrelated": conn.execute("""UPDATE tr.deed SET status = 'unrelated' WHERE status = 'ok'
+        AND NOT EXISTS (SELECT 1 FROM conf WHERE conf.eik = tr.deed.eik)""").rowcount}
+    out["roles_dropped"] = conn.execute(
+        "DELETE FROM tr.role r USING tr.deed d WHERE d.eik = r.eik AND d.status = 'unrelated'").rowcount
+    out["persons_dropped"] = conn.execute(
+        "DELETE FROM tr.person p WHERE NOT EXISTS (SELECT 1 FROM tr.role r WHERE r.holder_id = p.indent)").rowcount
+    return out

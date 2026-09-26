@@ -62,6 +62,27 @@ FROM contract_supplier s WHERE s.eik ~ '^\d{9}(\d{4})?$';
 CREATE INDEX ON node_contract (node);
 CREATE INDEX ON node_contract (contract_id);
 
+-- per-person rollup for the persons list: companies, active roles, and contracts of those
+-- companies signed while the person held a role there (methodology 2), each contract once
+CREATE TABLE person_stats AS
+WITH roles AS (
+  SELECT substr(holder, 3) AS id, count(DISTINCT company) AS companies,
+         count(DISTINCT company) FILTER (WHERE valid_to IS NULL AND uncertain_after IS NULL) AS active,
+         min(valid_from) AS first_role
+  FROM edge WHERE holder LIKE 'p:%' GROUP BY 1
+), pc AS (
+  SELECT DISTINCT substr(e.holder, 3) AS id, c.id AS contract_id, c.amount_eur, c.is_framework
+  FROM edge e JOIN node_contract k ON k.node = e.company JOIN contract c ON c.id = k.contract_id
+  WHERE e.holder LIKE 'p:%' AND c.effective_date >= e.valid_from
+    AND (e.valid_to IS NULL OR c.effective_date < e.valid_to)
+), money AS (
+  SELECT id, count(*) AS contracts, sum(amount_eur) FILTER (WHERE NOT is_framework) AS amount_eur
+  FROM pc GROUP BY id
+)
+SELECT r.id, r.companies, r.active, r.first_role, coalesce(m.contracts, 0) AS contracts, m.amount_eur
+FROM roles r LEFT JOIN money m USING (id);
+ALTER TABLE person_stats ADD PRIMARY KEY (id);
+
 -- filled by ingest.networks (union-find over edge per view and mode)
 CREATE TABLE network_component (
   view text NOT NULL, mode text NOT NULL, node text NOT NULL, component bigint NOT NULL,

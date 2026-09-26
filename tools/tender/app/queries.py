@@ -6,6 +6,8 @@ import time
 from ingest.db import connect
 
 SUM = "sum(c.amount_eur) FILTER (WHERE NOT c.is_framework)"
+# year charts stop at next year: a later date is a data-entry error in the source
+YEARS = "c.effective_date >= '2020-01-01' AND c.effective_date < make_date(extract(year FROM current_date)::int + 2, 1, 1)"
 
 
 def rows(sql, *args):
@@ -48,7 +50,7 @@ def dashboard():
         "by_year": rows(f"""SELECT extract(year FROM effective_date)::int y, count(*) n, round({SUM}) eur,
                 round(100.0 * count(*) FILTER (WHERE offers_count = 1)
                       / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
-                FROM live.contract c WHERE effective_date >= '2020-01-01' GROUP BY 1 ORDER BY 1"""),
+                FROM live.contract c WHERE {YEARS} GROUP BY 1 ORDER BY 1"""),
         "procedures": rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,
                 round(100.0 * count(*) FILTER (WHERE offers_count = 1)
                       / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
@@ -83,7 +85,7 @@ def company(key):
     k = key
     c["by_year"] = rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(DISTINCT c.id) n, round({SUM}) eur
         FROM live.contract_supplier s JOIN live.contract c ON c.id = s.contract_id
-        WHERE s.party_key = %s AND c.effective_date IS NOT NULL GROUP BY 1 ORDER BY 1""", k)
+        WHERE s.party_key = %s AND {YEARS} GROUP BY 1 ORDER BY 1""", k)
     c["offers"] = rows("""SELECT CASE WHEN c.offers_count IS NULL THEN 'unknown' WHEN c.offers_count >= 4 THEN '4+'
         ELSE c.offers_count::text END k, count(DISTINCT c.id) n
         FROM live.contract_supplier s JOIN live.contract c ON c.id = s.contract_id WHERE s.party_key = %s GROUP BY 1""", k)
@@ -228,7 +230,7 @@ def buyer(eik):
         return None
     b["by_year"] = rows(f"""SELECT extract(year FROM effective_date)::int y, count(*) n, round({SUM}) eur,
         round(100.0 * count(*) FILTER (WHERE offers_count = 1) / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
-        FROM live.contract c WHERE buyer_eik = %s AND effective_date IS NOT NULL GROUP BY 1 ORDER BY 1""", eik)
+        FROM live.contract c WHERE buyer_eik = %s AND {YEARS} GROUP BY 1 ORDER BY 1""", eik)
     b["suppliers_top"] = rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({SUM}) eur
         FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id WHERE c.buyer_eik = %s
         GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", eik)

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Поръчка {{ t.unp }} · Тендер{% endblock %}
 {% block main %}
-<div class="crumbs"><a href="/search?kind=tender">Поръчки</a> / {{ t.unp }}</div>
+<div class="crumbs"><a href="/tenders">Поръчки</a> / {{ t.unp }}</div>
 <div class="head"><div><h1 class="h1s">{{ t.subject or 'Поръчка ' ~ t.unp }}</h1>
   <div class="meta"><span>УНП <b>{{ t.unp }}</b></span><span><a class="l" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></span>
     <span>{{ t.procedure_type or 'неизвестна процедура' }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}</div></div>

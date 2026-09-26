@@ -253,7 +253,12 @@ def normalize(days_rows, fx):
                 "reason": text(a.get("changeReason")),
                 "description": text(a.get("changeDescription")) or text(a.get("changeReasonDescription")),
             })
-        on = c["contract_date"] or (c["published_at"].date() if c["published_at"] else None)
+        # a signing date more than 30 days after the day the record was published is a typo
+        # (e.g. 2029 in a record published in 2024); use the publication date instead
+        src_day = dt.date.fromisoformat(str(c["source_day"]))
+        bad_date = bool(c["contract_date"]) and c["contract_date"] > src_day + dt.timedelta(days=30)
+        pub_day = c["published_at"].date() if c["published_at"] else src_day
+        on = pub_day if bad_date else (c["contract_date"] or (c["published_at"].date() if c["published_at"] else None))
         cur_code = c["currency"]
         initial = c["value_initial"]
         eff = current if current is not None else initial
@@ -268,14 +273,14 @@ def normalize(days_rows, fx):
         vflag, basis = value_flag(eff_eur, proc_est_eur, own_est_eur, initial, current, steps)
         amount_eur = {"effective": eff_eur, "estimate": proc_est_eur,
                       "initial": init_eur if init_eur is not None else cur_eur}[basis]
-        dflag = "ok"
-        if c["contract_date"] and c["published_at"] and c["contract_date"] > c["published_at"].date():
+        dflag = "contract_date_implausible" if bad_date else "ok"
+        if not bad_date and c["contract_date"] and c["published_at"] and c["contract_date"] > c["published_at"].date():
             dflag = "signed_after_publication"
         c.update({
             "value_current": current, "value_initial_eur": init_eur, "value_current_eur": cur_eur,
             "amount_eur": amount_eur, "value_flag": vflag, "date_flag": dflag,
             "fx_rate": rate, "estimated_eur": own_est_eur, "annex_count": len(chain),
-            "date_basis": "contract" if c["contract_date"] else ("publication" if on else None),
+            "date_basis": "contract" if c["contract_date"] and not bad_date else ("publication" if on else None),
             "effective_date": on,
         })
         for pos, (eik, name) in enumerate(c.pop("_members")):

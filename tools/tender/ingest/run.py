@@ -1,7 +1,7 @@
 """CLI for n8n and humans: python -m ingest.run --step <name> [--budget SECONDS]
 
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
-               tr-seed, tr-read, tr-changes, tr-names (tr) | enrich (enrich)
+               tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich)
 Prints one JSON line with the stats; exit code 1 on failure.
 """
 import argparse
@@ -45,7 +45,11 @@ def main():
                 out.update(stats)
         elif a.step == "tr-read":
             with db.job(a.step, lane="tr") as (conn, stats):
-                tr_worker.process(conn, a.budget, stats)
+                tr_worker.work(conn, a.budget, stats)
+                out.update(stats)
+        elif a.step == "tr-prune":
+            with db.job(a.step, lane="tr") as (conn, stats):
+                stats.update(tr_worker.prune(conn))
                 out.update(stats)
         elif a.step == "tr-changes":
             with db.job(a.step, lane="tr") as (conn, stats):

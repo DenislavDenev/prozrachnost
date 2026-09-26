@@ -4,7 +4,7 @@
 {% set comps = p.roles | map(attribute='company') | unique | list %}
 {% set active = p.roles | selectattr('valid_to', 'none') | map(attribute='company') | unique | list %}
 {% set m = p.modes %}
-<div class="crumbs"><a href="/search?kind=person">Лица</a> / {{ p.name | tc }}</div>
+<div class="crumbs"><a href="/persons">Лица</a> / {{ p.name | tc }}</div>
 <div class="head">
   {% if p.figure and p.figure.photo_file %}<figure class="photo"><img src="https://commons.wikimedia.org/wiki/Special:FilePath/{{ p.figure.photo_file | urlencode }}?width=240" alt="{{ p.name | tc }}" width="96" height="120">
     <figcaption>{{ p.figure.photo_license or 'Wikimedia Commons' }}</figcaption></figure>{% endif %}
@@ -29,7 +29,7 @@
   </section>
 
   <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
-  <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж · <a class="l" href="/methodology#2-време">режими</a></div></div></div>
+  <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж</div></div></div>
     <div class="modes">
       <div class="mode"><div><b>Към датата на договора</b> <span class="cnt" style="font-weight:500">основен</span></div><div class="n">{{ m.at_contract_date.n | num }}</div>
         <div class="why">Само договори, сключени докато лицето има роля в дружеството. Стойност {{ m.at_contract_date.eur | big }}.</div></div>

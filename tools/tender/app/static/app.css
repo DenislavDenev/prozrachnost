@@ -4,7 +4,7 @@
   --slate: #6b7a8c; --slate-soft: #eceff3; --amber: #b25b06; --amber-soft: #fcefd9;
   --ink: #121417; --ink-2: #464c55; --ink-3: #69707a; --ink-4: #9aa1aa;
   --line: #e1e4e8; --line-2: #eceef1; --surface: #fff; --surface-2: #f7f8f9;
-  --page: #f3f4f6; --panel-bg: var(--surface); --panel-border: 1px solid var(--line); --panel-shadow: none;
+  --page: #fff; --panel-bg: var(--surface); --panel-border: 1px solid var(--line); --panel-shadow: none;
   --panel-pad: 22px 24px; --radius: 6px; --gap: 20px; --bar-r: 3px;
   --bar-bg: var(--surface); --bar-ink: var(--ink); --bar-line: 1px solid var(--line);
   --font-head: 'Sofia Sans Semi Condensed', sans-serif; --font-body: 'Sofia Sans', sans-serif;
@@ -204,3 +204,26 @@ a.tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-
 .photo { margin: 0; flex: none; } .photo img { display: block; width: 96px; height: 120px; object-fit: cover; border-radius: var(--radius); border: 1px solid var(--line); }
 .photo figcaption { font-size: 11.5px; color: var(--ink-3); margin-top: 4px; max-width: 96px; }
 .grow { flex: 1; min-width: 0; }
+
+/* list pages: filters, sortable headers */
+.filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 14px; margin: 18px 0 6px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.fld { display: grid; gap: 5px; font-size: 13px; color: var(--ink-3); min-width: 150px; }
+.fld > span { font-weight: 600; }
+.fld.grow { flex: 1 1 220px; }
+.fld input:not([type=checkbox]), .fld select { height: 38px; padding: 0 10px; border: 1px solid var(--line); border-radius: calc(var(--radius) + 2px); background: var(--surface); color: var(--ink); font: 400 14.5px var(--font-body); max-width: 320px; }
+.fld.grow input { max-width: none; }
+.fld input:focus, .fld select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+.presets div { display: flex; gap: 12px; height: 38px; align-items: center; font-size: 14px; }
+.checks { gap: 6px; } .checks .chk { font-size: 14px; color: var(--ink-2); }
+.reset { font-size: 14px; align-self: center; }
+.count { margin: 12px 0 10px; }
+th a.sort { display: inline-flex; align-items: center; gap: 5px; color: inherit; }
+th a.sort:hover { color: var(--ink); }
+th a.sort::after { content: '↕'; font-size: 11px; color: var(--ink-4); }
+th[aria-sort="ascending"] a.sort, th[aria-sort="descending"] a.sort { color: var(--ink); font-weight: 600; }
+th[aria-sort="ascending"] a.sort::after { content: '▲'; color: var(--accent); font-size: 10px; }
+th[aria-sort="descending"] a.sort::after { content: '▼'; color: var(--accent); font-size: 10px; }
+th.n a.sort { flex-direction: row-reverse; }
+/* the amber single-bid tick of the horizontal bars, drawn inline where it is explained */
+.tick { display: inline-block; width: 2px; height: 13px; background: var(--amber); border-radius: 1px; vertical-align: -2px; margin: 0 3px 0 1px; }
+@media (max-width: 720px) { .fld { min-width: 0; flex: 1 1 140px; } .fld input:not([type=checkbox]), .fld select { max-width: none; width: 100%; } }

@@ -17,9 +17,9 @@
   <section class="p s4"><div class="ph"><div><h2>Договори с една оферта</h2><div class="sub">Дял по години</div></div></div>
     <svg class="ch" id="single" viewBox="0 0 400 250" role="img" aria-label="Дял на договорите с една оферта"></svg></section>
   <section class="p s6"><div class="ph"><div><h2>Основни изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div></div><div class="hb" id="sup"></div></section>
-  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой · черта = дял с една оферта</div></div></div><div class="hb" id="proc"></div>
+  <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой · <span class="tick" aria-hidden="true"></span> дял на договорите с една оферта</div></div></div><div class="hb" id="proc"></div>
     <div class="ph" style="margin:28px 0 12px"><h2>Конкуренция</h2></div><div class="stack" id="stack"></div><div class="key" id="offers"></div></section>
-  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ b.contracts | num }}</div></div><a class="btn" href="/buyers/{{ b.eik }}.csv">Всички като CSV</a></div>
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ b.contracts | num }}</div></div><div class="acts"><a class="btn" href="/contracts?buyer={{ b.eik }}">Всички</a><a class="btn" href="/buyers/{{ b.eik }}.csv">CSV</a></div></div>
     {% with show_supplier=True %}{% include "_contracts.html" %}{% endwith %}</section>
 </div>
 <script type="application/json" id="data">{{ {"by_year": b.by_year, "suppliers": b.suppliers_top, "procedures": b.procedures, "offers": b.offers} | json | safe }}</script>
@@ -30,7 +30,7 @@ const D = DATA;
 barTabs($('t-years'), $('years'), D.by_year);
 line($('single'), D.by_year, 'single_pct', null);
 hbars($('sup'), D.suppliers, { name: (r) => tc(r.name), val: (r) => r.eur, href: (r) => '/companies/' + r.key, right: (r) => `${eur(r.eur)}<small>${r.n} дог.</small>` });
-hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една</small>` });
+hbars($('proc'), D.procedures, { name: (r) => r.p, val: (r) => r.n, marker: (r) => r.single_pct, href: (r) => '/contracts?buyer={{ b.eik }}&procedure=' + encodeURIComponent(r.p), right: (r) => `${nf.format(r.n)}<small>${r.single_pct ?? '—'}% с една</small>` });
 offersStack($('stack'), $('offers'), D.offers);
 </script>
 {% endblock %}

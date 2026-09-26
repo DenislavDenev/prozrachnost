@@ -25,7 +25,7 @@
   <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
     <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>
     <svg class="ch" id="years" viewBox="0 0 720 250" role="img" aria-label="Договори по години"></svg></section>
-  <section class="p s4"><div class="ph"><div><h2>Индикатори</h2><div class="sub">Последните 3 години · <a class="l" href="/methodology#4-тагове">как се смятат</a></div></div></div>
+  <section class="p s4"><div class="ph"><div><h2>Индикатори</h2><div class="sub">Последните 3 години</div></div></div>
     <div class="ind" id="ind"></div>
     <div class="flags">{% for t in c.tags %}<div class="{{ 'w' if t.kind == 'statistical' }}"><span><b>{{ t.label }}</b>. {{ t.reason }}</span></div>{% else %}<div>Няма автоматични тагове по методологията</div>{% endfor %}</div></section>
   {% endif %}
@@ -47,7 +47,7 @@
 
   {% if c.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
     <ul class="results">{% for a in c.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
-  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ c.contracts | num }}</div></div><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">Всички като CSV</a></div>
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ c.contracts | num }}</div></div><div class="acts"><a class="btn" href="/contracts?company={{ c.key | urlencode }}">Всички</a><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">CSV</a></div></div>
     {% include "_contracts.html" %}</section>
   {% endif %}
 </div>

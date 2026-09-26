@@ -5,7 +5,8 @@ import json
 import re
 from decimal import Decimal
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+import datetime as dt
 
 import markdown
 import markdown.extensions.toc
@@ -150,7 +151,7 @@ def contract(request: Request, cid: str):
         raise HTTPException(404)
     if as_json:
         return JSONResponse(json.loads(json.dumps(c, default=jdefault)))
-    return page(request, "contract.html", c=c, nav="Поръчки")
+    return page(request, "contract.html", c=c, nav="Договори")
 
 
 @app.get("/tenders/{unp}", response_class=HTMLResponse)
@@ -170,24 +171,202 @@ def network(focus: str, view: str = "all", at: str | None = None):
     return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at), default=jdefault)))
 
 
+class Listing:
+    """Sort, filter and page state of a list page, read from the query string. `cols` maps a column
+    key to (SQL expression, default direction); only those keys can be sorted on."""
+    PER = 50
+
+    def __init__(self, request, cols, default):
+        self.qp = {k: v for k, v in request.query_params.items() if v != ""}
+        self.cols = cols
+        self.sort = self.qp.get("sort") if self.qp.get("sort") in cols else default
+        d = self.qp.get("dir")
+        self.dir = d if d in ("asc", "desc") else cols[self.sort][1]
+        off = self.qp.get("offset", "0")
+        self.offset = int(off) if off.isdigit() else 0
+        self.where, self.args, self.total = [], [], 0
+
+    def get(self, key):
+        return self.qp.get(key, "")
+
+    def add(self, cond, *args):
+        self.where.append(cond)
+        self.args.extend(args)
+
+    def fetch(self, base):
+        """`base` is a SELECT with a {where} placeholder; returns one page of rows and sets total."""
+        sql = base.replace("{where}", " AND ".join(self.where) or "true")
+        order = f"{self.cols[self.sort][0]} {self.dir.upper()} NULLS LAST"
+        rows = Q.rows(f"{sql} ORDER BY {order}, 1 LIMIT {self.PER} OFFSET %s", *self.args, self.offset)
+        self.total = Q.one(f"SELECT count(*) n FROM ({sql}) x", *self.args)["n"]
+        return rows
+
+    def href(self, **kw):
+        q = {**self.qp, **kw}
+        return "?" + urlencode({k: v for k, v in q.items() if v not in (None, "")})
+
+    def sort_href(self, key):
+        d = ("asc" if self.dir == "desc" else "desc") if key == self.sort else self.cols[key][1]
+        return self.href(sort=key, dir=d, offset=None)
+
+    def aria(self, key):
+        return ("ascending" if self.dir == "asc" else "descending") if key == self.sort else "none"
+
+    def pages(self):
+        prev = self.href(offset=(self.offset - self.PER) or None) if self.offset else None
+        nxt = self.href(offset=self.offset + self.PER) if self.offset + self.PER < self.total else None
+        return prev, nxt
+
+
+def period(L, col):
+    """from/to dates (YYYY-MM-DD) or a `days` preset, applied to the date expression `col`."""
+    if L.get("days").isdigit():
+        L.qp["from"] = (dt.date.today() - dt.timedelta(days=int(L.qp.pop("days")))).isoformat()
+    for key, op in (("from", ">="), ("to", "<=")):
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", L.get(key)):
+            L.add(f"{col} {op} %s", L.get(key))
+        else:
+            L.qp.pop(key, None)
+
+
+def contains(L, key, *exprs):
+    v = L.get(key).strip()
+    if v:
+        L.add("(" + " OR ".join(f"{e} ILIKE %s" for e in exprs) + ")", *[f"%{v}%"] * len(exprs))
+
+
 @app.get("/buyers", response_class=HTMLResponse)
-def buyers(request: Request, offset: int = 0):
-    rows = Q.rows("""SELECT b.eik, b.name, b.type, s.contracts, s.amount_eur, s.suppliers FROM live.buyer b
-                     JOIN live.buyer_stats s USING (eik) ORDER BY s.amount_eur DESC NULLS LAST LIMIT 50 OFFSET %s""", offset)
-    return page(request, "list.html", title="Възложители", kind="buyer", rows=rows, offset=offset, nav="Възложители")
+def buyers(request: Request):
+    L = Listing(request, {"name": ("b.name", "asc"), "type": ("b.type", "asc"), "contracts": ("s.contracts", "desc"),
+                          "suppliers": ("s.suppliers", "desc"), "eur": ("s.amount_eur", "desc")}, "eur")
+    contains(L, "q", "b.name", "b.eik")
+    if L.get("type"):
+        L.add("b.type = %s", L.get("type"))
+    rows = L.fetch("""SELECT b.eik, b.name, b.type, s.contracts, s.amount_eur, s.suppliers FROM live.buyer b
+                      JOIN live.buyer_stats s USING (eik) WHERE {where}""")
+    types = Q.cached("buyer_types", lambda: [r["type"] for r in Q.rows(
+        "SELECT DISTINCT type FROM live.buyer WHERE type IS NOT NULL ORDER BY 1")])
+    return page(request, "list_buyers.html", L=L, rows=rows, types=types, nav="Възложители")
 
 
 @app.get("/companies", response_class=HTMLResponse)
-def companies(request: Request, offset: int = 0):
-    rows = Q.rows("""SELECT c.key, c.eik, c.name, c.seat, s.contracts, s.amount_eur, s.buyers FROM live.company c
-                     JOIN live.company_stats s USING (key) ORDER BY s.amount_eur DESC NULLS LAST LIMIT 50 OFFSET %s""", offset)
-    return page(request, "list.html", title="Фирми", kind="company", rows=rows, offset=offset, nav="Фирми")
+def companies(request: Request):
+    L = Listing(request, {"name": ("c.name", "asc"), "seat": ("c.seat", "asc"), "contracts": ("s.contracts", "desc"),
+                          "buyers": ("s.buyers", "desc"), "eur": ("s.amount_eur", "desc"),
+                          "last": ("s.last_contract", "desc")}, "eur")
+    contains(L, "q", "c.name", "c.eik")
+    contains(L, "seat", "c.seat")
+    rows = L.fetch("""SELECT c.key, c.eik, c.name, c.legal_form, c.seat, s.contracts, s.amount_eur, s.buyers, s.last_contract
+                      FROM live.company c JOIN live.company_stats s USING (key) WHERE {where}""")
+    return page(request, "list_companies.html", L=L, rows=rows, nav="Фирми")
 
 
-@app.get("/methodology", response_class=HTMLResponse)
-def methodology(request: Request):
-    md = (HERE.parent / "docs" / "methodology.md").read_text(encoding="utf-8")
-    return page(request, "prose.html", title="Методология", html=md_html(md), nav="Методология")
+@app.get("/persons", response_class=HTMLResponse)
+def persons(request: Request):
+    L = Listing(request, {"name": ("p.name", "asc"), "companies": ("s.companies", "desc"), "active": ("s.active", "desc"),
+                          "contracts": ("s.contracts", "desc"), "eur": ("s.amount_eur", "desc"),
+                          "since": ("s.first_role", "asc")}, "eur")
+    contains(L, "q", "p.name")
+    if L.get("with") == "contracts":
+        L.add("s.contracts > 0")
+    rows = L.fetch("""SELECT p.id, p.name, s.companies, s.active, s.contracts, s.amount_eur, s.first_role
+                      FROM live.person p JOIN live.person_stats s USING (id) WHERE {where}""")
+    return page(request, "list_persons.html", L=L, rows=rows, nav="Лица")
+
+
+def procedure_types():
+    return [r["p"] for r in Q.rows("SELECT DISTINCT procedure_type p FROM live.contract WHERE procedure_type IS NOT NULL ORDER BY 1")]
+
+
+SECTOR_NAMES = """SELECT DISTINCT ON (left(cpv, 2)) left(cpv, 2) d, cpv_description name FROM live.contract
+                  WHERE cpv ~ '^[0-9]{2}000000' ORDER BY left(cpv, 2), cpv"""
+
+
+def choices():
+    return {"procedures": Q.cached("procs", procedure_types), "sectors": Q.cached("sectors", lambda: Q.rows(SECTOR_NAMES))}
+
+
+def contract_filters(L, alias="c"):
+    period(L, f"{alias}.effective_date")
+    if L.get("procedure"):
+        L.add(f"{alias}.procedure_type = %s", L.get("procedure"))
+    if re.fullmatch(r"\d{2}", L.get("sector")):
+        L.add(f"left({alias}.cpv, 2) = %s", L.get("sector"))
+    if L.get("single"):
+        L.add(f"{alias}.offers_count = 1")
+    if L.get("clean"):
+        L.add(f"NOT {alias}.is_framework AND {alias}.value_flag = 'ok'")
+
+
+@app.get("/contracts", response_class=HTMLResponse)
+def contracts(request: Request):
+    L = Listing(request, {"date": ("c.effective_date", "desc"), "subject": ("c.subject", "asc"), "buyer": ("b.name", "asc"),
+                          "supplier": ("c.supplier_display", "asc"), "offers": ("c.offers_count", "asc"),
+                          "eur": ("c.amount_eur", "desc")}, "date")
+    contains(L, "q", "c.subject", "c.unp")
+    contains(L, "who", "b.name", "c.supplier_display", "c.buyer_eik")
+    if L.get("buyer"):
+        L.add("c.buyer_eik = %s", L.get("buyer"))
+    if L.get("company"):
+        L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
+    contract_filters(L)
+    rows = L.fetch("""SELECT c.id, c.unp, c.effective_date, c.subject, c.buyer_eik, b.name buyer, c.supplier_display supplier,
+                        s0.party_key supplier_key, round(c.amount_eur) eur, c.offers_count, c.value_flag, c.is_framework,
+                        c.annex_count, c.awarded_to_group, c.procedure_type
+                      FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+                      LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0 WHERE {where}""")
+    return page(request, "list_contracts.html", L=L, rows=rows, **choices(), nav="Договори")
+
+
+@app.get("/tenders", response_class=HTMLResponse)
+def tenders(request: Request):
+    day = "coalesce(t.published_at::date, s.first_contract)"
+    L = Listing(request, {"date": (day, "desc"), "subject": ("t.subject", "asc"), "buyer": ("b.name", "asc"),
+                          "procedure": ("t.procedure_type", "asc"), "contracts": ("s.contracts", "desc"),
+                          "estimate": ("t.estimated_value", "desc"), "eur": ("s.amount_eur", "desc")}, "date")
+    contains(L, "q", "t.subject", "t.unp")
+    contains(L, "who", "b.name", "t.buyer_eik")
+    if L.get("buyer"):
+        L.add("t.buyer_eik = %s", L.get("buyer"))
+    period(L, day)
+    if L.get("procedure"):
+        L.add("t.procedure_type = %s", L.get("procedure"))
+    if re.fullmatch(r"\d{2}", L.get("sector")):
+        L.add("left(t.cpv, 2) = %s", L.get("sector"))
+    state = {"contracted": "s.contracts > 0", "cancelled": "t.is_cancelled",
+             "open": "s.contracts IS NULL AND NOT coalesce(t.is_cancelled, false)"}.get(L.get("state"))
+    if state:
+        L.add(state)
+    rows = L.fetch(f"""SELECT t.unp, {day} AS day, t.subject, t.buyer_eik, b.name buyer, t.procedure_type, t.estimated_value,
+                         t.currency, t.is_cancelled, s.contracts, s.amount_eur, s.single_bid
+                       FROM live.tender t LEFT JOIN live.tender_stats s USING (unp) LEFT JOIN live.buyer b ON b.eik = t.buyer_eik
+                       WHERE {{where}}""")
+    return page(request, "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")
+
+
+ROLLUP = {"name": ("name", "asc"), "n": ("n", "desc"), "eur": ("eur", "desc"), "single": ("single_pct", "desc")}
+SINGLE = "round(100.0 * count(*) FILTER (WHERE c.offers_count = 1) / nullif(count(*) FILTER (WHERE c.offers_count IS NOT NULL), 0), 1)"
+
+
+@app.get("/procedures", response_class=HTMLResponse)
+def procedures(request: Request):
+    L = Listing(request, ROLLUP, "n")
+    period(L, "c.effective_date")
+    L.add("c.procedure_type IS NOT NULL")
+    rows = L.fetch(f"""SELECT * FROM (SELECT c.procedure_type k, c.procedure_type name, count(*) n, round({Q.SUM}) eur,
+        {SINGLE} single_pct FROM live.contract c WHERE {{where}} GROUP BY 1) g""")
+    return page(request, "list_rollup.html", L=L, rows=rows, title="Процедури", kind="procedure", nav="")
+
+
+@app.get("/sectors", response_class=HTMLResponse)
+def sectors(request: Request):
+    L = Listing(request, ROLLUP, "eur")
+    period(L, "c.effective_date")
+    L.add("c.cpv ~ '^[0-9]{2}'")
+    rows = L.fetch(f"""SELECT g.k, coalesce(sn.name, 'CPV ' || g.k) name, g.n, g.eur, g.single_pct FROM (
+        SELECT left(c.cpv, 2) k, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct FROM live.contract c
+        WHERE {{where}} GROUP BY 1) g LEFT JOIN ({SECTOR_NAMES}) sn ON sn.d = g.k""")
+    return page(request, "list_rollup.html", L=L, rows=rows, title="Сектори", kind="sector", nav="")
 
 
 @app.get("/legal", response_class=HTMLResponse)

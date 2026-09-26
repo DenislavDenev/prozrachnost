@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, count, pager %}
+{% block title %}Възложители · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Възложители</h1>
+<form class="filters" action="/buyers">
+  <label class="fld grow"><span>Име или ЕИК</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Община Варна"></label>
+  <label class="fld"><span>Вид</span><select name="type"><option value="">Всички</option>
+    {% for t in types %}<option {{ 'selected' if L.get('type') == t }}>{{ t }}</option>{% endfor %}</select></label>
+  {{ keep(L, ['sort', 'dir']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/buyers">Изчисти</a>{% endif %}
+</form>
+{{ count(L, 'възложители') }}
+<section class="p">
+<table><thead><tr>{{ th(L, 'name', 'Възложител') }}{{ th(L, 'type', 'Вид', 'hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}
+  {{ th(L, 'suppliers', 'Изпълнители', 'n hide-s') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
+{% for r in rows %}<tr><td><a class="u strong" href="/buyers/{{ r.eik }}">{{ r.name | tc }}</a><div class="mut">ЕИК {{ r.eik }}</div></td>
+  <td class="hide-s mut">{{ r.type or '' }}</td><td class="n">{{ r.contracts | num }}</td>
+  <td class="n hide-s">{{ r.suppliers | num }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>
+{% else %}<tr><td colspan="5" class="mut">Няма възложители по тези филтри.</td></tr>{% endfor %}
+</tbody></table>
+{{ pager(L) }}
+</section>
+{% endblock %}

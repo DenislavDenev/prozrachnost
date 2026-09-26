@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, period, count, pager %}
+{% block title %}Договори · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Договори</h1>
+<form class="filters" action="/contracts">
+  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. асфалт"></label>
+  <label class="fld grow"><span>Възложител или изпълнител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
+  <label class="fld"><span>Процедура</span><select name="procedure"><option value="">Всички</option>
+    {% for p in procedures %}<option {{ 'selected' if L.get('procedure') == p }}>{{ p }}</option>{% endfor %}</select></label>
+  <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>
+    {% for s in sectors %}<option value="{{ s.d }}" {{ 'selected' if L.get('sector') == s.d }}>{{ s.d }} · {{ s.name }}</option>{% endfor %}</select></label>
+  {{ period(L) }}
+  <div class="fld checks"><span>Само</span>
+    <label class="chk"><input type="checkbox" name="single" value="1" {{ 'checked' if L.get('single') }}> с една оферта</label>
+    <label class="chk"><input type="checkbox" name="clean" value="1" {{ 'checked' if L.get('clean') }}> без рамкови и съмнителни стойности</label></div>
+  {{ keep(L, ['sort', 'dir', 'buyer', 'company']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}
+</form>
+{% if L.get('buyer') or L.get('company') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else 'изпълнител ' ~ L.get('company') }} · <a class="l" href="{{ L.href(buyer=None, company=None, offset=None) }}">покажи всички</a></p>{% endif %}
+{{ count(L, 'договора') }}
+<section class="p">
+<table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'subject', 'Предмет') }}{{ th(L, 'buyer', 'Възложител', 'hide-s') }}{{ th(L, 'supplier', 'Изпълнител', 'hide-s') }}
+  {{ th(L, 'offers', 'Оферти', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
+{% for k in rows %}<tr><td class="mut nw">{{ k.effective_date | date }}</td>
+  <td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject or '—' }}</a><div class="mut">{{ k.procedure_type or '' }}{% if k.awarded_to_group %} · обединение{% endif %}{% if k.annex_count %} · {{ k.annex_count }} анекса{% endif %}{% if k.is_framework %} · рамково, не се сумира{% endif %}{% if k.value_flag != 'ok' %} · <span class="warn">{{ k.value_flag | flag }}</span>{% endif %}</div></td>
+  <td class="hide-s mut"><a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a></td>
+  <td class="hide-s mut">{% if k.supplier_key %}<a class="u" href="/companies/{{ k.supplier_key | q }}">{{ k.supplier | tc }}</a>{% else %}{{ k.supplier | tc }}{% endif %}</td>
+  <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td>
+  <td class="n strong">{{ k.eur | eur }}</td></tr>
+{% else %}<tr><td colspan="6" class="mut">Няма договори по тези филтри.</td></tr>{% endfor %}
+</tbody></table>
+{{ pager(L) }}
+</section>
+{% endblock %}

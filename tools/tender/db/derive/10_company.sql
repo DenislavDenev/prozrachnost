@@ -12,6 +12,9 @@ WITH parties AS (
   SELECT party_key, eik, name FROM contract_supplier
   UNION ALL SELECT party_key, eik, name FROM subcontract
   UNION ALL SELECT 'eik:' || eik, eik, name FROM tr.deed WHERE status = 'ok'
+  -- companies that hold roles but whose own partida is not read yet still get a page
+  UNION ALL SELECT 'eik:' || holder_id, holder_id, holder_name FROM tr.role
+            WHERE holder_kind = 'entity' AND holder_id ~ '^\d{9}$'
 ), modal AS (
   SELECT DISTINCT ON (party_key) party_key, eik, name
   FROM (SELECT party_key, max(eik) OVER (PARTITION BY party_key) AS eik, name, count(*) AS n
@@ -58,6 +61,15 @@ FROM contract c LEFT JOIN contract_supplier s ON s.contract_id = c.id AND s.posi
 WHERE c.buyer_eik IS NOT NULL
 GROUP BY c.buyer_eik;
 ALTER TABLE buyer_stats ADD PRIMARY KEY (eik);
+
+-- per-procedure rollup; a procedure's date is its notice date, else its first contract
+CREATE TABLE tender_stats AS
+SELECT c.unp, count(*) AS contracts,
+       sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur,
+       min(c.effective_date) AS first_contract,
+       count(*) FILTER (WHERE c.offers_count = 1) AS single_bid
+FROM contract c WHERE c.unp IS NOT NULL GROUP BY c.unp;
+ALTER TABLE tender_stats ADD PRIMARY KEY (unp);
 
 -- persons the register identifies by hash; public id is tr.person.id, the hash never leaves the db
 CREATE TABLE person AS

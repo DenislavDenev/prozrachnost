@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, period, count, pager %}
+{% block title %}Поръчки · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Поръчки</h1>
+<p class="sub">Процедурите в ЦАИС ЕОП по УНП. Датата е на обявлението, а ако то липсва в отворените данни, на първия договор.</p>
+<form class="filters" action="/tenders">
+  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. ремонт на училище"></label>
+  <label class="fld grow"><span>Възложител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
+  <label class="fld"><span>Процедура</span><select name="procedure"><option value="">Всички</option>
+    {% for p in procedures %}<option {{ 'selected' if L.get('procedure') == p }}>{{ p }}</option>{% endfor %}</select></label>
+  <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>
+    {% for s in sectors %}<option value="{{ s.d }}" {{ 'selected' if L.get('sector') == s.d }}>{{ s.d }} · {{ s.name }}</option>{% endfor %}</select></label>
+  <label class="fld"><span>Състояние</span><select name="state"><option value="">Всички</option>
+    {% for v, l in [('contracted', 'С договор'), ('open', 'Без договор'), ('cancelled', 'Прекратени')] %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
+  {{ period(L) }}
+  {{ keep(L, ['sort', 'dir', 'buyer']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}
+</form>
+{{ count(L, 'поръчки') }}
+<section class="p">
+<table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'subject', 'Предмет') }}{{ th(L, 'buyer', 'Възложител', 'hide-s') }}{{ th(L, 'procedure', 'Процедура', 'hide-s') }}
+  {{ th(L, 'contracts', 'Договори', 'n') }}{{ th(L, 'estimate', 'Прогнозна', 'n hide-s') }}{{ th(L, 'eur', 'Договорено', 'n') }}</tr></thead><tbody>
+{% for t in rows %}<tr><td class="mut nw">{{ t.day | date }}</td>
+  <td><a class="subj u" href="/tenders/{{ t.unp | q }}">{{ t.subject or t.unp }}</a><div class="mut">УНП {{ t.unp }}{% if t.is_cancelled %} · <span class="warn">прекратена</span>{% endif %}{% if t.single_bid %} · {{ t.single_bid }} с една оферта{% endif %}</div></td>
+  <td class="hide-s mut"><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer | tc }}</a></td>
+  <td class="hide-s mut">{{ t.procedure_type or '—' }}</td>
+  <td class="n">{{ t.contracts | num if t.contracts else '—' }}</td>
+  <td class="n hide-s mut">{% if t.estimated_value is not none %}{{ t.estimated_value | num }} {{ t.currency or '' }}{% else %}—{% endif %}</td>
+  <td class="n strong">{{ t.amount_eur | big }}</td></tr>
+{% else %}<tr><td colspan="7" class="mut">Няма поръчки по тези филтри.</td></tr>{% endfor %}
+</tbody></table>
+{{ pager(L) }}
+</section>
+{% endblock %}
