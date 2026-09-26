@@ -17,6 +17,18 @@
 .vp svg { position: absolute; left: 0; width: 100%; font-family: var(--font-body); }
 .vp .lhead { top: 0; height: 30px; background: var(--surface); border-bottom: 1px solid var(--line-2); z-index: 1; }
 .vp .lbody { top: 0; height: 100%; }
+.rings .ring { fill: none; stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rings .rl { font: 600 13px var(--font-body); fill: var(--ink-4); }
+.rings .ln { fill: none; stroke-width: 1.2; opacity: .35; vector-effect: non-scaling-stroke; }
+.rings .ln.own { stroke: var(--accent); } .rings .ln.mg { stroke: var(--slate); } .rings .ln.end { stroke-dasharray: 3 4; }
+.rings .ln.x { stroke-width: 1.6; opacity: .8; }
+.rings .nd { cursor: pointer; } .rings .nd .lb { font-size: 12px; fill: var(--ink); }
+.rings .nd .k { fill: var(--slate); } .rings .nd .k.co { fill: var(--ink-4); } .rings .nd .k.co.on { fill: var(--accent); }
+.rings .nd.share .k { stroke: var(--amber); stroke-width: 2.5; }
+.rings .nd.share .lb { font-weight: 600; }
+.rings .root rect { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.rings .root .t { font: 700 14px var(--font-body); fill: var(--ink); } .rings .root .m { font-size: 12px; fill: var(--ink-3); }
+.rings .hot .ln { opacity: .05; } .rings .hot .ln.on { opacity: .95; stroke-width: 2.2; } .rings .hot .nd { opacity: .25; } .rings .hot .nd.on, .rings .hot .nd.root { opacity: 1; }
 .vp .pin { position: absolute; right: 12px; top: 42px; width: 320px; max-height: calc(100% - 60px); overflow: auto; background: var(--surface); margin: 0; box-shadow: 0 8px 24px rgba(0,0,0,.08); z-index: 2; cursor: auto; }
 .layers .lh { font: 600 12.5px var(--font-body); fill: var(--ink-3); text-transform: none; }
 .layers .ln { fill: none; stroke-width: 1.3; opacity: .28; }
@@ -78,12 +90,18 @@
   <span>или добави <code>?node=c:ЕИК</code> / <code>?node=p:id</code> от адреса на профил</span>
   <span class="grow"></span><span>Стъпки:</span><div class="tabs" id="depth" role="group" aria-label="Брой стъпки">{% for d in [2, 3, 4, 5] %}<button data-d="{{ d }}" aria-pressed="{{ 'true' if d == 3 else 'false' }}">{{ d }}</button>{% endfor %}</div></div>
 <div class="lab-tabs" role="group">
-  <button data-v="layers" aria-pressed="true">1. Слоеве<small>вместо графа</small></button>
+  <button data-v="rings" aria-pressed="true">Кръгове<small>обектът в средата</small></button>
+  <button data-v="layers" aria-pressed="false">1. Слоеве<small>вместо графа</small></button>
   <button data-v="matrix" aria-pressed="false">2. Матрица<small>вместо графа</small></button>
   <button data-v="table" aria-pressed="false">3. Таблица на обхвата<small>вместо дървото</small></button>
   <button data-v="cards" aria-pressed="false">4. Карти<small>вместо дървото</small></button>
 </div>
-<section class="p" id="v-layers"><p class="lab-note">Колони по разстояние от обекта, до последната стъпка. Хората и фирмите, които свързват две или повече от предишната колона, са най-горе с жълта рамка. Посочи възел, за да видиш само неговите връзки; кликни, за да го закачиш.</p>
+<section class="p" id="v-rings"><p class="lab-note">Обектът е в средата. Първият кръг са пряко свързаните с него фирми и лица, всеки следващ кръг са свързаните с тях, до последната връзка. Всеки клон заема своя сектор, затова хората на една фирма са до нея. Посочи възел, за да видиш пътя му до центъра и всичките му връзки (и тези към други клони); кликни, за да го закачиш и да го разгънеш по-нататък.</p>
+  <div class="ltools"><button class="btn sm" id="rzout" aria-label="Намали">−</button><span id="rzoom" class="mut">100%</span><button class="btn sm" id="rzin" aria-label="Увеличи">+</button>
+    <button class="btn sm" id="rcenter">Центрирай</button><button class="btn sm" id="rall">Цялата мрежа</button><button class="btn sm go" id="rmore">+1 стъпка</button>
+    <span class="mut">Колелце и влачене: местене · Ctrl + колелце: мащаб</span></div>
+  <div class="vp rings" id="rvp" tabindex="0" aria-label="Кръгове на връзките"></div><p class="mut" id="rcap" style="margin-top:8px"></p></section>
+<section class="p" id="v-layers" hidden><p class="lab-note">Колони по разстояние от обекта, до последната стъпка. Хората и фирмите, които свързват две или повече от предишната колона, са най-горе с жълта рамка. Посочи възел, за да видиш само неговите връзки; кликни, за да го закачиш.</p>
   <div class="ltools"><button class="btn sm" id="lzout" aria-label="Намали">−</button><span id="lzoom" class="mut">100%</span><button class="btn sm" id="lzin" aria-label="Увеличи">+</button>
     <button class="btn sm" id="lfitw">По ширина</button><button class="btn sm" id="lfita">Цялата мрежа</button>
     <label class="chk"><input type="checkbox" id="lall"> Всички възли</label>
@@ -104,18 +122,24 @@ const FOCUS = {{ node | tojson }};
   async function build(depth) {
     const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: FOCUS, view: 'all', depth }))).json();
     N = new Map(); A = new Map(); meta = d;
+    ingest(d.edges);
+    if (!N.has(FOCUS)) return false;
+    bfs();
+    return true;
+  }
+  function ingest(edges) {
     const add = (id, o) => { if (!N.has(id)) N.set(id, { id, kind: kindOf(id), ...o }); else Object.entries(o).forEach(([k, v]) => { if (v != null && N.get(id)[k] == null) N.get(id)[k] = v; }); if (!A.has(id)) A.set(id, new Map()); };
-    for (const e of d.edges) {
+    for (const e of edges) {
       add(e.holder, { name: tc(e.holder_name), ref: e.holder_ref, n: e.holder_contracts, eur: e.holder_eur });
       add(e.company, { name: tc(e.company_name || 'ЕИК ' + e.company.slice(2)), ref: e.company_ref, n: e.company_contracts, eur: e.company_eur });
       const r = { role: e.role, share: e.share, from: e.valid_from, to: e.valid_to, open: !e.uncertain_after, holder: e.holder, company: e.company, active: !e.valid_to && !e.uncertain_after };
       for (const [a, b] of [[e.holder, e.company], [e.company, e.holder]]) { if (!A.get(a).has(b)) A.get(a).set(b, []); A.get(a).get(b).push(r); }
     }
+  }
+  function bfs() {
     dist = new Map([[FOCUS, 0]]); par = new Map();
-    if (!N.has(FOCUS)) return false;
     const q = [FOCUS];
     while (q.length) { const x = q.shift(); for (const y of A.get(x).keys()) if (!dist.has(y)) { dist.set(y, dist.get(x) + 1); par.set(y, x); q.push(y); } }
-    return true;
   }
   const href = (n) => n.ref ? (n.kind === 'p' ? '/persons/' + n.ref : '/companies/' + n.ref) : null;
   const roleTxt = (r) => (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '') + ' ' + span({ valid_from: r.from, valid_to: r.to, uncertain_after: r.open ? null : 1 });
@@ -123,6 +147,119 @@ const FOCUS = {{ node | tojson }};
   const money = (n) => n.kind === 'c' ? (n.n ? `${nf.format(n.n)} дог. · ${big(+n.eur || 0)}` : 'без договори') : `в ${[...A.get(n.id).keys()].filter((k) => N.get(k).kind === 'c').length} дружества`;
   const byVal = (a, b) => (live(A.get(FOCUS).get(b.id) || []) - live(A.get(FOCUS).get(a.id) || [])) || ((+b.eur || 0) - (+a.eur || 0)) || a.name.localeCompare(b.name);
   const depthOf = () => +document.querySelector('#depth [aria-pressed="true"]').dataset.d;
+
+
+  // ---------- 0. rings: the object in the middle, every further step one ring out, to the end ----------
+  // Layout: a radial tree over the breadth-first tree from the object. Each branch owns a slice of the
+  // circle proportional to how much hangs from it, so a company's people sit next to it; links that
+  // are not on the tree (the shared people) are drawn when a node is pointed at.
+  const RZ = { k: 1, x: 0, y: 0, R: 1, min: 0.02 };
+  function rings(keepView) {
+    const kids = new Map([...dist.keys()].map((id) => [id, []]));
+    for (const [c, p] of par) kids.get(p)?.push(c);
+    const val = (id) => +(N.get(id).eur || 0);
+    for (const ks of kids.values()) ks.sort((a, b) => val(b) - val(a) || N.get(a).name.localeCompare(N.get(b).name));
+    const leaves = new Map();
+    const count = (id) => { const ks = kids.get(id); const v = ks.length ? ks.reduce((s, c) => s + count(c), 0) : 1; leaves.set(id, v); return v; };
+    count(FOCUS);
+    const ang = new Map([[FOCUS, 0]]);
+    const place = (id, a0, a1) => { let a = a0; for (const c of kids.get(id)) { const w = ((a1 - a0) * leaves.get(c)) / leaves.get(id); ang.set(c, a + w / 2); place(c, a, a + w); a += w; } };
+    place(FOCUS, -Math.PI / 2, (3 * Math.PI) / 2);
+    const depth = Math.max(...dist.values()), R = [0], SP = 17, RING = 250;
+    for (let k = 1; k <= depth; k++) {
+      const a = [...dist].filter(([, d]) => d === k).map(([id]) => ang.get(id)).sort((x, y) => x - y);
+      let gap = 2 * Math.PI;
+      for (let i = 1; i < a.length; i++) gap = Math.min(gap, a[i] - a[i - 1]);
+      if (a.length > 1) gap = Math.min(gap, a[0] + 2 * Math.PI - a[a.length - 1]);
+      R[k] = Math.max(R[k - 1] + RING, a.length > 1 ? SP / gap : 0, k === 1 ? 190 : 0);
+    }
+    const xy = (id) => { const r = R[dist.get(id)], t = ang.get(id); return [r * Math.cos(t), r * Math.sin(t)]; };
+    const shared = (id) => dist.get(id) > 1 && [...A.get(id).keys()].filter((x) => dist.get(x) === dist.get(id) - 1).length > 1;
+    let gs = '', es = '', ns = '';
+    R.forEach((r, k) => { if (k) gs += `<circle class="ring" r="${r}"/><text class="rl" x="0" y="${-r - 8}" text-anchor="middle">${k} ${k === 1 ? 'стъпка' : 'стъпки'} · ${nf.format([...dist.values()].filter((d) => d === k).length)}</text>`; });
+    for (const [c, p] of par) {
+      const [x1, y1] = xy(p), [x2, y2] = xy(c), rm = (R[dist.get(p)] + R[dist.get(c)]) / 2, ap = ang.get(p), ac = ang.get(c), rs = A.get(p).get(c);
+      const c1 = p === FOCUS ? [0, 0] : [rm * Math.cos(ap), rm * Math.sin(ap)];
+      es += `<path class="ln tree ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" data-a="${p}" data-b="${c}" d="M${x1},${y1} C${c1[0]},${c1[1]} ${rm * Math.cos(ac)},${rm * Math.sin(ac)} ${x2},${y2}"/>`;
+    }
+    for (const [id, d] of dist) {
+      const n = N.get(id);
+      if (id === FOCUS) { ns += `<g class="nd root" data-id="${id}"><rect x="-110" y="-26" width="220" height="52" rx="6"/><text class="t" y="-3" text-anchor="middle">${esc(n.name.length > 30 ? n.name.slice(0, 29) + '…' : n.name)}</text><text class="m" y="15" text-anchor="middle">${esc(money(n))}</text></g>`; continue; }
+      const deg = (ang.get(id) * 180) / Math.PI, left = Math.cos(ang.get(id)) < 0, r = R[d], lx = r + 9;
+      const label = (n.name.length > 34 ? n.name.slice(0, 33) + '…' : n.name) + (n.kind === 'c' && n.n ? ' · ' + short(+n.eur || 0) + ' €' : '');
+      ns += `<g class="nd ${shared(id) ? 'share' : ''} ${n.more ? 'open' : ''}" data-id="${id}" transform="rotate(${deg.toFixed(2)})">
+        ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${r - 5}" y="-5" width="10" height="10" rx="2"/>` : `<circle class="k" cx="${r}" cy="0" r="5"/>`}
+        <text class="lb" x="${lx}" y="4" ${left ? `transform="rotate(180 ${lx} 0)" text-anchor="end"` : ''}>${esc(label)}</text></g>`;
+    }
+    const vp = $('rvp');
+    vp.innerHTML = `<svg class="rbody"><g>${gs}<g class="edges">${es}</g><g class="xl"></g>${ns}</g></svg><div class="pin" id="rpin"></div>`;
+    RZ.R = R[depth] + 260;
+    if (!keepView) rfit(Math.min(2, depth));
+    else rapply();
+    $('rcap').textContent = `${nf.format(dist.size)} възела на ${depth} ${depth === 1 ? 'стъпка' : 'стъпки'}. ` +
+      (meta.capped ? 'Мрежата продължава: за да стигнеш по-далеч в клон, кликни външен възел и „Разгъни оттук“.' : meta.beyond ? 'Има още: „+1 стъпка“ или „Разгъни оттук“ на външен възел.' : 'Това са всички връзки.');
+    const body = vp.querySelector('.rbody'), xl = body.querySelector('.xl');
+    let pinned = null;
+    const hl = (id) => {
+      body.classList.toggle('hot', !!id); body.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); xl.innerHTML = ''; if (!id) return;
+      // the node, its way back to the object, and every link it has (tree or not)
+      for (let x = id; x; x = par.get(x)) { body.querySelector(`.nd[data-id="${x}"]`)?.classList.add('on'); if (par.has(x)) body.querySelector(`.ln[data-a="${par.get(x)}"][data-b="${x}"]`)?.classList.add('on'); }
+      let extra = '';
+      for (const [b, rs] of A.get(id)) { if (!dist.has(b)) continue; body.querySelector(`.nd[data-id="${b}"]`)?.classList.add('on');
+        if (par.get(b) === id) { body.querySelector(`.ln[data-a="${id}"][data-b="${b}"]`)?.classList.add('on'); continue; }
+        if (par.get(id) === b) continue;
+        const [x1, y1] = xy(id), [x2, y2] = xy(b);
+        extra += `<path class="ln on x ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" d="M${x1},${y1} Q0,0 ${x2},${y2}"><title>${esc(rs.map(roleTxt).join(', '))}</title></path>`; }
+      xl.innerHTML = extra;
+    };
+    body.onmouseover = (e) => { if (!RZ.drag) { const g = e.target.closest('.nd'); if (!pinned) hl(g?.dataset.id); } };
+    body.onmouseleave = () => { if (!pinned) hl(null); };
+    body.onclick = (e) => { if (RZ.moved) return; const g = e.target.closest('.nd'); pinned = g && pinned !== g.dataset.id ? g.dataset.id : null; hl(pinned); rpin(pinned); };
+  }
+  function rpin(id) {
+    const el = $('rpin'); if (!id) { el.classList.remove('on'); return; }
+    const n = N.get(id), h = href(n), path = []; for (let x = id; x; x = par.get(x)) path.unshift(N.get(x).name);
+    el.innerHTML = `<h3>${esc(n.name)}</h3><div class="mut">${esc(money(n))} · ${dist.get(id)} ${dist.get(id) === 1 ? 'стъпка' : 'стъпки'}</div>
+      <div class="mut" style="margin:6px 0">${esc(path.join(' → '))}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${h ? `<a class="btn sm" href="${h}">Профил</a>` : ''}<a class="btn sm" href="?node=${id}#rings">В центъра</a>
+        ${id !== FOCUS ? `<button class="btn sm go" id="rexp">Разгъни оттук</button>` : ''}</div>
+      <ul>${[...A.get(id)].map(([b, rs]) => `<li>${esc(N.get(b).name)}: ${esc(rs.map(roleTxt).join(', '))}</li>`).join('')}</ul>`;
+    el.classList.add('on');
+    const b = $('rexp'); if (b) b.onclick = async () => { b.disabled = true; b.textContent = 'Зареждам…';
+      const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: id, view: 'all', depth: 1 }))).json();
+      const before = dist.size; ingest(d.edges); bfs(); b.textContent = `+${nf.format(dist.size - before)} възела`; rings(true); };
+  }
+  function rapply() {
+    const vp = $('rvp');
+    vp.querySelector('.rbody g')?.setAttribute('transform', `translate(${RZ.x},${RZ.y}) scale(${RZ.k})`);
+    $('rzoom').textContent = (RZ.k < 0.1 ? (RZ.k * 100).toFixed(1) : Math.round(RZ.k * 100)) + '%';
+  }
+  function rfit(ring) {
+    const vp = $('rvp'), s = Math.min(vp.clientWidth, vp.clientHeight) / 2 - 10;
+    const r = ring == null ? RZ.R : (() => { const g = vp.querySelectorAll('.ring')[ring - 1]; return (g ? +g.getAttribute('r') : RZ.R) + 240; })();
+    RZ.min = Math.min(0.05, s / RZ.R); RZ.k = Math.min(1.2, s / r); RZ.x = vp.clientWidth / 2; RZ.y = vp.clientHeight / 2; rapply();
+  }
+  function rzoom(f, cx, cy) {
+    const vp = $('rvp'), k = Math.min(3, Math.max(RZ.min, RZ.k * f));
+    cx ??= vp.clientWidth / 2; cy ??= vp.clientHeight / 2;
+    RZ.x = cx - (cx - RZ.x) * (k / RZ.k); RZ.y = cy - (cy - RZ.y) * (k / RZ.k); RZ.k = k; rapply();
+  }
+  function rpan() {
+    const vp = $('rvp');
+    vp.addEventListener('wheel', (e) => { e.preventDefault();
+      if (e.ctrlKey || e.metaKey) { const r = vp.getBoundingClientRect(); rzoom(Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top); return; }
+      RZ.x -= e.shiftKey ? e.deltaY : e.deltaX; RZ.y -= e.shiftKey ? 0 : e.deltaY; rapply(); }, { passive: false });
+    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; RZ.drag = { x: e.clientX - RZ.x, y: e.clientY - RZ.y, sx: e.clientX, sy: e.clientY }; RZ.moved = false; RZ.pid = e.pointerId; });
+    vp.addEventListener('pointermove', (e) => { if (!RZ.drag) return; if (!RZ.moved && Math.abs(e.clientX - RZ.drag.sx) + Math.abs(e.clientY - RZ.drag.sy) > 4) { RZ.moved = true; vp.setPointerCapture(RZ.pid); vp.classList.add('grab'); } if (!RZ.moved) return; RZ.x = e.clientX - RZ.drag.x; RZ.y = e.clientY - RZ.drag.y; rapply(); });
+    vp.addEventListener('pointerup', () => { RZ.drag = null; vp.classList.remove('grab'); setTimeout(() => { RZ.moved = false; }, 0); });
+    vp.addEventListener('keydown', (e) => { const s = 80; if (e.key === '+' || e.key === '=') rzoom(1.25); else if (e.key === '-') rzoom(0.8);
+      else if (e.key === 'ArrowDown') { RZ.y -= s; rapply(); } else if (e.key === 'ArrowUp') { RZ.y += s; rapply(); }
+      else if (e.key === 'ArrowRight') { RZ.x -= s; rapply(); } else if (e.key === 'ArrowLeft') { RZ.x += s; rapply(); } else return; e.preventDefault(); });
+    $('rzin').onclick = () => rzoom(1.25); $('rzout').onclick = () => rzoom(0.8);
+    $('rcenter').onclick = () => rfit(Math.min(2, Math.max(...dist.values()))); $('rall').onclick = () => rfit(null);
+    $('rmore').onclick = async () => { const b = $('rmore'), D = Math.max(...dist.values()) + 1; b.disabled = true;
+      await build(Math.min(12, D)); b.disabled = false; rings(true); };
+  }
 
   // ---------- 1. layers: one column per step, zoom and pan in both directions ----------
   const LZ = { k: 1, x: 0, y: 0, W: 0, H: 0 };
@@ -204,8 +341,8 @@ const FOCUS = {{ node | tojson }};
       if (e.ctrlKey || e.metaKey) { const r = vp.getBoundingClientRect(); zoom(Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top); return; }
       LZ.x -= e.shiftKey ? e.deltaY : e.deltaX; LZ.y -= e.shiftKey ? 0 : e.deltaY; apply();
     }, { passive: false });
-    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; LZ.drag = { x: e.clientX - LZ.x, y: e.clientY - LZ.y, sx: e.clientX, sy: e.clientY }; LZ.moved = false; vp.setPointerCapture(e.pointerId); vp.classList.add('grab'); });
-    vp.addEventListener('pointermove', (e) => { if (!LZ.drag) return; if (Math.abs(e.clientX - LZ.drag.sx) + Math.abs(e.clientY - LZ.drag.sy) > 4) LZ.moved = true; LZ.x = e.clientX - LZ.drag.x; LZ.y = e.clientY - LZ.drag.y; apply(); });
+    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; LZ.drag = { x: e.clientX - LZ.x, y: e.clientY - LZ.y, sx: e.clientX, sy: e.clientY }; LZ.moved = false; LZ.pid = e.pointerId; });
+    vp.addEventListener('pointermove', (e) => { if (!LZ.drag) return; if (!LZ.moved && Math.abs(e.clientX - LZ.drag.sx) + Math.abs(e.clientY - LZ.drag.sy) > 4) { LZ.moved = true; vp.setPointerCapture(LZ.pid); vp.classList.add('grab'); } if (!LZ.moved) return; LZ.x = e.clientX - LZ.drag.x; LZ.y = e.clientY - LZ.drag.y; apply(); });
     vp.addEventListener('pointerup', () => { LZ.drag = null; vp.classList.remove('grab'); setTimeout(() => { LZ.moved = false; }, 0); });
     vp.addEventListener('keydown', (e) => { const s = 60; if (e.key === '+' || e.key === '=') zoom(1.25); else if (e.key === '-') zoom(0.8);
       else if (e.key === 'ArrowDown') { LZ.y -= s; apply(); } else if (e.key === 'ArrowUp') { LZ.y += s; apply(); }
@@ -304,15 +441,15 @@ const FOCUS = {{ node | tojson }};
   $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', +x.dataset.d === D0));
   if (U.get('all') === '1') $('lall').checked = true;
   if (!(await build(D0))) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
-  pan();
+  pan(); rpan();
   $('depth').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return;
     $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
     await build(+b.dataset.d); done = {}; show(document.querySelector('.lab-tabs [aria-pressed="true"]').dataset.v); };
   const show = (v) => { document.querySelectorAll('.lab-tabs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
-    ['layers', 'matrix', 'table', 'cards'].forEach((x) => $('v-' + x).hidden = x !== v);
-    if (!done[v]) { done[v] = 1; ({ layers, matrix, table, cards })[v](); } };
+    ['rings', 'layers', 'matrix', 'table', 'cards'].forEach((x) => $('v-' + x).hidden = x !== v);
+    if (!done[v]) { done[v] = 1; ({ rings, layers, matrix, table, cards })[v](); } };
   document.querySelector('.lab-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { history.replaceState(null, '', '#' + b.dataset.v); show(b.dataset.v); } };
-  show(['layers', 'matrix', 'table', 'cards'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'layers');
+  show(['rings', 'layers', 'matrix', 'table', 'cards'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'rings');
 })();
 </script>
 {% endblock %}
