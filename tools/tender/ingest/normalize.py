@@ -120,15 +120,29 @@ def party_key(eik, name):
     return "unknown"
 
 
+_REP = re.compile(r"[,;]?\s*([Пп]редставлява[нщ][а-я]*|[Чч]рез|[Сс]\s+представляващ)\s.*$")
+_PID = re.compile(r"([Ее][Гг][Нн]|[Лл][Нн][Чч])[\s:№.]*\d+")
+_TEN = re.compile(r"(?<!\d)\d{10}(?!\d)")
+
+
+def clean_name(v):
+    """A name as shown: no personal number (ЕГН/ЛНЧ or a bare 10-digit number) and, for a company
+    holder, not its representative. Mirrors clean_name() in db/derive/schema.sql."""
+    if v is None:
+        return None
+    s = _TEN.sub("", _PID.sub("", _REP.sub("", str(v))))
+    return s.strip(" ,;-–—") or None
+
+
 def split_members(names, eiks):
     """A group award lists members as 'A; B; C' with ЕИК '1; 2; 3'. Returns [(eik, name)]."""
     ns = [n.strip() for n in str(names or "").split(";")]
     es = [e.strip() for e in str(eiks or "").split(";")]
     if len(ns) == 1 and len(es) == 1:
-        return [(clean_eik(es[0]), text(ns[0]))]
+        return [(clean_eik(es[0]), clean_name(text(ns[0])))]
     if len(es) != len(ns):  # cannot pair them reliably; keep names only
-        return [(None, text(n)) for n in ns if text(n)]
-    return [(clean_eik(e), text(n)) for e, n in zip(es, ns) if text(n) or clean_eik(e)]
+        return [(None, clean_name(text(n))) for n in ns if text(n)]
+    return [(clean_eik(e), clean_name(text(n))) for e, n in zip(es, ns) if text(n) or clean_eik(e)]
 
 
 def contract_id(unp, number, lot, supplier_keys):
@@ -425,7 +439,7 @@ def _contract_row(r, day, contracts, buyers):
         "id": cid, "source": "eop", "source_day": day, "notice_id": text(r.get("noticeId")),
         "unp": unp, "unp_raw_tender_id": text(r.get("tenderId")), "contract_number": number,
         "lot_no": lot, "buyer_eik": _buyer(r, buyers),
-        "supplier_display": text(r.get("supplierName")),
+        "supplier_display": clean_name(text(r.get("supplierName"))),
         "awarded_to_group": bool(flag(r.get("awardedToGroup"))), "supplier_keys": keys,
         "subject": text(r.get("contractSubject")) or text(r.get("tenderName")),
         "tender_name": text(r.get("tenderName")),

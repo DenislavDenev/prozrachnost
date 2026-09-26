@@ -3,6 +3,16 @@ DROP SCHEMA IF EXISTS stage CASCADE;
 CREATE SCHEMA stage;
 SET search_path = stage;
 
+-- Names as the sources write them sometimes carry a personal number („…, ЕГН 1234567890“) or the
+-- representative of a company holder („X ООД, представлявано от Y ЕГН …“). They are shown without
+-- either: never a personal number, and the holder is the company, not its representative.
+CREATE FUNCTION clean_name(t text) RETURNS text LANGUAGE sql IMMUTABLE AS $f$
+  SELECT nullif(btrim(regexp_replace(regexp_replace(regexp_replace(t,
+    '[,;]?\s*([Пп]редставлява[нщ][а-я]*|[Чч]рез|[Сс]\s+представляващ)\s.*$', ''),
+    '([Ее][Гг][Нн]|[Лл][Нн][Чч])[\s:№.]*[0-9]+', '', 'g'),
+    '(^|[^0-9])[0-9]{10}($|[^0-9])', '', 'g'), ' ,;-–—'), '')
+$f$;
+
 CREATE TABLE buyer (
   eik text PRIMARY KEY, eik_valid boolean NOT NULL, name text, type text, main_activity text,
   locality text, postal_code text, nuts text  -- address from OCDS parties, when published

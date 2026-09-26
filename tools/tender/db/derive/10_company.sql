@@ -13,7 +13,7 @@ WITH parties AS (
   UNION ALL SELECT party_key, eik, name FROM subcontract
   UNION ALL SELECT 'eik:' || eik, eik, name FROM tr.deed WHERE status = 'ok'
   -- companies that hold roles but whose own partida is not read yet still get a page
-  UNION ALL SELECT 'eik:' || holder_id, holder_id, holder_name FROM tr.role
+  UNION ALL SELECT 'eik:' || holder_id, holder_id, clean_name(holder_name) FROM tr.role
             WHERE holder_kind = 'entity' AND holder_id ~ '^\d{9}$'
 ), modal AS (
   SELECT DISTINCT ON (party_key) party_key, eik, name
@@ -73,7 +73,7 @@ ALTER TABLE tender_stats ADD PRIMARY KEY (unp);
 
 -- persons the register identifies by hash; public id is tr.person.id, the hash never leaves the db
 CREATE TABLE person AS
-SELECT p.id, p.name, p.name_key, p.indent_type FROM tr.person p;
+SELECT p.id, clean_name(p.name) AS name, p.name_key, p.indent_type FROM tr.person p;
 ALTER TABLE person ADD PRIMARY KEY (id);
 CREATE INDEX ON person (name_key);
 

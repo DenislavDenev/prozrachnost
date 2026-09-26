@@ -136,3 +136,11 @@ def test_estimate_ratio_eur_estimates_and_implausible_date():
     assert k["estimate_ratio"] == 2.5 and k["value_flag"] == "ok"     # 2.5x the estimate, below the 10x review
     assert str(k["effective_date"]) == "2024-05-23" and k["date_flag"] == "contract_date_implausible"
     assert {r["entity"] for r in res["source_record"]} == {"tender", "contract"}
+
+
+def test_clean_name_drops_personal_numbers_and_representatives():
+    assert N.clean_name('"ГЕОТЕХМИН" ООД, представлявано от Цоло Вутов ЕГН 1234567890') == '"ГЕОТЕХМИН" ООД'
+    assert N.clean_name('ВЕРА ИВАНОВНА ДИМИТРОВА, ЕГН 1234567890') == 'ВЕРА ИВАНОВНА ДИМИТРОВА'
+    assert N.clean_name('ЛУДВИК БАЛЕКА - 1234567890') == 'ЛУДВИК БАЛЕКА'
+    assert N.clean_name('"АСЕТС ГРУП"АД, с представляващ Ю.Л. Бисерка Асенова, ЕГН 1234567890') == '"АСЕТС ГРУП"АД'
+    assert N.clean_name('Ефармогес АД, ЕИК 123456789') == 'Ефармогес АД, ЕИК 123456789'  # a 9-digit ЕИК stays
