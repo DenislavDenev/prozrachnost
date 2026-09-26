@@ -25,7 +25,7 @@ from .normalize import eik_valid
 
 SVC = "https://service.eop.bg/NX1Service.svc/"
 RAW = DATA / "raw" / "eop_svc"
-PAUSE = 1.0          # seconds between requests
+PAUSE = 0.5          # seconds between requests (two per second at most, one connection)
 MAX_ATTEMPTS = 6
 CULTURE_BG = 3       # RetrieveCultures: 1 en-GB, 3 bg-BG
 # procedures closed long ago, whose offers must not change: (offers, sum of prices)
@@ -112,17 +112,22 @@ def parse_contracts(cl):
     return out
 
 
-def fetch(tender_id):
+def fetch(tender_id, contracts=True):
     """One procedure: offers, the lot of each contract and the lot titles, as ЦАИС ЕОП numbers them.
-    Returns ({offers, contract_lots, lots}, raw bytes of the three answers)."""
+    The lot list is asked for only when the lot names do not carry their number ("3. ..."), the contract
+    list only when the procedure has contracts. Returns ({offers, contract_lots, lots}, raw bytes)."""
     raw = call("GetPublicTenderParticipation", tenderId=tender_id, cultureId=CULTURE_BG)
     part = json.loads(raw) if raw else None
     lots = []
     if part and part.get("Lots"):
-        lots = json.loads(call("GetPublishedLots", tenderId=tender_id) or b"[]") or []
-    cl = json.loads(call("GetPublishedContractListItems", tenderId=tender_id) or b"null")
+        named = [re.match(r"\s*(\d+)\s*\.\s*(.*)", L.get("TenderName") or "", re.S) for L in part["Lots"]]
+        if all(named):
+            lots = [{"OrderNumber": int(m.group(1)), "TenderName": L.get("TenderName")} for m, L in zip(named, part["Lots"])]
+        else:
+            lots = json.loads(call("GetPublishedLots", tenderId=tender_id) or b"[]") or []
+    cl = json.loads(call("GetPublishedContractListItems", tenderId=tender_id) or b"null") if contracts else None
     blob = json.dumps({"participation": part, "lots": lots, "contracts": cl}, ensure_ascii=False).encode()
-    titles = [(l.get("OrderNumber") or 0, (l.get("TenderName") or "").strip() or None) for l in lots]
+    titles = [(l.get("OrderNumber") or 0, re.sub(r"^\s*\d+\s*\.\s*", "", l.get("TenderName") or "").strip() or None) for l in lots]
     return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(cl), "lots": titles}, blob
 
 
@@ -169,13 +174,15 @@ def work(conn, budget_s, stats):
     deadline = time.monotonic() + budget_s
     stats.update(done=0, errors=0, offers=0)
     while time.monotonic() < deadline - 5:
-        row = conn.execute("""SELECT tender_id FROM eopsvc.queue WHERE status = 'pending' AND next_at <= now()
-            ORDER BY (reason = 'backfill'), tender_id DESC LIMIT 1""").fetchone()
+        row = conn.execute("""SELECT q.tender_id, EXISTS (SELECT 1 FROM live.tender t JOIN live.contract c ON c.unp = t.unp
+                                   WHERE t.tender_id = q.tender_id::text)
+            FROM eopsvc.queue q WHERE q.status = 'pending' AND q.next_at <= now()
+            ORDER BY (q.reason = 'backfill'), q.tender_id DESC LIMIT 1""").fetchone()
         if not row:
             break
         tid = row[0]
         try:
-            got, blob = fetch(tid)
+            got, blob = fetch(tid, contracts=row[1])
             store(conn, tid, got, blob)
             stats["done"] += 1
             stats["offers"] += len(got["offers"])

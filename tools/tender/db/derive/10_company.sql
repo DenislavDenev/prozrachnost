@@ -80,6 +80,7 @@ CREATE INDEX ON person (name_key);
 
 CREATE INDEX ON contract (buyer_eik);
 CREATE INDEX ON contract (unp);
+CREATE INDEX ON tender (tender_id);
 CREATE INDEX ON contract (effective_date);
 CREATE INDEX ON contract_supplier (party_key);
 CREATE INDEX ON contract_supplier (left(eik, 9));
