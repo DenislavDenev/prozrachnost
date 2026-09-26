@@ -269,3 +269,4 @@ details.more[open] > summary { margin-bottom: 14px; }
 .mapctl .tabs { height: 38px; align-items: center; }
 .mapbox path { fill: var(--line-2); }
 .tabs button { white-space: nowrap; }
+.tree .tg { align-self: start; } .tree .mk { align-self: start; margin-top: 6px; }
