@@ -8,5 +8,5 @@
   <td class="n hide-s" data-v="{{ o.price_eur / l.estimated_eur if o.price_eur and l.estimated_eur else '' }}">{{ ((100 * o.price_eur / l.estimated_eur) | num ~ '%') if o.price_eur and l.estimated_eur else '—' }}</td>
   <td class="n" data-v="{{ o.price_eur - l.low if o.price_eur is not none and l.low is not none else '' }}">{% if o.price_eur is not none and l.low %}{{ 'най-ниска' if o.price_eur <= l.low + 0.01 else '+' ~ ((100 * (o.price_eur - l.low) / l.low) | num(1)) ~ '%' }}{% else %}—{% endif %}</td>
   <td>{% if o.won %}<span class="st contracted">спечелила</span>{% endif %}</td></tr>
-{% else %}<tr><td colspan="6" class="mut">Офертите за тази позиция още не са прочетени от ЦАИС ЕОП.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="6" class="mut">Още няма показани оферти за тази позиция (виж бележката горе).</td></tr>{% endfor %}
 </tbody></table>{% endmacro %}
