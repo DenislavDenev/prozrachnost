@@ -60,25 +60,27 @@ addEventListener('load', () => {
     const T = +(d.total && d.total.v) || 0, top = d.all.slice(0, d.top);
     $('fh').textContent = st.path.length ? st.path[st.path.length - 1].label : `Всички ${st.mode === 'contracts' ? 'договори' : 'плащания'} за ${d.year}`;
     $('ftotal').textContent = T ? `${big(T)} в ${nf.format(d.total.n)} ${unit()}` + (d.next ? ` · ${nf.format(d.parts)} ${DIM[d.next]}` : '') : 'Няма данни за тази година.';
-    // the path so far is one stream, then the next step fans out into its largest parts and "Други"
+    // (node text is `txt`: `label` is ECharts' own label style)
+  // the path so far is one stream, then the next step fans out into its largest parts and "Други"
     const chain = [{ id: 'root', label: `Всички ${d.year}`, v: T, i: 0 }, ...st.path.map((s, i) => ({ id: 'p' + i, label: s.label, v: T, i: i + 1 }))];
-    const nodes = chain.map((c) => ({ name: c.id, label: c.label, v: c.v, kind: 'path', i: c.i, itemStyle: { color: '#3a4450' }, label: { position: 'top', align: 'left', offset: [-8, 0], width: 200, overflow: 'truncate' } }));
+    const nodes = chain.map((c) => ({ name: c.id, txt: c.label, v: c.v, kind: 'path', i: c.i, itemStyle: { color: '#3a4450' }, label: { position: 'top', align: 'left', offset: [-8, 0], width: 200, overflow: 'truncate' } }));
     const links = chain.slice(1).map((c, k) => ({ source: chain[k].id, target: c.id, value: T || 1, kind: 'path', i: c.i }));
     const last = chain[chain.length - 1].id;
-    for (const c of top) { nodes.push({ name: 'c|' + c.key, label: c.label, v: c.v, n: c.n, kind: 'part', key: c.key, itemStyle: { color: color[d.next] } });
+    for (const c of top) { nodes.push({ name: 'c|' + c.key, txt: c.label, v: c.v, n: c.n, kind: 'part', key: c.key, itemStyle: { color: color[d.next] } });
       links.push({ source: last, target: 'c|' + c.key, value: c.v, n: c.n, kind: 'part', key: c.key }); }
-    if (d.rest > T * 0.002) { nodes.push({ name: 'other', label: `${d.other_label} (${nf.format(Math.max(0, d.parts - top.length))})`, v: d.rest, kind: 'other', itemStyle: { color: '#b9c0c8' } });
+    if (d.rest > T * 0.002) { nodes.push({ name: 'other', txt: `${d.other_label} (${nf.format(Math.max(0, d.parts - top.length))})`, v: d.rest, kind: 'other', itemStyle: { color: '#b9c0c8' } });
       links.push({ source: last, target: 'other', value: d.rest, kind: 'other' }); }
     $('sankey').style.height = Math.max(320, (top.length + 1) * 40 + 40) + 'px'; chart.resize();
+    const R = Math.min(300, $('sankey').clientWidth * 0.45), max = Math.floor(R / 8) - 8;  // room for the labels on the right, also on a phone
     chart.setOption({
       tooltip: { trigger: 'item', formatter: (x) => x.dataType === 'edge'
-        ? `${esc(nodes.find((n) => n.name === x.data.target)?.label || '')}<br><b>${eur(x.data.value)}</b>${x.data.n ? ` · ${nf.format(x.data.n)} ${unit()}` : ''}`
-        : `${esc(x.data.label)}<br><b>${eur(x.data.v)}</b>${T ? ` · ${pct((100 * x.data.v) / T)}` : ''}` },
+        ? `${esc(nodes.find((n) => n.name === x.data.target)?.txt || '')}<br><b>${eur(x.data.value)}</b>${x.data.n ? ` · ${nf.format(x.data.n)} ${unit()}` : ''}`
+        : `${esc(x.data.txt)}<br><b>${eur(x.data.v)}</b>${T ? ` · ${pct((100 * x.data.v) / T)}` : ''}` },
       series: [{
         type: 'sankey', nodeAlign: 'left', nodeGap: 12, nodeWidth: 16, layoutIterations: 0, draggable: false,
-        emphasis: { focus: 'adjacency' }, left: 8, right: 300, top: 34, bottom: 12,
+        emphasis: { focus: 'adjacency' }, left: 8, right: R, top: 34, bottom: 12,
         lineStyle: { color: 'target', opacity: .28, curveness: .5 },
-        label: { fontSize: 13, color: cssVar('--ink'), formatter: (x) => { const t = x.data.label || ''; return (t.length > 40 ? t.slice(0, 39) + '…' : t) + '  {v|' + short(x.data.v) + ' €}'; },
+        label: { fontSize: 13, color: cssVar('--ink'), formatter: (x) => { const t = x.data.txt || ''; return (t.length > max ? t.slice(0, max - 1) + '…' : t) + '  {v|' + short(x.data.v) + ' €}'; },
           rich: { v: { fontWeight: 600, color: cssVar('--ink-2') } } },
         data: nodes, links,
       }],

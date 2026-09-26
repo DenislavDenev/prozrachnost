@@ -451,7 +451,7 @@ def tender_events(t, lots):
     else:
         ev += [{"when": g["when"], "kind": "offer", "title": "Оферта", "offers": [g]} for g in groups.values()]
     if t.get("submission_deadline"):
-        ev.append({"when": at(t["submission_deadline"]), "kind": "deadline", "title": "Срок за оферти"})
+        ev.append({"when": at(t["submission_deadline"]), "kind": "deadline", "title": "Срок за оферти по обявлението"})
     for c in t["contracts"]:
         if c["effective_date"]:
             ev.append({"when": c["effective_date"], "kind": "contract", "title": "Договор", "contract": c})
