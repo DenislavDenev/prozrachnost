@@ -40,8 +40,8 @@ def main():
                 with db.job(name) as (conn, stats):
                     BUILD[name](conn, stats)
                     out[name] = stats
-        elif a.step == "eop-check":
-            with db.job(a.step, lane="offers") as (conn, stats):
+        elif a.step == "eop-check":  # own lane: it must run even while a long read holds the 'offers' lane
+            with db.job(a.step, lane="offers-check") as (conn, stats):
                 stats.update(eop_offers.check(conn))
                 out.update(stats)
             if not stats["ok"]:
