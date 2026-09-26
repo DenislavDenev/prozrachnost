@@ -293,6 +293,10 @@ addEventListener('load', async () => {
     snap(); S.added.add(id); draw(); card(id); };
 
   await load(FOCUS); draw(true);
+  // ?with=<node> opens the route from the object to it, ?y=<year> sets the year: a view can be shared
+  const U = new URLSearchParams(location.search);
+  if (/^[pcfl]:[\w:-]+$/.test(U.get('with') || '')) { M.from = FOCUS; await load(U.get('with')); await finishConnect(U.get('with')); }
+  if (+U.get('y') > 1990) setYear(+U.get('y'));
 });
 </script>
 {% endblock %}
