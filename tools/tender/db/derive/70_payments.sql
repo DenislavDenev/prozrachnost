@@ -2,7 +2,9 @@
 -- column, so the match is by exact name after dropping the legal form and everything but letters and
 -- digits ("СОФАРМА ТРЕЙДИНГ АД" = „Софарма трейдинг“, which the registry keeps without the form;
 -- "ЕООД СОФАРМАСИ 11" = „Софармаси 11“ ЕООД), and only when that name belongs to exactly one company
--- (one buyer). A receiver written with its ЕИК ("СОФАРМА ТРЕЙДИНГ 103267194") is matched by the ЕИК.
+-- (one buyer). Companies read from the registry (legal form known) come first: suppliers known only by
+-- name ("name:" keys) or by an ЕИК the registry does not have never make a registry name ambiguous.
+-- A receiver written with its ЕИК ("СОФАРМА ТРЕЙДИНГ 103267194") is matched by the ЕИК.
 -- A payment whose receiver matches nothing stays with its name only.
 SET search_path = stage, public;
 
@@ -11,7 +13,11 @@ CREATE FUNCTION pay_key(t text) RETURNS text LANGUAGE sql IMMUTABLE AS
                                    '[^[:alnum:]]', '', 'g'), '') $f$;
 
 CREATE TABLE payment AS
-WITH co AS (SELECT pay_key(name) k, min(key) AS key FROM company WHERE name IS NOT NULL GROUP BY 1 HAVING count(DISTINCT key) = 1),
+WITH co AS (SELECT k, CASE WHEN nreg = 1 THEN kreg WHEN nreg = 0 AND neik = 1 THEN keik END AS key FROM (
+              SELECT pay_key(name) k,
+                     count(DISTINCT key) FILTER (WHERE legal_form IS NOT NULL) nreg, min(key) FILTER (WHERE legal_form IS NOT NULL) kreg,
+                     count(DISTINCT key) FILTER (WHERE key LIKE 'eik:%') neik, min(key) FILTER (WHERE key LIKE 'eik:%') keik
+              FROM company WHERE name IS NOT NULL GROUP BY 1) x),
      bu AS (SELECT pay_key(name) k, min(eik) AS eik FROM buyer WHERE name IS NOT NULL GROUP BY 1 HAVING count(*) = 1)
 SELECT p.resource_uri, p.row_no, p.settlement_date, p.receiver_name, p.is_person, p.receiver_iban,
        p.amount, p.currency,
