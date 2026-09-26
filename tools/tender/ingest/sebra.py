@@ -95,10 +95,10 @@ def amount(v):
 
 def parse(rows):
     """Header + rows of one file -> sebra.payment rows (without resource_uri, row_no)."""
-    head = [h.strip().upper() for h in rows[0]]
+    head = [str(h).replace("﻿", "").strip().strip('"').upper() for h in rows[0]]
     missing = set(COLS) - set(head)
     if missing:
-        raise ValueError(f"missing columns {sorted(missing)}")
+        raise ValueError(f"missing columns {sorted(missing)} in {head[:6]}")
     ix = {c: head.index(c) for c in COLS}
     out = []
     for r in rows[1:]:
