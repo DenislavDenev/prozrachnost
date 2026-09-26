@@ -202,7 +202,7 @@ a.tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-
 .filters > .btn { justify-self: start; }
 .fld.checks { grid-column: span 2; }
 .fld input:focus, .fld select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
-.presets div { display: flex; gap: 12px; height: 38px; align-items: center; font-size: 14px; }
+.presets div { display: flex; gap: 10px; height: 38px; align-items: center; font-size: 13.5px; white-space: nowrap; }
 .checks { gap: 6px; } .checks .chk { font-size: 14px; color: var(--ink-2); }
 .reset { font-size: 14px; align-self: center; justify-self: start; }
 .count { margin: 12px 0 10px; }
