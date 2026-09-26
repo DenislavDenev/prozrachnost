@@ -188,13 +188,14 @@ const FOCUS = {{ node | tojson }};
     $('lzoom').textContent = Math.round(LZ.k * 100) + '%';
   }
   function zoom(f, cx, cy) {
-    const vp = $('lvp'), k = Math.min(2.5, Math.max(0.08, LZ.k * f));
+    const vp = $('lvp'), k = Math.min(2.5, Math.max(Math.min(0.08, LZ.min || 0.08), LZ.k * f));
     cx ??= vp.clientWidth / 2; cy ??= vp.clientHeight / 2;
     LZ.x = cx - (cx - LZ.x) * (k / LZ.k); LZ.y = (cy - 30) - ((cy - 30) - LZ.y) * (k / LZ.k); LZ.k = k; apply();
   }
   function fit(how) {
     const vp = $('lvp'), w = vp.clientWidth - 24, h = vp.clientHeight - 54;
-    LZ.k = Math.min(1, how === 'all' ? Math.min(w / LZ.W, h / LZ.H) : w / LZ.W); LZ.x = 12; LZ.y = 8; apply();
+    LZ.min = Math.min(w / LZ.W, h / LZ.H);
+    LZ.k = Math.min(1, how === 'all' ? LZ.min : w / LZ.W); LZ.x = 12; LZ.y = 8; apply();
   }
   function pan() {
     const vp = $('lvp');
