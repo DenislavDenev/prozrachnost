@@ -237,8 +237,8 @@ const FOCUS = {{ node | tojson }};
   const show = (v) => { document.querySelectorAll('.lab-tabs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
     ['layers', 'matrix', 'table', 'cards'].forEach((x) => $('v-' + x).hidden = x !== v);
     if (!done[v]) { done[v] = 1; ({ layers, matrix, table, cards })[v](); } };
-  document.querySelector('.lab-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) show(b.dataset.v); };
-  show('layers');
+  document.querySelector('.lab-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { history.replaceState(null, '', '#' + b.dataset.v); show(b.dataset.v); } };
+  show(['layers', 'matrix', 'table', 'cards'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'layers');
 })();
 </script>
 {% endblock %}
