@@ -113,16 +113,17 @@ addEventListener('load', async () => {
   // ---------- Cytoscape ----------
   const cy = cytoscape({ container: $('cy'), wheelSensitivity: 0.25, minZoom: 0.1, maxZoom: 3, boxSelectionEnabled: false, style: [
     { selector: 'node', style: { shape: 'ellipse', width: 54, height: 54, 'background-color': 'data(color)', 'border-width': 0,
-      'background-image': ['data(icon)'], 'background-width': ['56%'], 'background-height': ['56%'], 'background-clip': ['node'],
       label: 'data(label)', 'text-valign': 'bottom', 'text-margin-y': 7, 'text-wrap': 'wrap', 'text-max-width': 150, 'font-size': 11.5,
       'font-family': 'Sofia Sans, sans-serif', 'font-weight': 600, color: css('--ink'), 'text-background-color': '#fff', 'text-background-opacity': .85, 'text-background-padding': '1px', 'bounds-expansion': 8 } },
-    { selector: 'node[badge = "plus"]', style: { 'background-image': ['data(icon)', PLUS], 'background-width': ['56%', '38%'], 'background-height': ['56%', '38%'],
-      'background-position-x': ['50%', '104%'], 'background-position-y': ['50%', '-4%'], 'background-clip': ['node', 'none'], 'background-image-containment': ['inside', 'over'] } },
-    { selector: 'node[badge = "minus"]', style: { 'background-image': ['data(icon)', MINUS], 'background-width': ['56%', '38%'], 'background-height': ['56%', '38%'],
-      'background-position-x': ['50%', '104%'], 'background-position-y': ['50%', '-4%'], 'background-clip': ['node', 'none'], 'background-image-containment': ['inside', 'over'] } },
+    // icon inside, badge at the top right (outside the circle): one rule per kind x badge
+    ...['pe', 'co'].flatMap((k) => [['none', []], ['plus', [PLUS]], ['minus', [MINUS]]].map(([b, extra]) => ({
+      selector: `node.${k}[badge = "${b}"]`, style: { 'background-image': [k === 'pe' ? PERSON : BUILDING, ...extra],
+        'background-width': ['56%', '38%'].slice(0, 1 + extra.length), 'background-height': ['56%', '38%'].slice(0, 1 + extra.length),
+        'background-position-x': ['50%', '104%'].slice(0, 1 + extra.length), 'background-position-y': ['50%', '-4%'].slice(0, 1 + extra.length),
+        'background-clip': ['node', 'none'].slice(0, 1 + extra.length), 'background-image-containment': ['inside', 'over'].slice(0, 1 + extra.length) } }))),
     { selector: 'node.focus', style: { width: 70, height: 70, 'border-width': 4, 'border-color': css('--accent'), 'font-size': 13 } },
     { selector: 'node.won', style: { 'border-width': 3, 'border-color': css('--accent') } },
-    { selector: 'node.picked', style: { 'underlay-color': css('--amber'), 'underlay-opacity': .45, 'underlay-padding': 7 } },
+    { selector: 'node.picked', style: { 'border-width': 4, 'border-color': css('--amber') } },
     { selector: 'node:selected', style: { 'overlay-color': '#000', 'overlay-opacity': .08, 'overlay-padding': 6 } },
     { selector: 'edge', style: { width: 2, 'line-color': 'data(color)', 'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle', 'arrow-scale': .9, 'curve-style': 'bezier', opacity: .85 } },
     { selector: 'edge.end', style: { 'line-style': 'dashed', opacity: .45 } },
@@ -161,8 +162,8 @@ addEventListener('load', async () => {
       const shown = [...nb(id).keys()].filter((x) => vis.has(x)).length, more = (n.links || 0) > shown;
       const badgeKind = id === FOCUS ? 'none' : S.expanded.has(id) ? 'minus' : more ? 'plus' : 'none';
       const label = n.name + (n.kind === 'c' && n.n ? `\n${nf.format(n.n)} дог. · ${big(+n.eur || 0)}` : '');
-      els.push({ group: 'nodes', data: { id, label, color: colorOf(n), icon: n.kind === 'p' ? PERSON : BUILDING, badge: badgeKind }, position: { ...P.get(id) },
-        classes: [id === FOCUS ? 'focus' : '', n.kind === 'c' && n.n ? 'won' : '', S.picked.includes(id) ? 'picked' : ''].join(' ') }); }
+      els.push({ group: 'nodes', data: { id, label, color: colorOf(n), badge: badgeKind }, position: { ...P.get(id) },
+        classes: [n.kind === 'p' ? 'pe' : 'co', id === FOCUS ? 'focus' : '', n.kind === 'c' && n.n ? 'won' : '', S.picked.includes(id) && id !== FOCUS ? 'picked' : ''].join(' ') }); }
     const pairs = new Map();
     for (const e of E.values()) { if (!vis.has(e.holder) || !vis.has(e.company) || !valid(e)) continue; const k = e.holder + '>' + e.company; if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(e); }
     for (const [k, rs] of pairs) { const [h, c] = k.split('>'), kind = rs.map((r) => linkOf(r.role)).sort((a, b) => ['own', 'mgmt', 'board'].indexOf(a) - ['own', 'mgmt', 'board'].indexOf(b))[0];
