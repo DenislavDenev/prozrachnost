@@ -1,4 +1,4 @@
--- Buyers placed on the municipality map (methodology 8). A buyer is placed in a municipality when
+-- Buyers placed on the municipality map (methodology 7). A buyer is placed in a municipality when
 --   'municipality': it is the municipality itself, or a unit whose 13-digit BULSTAT starts with the
 --                   municipality's ЕИК (Sofia and Plovdiv districts, municipal schools and the like);
 --   'address':      its OCDS address names a town that is also the name of exactly one municipality

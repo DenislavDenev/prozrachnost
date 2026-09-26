@@ -281,7 +281,7 @@ def map_page(request: Request):
 
 @app.get("/map.json")
 def map_data(frm: str = "", to: str = "", scope: str = "all"):
-    """Contracts per municipality of the buyer (methodology 8), plus what could not be placed."""
+    """Contracts per municipality of the buyer (methodology 7), plus what could not be placed."""
     where, args = map_filter(frm, to, scope)
     munis = Q.rows(f"""SELECT bp.municipality id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers,
             {SINGLE} single_pct
