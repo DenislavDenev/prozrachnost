@@ -252,7 +252,10 @@ addEventListener('load', async () => {
   function setRoute(i) {
     R.i = i; const r = R.list[i];
     S.path = new Set(r); S.pathPairs = new Set(r.slice(1).map((y, k) => [r[k], y].sort().join('|')));
-    $('card').classList.remove('on'); draw(true);
+    $('card').classList.remove('on'); draw(false);
+    // frame the route itself, clear of the description panel on the left
+    const w = $('path').offsetWidth || 360;
+    cy.fit(cy.nodes('.route'), 60); cy.panBy({ x: Math.min(w / 2 + 20, cy.width() / 4), y: 0 });
   }
   function route() {
     if (!S.path.size || !R.list.length) { $('path').classList.remove('on'); return; }
