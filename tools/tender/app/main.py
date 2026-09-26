@@ -200,7 +200,8 @@ def tender(request: Request, unp: str):
     t = Q.tender(unp)
     if not t:
         raise HTTPException(404)
-    return page(request, "tender.html", t=t, nav="Поръчки")
+    lots = Q.tender_lots(t)
+    return page(request, "tender.html", t=t, lots=lots, events=Q.tender_events(t, lots), nav="Поръчки")
 
 
 @app.get("/network.json")
@@ -632,15 +633,15 @@ def sectors(request: Request):
     return page(request, "list_rollup.html", L=L, rows=rows, title="Сектори", kind="sector", nav="")
 
 
-# ---------- flows: one calendar year as a Sankey (contracts: sector -> buyer -> supplier; payments:
-# first-level budget organisation -> organisation -> receiver), the top of each column and "Други" ----------
+# ---------- flows: one calendar year, drilled into one step at a time (contracts: sector -> buyer ->
+# supplier; payments: first-level budget organisation -> organisation -> receiver) ----------
 
 FLOW_DIMS = {
     "contracts": {"sector": "left(c.cpv, 2)", "buyer": "c.buyer_eik", "supplier": "s.party_key"},
     "payments": {"primary": "p.primary_org_code", "org": "p.organization",
                  "receiver": "CASE WHEN p.is_person THEN 'persons' WHEN p.company_key IS NOT NULL THEN p.company_key ELSE 'name:' || p.receiver_name END"},
 }
-FLOW_TOP = 14
+FLOW_TOP = 12
 
 
 def flow_base(mode, year, filters):
@@ -669,33 +670,28 @@ def flows_page(request: Request):
 
 @app.get("/flows.json")
 def flows_json(request: Request, year: int = 0, mode: str = "contracts"):
-    """Columns of the chosen mode minus the dimensions filtered on; each column keeps its top FLOW_TOP
-    nodes by value, the rest become one "Други" node; links between neighbouring columns."""
+    """One step of the drill-down: the path chosen so far (filters in the order of the dimensions), then the
+    next dimension split into its largest FLOW_TOP parts and "Други". Every part is also in `all` (up to
+    500), so the page can list and open each of them; the money behind any node or link is in the lists."""
     mode = mode if mode in FLOW_DIMS else "contracts"
     year = year or dt.date.today().year - 1
     dims = FLOW_DIMS[mode]
     filters = {k: request.query_params[k] for k in dims if request.query_params.get(k)}
-    cols = [k for k in dims if k not in filters]
+    nxt = next((k for k in dims if k not in filters), None)
     base, where, args, val = flow_base(mode, year, filters)
-    tops = {}
-    for k in cols:
-        tops[k] = [r["k"] for r in Q.rows(f"SELECT {dims[k]} k, sum({val}) v {base} WHERE {where} AND {dims[k]} IS NOT NULL "
-                                          f"GROUP BY 1 ORDER BY v DESC NULLS LAST LIMIT {FLOW_TOP}", *args)]
-    links = []
-    for a, b in zip(cols, cols[1:]):
-        ca = f"CASE WHEN {dims[a]} = ANY(%s) THEN {dims[a]} ELSE '~' END"
-        cb = f"CASE WHEN {dims[b]} = ANY(%s) THEN {dims[b]} ELSE '~' END"
-        for r in Q.rows(f"SELECT {ca} s, {cb} t, round(sum({val})) v, count(*) n {base} WHERE {where} GROUP BY 1, 2",
-                        tops[a], tops[b], *args):
-            links.append({"source": f"{a}|{r['s']}", "target": f"{b}|{r['t']}", "value": float(r["v"] or 0), "n": r["n"],
-                          "sk": r["s"], "tk": r["t"], "sd": a, "td": b})
     total = Q.one(f"SELECT round(sum({val})) v, count(*) n {base} WHERE {where}", *args)
-    names = flow_names(mode, {k: tops[k] for k in cols})
-    nodes = sorted({(l["source"]) for l in links} | {l["target"] for l in links})
-    return JSONResponse(json.loads(json.dumps({"mode": mode, "year": year, "cols": cols, "filters": filters,
-        "filter_names": flow_names(mode, {k: [v] for k, v in filters.items()}),
-        "nodes": [{"name": n, "label": names.get(n, n.split("|", 1)[1]), "dim": n.split("|", 1)[0], "key": n.split("|", 1)[1]} for n in nodes],
-        "links": links, "total": total}, default=jdefault)))
+    parts = Q.rows(f"""SELECT {dims[nxt]} k, round(sum({val})) v, count(*) n, count(*) OVER () parts {base}
+        WHERE {where} AND {dims[nxt]} IS NOT NULL GROUP BY 1 ORDER BY v DESC NULLS LAST LIMIT 500""", *args) if nxt else []
+    names = flow_names(mode, {nxt: [r["k"] for r in parts]}) if nxt else {}
+    shown = sum(float(r["v"] or 0) for r in parts[:FLOW_TOP])
+    path_names = flow_names(mode, {k: [v] for k, v in filters.items()})
+    return JSONResponse(json.loads(json.dumps({
+        "mode": mode, "year": year, "next": nxt, "total": total,
+        "path": [{"dim": k, "key": v, "label": path_names.get(f"{k}|{v}", v)} for k, v in filters.items()],
+        "all": [{"key": r["k"], "label": names.get(f"{nxt}|{r['k']}", r["k"]), "v": float(r["v"] or 0), "n": r["n"]} for r in parts],
+        "parts": parts[0]["parts"] if parts else 0, "top": FLOW_TOP,
+        "rest": max(0.0, float(total["v"] or 0) - shown), "other_label": names.get(f"{nxt}|~") if nxt else None,
+    }, default=jdefault)))
 
 
 def flow_names(mode, keys):

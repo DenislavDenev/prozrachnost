@@ -1,6 +1,7 @@
 // Тендер: visual register of registry links (after rejstrik.penize.cz „Vizualizace vztahů“).
 // Markup in templates/_vazby.html, styles in app.css (.vz-*). Uses Cytoscape.js 3.34.3 (MIT).
-async function vazby(FOCUS) {
+// opts.routes: the shortest paths of the Свързаности page ({ids, pairs, nodes, roles}), drawn on open
+async function vazby(FOCUS, opts = {}) {
   const HUB = 100, YEAR_NOW = +$('year').max;
   const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   // ---------- look ----------
@@ -23,10 +24,10 @@ async function vazby(FOCUS) {
     const b = badge === 'none' ? '' : `<g transform="translate(24 -24)"><circle r="9" fill="#121417" stroke="#fff" stroke-width="2"/><path d="M-4.5 0h9${badge === 'plus' ? 'M0-4.5v9' : ''}" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></g>`;
     const s = uri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-35 -35 70 70" width="140" height="140"><circle r="27" fill="${color}" ${ring ? `stroke="${ring}" stroke-width="4"` : ''}/><g transform="scale(1.25)">${kind === 'p' ? G_PERS : G_BUILD}</g>${b}</svg>`);
     PIC.set(k, s); return s; };
-  $('legend').innerHTML = `<span><span class="dot" style="background:#6b7a8c"><img src="${uri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 24 24">${G_PERS}</svg>`)}" alt=""></span>лице</span>` +
+  $('legend').innerHTML = `<div class="grp"><span><span class="dot" style="background:#6b7a8c"><img src="${uri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 24 24">${G_PERS}</svg>`)}" alt=""></span>лице</span>` +
     FORMS.map((f) => `<span><span class="dot" style="background:${f[2]}"><img src="${uri(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-12 -12 24 24">${G_BUILD}</svg>`)}" alt=""></span>${f[1]}</span>`).join('') +
-    `<span><span class="dot" style="box-sizing:border-box;border:3px solid ${css('--accent')}"></span>с договори</span><span class="sep"></span>` +
-    LINKS.map((l) => `<span><span class="ln" style="background:${l[2]}"></span>${l[1]}</span>`).join('') + `<span><svg width="24" height="4" aria-hidden="true"><line x1="0" y1="2" x2="24" y2="2" stroke="#7d858f" stroke-width="3" stroke-dasharray="5 4"/></svg>прекратена</span>`;
+    `<span><span class="dot" style="box-sizing:border-box;border:3px solid ${css('--accent')}"></span>с договори</span></div><div class="grp">` +
+    LINKS.map((l) => `<span><span class="ln" style="background:${l[2]}"></span>${l[1]}</span>`).join('') + `<span><svg width="24" height="4" aria-hidden="true"><line x1="0" y1="2" x2="24" y2="2" stroke="#7d858f" stroke-width="3" stroke-dasharray="5 4"/></svg>прекратена</span></div>`;
 
   // ---------- model ----------
   const N = new Map(), E = new Map();
@@ -80,7 +81,15 @@ async function vazby(FOCUS) {
 
   const P = new Map([[FOCUS, { x: 0, y: 0 }]]);
   function place(ids) {
-    // new nodes go on an arc around the node that brought them, facing away from the centre (the penize.cz star)
+    // new nodes go on an arc around the node that brought them, facing away from the centre (the penize.cz star);
+    // in rounds, so a route lays out step by step outwards instead of every far node circling the centre
+    for (let todo = [...ids]; todo.length; todo = todo.filter((id) => !P.has(id))) {
+      const ready = todo.filter((id) => [...nb(id).keys()].some((x) => P.has(x)));
+      arc(ready.length ? ready : todo);
+    }
+    separate([...P.keys()].filter((id) => id === FOCUS || cy.getElementById(id).length || ids.includes(id)));
+  }
+  function arc(ids) {
     const byParent = new Map();
     for (const id of ids) { const par = [...nb(id).keys()].find((x) => P.has(x) && S.expanded.has(x)) || [...nb(id).keys()].find((x) => P.has(x)) || FOCUS;
       if (!byParent.has(par)) byParent.set(par, []); byParent.get(par).push(id); }
@@ -90,7 +99,6 @@ async function vazby(FOCUS) {
       kids.forEach((id, i) => { const a = par === FOCUS ? -Math.PI / 2 + (2 * Math.PI * i) / kids.length : away - sweep / 2 + (sweep * (i + .5)) / kids.length;
         P.set(id, { x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) }); });
     }
-    separate([...P.keys()].filter((id) => id === FOCUS || cy.getElementById(id).length || ids.includes(id)));
   }
   // a node takes its circle plus the label under it; boxes may not overlap (12 px air between them)
   function box(id) {
@@ -204,13 +212,17 @@ async function vazby(FOCUS) {
     $('banner').innerHTML = `<span>Търся пътя между <b>${esc(N.get(from)?.name)}</b> и <b>${esc(N.get(to)?.name || to)}</b>…</span>`;
     const q = new URLSearchParams([['n', from], ['n', to]]); if (S.live) q.set('active', 1);
     const d = await (await fetch('/connect.json?' + q)).json();
-    for (const [id, n] of Object.entries(d.nodes)) node(id, { name: tc(n.name || id), ref: n.ref, n: n.contracts, eur: n.eur, links: n.links });
-    const edges = []; for (const rs of Object.values(d.roles)) for (const r of rs) edges.push({ ...r, holder_name: d.nodes[r.holder]?.name, company_name: d.nodes[r.company]?.name });
-    ingest(edges); snap();
+    take(d); snap();
     const p = d.pairs[0];
     $('banner').classList.remove('on');
     if (!p.paths.length) { R.list = []; $('path').innerHTML = `<b>${esc(N.get(from)?.name)}</b> и <b>${esc(N.get(to)?.name)}</b> не са свързани в регистъра. <button class="btn sm" id="pclose">Затвори</button>`; $('path').classList.add('on'); $('pclose').onclick = () => $('path').classList.remove('on'); return; }
     R.list = p.paths; showRoutes();
+  }
+  // the nodes and roles of a /connect.json answer (or of the Свързаности page) into the model
+  function take(d) {
+    for (const [id, n] of Object.entries(d.nodes)) node(id, { name: tc(n.name || id), ref: n.ref, n: n.contracts, eur: n.eur, links: n.links });
+    const edges = []; for (const rs of Object.values(d.roles)) for (const r of rs) edges.push({ ...r, holder_name: d.nodes[r.holder]?.name, company_name: d.nodes[r.company]?.name });
+    ingest(edges);
   }
   // every shortest route between the two is drawn and described at once
   const R = { list: [] };
@@ -228,9 +240,9 @@ async function vazby(FOCUS) {
     const rolesOf = (a, b) => [...E.values()].filter((e) => (e.holder === a && e.company === b) || (e.holder === b && e.company === a));
     const live = (a, b) => !S.year || rolesOf(a, b).some((e) => inYear(e, S.year));
     const whole = (r) => r.slice(1).every((y, k) => live(r[k], y));
-    const steps = R.list[0].length - 1, ok = R.list.filter(whole).length;
+    const lens = new Set(R.list.map((r) => r.length - 1)), steps = R.list[0].length - 1, ok = R.list.filter(whole).length;
     $('path').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-        <b>${R.list.length === 1 ? 'Един път' : `${R.list.length} пътя`} по ${steps} ${steps === 1 ? 'стъпка' : 'стъпки'}</b><button class="btn sm" id="pclose">Изчисти</button></div>
+        <b>${R.list.length === 1 ? 'Един път' : `${R.list.length} пътя`}${lens.size === 1 ? ` по ${steps} ${steps === 1 ? 'стъпка' : 'стъпки'}` : ''}</b><button class="btn sm" id="pclose">Изчисти</button></div>
       ${S.year ? `<div class="${ok ? '' : 'warn'}" style="margin-bottom:8px">През ${S.year}: ${ok ? `${ok} от ${R.list.length} ${R.list.length === 1 ? 'пътя е цял' : 'пътя са цели'}` : 'нито един път не е цял'}</div>` : ''}
       ${R.list.map((r, i) => `<div style="padding:6px 0;border-top:1px solid var(--line-2)"><div class="mut" style="margin-bottom:2px">Път ${i + 1}${S.year ? (whole(r) ? ' · цял' : ' · прекъснат') : ''}</div>
         ${r.map((id, k) => `${k ? `<div class="r" style="${live(r[k - 1], id) ? '' : 'opacity:.45;text-decoration:line-through'}">↓ ${esc(rolesOf(r[k - 1], id).map((e) => roleTxt(e) + ' ' + when(e)).join(', '))}</div>` : ''}<div><b>${esc(N.get(id)?.name || id)}</b></div>`).join('')}</div>`).join('')}`;
@@ -267,7 +279,14 @@ async function vazby(FOCUS) {
     if (M.from) return finishConnect(id);
     snap(); S.added.add(id); draw(); card(id); });
 
-  await load(FOCUS); draw(true);
+  await load(FOCUS);
+  if (opts.routes) {  // Свързаности: every chosen node on the drawing, all shortest paths lit
+    const D = opts.routes;
+    for (const id of D.ids) if (id !== FOCUS) { await load(id); S.added.add(id); }
+    take(D); R.list = D.pairs.flatMap((p) => p.paths);
+    if (R.list.length) { draw(true); showRoutes(); return; }
+  }
+  draw(true);
   // ?with=<node> opens the route from the object to it, ?y=<year> sets the year: a view can be shared
   const U = new URLSearchParams(location.search);
   if (/^[pcfl]:[\w:-]+$/.test(U.get('with') || '')) { M.from = FOCUS; await load(U.get('with')); await finishConnect(U.get('with')); }

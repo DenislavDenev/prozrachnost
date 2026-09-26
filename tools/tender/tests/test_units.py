@@ -230,3 +230,20 @@ def test_contract_lots_follow_the_service_numbering():
                                            {"LotNumber": 1, "ContractListItems": [{"Id": 263941}]}]}
     assert O.parse_contracts(cl) == [(6, "264875"), (1, "263941")]
     assert O.parse_contracts({"ContractListItems": [{"Id": 201257}], "Lots": []}) == [(0, "201257")] and O.parse_contracts(None) == []
+
+
+def test_tender_events_fold_same_day_offers_and_keep_order():
+    from app.queries import tender_events
+    tz = dt.timezone(dt.timedelta(hours=3))
+    t = {"published_at": dt.date(2026, 3, 1), "submission_deadline": dt.datetime(2026, 3, 31, 17, 0), "contracts": []}
+    offer = lambda name, day, lot=1, won=False: {"bidder_eik": None, "bidder_name": name, "company_key": None, "won": won,
+                                                 "submitted_at": dt.datetime(2026, 3, day, 10, 0, tzinfo=tz)}
+    # a bidder's offer for two lots is one submission; different days are separate events
+    lots = [{"lot_no": 1, "offers": [offer("А", 10), offer("Б", 30, won=True)]}, {"lot_no": 2, "offers": [offer("А", 10)]}]
+    ev = tender_events(t, lots)
+    assert [e["kind"] for e in ev] == ["pub", "offer", "offer", "deadline"]
+    assert ev[1]["offers"][0]["lots"] == [1, 2] and ev[2]["offers"][0]["won"]
+    # all on one day: one event, the time of each kept
+    lots = [{"lot_no": 1, "offers": [offer("А", 10), offer("Б", 10)]}]
+    ev = tender_events(t, lots)
+    assert [e["kind"] for e in ev] == ["pub", "offers", "deadline"] and len(ev[1]["offers"]) == 2

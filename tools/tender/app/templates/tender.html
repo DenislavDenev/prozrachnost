@@ -1,32 +1,104 @@
 {% extends "base.html" %}
-{% from "_record.html" import record, history, ocds %}
 {% from "_flags.html" import flags %}
+{% from "_offers.html" import offers_table %}
+{# The procedure: key facts as tiles, the description, per lot the offers on a € axis and in a table with the
+   contract, the chronology, the rest of the published fields folded. Offers from the ЦАИС ЕОП procedure page. #}
+{% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
+{% set rec = header[-1].rec if header else {} %}
+{% set method = rec.awardMethod or (t.contracts[0].award_method if t.contracts and t.contracts[0].award_method else none) %}
+{% set price_only = method and 'цена' in method | lower and 'качество' not in method | lower %}
+{% set n_offers = lots | map(attribute='offers') | map('length') | sum %}
+{% set ocds_t = (t.ocds[-1].rec.tender if t.ocds and t.ocds[-1].rec.tender else {}) %}
+{% set desc = ocds_t.description if ocds_t.description and ocds_t.description | trim | lower != (t.subject or '') | trim | lower else none %}
 {% block title %}Поръчка {{ t.unp }} · Тендер{% endblock %}
 {% block main %}
 <div class="crumbs"><a href="/tenders">Поръчки</a> / {{ t.unp }}</div>
 <div class="head"><div><h1 class="h1s">{{ t.subject or 'Поръчка ' ~ t.unp }}</h1>
-  <div class="meta"><span>УНП <b>{{ t.unp }}</b></span><span><a class="l" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></span>
-    <span>{{ t.procedure_type or 'неизвестна процедура' }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}
-    {% if t.is_cancelled %}<span class="warn">прекратена</span>{% endif %}</div></div>
-  {% if t.tender_id %}<div class="acts"><a class="btn go" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">В ЦАИС ЕОП</a></div>{% endif %}</div>
-<p class="lede">{% if t.estimated_eur %}Прогнозна стойност <b>{{ t.estimated_eur | big }}</b>. {% endif %}
-  {% if t.stats.n %}<b>{{ t.stats.n | num }} {{ 'договор' if t.stats.n == 1 else 'договора' }}</b> за <b>{{ t.stats.eur | big }}</b>{% if t.estimated_eur and t.stats.eur %}, {{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната{% endif %}.{% else %}Още няма сключени договори.{% endif %}
-  {% if t.submission_deadline %}Срок за оферти {{ t.submission_deadline | date }}.{% endif %}</p>
+  <div class="meta"><span>УНП <b>{{ t.unp }}</b></span><span class="st {{ t.state }}">{{ STATE.get(t.state, '') }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}</div></div>
+  {% if t.tender_id %}<div class="acts"><a class="btn go" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">Документи и оферти в ЦАИС ЕОП</a></div>{% endif %}</div>
 {% if t.synthetic %}<p class="mut">Обявлението за тази поръчка не е в отворените данни; показани са само договорите по нея.</p>{% endif %}
-<div class="grid">
-  <section class="p s12"><h2>Договори</h2>
-    <table class="sortable"><thead><tr><th>Позиция</th><th>Дата</th><th>Изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
-    {% for k in t.contracts %}<tr><td class="mut">{{ k.lot_no or '—' }}</td><td class="mut nw" data-v="{{ k.effective_date }}">{{ k.effective_date | date }}</td>
-      <td><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a><div class="mut">{% if k.supplier_key %}<a class="u" href="/companies/{{ k.supplier_key | q }}">профил на изпълнителя</a>{% endif %}{{ flags(k) }}</div></td>
-      <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong" data-v="{{ k.eur }}">{{ k.eur | eur }}</td></tr>
-    {% else %}<tr><td colspan="5" class="mut">Няма сключени договори.</td></tr>{% endfor %}</tbody></table></section>
-  {% if t.lots %}<section class="p s12"><h2>Обособени позиции</h2>
-    <table class="sortable"><thead><tr><th>№</th><th>Предмет</th><th class="hide-s">CPV</th><th class="n">Прогнозна стойност</th></tr></thead><tbody>
-    {% for l in t.lots %}<tr><td class="mut">{{ l.lot_no }}</td><td>{{ l.title }}</td><td class="hide-s mut">{{ l.cpv or '' }}</td>
-      <td class="n" data-v="{{ l.estimated_eur }}">{{ l.estimated_eur | eur if l.estimated_eur is not none else (l.estimated_value | eurc(l.currency)) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
-  {{ ocds(t.ocds) }}
-  {% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
-  {% if header %}{{ record(header[-1]) }}{% endif %}
-  {{ history(t.records) }}
+
+{# equal tiles; a long one takes two places instead of stretching the row #}
+<div class="tiles">
+  <div class="tile {{ 'wide' if (t.buyer_name or '') | length > 38 }}"><span>Възложител</span><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></div>
+  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else '—' }}</b></div>
+  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else '—' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span><b>{{ n_offers if n_offers else '—' }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}</div>
+  <div class="tile {{ 'wide' if (t.procedure_type or '') | length > 30 }}"><span>Процедура</span><b>{{ t.procedure_type or '—' }}</b></div>
+  <div class="tile {{ 'wide' if (method or '') | length > 30 }}"><span>Критерий</span><b>{{ method or '—' }}</b></div>
+  <div class="tile"><span>Вид</span><b>{{ t.contract_type or '—' }}</b></div>
+  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else '—' }}</b></div>
+  {% if t.is_eu_funded %}<div class="tile {{ 'wide' if t.european_program }}"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small title="{{ t.european_program }}">{{ t.european_program }}</small>{% endif %}</div>{% endif %}
 </div>
+
+{% if desc %}<section class="p"><details class="more" {{ 'open' if desc | length < 600 }}><summary><h2>Описание</h2>{% if desc | length >= 600 %}<span class="sub">{{ desc[:220] }}…</span>{% endif %}</summary>
+  <div class="prose desc">{{ desc }}</div></details></section>{% endif %}
+
+{% macro contracts_of(l) %}{% for k in l.contracts %}<div class="kline"><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a> · {{ k.effective_date | date }} · <b>{{ k.eur | eur }}</b>{{ flags(k) }}</div>{% endfor %}{% endmacro %}
+{% macro lot_title(l) %}{% if lots | length > 1 or l.lot_no %}Позиция {{ l.lot_no }}{% if l.title %}: {{ l.title }}{% endif %}{% else %}Офертите{% endif %}{% endmacro %}
+
+{% if lots | length > 1 %}
+{# lot picker: wraps up to 15; above that one scrolling row with arrows and a filter by number or title #}
+<div class="lotpick {{ 'many' if lots | length > 15 }}">
+  {% if lots | length > 15 %}<div class="lotbar"><label class="fld"><span>Позиция</span><input type="search" id="lotq" placeholder="номер или дума от предмета" aria-controls="lottabs"></label>
+    <span class="mut" id="lotn">{{ lots | length }} позиции</span></div>{% endif %}
+  <div class="lotrow">{% if lots | length > 15 %}<button type="button" class="btn sm lotarr" data-d="-1" aria-label="Назад по позициите">‹</button>{% endif %}
+  <div class="tabs lottabs" id="lottabs" role="tablist" aria-label="Позиции">{% for l in lots %}<button type="button" role="tab" data-lot="{{ l.lot_no }}" data-t="{{ (l.lot_no ~ ' ' ~ (l.title or '')) | lower }}" aria-selected="{{ 'true' if loop.first else 'false' }}" title="{{ l.title or '' }}"><span class="dotst {{ l.status or '' }}"></span>{{ l.lot_no }}<small>{{ l.offers | length }} оф.</small></button>{% endfor %}</div>
+  {% if lots | length > 15 %}<button type="button" class="btn sm lotarr" data-d="1" aria-label="Напред по позициите">›</button>{% endif %}</div>
+</div>
+{% endif %}
+{% for l in lots %}
+<section class="p lot" data-lot="{{ l.lot_no }}" {% if not loop.first %}hidden{% endif %}>
+  <div class="ph"><div><h2>{{ lot_title(l) }}</h2><div class="sub">{{ l.offers | length }} оферти{% if l.estimated_eur %} · прогнозна {{ l.estimated_eur | eur }}{% endif %}{% if l.status %} · <span class="st {{ l.status }}">{{ STATE.get(l.status, '') }}</span>{% endif %}</div></div></div>
+  {% if l.not_lowest and price_only %}<p class="warn strong">Спечели оферта, която не е най-ниската, при критерий „{{ method }}“.</p>{% elif l.not_lowest %}<p class="mut">Спечели оферта, която не е най-ниската: при критерий „{{ method or 'неизвестен' }}“ цената не е единственото мерило.</p>{% endif %}
+  {% if l.low is not none %}<svg class="strip" data-est="{{ l.estimated_eur or '' }}" data-offers='{{ l.offers | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-won='{{ l.offers | selectattr("won") | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-names='{{ l.offers | selectattr("price_eur") | map(attribute="bidder_name") | map("tc") | list | json }}' viewBox="0 0 900 96" role="img" aria-label="Цените на офертите спрямо прогнозната стойност"></svg>{% endif %}
+  {{ offers_table(l) }}
+  {% if l.contracts %}<h3 class="h3s">Договор</h3>{{ contracts_of(l) }}{% endif %}
+</section>
+{% endfor %}
+
+{% if events %}<section class="p"><h2>Хронология</h2>
+<ol class="flow">{% for e in events %}<li class="{{ e.kind }}"><b>{{ e.title }}</b><span class="mut">{{ e.when | date }}{% if e.kind == 'offer' %} {{ e.when.strftime('%H:%M') }}{% endif %}</span>
+  {% if e.kind == 'pub' %}<div>{{ t.procedure_type or '' }}{% if t.estimated_eur %}, прогнозна стойност {{ t.estimated_eur | big }}{% endif %}.</div>
+  {% elif e.offers is defined %}<ul class="evl">{% for g in e.offers %}<li class="{{ 'win' if g.won }}">{% if g.key %}<a class="u" href="/companies/{{ g.key | q }}">{{ g.name | tc }}</a>{% else %}{{ g.name | tc }}{% endif %}
+      {% if e.kind == 'offers' %}<span class="mut">{{ g.when.strftime('%H:%M') }}</span>{% endif %}{% if lots | length > 1 %}<span class="mut">{{ 'позиция' if g.lots | length == 1 else 'позиции' }} {{ g.lots | join(', ') }}</span>{% endif %}{% if g.won %}<em>спечелила</em>{% endif %}</li>{% endfor %}</ul>
+  {% elif e.contract is defined %}<div><a class="u strong" href="/contracts/{{ e.contract.id }}">{{ e.contract.supplier | tc }}</a> · <b>{{ e.contract.eur | eur }}</b>{% if lots | length > 1 and e.contract.lot_no %} · позиция {{ e.contract.lot_no }}{% endif %}</div>
+  {% elif e.annex is defined %}<div><a class="u" href="/contracts/{{ e.annex.contract_id }}">{{ e.annex.supplier | tc }}</a>{% if e.annex.difference %} · {{ '+' if e.annex.difference > 0 }}{{ e.annex.difference | eurc(e.annex.currency) }}{% endif %}{% if e.annex.reason %}<div class="mut">{{ e.annex.reason }}</div>{% endif %}</div>{% endif %}
+</li>{% endfor %}</ol></section>{% endif %}
+
+<section class="p"><details class="more"><summary><h2>Допълнителна информация</h2><span class="sub">Всички публикувани полета на обявлението и историята на публикациите</span></summary>
+  {% if header %}<dl class="dl rec">{% for label, key, val, cur in fields(rec) %}<dt>{{ label }}</dt><dd>{% if cur is not none or key in ('estimatedValue', 'contractValue') %}{{ val | eurc(cur) }}{% else %}{{ val }}{% endif %}</dd>{% endfor %}</dl>{% endif %}
+  {% if t.records | length > 1 %}<h3 class="h3s">Публикации</h3><table class="sortable"><thead><tr><th>Ден</th><th>Вид</th><th class="n">Обявление</th></tr></thead><tbody>
+    {% for r in t.records %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or '—' }}{% if r.rec.isLot == 'Да' %} · позиция{% endif %}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+</details></section>
+{% endblock %}
+{% block scripts %}
+<script>
+// offers on a € axis: the estimate as a dashed line, the winning offer filled
+document.querySelectorAll('svg.strip').forEach((svg) => {
+  const P = JSON.parse(svg.dataset.offers), W = JSON.parse(svg.dataset.won), N = JSON.parse(svg.dataset.names), est = +svg.dataset.est || null;
+  const all = [...P, ...(est ? [est] : [])], lo = Math.min(...all) * 0.97, hi = Math.max(...all) * 1.03, X = (v) => 30 + ((v - lo) / (hi - lo || 1)) * 840;
+  let s = `<line class="ax" x1="30" x2="870" y1="56" y2="56"/>`;
+  if (est) s += `<line class="est" x1="${X(est)}" x2="${X(est)}" y1="14" y2="70"/><text class="lbl" x="${X(est)}" y="10" text-anchor="middle">прогнозна ${short(est)} €</text>`;
+  P.forEach((p, i) => { const won = W.includes(p); s += `<circle class="${won ? 'won' : 'of'}" cx="${X(p)}" cy="56" r="${won ? 8 : 6}"><title>${esc(N[i])}: ${eur(p)}</title></circle>`; });
+  s += `<text class="lbl" x="30" y="88">${short(lo / 0.97)} €</text><text class="lbl" x="870" y="88" text-anchor="end">${short(hi / 1.03)} €</text>`;
+  svg.innerHTML = s;
+});
+// lots: tabs (arrow keys move between them), arrows scroll a long row, the filter narrows it
+(() => {
+  const bar = $('lottabs'); if (!bar) return;
+  const tabs = () => [...bar.querySelectorAll('[role=tab]')].filter((b) => !b.hidden);
+  const show = (b) => { bar.querySelectorAll('[role=tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
+    document.querySelectorAll('section.lot').forEach((s) => { s.hidden = s.dataset.lot !== b.dataset.lot; });
+    b.scrollIntoView({ block: 'nearest', inline: 'center' }); };
+  bar.addEventListener('click', (e) => { const b = e.target.closest('[data-lot]'); if (b) show(b); });
+  bar.addEventListener('keydown', (e) => { const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key]; if (!d) return;
+    const all = tabs(), i = all.indexOf(document.activeElement), b = all[Math.max(0, Math.min(all.length - 1, i + d))]; if (b) { e.preventDefault(); b.focus(); show(b); } });
+  document.querySelectorAll('.lotarr').forEach((a) => a.onclick = () => bar.scrollBy({ left: +a.dataset.d * bar.clientWidth * 0.8, behavior: 'smooth' }));
+  $('lotq')?.addEventListener('input', (e) => { const q = e.target.value.trim().toLowerCase();
+    let n = 0; bar.querySelectorAll('[role=tab]').forEach((b) => { b.hidden = !!q && !(b.dataset.lot === q || b.dataset.t.includes(q)); n += !b.hidden; });
+    $('lotn').textContent = q ? `${n} от ${bar.children.length}` : `${bar.children.length} позиции`;
+    const first = tabs()[0]; if (first && q) show(first); });
+})();
+</script>
 {% endblock %}

@@ -3,89 +3,111 @@
 {% block head %}<script src="/static/vendor/echarts.min.js?v={{ v }}" defer></script>{% endblock %}
 {% block main %}
 <h1 class="h1s">Потоци</h1>
-<p class="sub">Накъде отиват парите за една календарна година. <b>Договорено</b>: договорите от ЦАИС ЕОП по сектор, възложител и изпълнител (без таваните на рамкови споразумения и без стойности с вероятна грешка; всеки договор веднъж, при първия изпълнител). <b>Платено</b>: плащанията от бюджета през СЕБРА по първостепенен разпоредител, разпоредител и получател (от юли 2022 г.; без общините извън София). Във всяка колона са първите {{ 14 }}, останалите са „Други“. Клик на кръгче влиза в него, клик на лента показва договорите или плащанията зад нея.</p>
-<form class="filters mapctl" id="ff" onsubmit="return false">
+<p class="sub">Накъде отиват парите за една календарна година, стъпка по стъпка. Започва от целия обем, а всяка стъпка разделя избраното на най-големите му части. <b>Договорено</b>: договорите от ЦАИС ЕОП по сектор, възложител и изпълнител (без таваните на рамкови споразумения и без стойности с вероятна грешка; всеки договор веднъж, при първия изпълнител). <b>Платено</b>: плащанията от бюджета през СЕБРА по първостепенен разпоредител, разпоредител и получател (от юли 2022 г.; без общините извън София).</p>
+<form class="filters" id="ff" onsubmit="return false">
   <div class="fld"><span>Какво</span><div class="tabs" id="mode" role="group" aria-label="Какво">
     <button type="button" data-k="contracts" aria-pressed="true">Договорено</button><button type="button" data-k="payments" aria-pressed="false">Платено (СЕБРА)</button></div></div>
   <label class="fld"><span>Година</span><select id="year">{% for y in range(year_now, 2019, -1) %}<option {{ 'selected' if y == year_now - 1 }}>{{ y }}</option>{% endfor %}</select></label>
-  <div class="fld"><span>&nbsp;</span><div class="crumbs fl-crumbs" id="crumbs"></div></div>
 </form>
-<section class="p fl-box"><div class="fl-head"><div id="ftotal" class="sub"></div><button class="btn sm" id="fzoom" type="button">Побери</button></div>
-  <div id="sankey" class="fl-chart" role="img" aria-label="Потоци на парите"></div></section>
+<nav class="fl-path" id="crumbs" aria-label="Пътят дотук"></nav>
+<section class="p fl-box"><div class="fl-head"><div><h2 id="fh"></h2><div id="ftotal" class="sub"></div></div></div>
+  <div id="sankey" class="fl-chart" role="img" aria-label="Потокът на парите"></div>
+  <p class="mut fl-help">Клик на част влиза в нея. Клик на лента показва договорите или плащанията зад нея. Пътят горе връща назад.</p></section>
 <section class="p" id="fdetail" hidden><div class="ph"><div><h2 id="fdt"></h2><div class="sub">Кликни заглавие на колона, за да подредиш</div></div><a class="btn" id="fdall" href="#">Всички</a></div>
   <div class="embed" id="fdembed"></div></section>
-<section class="p"><details class="more"><summary><h2>Таблица с точните суми</h2><span class="sub">Всяка лента от графиката</span></summary>
-  <table class="sortable" id="ftable"><thead><tr><th>От</th><th>Към</th><th class="n">Брой</th><th class="n">Сума</th></tr></thead><tbody></tbody></table></details></section>
+<section class="p" id="fall" hidden><div class="ph"><div><h2 id="fat"></h2><div class="sub" id="fas"></div></div></div>
+  <table class="sortable" id="ftable"><thead><tr><th>Част</th><th class="n">Брой</th><th class="n">Сума</th><th class="n">Дял</th></tr></thead><tbody></tbody></table></section>
 {% endblock %}
 {% block scripts %}
 <script>
 addEventListener('load', () => {
   const chart = echarts.init($('sankey'), null, { renderer: 'svg' });
-  const st = { mode: 'contracts', filters: {}, names: {} };
-  const DIM = { sector: 'Сектор', buyer: 'Възложител', supplier: 'Изпълнител', primary: 'Първостепенен разпоредител', org: 'Разпоредител', receiver: 'Получател' };
+  const st = { mode: 'contracts', path: [], d: null };
+  const DIM = { sector: 'сектори', buyer: 'възложители', supplier: 'изпълнители', primary: 'първостепенни разпоредители', org: 'разпоредители', receiver: 'получатели' };
   const color = { sector: '#6b7a8c', buyer: '#2c5f8e', supplier: '#0b7a5e', primary: '#6b7a8c', org: '#2c5f8e', receiver: '#0b7a5e' };
+  const unit = () => st.mode === 'contracts' ? 'договора' : 'плащания';
   new ResizeObserver(() => chart.resize()).observe($('sankey'));
-  // the contracts or payments behind a node or a link, as the list pages filter them
-  function detailUrl(parts) {
+  // the contracts or payments behind a part, as the list pages filter them
+  function detailUrl(path) {
     const p = new URLSearchParams(), y = $('year').value;
     if (st.mode === 'contracts') {
       p.set('from', y + '-01-01'); p.set('to', y + '-12-31'); p.set('clean', '1'); p.set('sort', 'eur'); p.set('dir', 'desc');
-      for (const [d, k] of Object.entries(parts)) { if (k === '~') continue; p.set({ sector: 'sector', buyer: 'buyer', supplier: 'company' }[d], k); }
+      for (const s of path) p.set({ sector: 'sector', buyer: 'buyer', supplier: 'company' }[s.dim], s.key);
       return '/contracts?' + p;
     }
     p.set('year', y); p.set('sort', 'eur'); p.set('dir', 'desc');
-    for (const [d, k] of Object.entries(parts)) { if (k === '~') continue; p.set({ primary: 'primary', org: 'org', receiver: 'receiver' }[d], k); }
+    for (const s of path) p.set(s.dim, s.key);
     return '/payments?' + p;
   }
-  function detail(title, parts) {
-    const u = detailUrl({ ...st.filters, ...parts });
+  function detail(title, path) {
+    const u = detailUrl(path);
     $('fdetail').hidden = false; $('fdt').textContent = title; $('fdall').href = u;
     htmx.ajax('GET', u + '&embed=1&per=20', { target: '#fdembed', swap: 'innerHTML' });
     $('fdetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  const go = (path) => { st.path = path; $('fdetail').hidden = true; load(); };
   function crumbs() {
-    const c = Object.entries(st.filters);
-    $('crumbs').innerHTML = `<a href="#" data-i="0">Всички</a>` + c.map(([d, k], i) => ` / <a href="#" data-i="${i + 1}">${esc(st.names[d + '|' + k] || k)}</a>`).join('');
+    $('crumbs').innerHTML = `<a href="#" data-i="0">Всички, ${$('year').value}</a>` + st.path.map((s, i) => `<span aria-hidden="true">›</span><a href="#" data-i="${i + 1}" ${i === st.path.length - 1 ? 'aria-current="page"' : ''}>${esc(s.label)}</a>`).join('');
   }
-  $('crumbs').onclick = (e) => { const a = e.target.closest('[data-i]'); if (!a) return; e.preventDefault();
-    st.filters = Object.fromEntries(Object.entries(st.filters).slice(0, +a.dataset.i)); load(); };
+  $('crumbs').onclick = (e) => { const a = e.target.closest('[data-i]'); if (!a) return; e.preventDefault(); go(st.path.slice(0, +a.dataset.i)); };
   async function load() {
-    const p = new URLSearchParams({ mode: st.mode, year: $('year').value, ...st.filters });
+    const p = new URLSearchParams({ mode: st.mode, year: $('year').value });
+    for (const s of st.path) p.set(s.dim, s.key);
     chart.showLoading('default', { text: '', color: cssVar('--accent') });
-    const d = await (await fetch('/flows.json?' + p)).json();
+    const d = st.d = await (await fetch('/flows.json?' + p)).json();
     chart.hideLoading();
-    Object.assign(st.names, d.filter_names);
-    d.nodes.forEach((n) => { st.names[n.name] = n.label; });
-    crumbs();
-    const perCol = Math.max(1, ...d.cols.map((c) => d.nodes.filter((n) => n.dim === c).length));
-    $('sankey').style.height = Math.max(420, perCol * 34 + 60) + 'px'; chart.resize();
-    $('ftotal').textContent = d.total && d.total.v ? `${d.year}: ${big(+d.total.v)} в ${nf.format(d.total.n)} ${st.mode === 'contracts' ? 'договора' : 'плащания'}` + (Object.keys(st.filters).length ? ' (в избраното)' : '') : 'Няма данни за тази година.';
+    st.path = d.path; crumbs();
+    const T = +(d.total && d.total.v) || 0, top = d.all.slice(0, d.top);
+    $('fh').textContent = st.path.length ? st.path[st.path.length - 1].label : `Всички ${st.mode === 'contracts' ? 'договори' : 'плащания'} за ${d.year}`;
+    $('ftotal').textContent = T ? `${big(T)} в ${nf.format(d.total.n)} ${unit()}` + (d.next ? ` · ${nf.format(d.parts)} ${DIM[d.next]}` : '') : 'Няма данни за тази година.';
+    // the path so far is one stream, then the next step fans out into its largest parts and "Други"
+    const chain = [{ id: 'root', label: `Всички ${d.year}`, v: T, i: 0 }, ...st.path.map((s, i) => ({ id: 'p' + i, label: s.label, v: T, i: i + 1 }))];
+    const nodes = chain.map((c) => ({ name: c.id, label: c.label, v: c.v, kind: 'path', i: c.i, itemStyle: { color: '#3a4450' }, label: { position: 'top', align: 'left', offset: [-8, 0], width: 200, overflow: 'truncate' } }));
+    const links = chain.slice(1).map((c, k) => ({ source: chain[k].id, target: c.id, value: T || 1, kind: 'path', i: c.i }));
+    const last = chain[chain.length - 1].id;
+    for (const c of top) { nodes.push({ name: 'c|' + c.key, label: c.label, v: c.v, n: c.n, kind: 'part', key: c.key, itemStyle: { color: color[d.next] } });
+      links.push({ source: last, target: 'c|' + c.key, value: c.v, n: c.n, kind: 'part', key: c.key }); }
+    if (d.rest > T * 0.002) { nodes.push({ name: 'other', label: `${d.other_label} (${nf.format(Math.max(0, d.parts - top.length))})`, v: d.rest, kind: 'other', itemStyle: { color: '#b9c0c8' } });
+      links.push({ source: last, target: 'other', value: d.rest, kind: 'other' }); }
+    $('sankey').style.height = Math.max(320, (top.length + 1) * 40 + 40) + 'px'; chart.resize();
     chart.setOption({
       tooltip: { trigger: 'item', formatter: (x) => x.dataType === 'edge'
-        ? `${esc(st.names[x.data.source])} → ${esc(st.names[x.data.target])}<br><b>${eur(x.data.value)}</b> · ${nf.format(x.data.n)} ${st.mode === 'contracts' ? 'договора' : 'плащания'}`
-        : `${esc(x.data.label)}<br><b>${eur(x.value)}</b><br><small>${DIM[x.data.dim]}</small>` },
+        ? `${esc(nodes.find((n) => n.name === x.data.target)?.label || '')}<br><b>${eur(x.data.value)}</b>${x.data.n ? ` · ${nf.format(x.data.n)} ${unit()}` : ''}`
+        : `${esc(x.data.label)}<br><b>${eur(x.data.v)}</b>${T ? ` · ${pct((100 * x.data.v) / T)}` : ''}` },
       series: [{
-        type: 'sankey', roam: true, nodeAlign: 'justify', nodeGap: 10, nodeWidth: 14, layoutIterations: 48, draggable: false,
-        emphasis: { focus: 'trajectory' }, left: 8, right: 190, top: 16, bottom: 16,
-        lineStyle: { color: 'gradient', opacity: .35, curveness: .5 },
-        label: { fontSize: 12.5, color: cssVar('--ink'), formatter: (x) => { const t = x.data.label || ''; return (t.length > 34 ? t.slice(0, 33) + '…' : t) + '  ' + short(x.value) + ' €'; } },
-        data: d.nodes.map((n) => ({ name: n.name, label: n.label, dim: n.dim, key: n.key, itemStyle: { color: n.key === '~' ? '#b9c0c8' : color[n.dim] } })),
-        links: d.links,
+        type: 'sankey', nodeAlign: 'left', nodeGap: 12, nodeWidth: 16, layoutIterations: 0, draggable: false,
+        emphasis: { focus: 'adjacency' }, left: 8, right: 300, top: 34, bottom: 12,
+        lineStyle: { color: 'target', opacity: .28, curveness: .5 },
+        label: { fontSize: 13, color: cssVar('--ink'), formatter: (x) => { const t = x.data.label || ''; return (t.length > 40 ? t.slice(0, 39) + '…' : t) + '  {v|' + short(x.data.v) + ' €}'; },
+          rich: { v: { fontWeight: 600, color: cssVar('--ink-2') } } },
+        data: nodes, links,
       }],
     }, true);
-    const rows = d.links.slice().sort((a, b) => b.value - a.value);
-    $('ftable').tBodies[0].innerHTML = rows.map((l) => `<tr><td>${esc(st.names[l.source])}</td><td>${esc(st.names[l.target])}</td><td class="n">${nf.format(l.n)}</td><td class="n strong" data-v="${l.value}">${eur(l.value)}</td></tr>`).join('');
+    // every part of this step, not only the ones drawn: each can be opened
+    $('fall').hidden = !d.next || !d.all.length;
+    if (d.next) {
+      $('fat').textContent = `Всички ${DIM[d.next]}`;
+      $('fas').textContent = d.parts > d.all.length ? `Първите ${nf.format(d.all.length)} от ${nf.format(d.parts)}` : `${nf.format(d.parts)} общо`;
+      $('ftable').tBodies[0].innerHTML = d.all.map((c) => `<tr><td><a class="u" href="#" data-k="${esc(c.key)}">${esc(c.label)}</a></td><td class="n" data-v="${c.n}">${nf.format(c.n)}</td><td class="n strong" data-v="${c.v}">${eur(c.v)}</td><td class="n" data-v="${c.v}">${T ? pct((100 * c.v) / T) : ''}</td></tr>`).join('');
+    }
+    if (!d.next) detail(st.path[st.path.length - 1].label, st.path);  // the last step: the contracts or payments themselves
   }
+  const part = (key) => st.d.all.find((c) => c.key === key);
+  const into = (key) => { const c = part(key); if (c) go([...st.path, { dim: st.d.next, key, label: c.label }]); };
+  $('ftable').onclick = (e) => { const a = e.target.closest('[data-k]'); if (!a) return; e.preventDefault(); into(a.dataset.k); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   chart.on('click', (x) => {
-    if (x.dataType === 'edge') return detail(`${st.names[x.data.source]} → ${st.names[x.data.target]}`, { [x.data.sd]: x.data.sk, [x.data.td]: x.data.tk });
-    const n = x.data; if (!n) return;
-    if (n.key === '~') return detail(n.label, {});
-    if (st.filters[n.dim] === undefined && Object.keys(st.filters).length < 2) { st.filters[n.dim] = n.key; load(); }
-    else detail(n.label, { [n.dim]: n.key });
+    const o = x.data;
+    if (x.dataType === 'edge') {
+      if (o.kind === 'part') return detail(part(o.key).label, [...st.path, { dim: st.d.next, key: o.key }]);
+      if (o.kind === 'path') return detail(st.path[o.i - 1].label, st.path.slice(0, o.i));
+      return $('fall').scrollIntoView({ behavior: 'smooth' });
+    }
+    if (o.kind === 'part') return into(o.key);
+    if (o.kind === 'path') return go(st.path.slice(0, o.i));
+    $('fall').scrollIntoView({ behavior: 'smooth' });
   });
-  $('mode').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('mode').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.mode = b.dataset.k; st.filters = {}; load(); };
-  $('year').onchange = load;
-  $('fzoom').onclick = () => chart.setOption({ series: [{ zoom: 1, center: null }] });
+  $('mode').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('mode').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.mode = b.dataset.k; go([]); };
+  $('year').onchange = () => go(st.path);
   load();
 });
 </script>

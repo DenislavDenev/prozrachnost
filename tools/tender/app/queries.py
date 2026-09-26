@@ -4,6 +4,7 @@ import datetime as dt
 import re
 import time
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from ingest.db import connect
 
@@ -423,6 +424,44 @@ def tender(unp, raw=True):
         t["records"] = raw_records("tender", unp)
         t["ocds"] = raw_records("ocds", t["tender_id"]) if t["tender_id"] else []
     return t
+
+
+def tender_events(t, lots):
+    """What happened when, for the procedure page: announced, offers as submitted, the deadline, the
+    contracts and their amendments, oldest first. When every offer came on the same day the offers are one
+    event (the order within a day says little)."""
+    tz = ZoneInfo("Europe/Sofia")
+    at = lambda v: v.astimezone(tz).replace(tzinfo=None) if isinstance(v, dt.datetime) and v.tzinfo else v
+    key = lambda v: at(v) if isinstance(v, dt.datetime) else dt.datetime.combine(v, dt.time())
+    ev = []
+    if t.get("published_at"):
+        ev.append({"when": t["published_at"], "kind": "pub", "title": "Обявена"})
+    groups = {}
+    for l in lots:
+        for o in l["offers"]:
+            if o["submitted_at"]:
+                g = groups.setdefault((o["bidder_eik"] or o["bidder_name"], o["submitted_at"]),
+                                      {"name": o["bidder_name"], "key": o["company_key"], "when": at(o["submitted_at"]), "lots": [], "won": False})
+                g["lots"].append(l["lot_no"])
+                g["won"] = g["won"] or bool(o["won"])
+    days = {g["when"].date() for g in groups.values()}
+    if len(days) == 1:
+        ev.append({"when": min(g["when"] for g in groups.values()), "kind": "offers", "title": f"{len(groups)} {'оферта' if len(groups) == 1 else 'оферти'}, всички в един ден",
+                   "offers": sorted(groups.values(), key=lambda g: g["when"])})
+    else:
+        ev += [{"when": g["when"], "kind": "offer", "title": "Оферта", "offers": [g]} for g in groups.values()]
+    if t.get("submission_deadline"):
+        ev.append({"when": at(t["submission_deadline"]), "kind": "deadline", "title": "Срок за оферти"})
+    for c in t["contracts"]:
+        if c["effective_date"]:
+            ev.append({"when": c["effective_date"], "kind": "contract", "title": "Договор", "contract": c})
+    ids = [c["id"] for c in t["contracts"]]
+    for a in rows("""SELECT a.contract_id, a.published_at, a.difference, a.currency, a.reason, c.supplier_display supplier
+                     FROM live.amendment a JOIN live.contract c ON c.id = a.contract_id
+                     WHERE a.contract_id = ANY(%s) AND a.published_at IS NOT NULL""", ids) if ids else []:
+        ev.append({"when": a["published_at"], "kind": "annex", "title": "Анекс", "annex": a})
+    ev.sort(key=lambda e: key(e["when"]))
+    return ev
 
 
 def tender_lots(t):

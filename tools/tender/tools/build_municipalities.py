@@ -14,7 +14,8 @@ is drawn inside Велинград and its contracts are added there.
 
 Areas above the municipality (the map's level selector) come from geoBoundaries BGR ADM1 (28 oblasts,
 same commit and licence): each municipality goes to the oblast holding most of its boundary points, and
-the oblast outlines are added to the JSON (key "oblasts"). NUTS codes of the oblasts are in OBLAST
+the oblast outlines are added to the JSON (key "oblasts"), with the planning regions and macro-regions
+dissolved from them (keys "regions", "macros"; needs shapely). NUTS codes of the oblasts are in OBLAST
 below (NUTS 2024; checked on 2026-09-26 by placing each Eurostat GISCO NUTS 3 label point in the ADM1
 polygons). Adds the columns oblast, nuts3, nuts2, nuts1 to municipality.csv:
 
@@ -175,11 +176,22 @@ def areas(adm1, adm2):
     for r in rows:  # each drawn municipality knows its oblast, so the map can colour it by any level
         if r["id"] == r["drawn_as"] and r["id"] in out["shapes"]:
             out["shapes"][r["id"]]["o"] = r["nuts3"]
+    svg = lambda rs: "".join("M" + "L".join(f"{round((x - lon0) * k * s, 1):g},{round((lat1 - y) * s, 1):g}" for x, y in r[::2] + r[-1:]) + "Z" for r in rs)
     out["oblasts"] = {}
     for iso, rs in polys:
         name, n3 = OBLAST[iso]
-        d = "".join("M" + "L".join(f"{round((x - lon0) * k * s, 1):g},{round((lat1 - y) * s, 1):g}" for x, y in r[::2] + r[-1:]) + "Z" for r in rs)
-        out["oblasts"][n3] = {"n": name, "d": d}
+        out["oblasts"][n3] = {"n": name, "d": svg(rs)}
+    # planning regions (NUTS 2) and macro-regions (NUTS 1) as one outline each: the oblasts dissolved
+    # (shapely, a dev-only dependency of this script); the small buffer closes slivers between oblasts
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+    geo1 = {OBLAST[f["properties"]["shapeISO"]][1]: shape(f["geometry"]) for f in obl}
+    for key, width in (("regions", 4), ("macros", 3)):
+        out[key] = {}
+        for code in sorted({n3[:width] for n3 in geo1}):
+            u = unary_union([g.buffer(0.002) for n3, g in geo1.items() if n3.startswith(code)]).buffer(-0.002)
+            parts = u.geoms if u.geom_type == "MultiPolygon" else [u]
+            out[key][code] = {"d": svg([list(p.exterior.coords) for p in parts if p.area > 1e-4])}
     out["names"] = NUTS_NAME
     js.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     # self-check: municipalities per oblast as in the administrative division (265 in total)
