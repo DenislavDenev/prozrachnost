@@ -143,14 +143,15 @@ addEventListener('load', async () => {
     const pairs = new Map();
     for (const e of E.values()) { if (!vis.has(e.holder) || !vis.has(e.company) || (S.active && !live(e))) continue;
       const k = e.holder + '>' + e.company; if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(e); }
-    const many = pairs.size > 45;
+    // words on the lines around the object; elsewhere they appear when a node is pointed at or chosen
+    const nearFocus = [...pairs.keys()].filter((k) => k.split('>').includes(FOCUS)).length, many = pairs.size > 45;
     for (const [k, rs] of pairs) { const [h, c] = k.split('>'), own = rs.some((r) => OWN.has(r.role)), on = rs.some(live);
       const onPath = S.paths.has(h) && S.paths.has(c) && S.pathEdges?.includes([h, c].sort().join('|'));
-      els.push({ group: 'edges', data: { id: 'e:' + k, source: h, target: c, label: rs.map((r) => roleTxt(r) + ' ' + when(r)).join('\n') },
-        classes: [own ? 'own' : '', on ? '' : 'end', onPath ? 'path' : '', many && !onPath ? 'quiet' : ''].join(' ') }); }
+      els.push({ group: 'edges', data: { id: 'e:' + k, source: h, target: c, near: [h, c].includes(FOCUS) && nearFocus <= 20, label: rs.map((r) => roleTxt(r) + ' ' + when(r)).join('\n') },
+        classes: [own ? 'own' : '', on ? '' : 'end', onPath ? 'path' : '', !onPath && (![h, c].includes(FOCUS) || nearFocus > 20) ? 'quiet' : ''].join(' ') }); }
     const pos = new Map(cy.nodes().map((n) => [n.id(), { ...n.position() }]));
     cy.batch(() => { cy.elements().remove(); cy.add(els); });
-    $('count').textContent = `${nf.format(vis.size)} възела · ${nf.format(pairs.size)} връзки${many ? ' · надписите на линиите се виждат при посочване' : ''}`;
+    $('count').textContent = `${nf.format(vis.size)} възела · ${nf.format(pairs.size)} връзки · надписите на по-далечните линии се виждат при посочване`;
     if (relayout) layout(); else cy.nodes().forEach((n) => { if (pos.has(n.id())) n.position(pos.get(n.id())); });
     twin(pairs);
     if (S.sel && cy.getElementById(S.sel).length) cy.getElementById(S.sel).select();
@@ -169,9 +170,9 @@ addEventListener('load', async () => {
   }
   // hover: the node and its neighbours stay, the rest fades (Kumu focus, Bloom "select related")
   cy.on('mouseover', 'node', (e) => { const nb = e.target.closedNeighborhood(); cy.elements().not(nb).addClass('faded'); nb.edges().removeClass('quiet').addClass('hl'); });
-  cy.on('mouseout', 'node', () => { cy.elements().removeClass('faded'); cy.edges('.hl').removeClass('hl'); if (cy.edges().length > 45) cy.edges().not('.path').addClass('quiet'); });
+  cy.on('mouseout', 'node', () => { cy.elements().removeClass('faded'); cy.edges('.hl').removeClass('hl').filter((e) => !e.hasClass('path') && !(S.sel && e.connectedNodes().some((n) => n.id() === S.sel)) && !e.data('near')).addClass('quiet'); });
   cy.on('mouseover', 'edge', (e) => e.target.removeClass('quiet'));
-  cy.on('tap', 'node', (e) => { S.sel = e.target.id(); info(S.sel); });
+  cy.on('tap', 'node', (e) => { S.sel = e.target.id(); e.target.connectedEdges().removeClass('quiet'); info(S.sel); });
   cy.on('dbltap', 'node', (e) => expand(e.target.id()));
   cy.on('tap', (e) => { if (e.target === cy) { S.sel = null; $('p-info').innerHTML = '<p class="mut">Кликни лице или фирма. Двоен клик разгъва връзките му.</p>'; } });
 
