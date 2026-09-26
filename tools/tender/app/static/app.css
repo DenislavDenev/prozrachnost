@@ -137,6 +137,8 @@ td.n, th.n { text-align: right; white-space: nowrap; }
   .wrap { padding: 18px 16px 56px; } .head { flex-direction: column; } h1 { font-size: calc(var(--h1) * .7); } .lede { font-size: 18px; }
   .p { padding: 18px 16px; }   .tl { grid-template-columns: minmax(0, 1fr); } .tl .ax { display: none; }
   .canvas { min-height: 440px; } .hide-s { display: none; } .det { left: 12px; right: 12px; width: auto; }
+  /* a table wider than the phone scrolls inside its panel instead of widening the page */
+  .p table, .embed table { display: block; overflow-x: auto; }
 }
 
 /* app additions */
