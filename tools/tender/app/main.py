@@ -261,6 +261,14 @@ def lab_explore(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
     return page(request, "lab_explore.html", node=node, info=Q.node_info(node), nav="")
 
 
+@app.get("/lab/vazby", response_class=HTMLResponse)
+def lab_vazby(request: Request, node: str = "c:201090465"):
+    """Prototype after rejstrik.penize.cz „Vizualizace vztahů“: icon nodes, +/- expansion, time slider."""
+    if not NODE_ID.fullmatch(node):
+        raise HTTPException(400)
+    return page(request, "lab_vazby.html", node=node, info=Q.node_info(node), nav="")
+
+
 @app.get("/lab/links", response_class=HTMLResponse)
 def lab_links(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
     """Prototypes of the links section (four variants side by side); not linked from the menu."""
