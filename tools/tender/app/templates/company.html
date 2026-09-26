@@ -36,7 +36,8 @@
   {% endif %}
 
   {% if c.eik %}<section class="p s12" id="net"><div class="ph"><div><h2>Свързани лица и дружества</h2>
-    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.</div></div></div>
+    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.
+      {% set cv = c.coverage %}{% if not cv or cv.status == 'pending' %}<span class="warn">Партидата още не е прочетена: връзките може да са непълни.</span>{% elif cv.status == 'failed' %}<span class="warn">Партидата не можа да се прочете; ще се опита отново.</span>{% elif cv.fetched_at %}Партидата е прочетена на {{ cv.fetched_at | date }}.{% endif %}</div></div></div>
     {% include "_vazby.html" %}</section>{% endif %}
 
   <section class="p s7"><div class="ph"><div><h2>Лица в дружеството</h2><div class="sub">Роли по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>

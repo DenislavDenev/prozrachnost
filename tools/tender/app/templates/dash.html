@@ -32,7 +32,7 @@
   <section class="p s6"><div class="ph"><div><h2>Най-големи възложители</h2><div class="sub">2020–днес</div></div><a class="l" href="/buyers">Всички</a></div><div class="hb" id="buyers"></div></section>
   <section class="p s6"><div class="ph"><div><h2>Най-големи изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div><a class="l" href="/companies">Всички</a></div><div class="hb" id="comps"></div></section>
 
-  <section class="p s12"><div class="ph"><div><h2>Най-скъпи договори през последните 60 дни</h2><div class="sub">Без рамковите споразумения (те са таван, не разход) и без стойности с вероятна грешка при въвеждане</div></div><a class="l" href="/contracts?days=60&amp;sort=eur&amp;dir=desc&amp;clean=1">Всички</a></div>
+  <section class="p s12"><div class="ph"><div><h2>Най-скъпи договори през последните 60 дни</h2><div class="sub">Без рамковите споразумения (те са таван, не разход) и без стойности с вероятна грешка при въвеждане · <a class="l" href="/kak-raboti">Как работи</a></div></div><a class="l" href="/contracts?days=60&amp;sort=eur&amp;dir=desc&amp;clean=1">Всички</a></div>
     <table class="sortable"><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Възложител · изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
     {% for k in d.recent_big %}
       <tr><td class="mut nw" data-v="{{ k.effective_date }}">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>

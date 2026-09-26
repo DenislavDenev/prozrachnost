@@ -24,7 +24,8 @@
 
 <div class="grid">
   <section class="p s12" id="net"><div class="ph"><div><h2>Свързани лица и дружества</h2>
-    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.</div></div></div>
+    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.
+      {% set cv = p.coverage %}{% if not cv %}<span class="warn">Търсенето на други фирми на това лице още не е направено: връзките може да са непълни.</span>{% elif cv.status == 'ambiguous' %}<span class="warn">Търсенето по име дава над 100 съвпадения ({{ cv.total | num }}): другите фирми на лицето може да са непълни.</span>{% elif cv.status == 'failed' %}<span class="warn">Търсенето на други фирми на лицето не успя; ще се опита отново.</span>{% else %}Търсенето на други фирми е завършено на {{ cv.searched_at | date }}.{% endif %}</div></div></div>
     {% include "_vazby.html" %}</section>
 
   <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>

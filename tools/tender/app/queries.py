@@ -105,6 +105,8 @@ def company(key):
         WHERE e.entity_type = 'company' AND e.entity_id = %s AND e.removed_at IS NULL""", k, k)
     c["indicators"] = indicators(k)
     c["paid"] = paid("company_key", k)
+    c["coverage"] = one("""SELECT q.status, q.done_at, d.fetched_at FROM tr.queue q LEFT JOIN tr.deed d ON d.eik = q.eik
+        WHERE q.eik = %s""", c["eik"][:9]) if c.get("eik") else None
     c["articles"] = articles("company", k)
     node = "c:" + c["eik"][:9] if c.get("eik") else None
     c["roles"] = rows("""SELECT e.holder, e.holder_kind, e.holder_name, e.role, e.view, e.share, e.share_pct,
@@ -159,6 +161,8 @@ def person(pid):
     if not p:
         return None
     holder = "p:" + pid
+    # coverage: has the name search for other partidas of this person run, and was it conclusive (methodology 5)
+    p["coverage"] = one("SELECT status, total, searched_at FROM tr.name_search WHERE name_key = %s", p["name_key"])
     p["roles"] = rows("""SELECT e.company, substr(e.company, 3) eik, co.name company_name, co.legal_form, e.role, e.view,
         e.share, e.share_pct, e.valid_from, e.valid_to, e.uncertain_after, e.entry_no, co.key company_key,
         s.contracts, s.amount_eur

@@ -328,7 +328,8 @@ tr.win td { background: var(--accent-soft); } .mxt td.won { background: var(--ac
 .mxt tr.est td { border-top: 2px solid var(--line); }
 .scrollx { overflow-x: auto; }
 .kline { padding: 6px 0; }
-ol.flow { list-style: none; margin: 14px 0 0; padding: 0 0 0 22px; border-left: 2px solid var(--line); display: grid; gap: 18px; }
+ol.flow { list-style: none; margin: 14px 0 0; padding: 0 0 0 22px; position: relative; display: grid; gap: 18px; }
+ol.flow::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
 ol.flow > li { position: relative; } ol.flow > li::before { content: ""; position: absolute; left: -29px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); }
 ol.flow > li > b { margin-right: 10px; }
 ol.rank { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }

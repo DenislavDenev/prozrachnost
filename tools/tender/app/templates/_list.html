@@ -13,7 +13,7 @@
   <a class="l" href="{{ L.href(**{'from': None, 'to': None, 'offset': None}) }}">всички</a></div></div>
 {% endmacro %}
 
-{% macro count(L, noun) %}<p class="sub count">{{ L.total | num }} {{ noun }}{% if L.total > L.PER %} · {{ L.offset + 1 }}–{{ [L.offset + L.PER, L.total] | min }}{% endif %}</p>{% endmacro %}
+{% macro count(L, noun) %}<p class="sub count">{{ L.total | num }} {{ noun }}{% if L.total > L.PER %} · {{ L.offset + 1 }}–{{ [L.offset + L.PER, L.total] | min }}{% endif %}{% if L.total %} · <a class="l" href="{{ L.href(format='csv', offset=None, embed=None, per=None) }}" download>CSV</a>{% endif %}</p>{% endmacro %}
 
 {% macro pager(L) %}{% set prev, nxt = L.pages() %}
 <div class="pager">{% if prev %}<a class="btn" {{ go(L, prev) }}>← Предишни</a>{% endif %}{% if nxt %}<a class="btn" {{ go(L, nxt) }}>Следващи →</a>{% endif %}</div>

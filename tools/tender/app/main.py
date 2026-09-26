@@ -122,6 +122,8 @@ T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V)
 
 
 def page(request, name, **ctx):
+    if request.query_params.get("format") == "csv" and "L" in ctx and "rows" in ctx:
+        return csv_response(ctx["rows"], name.removeprefix("list_").removeprefix("_").split(".")[0].replace("_table", "") + ".csv")
     ctx.setdefault("fresh", Q.cached("fresh", Q.freshness, ttl=60))
     return T.TemplateResponse(request, name, ctx)
 
@@ -324,6 +326,8 @@ class Listing:
         self.embed = self.qp.get("embed") == "1"
         per = self.qp.get("per", "")
         self.PER = min(int(per), 200) if per.isdigit() and int(per) >= 5 else Listing.PER
+        if self.qp.get("format") == "csv":  # the whole filtered list as CSV (page() answers with the file)
+            self.PER, self.qp["offset"] = 100_000, "0"
         self.cols = cols
         self.sort = self.qp.get("sort") if self.qp.get("sort") in cols else default
         d = self.qp.get("dir")
@@ -731,6 +735,12 @@ def payments(request: Request):
     rows = L.fetch("""SELECT p.settlement_date, p.receiver_name, p.is_person, p.company_key, p.amount_eur, p.reason, p.pay_code,
                         p.organization, p.primary_organization, p.buyer_eik FROM live.payment p WHERE {where}""")
     return page(request, "_payments_table.html" if L.embed else "list_payments.html", L=L, rows=rows, nav="Потоци")
+
+
+@app.get("/kak-raboti", response_class=HTMLResponse)
+def how(request: Request):
+    md = (HERE.parent / "docs" / "how.md").read_text(encoding="utf-8")
+    return page(request, "prose.html", title="Как работи", html=md_html(md), nav="")
 
 
 @app.get("/legal", response_class=HTMLResponse)
