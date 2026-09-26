@@ -248,7 +248,8 @@ addEventListener('load', async () => {
   $('ynext').onclick = () => { $('year').value = +$('year').value + 1; $('byyear').checked = true; setYear(); };
   $('onlylive').onchange = () => { S.live = $('onlylive').checked; draw(); };
   $('fit').onclick = () => cy.fit(undefined, 40);
-  $('undo').onclick = () => { if (!hist.length) return; const o = JSON.parse(hist.pop()); Object.assign(S, o, { expanded: new Set(o.expanded), hidden: new Set(o.hidden), added: new Set(o.added), path: new Set(o.path), pathPairs: new Set(o.pathPairs) }); $('undo').disabled = !hist.length; draw(); picks(); };
+  $('undo').onclick = () => { if (!hist.length) return; const o = JSON.parse(hist.pop()); Object.assign(S, o, { expanded: new Set(o.expanded), hidden: new Set(o.hidden), added: new Set(o.added), path: new Set(o.path), pathPairs: new Set(o.pathPairs) }); $('undo').disabled = !hist.length;
+    $('byyear').checked = !!S.year; $('yout').textContent = S.year ?? '—'; if (S.year) $('year').value = S.year; $('onlylive').checked = S.live; draw(); picks(); };
   let tmr; $('addq').oninput = () => { clearTimeout(tmr); tmr = setTimeout(async () => { const q = $('addq').value.trim(); if (!q) { $('addres').innerHTML = ''; return; }
     const r = await (await fetch('/find.json?q=' + encodeURIComponent(q))).json();
     $('addres').innerHTML = r.map((x) => `<li><a data-n="${esc(x.node)}"><span class="k">${x.kind === 'person' ? 'Лице' : 'Фирма'}</span><span class="t">${esc(x.label)}</span><span class="s">${esc(x.sub)}</span></a></li>`).join('') || '<li class="empty">Няма резултат с партида.</li>'; }, 250); };
