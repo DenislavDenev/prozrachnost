@@ -41,7 +41,10 @@ def migrate(conn):
 
 
 # one step at a time per lane: 'build' (eop -> publish), 'tr' (register reads) and 'offers' (procedure pages) run independently
-LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703, "seed": 7_070_704, "offers": 7_070_705, "offers-check": 7_070_706, "sebra": 7_070_707}
+# 'daily' is the D-1 chain (ingest/daily.py) that runs the others in order; 'offers-queue' adds to the
+# offers queue while a long read holds 'offers'
+LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703, "seed": 7_070_704, "offers": 7_070_705, "offers-check": 7_070_706,
+         "sebra": 7_070_707, "daily": 7_070_708, "offers-queue": 7_070_709}
 
 
 class Busy(RuntimeError):
@@ -71,3 +74,9 @@ def job(step, lane="build", inputs=None, rule_versions=None):
     finally:
         conn.execute("SELECT pg_advisory_unlock(%s)", (lock,))
         conn.close()
+
+
+def log_change(conn, source, ref, field, old, new, cause):
+    """One line of ops.change_log (migration 0006): what a source changed after we first read it."""
+    conn.execute("INSERT INTO ops.change_log (source, ref, field, old, new, cause) VALUES (%s,%s,%s,%s,%s,%s)",
+                 (source, str(ref), field, None if old is None else str(old)[:2000], None if new is None else str(new)[:2000], cause))

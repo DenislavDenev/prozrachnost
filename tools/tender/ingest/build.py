@@ -6,7 +6,7 @@ only after every step of the cycle succeeded. `live` is what the web reads.
 import datetime as dt
 import json
 
-from . import eop, fx, normalize
+from . import db, eop, fx, normalize
 from .config import RAW_EOP
 from .db import ROOT
 
@@ -27,8 +27,32 @@ def step_eop(conn, stats, start=None, end=None):
                     "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (day, kind) DO UPDATE SET key=EXCLUDED.key, "
                     "sha256=EXCLUDED.sha256, size=EXCLUDED.size, fetched_at=EXCLUDED.fetched_at",
                     (m["day"], kind, f["key"], f["sha256"], f["size"], m["fetched_at"]))
+            # a refetched recent day whose files changed (late additions), a file that is not JSON, a day gone
+            for kind in m.get("changed", []):
+                db.log_change(conn, "eop-file", f"{m['day']}/{kind}", None, None, (m["files"].get(kind) or {}).get("sha256"), "late")
+            for kind in m.get("invalid", []):
+                db.log_change(conn, "eop-file", f"{m['day']}/{kind}", None, None, "not valid JSON, kept our copy", "invalid")
     published = [m["day"] for m in manifests if m["published"]]
-    stats.update(days=len(manifests), published=len(published), last_day=max(published, default=None))
+    stats.update(days=len(manifests), published=len(published), last_day=max(published, default=None),
+                 changed=sum(len(m.get("changed", [])) for m in manifests), invalid=sum(len(m.get("invalid", [])) for m in manifests))
+
+
+def step_eop_audit(conn, stats, full=False):
+    """Compare what the source lists with what we hold: every day (full, weekly) or the last 90 days
+    (daily). Days that differ are refetched (old copies kept in <day>/history) and logged."""
+    held = sorted(p.name for p in RAW_EOP.iterdir() if p.is_dir())
+    rep = eop.audit(held if full else held[-90:])
+    with conn.transaction():
+        for ch in rep["changed"]:
+            for kind in ch["kinds"]:
+                o, n = ch["old"].get(kind) or {}, ch["new"].get(kind) or {}
+                db.log_change(conn, "eop-file", f"{ch['day']}/{kind}", None,
+                              f"{o.get('sha256')} {o.get('size')} {o.get('modified')}", f"{n.get('sha256')} {n.get('size')} {n.get('modified')}",
+                              "rewritten" if kind in ch["content"] else "listing")
+        for day in rep["gone"]:
+            db.log_change(conn, "eop-file", day, None, "published", "listing absent, kept our copy", "gone")
+    stats.update(checked=rep["checked"], changed=len(rep["changed"]), content=sum(len(c["content"]) for c in rep["changed"]),
+                 gone=len(rep["gone"]), baseline=rep["baseline"], days=[c["day"] for c in rep["changed"]][:20])
 
 
 def step_fx(conn, stats):
@@ -83,6 +107,7 @@ def step_derive(conn, stats):
 def step_publish(conn, stats):
     """Swap stage -> live atomically, keeping the previous live as `previous` for one cycle."""
     with conn.transaction():
+        stats["changes"] = record_changes(conn)
         conn.execute("DROP SCHEMA IF EXISTS previous CASCADE")
         if conn.execute("SELECT 1 FROM pg_namespace WHERE nspname='live'").fetchone():
             conn.execute("ALTER SCHEMA live RENAME TO previous")
@@ -92,7 +117,40 @@ def step_publish(conn, stats):
                      "eop_last_day date, tr_last_read timestamptz)")
         last_day = conn.execute("SELECT max(day) FROM ops.eop_day WHERE published").fetchone()[0]
         tr_last = conn.execute("SELECT max(fetched_at) FROM tr.deed WHERE status='ok'").fetchone()[0]
-        conn.execute("INSERT INTO ops.published VALUES (1, now(), %s, %s) ON CONFLICT (id) DO UPDATE "
-                     "SET at=now(), eop_last_day=EXCLUDED.eop_last_day, tr_last_read=EXCLUDED.tr_last_read",
-                     (last_day, tr_last))
+        conn.execute("INSERT INTO ops.published (id, at, eop_last_day, tr_last_read, rules) VALUES (1, now(), %s, %s, %s) "
+                     "ON CONFLICT (id) DO UPDATE SET at=now(), eop_last_day=EXCLUDED.eop_last_day, "
+                     "tr_last_read=EXCLUDED.tr_last_read, rules=EXCLUDED.rules",
+                     (last_day, tr_last, normalize.RULES_VERSION))
     stats["published_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+# fields as published (not what we derive from them): a difference between two builds is the source's change
+CONTRACT_FIELDS = ("unp", "buyer_eik", "supplier_display", "subject", "contract_date", "effective_date", "value_initial",
+                   "value_current", "currency", "estimated_value", "offers_count", "disqualified_offers_count", "is_framework")
+TENDER_FIELDS = ("buyer_eik", "subject", "procedure_type", "estimated_value", "currency", "submission_deadline", "is_cancelled", "lots_count")
+
+
+def record_changes(conn):
+    """Before stage replaces live: every published field that changed, per contract and procedure, into
+    ops.change_log. 'new-record' when a later publication brought it (a newer source day, an annex),
+    'rewritten' when the same publication now says something else, 'removed' when a contract is gone.
+    Only between builds of the same normalize rules: a rule change is ours, not the source's."""
+    live = conn.execute("SELECT rules FROM ops.published WHERE id = 1").fetchone() if conn.execute(
+        "SELECT to_regclass('live.contract') IS NOT NULL AND to_regclass('ops.published') IS NOT NULL").fetchone()[0] else None
+    if not live or live[0] != normalize.RULES_VERSION:
+        return {"skipped": f"rules {live[0] if live else None} -> {normalize.RULES_VERSION}"}
+    out = {}
+    for table, fields, extra in (("contract", CONTRACT_FIELDS, "OR s.annex_count IS DISTINCT FROM l.annex_count"),
+                                 ("tender", TENDER_FIELDS, "")):
+        key = "id" if table == "contract" else "unp"
+        vals = ", ".join(f"('{f}', l.{f}::text, s.{f}::text)" for f in fields)
+        out[table] = conn.execute(f"""INSERT INTO ops.change_log (source, ref, field, old, new, cause)
+            SELECT 'eop-record', '{table}/' || s.{key}, f.name, f.o, f.n,
+                   CASE WHEN s.source_day > l.source_day {extra} THEN 'new-record' ELSE 'rewritten' END
+            FROM stage.{table} s JOIN live.{table} l USING ({key})
+            CROSS JOIN LATERAL (VALUES {vals}) f(name, o, n)
+            WHERE f.o IS DISTINCT FROM f.n""").rowcount
+    out["removed"] = conn.execute("""INSERT INTO ops.change_log (source, ref, field, old, new, cause)
+        SELECT 'eop-record', 'contract/' || l.id, NULL, concat_ws(' | ', l.unp, l.supplier_display, l.value_current, l.currency), NULL, 'removed'
+        FROM live.contract l WHERE NOT EXISTS (SELECT 1 FROM stage.contract s WHERE s.id = l.id)""").rowcount
+    return out

@@ -431,7 +431,7 @@ def offers_state(tender_id):
     so a page someone opens is read within seconds; its offers show after the next build (each morning)."""
     if not str(tender_id or "").isdigit():
         return None
-    return (one("""UPDATE eopsvc.queue SET reason = 'visit' WHERE tender_id = %s AND status = 'pending' AND reason = 'backfill'
+    return (one("""UPDATE eopsvc.queue SET reason = 'visit' WHERE tender_id = %s AND status = 'pending' AND reason IN ('backfill', 'refresh', 'prices')
                    RETURNING status, fetched_at""", int(tender_id))
             or one("SELECT status, fetched_at FROM eopsvc.queue WHERE tender_id = %s", int(tender_id)))
 

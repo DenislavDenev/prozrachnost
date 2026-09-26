@@ -18,6 +18,7 @@ import urllib.request
 import zipfile
 
 from .config import DATA, USER_AGENT
+from .db import log_change
 
 API = "https://data.egov.bg/api/"
 DATASET = "57f1e2e7-b235-45e8-94c4-4d69f0b1a690"
@@ -114,18 +115,38 @@ def parse(rows):
     return out
 
 
-def load(conn, stats):
-    """Load every file that is new or changed since it was loaded."""
-    stats.update(files=0, rows=0)
+def load(conn, stats, verify=False):
+    """Load every file that is new or changed since it was loaded. data.egov.bg dates a changed file;
+    verify (weekly) downloads every file anyway and compares its sha256, for a file replaced without a new
+    date. A file with fewer rows than we hold is kept back until a second download agrees; an older copy
+    is kept next to the new one; every change goes to ops.change_log."""
+    stats.update(files=0, rows=0, verified=0, held=0)
     for res in resources():
-        had = conn.execute("SELECT updated_at::text, loaded_at FROM sebra.resource WHERE uri = %s", (res["uri"],)).fetchone()
-        if had and had[1] and str(had[0])[:19] == str(res["updated_at"])[:19]:
+        # the date compared by Postgres, which parsed and stored the portal's text the same way
+        had = conn.execute("""SELECT updated_at IS NOT DISTINCT FROM %s::timestamptz, loaded_at, sha256, rows, held_sha
+                              FROM sebra.resource WHERE uri = %s""", (res["updated_at"], res["uri"])).fetchone()
+        same_date = bool(had and had[1] and had[0])
+        if same_date and not verify:
             continue
         rows, raw = read_rows(res)
         recs = parse(rows)
         sha = hashlib.sha256(raw).hexdigest()
+        if had and had[2] == sha:
+            stats["verified"] += 1
+            continue
+        if had and had[3] and len(recs) < had[3] and had[4] != sha:
+            log_change(conn, "sebra", res["uri"], "rows", had[3], len(recs), "held")
+            conn.execute("UPDATE sebra.resource SET held_sha = %s WHERE uri = %s", (sha, res["uri"]))
+            stats["held"] += 1
+            continue
+        if had and had[2]:
+            log_change(conn, "sebra", res["uri"], "rows", had[3], len(recs),
+                       "confirmed" if had[4] == sha else "rewritten" if same_date else "new-record")
         RAW.mkdir(parents=True, exist_ok=True)
-        (RAW / f"{res['uri']}.{res['format']}.gz").write_bytes(gzip.compress(raw))
+        path = RAW / f"{res['uri']}.{res['format']}.gz"
+        if had and had[2] and path.exists():
+            path.replace(path.with_name(f"{res['uri']}.{had[2][:12]}.{res['format']}.gz"))
+        path.write_bytes(gzip.compress(raw))
         with conn.transaction():
             conn.execute("""INSERT INTO sebra.resource (uri, name, format, updated_at) VALUES (%s, %s, %s, %s)
                 ON CONFLICT (uri) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at""",
@@ -136,7 +157,8 @@ def load(conn, stats):
             with conn.cursor().copy(f"COPY sebra.payment (resource_uri, row_no, {', '.join(cols)}) FROM STDIN") as cp:
                 for i, r in enumerate(recs):
                     cp.write_row([res["uri"], i] + [r[c] for c in cols])
-            conn.execute("UPDATE sebra.resource SET sha256 = %s, rows = %s, loaded_at = now() WHERE uri = %s", (sha, len(recs), res["uri"]))
+            conn.execute("UPDATE sebra.resource SET sha256 = %s, rows = %s, loaded_at = now(), held_sha = NULL WHERE uri = %s",
+                         (sha, len(recs), res["uri"]))
         stats["files"] += 1
         stats["rows"] += len(recs)
         stats.setdefault("loaded", []).append(res["name"])

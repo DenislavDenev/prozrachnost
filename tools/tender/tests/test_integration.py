@@ -40,7 +40,7 @@ ROLES = [  # eik, field, role, kind, holder, name, from, to
 def built():
     from ingest import build, db, normalize as N
     with db.connect(autocommit=True) as conn:
-        conn.execute("DROP SCHEMA IF EXISTS live, stage, previous, ops, tr, ed CASCADE; DROP TABLE IF EXISTS public.schema_migrations")
+        conn.execute("DROP SCHEMA IF EXISTS live, stage, previous, ops, tr, ed, eopsvc, sebra CASCADE; DROP TABLE IF EXISTS public.schema_migrations")
         db.migrate(conn)
         rows = [contract(1, A, "А ООД", "01.06.2022", 1000), contract(2, A, "А ООД", "01.06.2024", 2000),
                 contract(3, None, None, "01.03.2023", 5000, group=(f"{A}; {B}", "А ООД; Б ЕООД")),

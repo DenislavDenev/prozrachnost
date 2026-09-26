@@ -1,6 +1,11 @@
 """The 'tr' lane: a durable queue of partidas to read, polite single-connection reads, role
 extraction, and expansion (entity holders by ЕИК, new partidas of known persons by name search).
-State lives in tr.* so a run can stop anywhere and resume."""
+State lives in tr.* so a run can stop anywhere and resume.
+
+A partida we hold is read again when the portal's change list names it (why='change') and in a slow
+rotation (why='rotate', every ROTATE_DAYS) that measures what the change list misses. A changed partida
+goes to ops.change_log; a partida that stops answering keeps its data until a second read a day later
+agrees."""
 import datetime as dt
 import gzip
 import hashlib
@@ -9,12 +14,14 @@ import time
 
 from . import registry as R
 from .config import RAW_TR
+from .db import log_change
 
 PAUSE = 0.5          # seconds between requests: one connection, ~1.5 req/s at most
 MAX_ATTEMPTS = 8
 MAX_ENTITY_DEPTH = 10  # safety net against pathological ownership chains
 MAX_NAME_HITS = 100    # a name naming more partidas than this is ambiguous (SIGMA MAX_HITS)
 NAME_SEARCH_EVERY = dt.timedelta(days=7)
+ROTATE_DAYS = 60       # every partida we hold is read again at least this often
 
 
 def _ulid():
@@ -57,8 +64,8 @@ def enqueue_changes(conn, day, pass_no):
         uics = [i["uic"] for i in res["items"]]
         if uics:
             touched += conn.execute(
-                "UPDATE tr.queue SET status='pending', next_at=now(), attempts=0 "
-                "WHERE eik = ANY(%s) AND status <> 'pending'", (uics,)).rowcount
+                "UPDATE tr.queue SET status='pending', next_at=now(), attempts=0, why='change' "
+                "WHERE eik = ANY(%s) AND (status <> 'pending' OR why = 'rotate')", (uics,)).rowcount
         page += 1
         conn.execute("INSERT INTO tr.change_day(day, pass, next_page, done) VALUES (%s,%s,%s,%s) "
                      "ON CONFLICT (day, pass) DO UPDATE SET next_page=EXCLUDED.next_page, done=EXCLUDED.done",
@@ -126,21 +133,44 @@ def store(conn, eik, xml, require_link=False):
     return roles
 
 
-def process(conn, budget_s, stats):
-    """Read queued partidas until the queue is empty or the time budget is spent."""
+# what the D-1 chain waits for: ЕИК of new contracts (priority 1) and partidas the change list named,
+# never the rotation (a rotated partida of priority 1 is not new)
+FIRST = "((priority <= 1 AND why IS NULL) OR why = 'change')"
+
+
+def waiting(conn):
+    return conn.execute(f"SELECT count(*) FROM tr.queue WHERE status='pending' AND next_at <= now() AND {FIRST}").fetchone()[0]
+
+
+def process(conn, budget_s, stats, first=False):
+    """Read queued partidas until the queue is empty or the time budget is spent (first: only FIRST)."""
     deadline = time.monotonic() + budget_s
     stats.setdefault("read", 0)
     stats.setdefault("absent", 0)
     stats.setdefault("errors", 0)
     while time.monotonic() < deadline:
         row = conn.execute(
-            "SELECT eik, depth, attempts, reason FROM tr.queue WHERE status='pending' AND next_at <= now() "
-            "ORDER BY priority, enqueued_at LIMIT 1").fetchone()
+            "SELECT eik, depth, attempts, reason, why, held_sha FROM tr.queue WHERE status='pending' AND next_at <= now() "
+            + (f"AND {FIRST} " if first else "") + "ORDER BY why IS NOT DISTINCT FROM 'rotate', priority, enqueued_at LIMIT 1").fetchone()
         if not row:
             break
-        eik, depth, attempts, reason = row
+        eik, depth, attempts, reason, why, held = row
         try:
             xml = R.fetch_deed(eik)
+            before = conn.execute("SELECT status, sha256 FROM tr.deed WHERE eik=%s", (eik,)).fetchone()
+            if xml is None and before and before[0] == "ok" and held != "absent":
+                # a partida we hold does not answer: keep it, ask again in a day
+                log_change(conn, "tr", eik, "deed", "ok", "absent", "held")
+                conn.execute("UPDATE tr.queue SET held_sha='absent', next_at=now() + interval '1 day' WHERE eik=%s", (eik,))
+                stats["held"] = stats.get("held", 0) + 1
+                time.sleep(PAUSE)
+                continue
+            if xml is None and before and before[0] == "ok":
+                log_change(conn, "tr", eik, "deed", "ok", "absent", "confirmed")
+            elif xml is not None and before and before[1] and before[1] != hashlib.sha256(xml).hexdigest():
+                log_change(conn, "tr", eik, "deed", before[1], hashlib.sha256(xml).hexdigest(), why or "read")
+                if why == "rotate":  # the change list did not name it
+                    stats["rotate_missed"] = stats.get("rotate_missed", 0) + 1
             roles = store(conn, eik, xml, require_link=reason == "name_search")
         except Exception as e:  # noqa: BLE001 - recorded, retried with backoff
             attempts += 1
@@ -154,7 +184,7 @@ def process(conn, budget_s, stats):
             stats["errors"] += 1
             time.sleep(PAUSE * 4)
             continue
-        conn.execute("UPDATE tr.queue SET status='done', done_at=now(), attempts=0, last_error=NULL "
+        conn.execute("UPDATE tr.queue SET status='done', done_at=now(), attempts=0, last_error=NULL, why=NULL, held_sha=NULL "
                      "WHERE eik=%s", (eik,))
         stats["read" if xml else "absent"] += 1
         if depth < MAX_ENTITY_DEPTH:  # companies that hold roles are followed by ЕИК
@@ -163,6 +193,16 @@ def process(conn, budget_s, stats):
                     enqueue(conn, r["holder_id"], "holder", 2, depth + 1)
         time.sleep(PAUSE)
     stats["pending"] = conn.execute("SELECT count(*) FROM tr.queue WHERE status='pending'").fetchone()[0]
+
+
+def rotate(conn):
+    """Queue the partidas read longest ago, 1/ROTATE_DAYS of all we hold per day, for a re-read after
+    everything else (why='rotate'). Returns how many."""
+    n = conn.execute("SELECT count(*) FROM tr.deed WHERE status = 'ok'").fetchone()[0]
+    return conn.execute("""UPDATE tr.queue q SET status = 'pending', next_at = now(), attempts = 0, why = 'rotate'
+        WHERE q.eik IN (SELECT d.eik FROM tr.deed d JOIN tr.queue q2 ON q2.eik = d.eik
+                        WHERE d.status = 'ok' AND q2.status = 'done' AND d.fetched_at < now() - make_interval(days => %s)
+                        ORDER BY d.fetched_at LIMIT %s)""", (ROTATE_DAYS // 2, -(-n // ROTATE_DAYS))).rowcount
 
 
 def search_names(conn, budget_s, stats):
