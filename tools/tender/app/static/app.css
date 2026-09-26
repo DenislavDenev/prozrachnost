@@ -353,6 +353,7 @@ ol.rank { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
 ul.evl { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
 ul.evl li { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; } ul.evl li.win { color: var(--accent-ink); font-weight: 600; } ul.evl em { font-style: normal; font-size: 13px; }
 ol.flow > li.deadline::before { border-color: var(--ink-3); } ol.flow > li.annex::before { border-color: var(--amber); }
+ol.flow > li.msg::before { border-color: var(--slate); } ol.flow > li.award::before { border-color: var(--accent); background: var(--accent); }
 ol.rank li { display: flex; gap: 12px; align-items: baseline; } ol.rank li span { flex: 1; } ol.rank li.win { color: var(--accent-ink); } ol.rank li em { font-style: normal; font-size: 13px; }
 
 /* flows (flows.html, ECharts sankey) */

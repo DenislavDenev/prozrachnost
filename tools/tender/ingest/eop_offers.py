@@ -18,6 +18,7 @@ reads stop and an alert goes to Discord (n8n); nothing is lost, the queue waits.
 """
 import datetime as dt
 import gzip
+import html
 import hashlib
 import json
 import re
@@ -136,9 +137,23 @@ def fetch(tender_id, contracts=True):
         else:
             lots = json.loads(call("GetPublishedLots", tenderId=tender_id) or b"[]") or []
     cl = json.loads(call("GetPublishedContractListItems", tenderId=tender_id) or b"null") if contracts else None
-    blob = json.dumps({"participation": part, "lots": lots, "contracts": cl}, ensure_ascii=False).encode()
+    ann = json.loads(call("GetPublicTenderAnnouncementsByTenderId", tenderId=tender_id) or b"[]") or []
+    blob = json.dumps({"participation": part, "lots": lots, "contracts": cl, "announcements": ann}, ensure_ascii=False).encode()
     titles = [(l.get("OrderNumber") or 0, re.sub(r"^\s*\d+\s*\.\s*", "", l.get("TenderName") or "").strip() or None) for l in lots]
-    return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(cl), "lots": titles}, blob
+    return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(cl), "lots": titles,
+            "announcements": parse_announcements(ann)}, blob
+
+
+def parse_announcements(ann):
+    """GetPublicTenderAnnouncementsByTenderId -> [(id, time, title)]; the title only, without markup."""
+    if not isinstance(ann, list):
+        raise ShapeError(f"announcements: {type(ann).__name__}")
+    out = []
+    for a in ann:
+        title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", a.get("Title") or a.get("Text") or ""))).strip()
+        if a.get("Id") is not None and title:
+            out.append((int(a["Id"]), when(a.get("CreatedDate")), title[:300]))
+    return out
 
 
 def offer_set(rows):
@@ -206,6 +221,9 @@ def store(conn, tender_id, got, blob):
             conn.execute("INSERT INTO eopsvc.contract_lot VALUES (%s, %s, %s)", (tender_id, lot, cid))
         for lot, title in dict(got["lots"]).items():
             conn.execute("INSERT INTO eopsvc.lot VALUES (%s, %s, %s)", (tender_id, lot, title))
+        conn.execute("DELETE FROM eopsvc.announcement WHERE tender_id = %s", (tender_id,))
+        for aid, at, title in got.get("announcements", []):
+            conn.execute("INSERT INTO eopsvc.announcement VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING", (tender_id, aid, at, title))
         conn.execute("UPDATE eopsvc.queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0, "
                      "held_sha = NULL WHERE tender_id = %s", (now, sha, tender_id))
     return "stored"

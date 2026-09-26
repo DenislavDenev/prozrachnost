@@ -65,9 +65,11 @@
 
 {% if events %}<section class="p"><h2>Хронология</h2>
 <ol class="flow">{% for e in events %}<li class="{{ e.kind }}"><b>{{ e.title }}</b><span class="mut">{{ e.when | date }}{% if e.kind == 'offer' %} {{ e.when.strftime('%H:%M') }}{% endif %}</span>
+  {% if e.kind == 'award' %}<div class="mut">обявлението за възложена поръчка</div>{% endif %}
   {% if e.kind == 'pub' %}<div>{{ t.procedure_type or '' }}{% if t.estimated_eur %}, прогнозна стойност {{ t.estimated_eur | big }}{% endif %}.</div>
   {% elif e.offers is defined %}<ul class="evl">{% for g in e.offers %}<li class="{{ 'win' if g.won }}">{% if g.key %}<a class="u" href="/companies/{{ g.key | q }}">{{ g.name | tc }}</a>{% else %}{{ g.name | tc }}{% endif %}
       {% if e.kind == 'offers' %}<span class="mut">{{ g.when.strftime('%H:%M') }}</span>{% endif %}{% if lots | length > 1 %}<span class="mut">{{ 'позиция' if g.lots | length == 1 else 'позиции' }} {{ g.lots | join(', ') }}</span>{% endif %}{% if g.won %}<em>спечелила</em>{% endif %}</li>{% endfor %}</ul>
+  {% elif e.kind == 'msg' %}{% if e.titles %}<ul class="evl">{% for x in e.titles %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
   {% elif e.contract is defined %}<div><a class="u strong" href="/contracts/{{ e.contract.id }}">{{ e.contract.supplier | tc }}</a> · <b>{{ e.contract.eur | eur }}</b>{% if lots | length > 1 and e.contract.lot_no %} · позиция {{ e.contract.lot_no }}{% endif %}</div>
   {% elif e.annex is defined %}<div><a class="u" href="/contracts/{{ e.annex.contract_id }}">{{ e.annex.supplier | tc }}</a>{% if e.annex.difference %} · {{ '+' if e.annex.difference > 0 }}{{ e.annex.difference | eurc(e.annex.currency) }}{% endif %}{% if e.annex.reason %}<div class="mut">{{ e.annex.reason }}</div>{% endif %}</div>{% endif %}
 </li>{% endfor %}</ol></section>{% endif %}

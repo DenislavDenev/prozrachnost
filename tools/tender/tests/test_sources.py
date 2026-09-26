@@ -119,3 +119,15 @@ def test_offer_diff_names_every_change_and_ignores_rounding():
     assert not [x for x in d if x[0] == "1/1/10"]                       # 0.004 is rounding, not a change
     assert eop_offers.offer_diff(old, old) == []
     assert eop_offers.offer_set(new) == [(1, 1, 10), (2, 1, 12), (2, 1, 13)]
+
+
+def test_announcements_keep_title_and_time_only():
+    ann = [{"CreatedDate": "/Date(1752846872597)/", "Id": 372286, "ReceiptDocumentHash": None,
+            "Text": "Решение за определяне на изпълнител", "Title": "Решение за определяне на изпълнител"},
+           {"CreatedDate": "/Date(1752846773967)/", "Id": 372284, "Text": "Доклад&nbsp;", "Title": "Доклад за контрол по <b>чл.237б</b>&nbsp;"},
+           {"CreatedDate": None, "Id": 1, "Title": "   "}]
+    out = eop_offers.parse_announcements(ann)
+    assert [(i, t) for i, _, t in out] == [(372286, "Решение за определяне на изпълнител"), (372284, "Доклад за контрол по чл.237б")]
+    assert out[0][1].year == 2025
+    with pytest.raises(eop_offers.ShapeError):
+        eop_offers.parse_announcements({"unexpected": True})

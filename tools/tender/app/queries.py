@@ -416,7 +416,8 @@ def tender(unp, raw=True):
         return None
     t["lots"] = rows("SELECT * FROM live.lot WHERE unp = %s ORDER BY lot_no", unp)
     t["contracts"] = rows("""SELECT c.id, c.lot_no, c.effective_date, c.supplier_display supplier, s0.party_key supplier_key,
-        round(c.amount_eur) eur, c.offers_count, c.value_flag, c.estimate_ratio, c.is_framework, c.annex_count, c.award_method
+        round(c.amount_eur) eur, c.offers_count, c.value_flag, c.estimate_ratio, c.is_framework, c.annex_count, c.award_method,
+        c.published_at
         FROM live.contract c LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0
         WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date""", unp)
     t["stats"] = one(f"""SELECT count(*) n, round({SUM}) eur FROM live.contract c WHERE c.unp = %s""", unp)
@@ -465,6 +466,17 @@ def tender_events(t, lots):
     for c in t["contracts"]:
         if c["effective_date"]:
             ev.append({"when": c["effective_date"], "kind": "contract", "title": "Договор", "contract": c})
+        if c.get("published_at") and c["published_at"].date() != c["effective_date"]:
+            ev.append({"when": c["published_at"], "kind": "award", "title": "Договорът е публикуван", "contract": c})
+    # clarifications, committee protocols, reports, decisions as ЦАИС ЕОП lists them, one event per day
+    if str(t.get("tender_id") or "").isdigit() and one("SELECT to_regclass('eopsvc.announcement') IS NOT NULL ok")["ok"]:
+        days = {}
+        for a in rows("SELECT created_at, title FROM eopsvc.announcement WHERE tender_id = %s AND created_at IS NOT NULL ORDER BY created_at, id",
+                      int(t["tender_id"])):
+            days.setdefault(at(a["created_at"]).date(), []).append(a["title"])
+        for day, titles in days.items():
+            ev.append({"when": day, "kind": "msg", "title": titles[0] if len(titles) == 1 else f"{len(titles)} съобщения в ЦАИС ЕОП",
+                       "titles": titles if len(titles) > 1 else []})
     ids = [c["id"] for c in t["contracts"]]
     for a in rows("""SELECT a.contract_id, a.published_at, a.difference, a.currency, a.reason, c.supplier_display supplier
                      FROM live.amendment a JOIN live.contract c ON c.id = a.contract_id

@@ -46,7 +46,7 @@ CREATE TABLE contract (
   awarded_to_group boolean, subject text, tender_name text, procedure_type text, cpv text,
   cpv_description text, contract_type text, contract_date date, published_at timestamp,
   effective_date date, date_basis text,
-  value_initial numeric, value_current numeric, currency text, fx_rate numeric,
+  value_initial numeric, value_current numeric, value_current_currency text, currency text, fx_rate numeric,
   value_initial_eur numeric, value_current_eur numeric, amount_eur numeric,
   value_flag text NOT NULL, date_flag text NOT NULL,
   estimated_value numeric, estimate_currency text, estimated_eur numeric, estimate_ratio numeric,

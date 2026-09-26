@@ -12,7 +12,8 @@ from collections import defaultdict
 
 from .config import BGN_PER_EUR
 
-RULES_VERSION = "normalize_v3"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status
+RULES_VERSION = "normalize_v4"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status;
+# v4: an annex's value in the annex's own currency (after 01.01.2026 annexes restate лев contracts in euro)
 
 YES = {"Да": True, "Не": False}
 
@@ -279,12 +280,13 @@ def normalize(days_rows, fx):
                        key=lambda a: (a[0] or dt.datetime.min, a[1]))
         # several contracts can share (unp, number) across lots: keep annexes of the same lot
         chain = [a for a in chain if lot_no(a[2].get("lotIdentifier")) in (None, c["lot_no"])]
-        steps, current = [], None
+        steps, current, current_ccy = [], None, None
         for ts, aday, a in chain:
             last, cur = num(a.get("lastContractValue")), num(a.get("currentContractValue"))
             if last and cur is not None:
                 steps.append(cur / last)
-            current = cur if cur is not None else current
+            if cur is not None:  # the value is in the annex's currency, not always the contract's
+                current, current_ccy = cur, text(a.get("contractCurrency")) or c["currency"]
             amendments.append({
                 "contract_id": c["id"], "published_at": ts, "source_day": aday,
                 "last_value": last, "current_value": cur,
@@ -301,10 +303,9 @@ def normalize(days_rows, fx):
         on = pub_day if bad_date else (c["contract_date"] or (c["published_at"].date() if c["published_at"] else None))
         cur_code = c["currency"]
         initial = c["value_initial"]
-        eff = current if current is not None else initial
-        eff_eur, rate = fx.to_eur(eff, cur_code, on)
-        init_eur, _ = fx.to_eur(initial, cur_code, on)
-        cur_eur, _ = fx.to_eur(current, cur_code, on)
+        init_eur, rate = fx.to_eur(initial, cur_code, on)
+        cur_eur, cur_rate = fx.to_eur(current, current_ccy or cur_code, on)
+        eff_eur, rate = (cur_eur, cur_rate) if current is not None else (init_eur, rate)
         own_est_eur, _ = fx.to_eur(c["estimated_value"], c["estimate_currency"] or cur_code, on)
         t = tenders.get(c["unp"])
         proc_est_eur = lot_est_eur = None
@@ -315,14 +316,16 @@ def normalize(days_rows, fx):
             lot_est_eur, _ = fx.to_eur(lot["estimated_value"], lot["currency"] or t["currency"], on)
         # value against the closest estimate: the contract's own, else its lot's, else the procedure's
         ref_est = own_est_eur or lot_est_eur or proc_est_eur
-        vflag, basis = value_flag(eff_eur, proc_est_eur, own_est_eur, initial, current, steps)
+        # initial and current compared in euro: they can be in different currencies
+        vflag, basis = value_flag(eff_eur, proc_est_eur, own_est_eur, init_eur if init_eur is not None else initial,
+                                  cur_eur if current is not None and cur_eur is not None else current, steps)
         amount_eur = {"effective": eff_eur, "estimate": proc_est_eur,
                       "initial": init_eur if init_eur is not None else cur_eur}[basis]
         dflag = "contract_date_implausible" if bad_date else "ok"
         if not bad_date and c["contract_date"] and c["published_at"] and c["contract_date"] > c["published_at"].date():
             dflag = "signed_after_publication"
         c.update({
-            "value_current": current, "value_initial_eur": init_eur, "value_current_eur": cur_eur,
+            "value_current": current, "value_current_currency": current_ccy, "value_initial_eur": init_eur, "value_current_eur": cur_eur,
             "amount_eur": amount_eur, "value_flag": vflag, "date_flag": dflag,
             "fx_rate": rate, "estimated_eur": ref_est, "annex_count": len(chain),
             "estimate_ratio": round(eff_eur / ref_est, 3) if eff_eur and ref_est and ref_est > 0 else None,

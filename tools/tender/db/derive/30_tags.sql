@@ -57,15 +57,16 @@ FROM (SELECT party_key, sum(v) AS total, max(v) AS top, sum(n) AS n,
       GROUP BY party_key) x
 WHERE n >= 3 AND total > 0 AND top / total >= 0.50;
 
+-- in euro: an annex can be in another currency than the contract (euro restatements from 2026)
 INSERT INTO tag
 SELECT 'company', s.party_key, 'amendment_inflation',
        format('%s договора с текуща стойност ≥ 1.2 пъти първоначалната (най-много ×%s)',
-              count(DISTINCT c.id), round(max(c.value_current / c.value_initial), 2)),
+              count(DISTINCT c.id), round(max(c.value_current_eur / c.value_initial_eur), 2)),
        jsonb_build_object('contracts', count(DISTINCT c.id),
-                          'max_ratio', round(max(c.value_current / c.value_initial), 3),
+                          'max_ratio', round(max(c.value_current_eur / c.value_initial_eur), 3),
                           'ids', (array_agg(DISTINCT c.id))[1:20])
 FROM contract_supplier s JOIN contract c ON c.id = s.contract_id
-WHERE c.value_initial > 0 AND c.value_current / c.value_initial >= 1.2
+WHERE c.value_initial_eur > 0 AND c.value_current_eur / c.value_initial_eur >= 1.2
   AND c.value_flag NOT IN ('annex_suspect', 'value_suspect')
 GROUP BY s.party_key;
 

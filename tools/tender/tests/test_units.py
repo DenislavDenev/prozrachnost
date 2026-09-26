@@ -247,3 +247,20 @@ def test_tender_events_fold_same_day_offers_and_keep_order():
     lots = [{"lot_no": 1, "offers": [offer("А", 10), offer("Б", 10)]}]
     ev = tender_events(t, lots)
     assert [e["kind"] for e in ev] == ["pub", "offers", "deadline"] and len(ev[1]["offers"]) == 2
+
+
+def test_annex_in_euro_on_a_lev_contract_is_not_converted_twice():
+    # from 01.01.2026 annexes restate лев contracts in euro (00233-2024-0091: 25 933 688,54 лв. = 13 259 684,40 €)
+    c = {"noAwarding": "Не", "uniqueProcurementNumber": "U", "contractNumber": "9", "contractValue": "25933688,54",
+         "contractCurrency": "BGN", "supplierName": "А", "supplierRegisterNumber": "202210490", "contractDate": "26.09.2025",
+         "publicationDate": "2025-10-20T10:00:00"}
+    a = {"uniqueProcurementNumber": "U", "contractNumber": "9", "lastContractValue": "13259684,4", "currentContractValue": "13259684,4",
+         "contractValueDifference": "0", "contractCurrency": "EUR", "publicationDate": "2026-03-13T05:20:36"}
+    k = N.normalize([("2025-10-20", "contracts", [c]), ("2026-03-13", "annexes", [a])], N.Fx({}))["contract"][0]
+    assert k["value_current_currency"] == "EUR" and round(k["value_current_eur"], 2) == 13259684.4
+    assert round(k["amount_eur"], 2) == 13259684.4 and round(k["value_initial_eur"], 2) == 13259684.4 and k["value_flag"] == "ok"
+    # a later annex in лев on a euro contract is converted from лев
+    c2 = dict(c, contractNumber="10", contractCurrency="EUR", contractValue="1000")
+    a2 = dict(a, contractNumber="10", lastContractValue="1000", currentContractValue="3911,66", contractCurrency="BGN")
+    k = N.normalize([("2025-10-20", "contracts", [c2]), ("2026-03-13", "annexes", [a2])], N.Fx({}))["contract"][0]
+    assert round(k["amount_eur"], 2) == 2000.0
