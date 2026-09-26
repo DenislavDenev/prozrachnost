@@ -155,7 +155,10 @@ addEventListener('load', async () => {
     twin(pairs);
     if (S.sel && cy.getElementById(S.sel).length) cy.getElementById(S.sel).select();
   }
+  // the container can change size (or be laid out after the script ran): keep Cytoscape's idea of it current
+  new ResizeObserver(() => cy.resize()).observe($('cy'));
   function layout() {
+    cy.resize();
     const opts = {
       rings: { name: 'concentric', concentric: (n) => n.data('lvl'), levelWidth: () => 1, minNodeSpacing: 18, avoidOverlap: true, animate: true, animationDuration: 350 },
       // top-down: who holds a role above where they hold it, owners above what they own (Open Ownership diagrams)
