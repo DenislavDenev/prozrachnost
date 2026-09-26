@@ -13,7 +13,7 @@ import markdown.extensions.toc
 import os
 import secrets
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -99,7 +99,14 @@ def jdefault(o):
     return str(o)
 
 
-T.env.filters.update(eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
+def fperiod(r):
+    y = lambda d: str(d)[:4] if d else "?"
+    if r.get("valid_to"):
+        return f"{y(r['valid_from'])}–{y(r['valid_to'])}"
+    return f"{y(r['valid_from'])}–?" if r.get("uncertain_after") else f"от {y(r['valid_from'])}"
+
+
+T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
                      json=lambda o: json.dumps(o, default=jdefault, ensure_ascii=False).replace("</", "<\\/"),
                      q=lambda s: quote(s, safe=":"))
@@ -198,6 +205,31 @@ def network(focus: str, view: str = "all", at: str | None = None, depth: int = 2
         raise HTTPException(400)
     return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at, depth=depth, max_nodes=3000 if depth >= 3 else 500),
                                               default=jdefault)))
+
+
+NODE_ID = re.compile(r"[pcfl]:[\w:-]+")
+
+
+def node_of(kind, ref):
+    """Search hit -> network node id (companies only when they have a 9-digit ЕИК partida)."""
+    if kind == "person":
+        return "p:" + ref
+    if kind == "company" and re.fullmatch(r"eik:\d{9}(\d{4})?", ref):
+        return "c:" + ref[4:13]
+    return None
+
+
+@app.get("/connect", response_class=HTMLResponse)
+def connect_page(request: Request, n: list[str] = Query([]), q: str = "", active: str = "", hubs: str = ""):
+    """„Свържи“: pick two to six people or companies, see how the Trade Register links them."""
+    ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))[:6]
+    chosen = [Q.node_info(x) or {"id": x, "name": x, "kind": ""} for x in ids]
+    cands = [dict(r, node=node_of(r["kind"], r["ref"])) for r in (Q.search(q, None) if q.strip() else [])]
+    cands = [c for c in cands if c["node"] and c["node"] not in ids][:12]
+    res = Q.connections(ids, active=bool(active), skip_hubs=bool(hubs)) if len(ids) >= 2 else None
+    if request.headers.get("HX-Request"):
+        return page(request, "connect_cands.html", ids=ids, cands=cands, q=q, active=active, hubs=hubs)
+    return page(request, "connect.html", ids=ids, chosen=chosen, cands=cands, q=q, res=res, active=active, hubs=hubs, nav="Свържи")
 
 
 @app.get("/lab/links", response_class=HTMLResponse)

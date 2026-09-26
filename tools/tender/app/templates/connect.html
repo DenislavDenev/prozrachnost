@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Свържи · Тендер{% endblock %}
+{% macro keep(skip=None) %}{% for x in ids if x != skip %}n={{ x | urlencode }}&amp;{% endfor %}{% if active %}active=1&amp;{% endif %}{% if hubs %}hubs=1&amp;{% endif %}{% endmacro %}
+{% macro box(id) %}{% set n = res.nodes.get(id) if res else none %}{% set nm = ((n.name if n else id) or id) | tc %}
+<div class="cn-box {{ 'sel' if id in ids }} {{ 'co' if id.startswith('c:') or id.startswith('f:') else 'pe' }}">
+  <i></i><div>{% if n and n.ref %}<a class="u strong" href="{{ ('/persons/' ~ n.ref) if id.startswith('p:') else ('/companies/' ~ n.ref) }}">{{ nm }}</a>{% else %}<b>{{ nm }}</b>{% endif %}
+  <small>{% if id.startswith('p:') or id.startswith('l:') %}лице{% elif n and n.contracts %}{{ n.contracts | num }} дог. · {{ n.eur | big }}{% else %}без договори{% endif %}{% if n and n.links > 100 %} · голям възел, {{ n.links | num }} връзки{% endif %}</small></div></div>
+{% endmacro %}
+{% block main %}
+<h1 class="h1s">Свържи</h1>
+<p class="sub">Добави две до шест лица или фирми. Показваме най-кратките пътища между всяка двойка по вписванията в Търговския регистър: кой в коя фирма каква роля има и кога. Връзка в регистъра не означава нарушение или контрол.</p>
+
+<div class="cn-pick">
+  <div class="cn-chips">{% for c in chosen %}<span class="chip {{ 'co' if c.id.startswith('c:') else 'pe' }}"><i></i>{{ (c.name or c.id) | tc }}<a href="/connect?{{ keep(c.id) }}" aria-label="Махни {{ c.name | tc }}">×</a></span>{% endfor %}
+    {% if not chosen %}<span class="mut">Още няма избрани.</span>{% endif %}</div>
+  {% if ids | length < 6 %}<form class="cn-find" action="/connect">
+    {% for x in ids %}<input type="hidden" name="n" value="{{ x }}">{% endfor %}{% if active %}<input type="hidden" name="active" value="1">{% endif %}{% if hubs %}<input type="hidden" name="hubs" value="1">{% endif %}
+    <input name="q" value="{{ q }}" placeholder="Добави лице или фирма: име или ЕИК" aria-label="Добави лице или фирма" autocomplete="off"
+      hx-get="/connect" hx-trigger="input changed delay:250ms" hx-target="#cands" hx-include="closest form"><button class="btn go">Търси</button>
+  </form>{% endif %}
+  <div id="cands">{% include "connect_cands.html" %}</div>
+  <form class="cn-opts" action="/connect">{% for x in ids %}<input type="hidden" name="n" value="{{ x }}">{% endfor %}
+    <label class="chk"><input type="checkbox" name="active" value="1" {{ 'checked' if active }} onchange="this.form.submit()"> Само действащи връзки</label>
+    <label class="chk"><input type="checkbox" name="hubs" value="1" {{ 'checked' if hubs }} onchange="this.form.submit()"> Без пътища през големи бордове и холдинги (над 100 връзки)</label>
+  </form>
+</div>
+
+{% if res %}
+{% set any_path = res.pairs | selectattr('paths') | list %}
+{% if any_path %}<section class="p cn-graph"><div class="ph"><div><h2>Всички пътища заедно</h2><div class="sub">Избраните са с дебела рамка. Посочи възел, за да видиш връзките му.</div></div></div><svg id="cng" role="img" aria-label="Пътищата между избраните"></svg></section>{% endif %}
+{% for p in res.pairs %}
+<section class="p cn-pair">
+  <div class="ph"><div><h2>{{ (res.nodes.get(p.a).name if res.nodes.get(p.a) else p.a) | tc }} и {{ (res.nodes.get(p.b).name if res.nodes.get(p.b) else p.b) | tc }}</h2>
+    <div class="sub">{% if p.paths %}{{ p.paths[0] | length - 1 }} {{ 'стъпка' if p.paths[0] | length == 2 else 'стъпки' }} · {{ p.paths | length }} {{ 'път' if p.paths | length == 1 else 'най-кратки пътя' }}{% else %}Няма връзка до 8 стъпки{% if active %} само с действащи роли{% endif %}{% endif %}
+      {% if p.skipped %} · пропуснати {{ p.skipped | length }} големи възела{% endif %}</div></div></div>
+  {% for path in p.paths %}<div class="cn-chain">
+    {% for id in path %}{{ box(id) }}{% if not loop.last %}{% set nxt = path[loop.index] %}{% set key = [id, nxt] | sort | join('|') %}
+      <div class="cn-link">{% for r in res.roles.get(key, []) %}<span class="{{ 'own' if r.role in ('partner', 'sole_owner', 'trader') else 'mg' }} {{ 'end' if r.valid_to or r.uncertain_after }}">{{ '→' if r.holder == id else '←' }} {{ r.role | role }}{% if r.share %} {{ r.share }}{% endif %} <small>{{ r | period }}</small></span>{% endfor %}</div>
+    {% endif %}{% endfor %}</div>{% endfor %}
+</section>
+{% endfor %}
+<script type="application/json" id="data">{{ {"ids": ids, "pairs": res.pairs, "nodes": res.nodes, "roles": res.roles} | json | safe }}</script>
+{% elif ids | length == 1 %}<p class="lede" style="font-size:18px">Добави още едно лице или фирма, за да видиш как са свързани.</p>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+// all shortest paths drawn together: a small force layout, the chosen nodes spread on a circle first
+(() => {
+  const svg = $('cng'); if (!svg || !DATA.pairs) return;
+  const ids = new Set(DATA.ids), E = new Map();
+  for (const p of DATA.pairs) for (const path of p.paths) for (let i = 1; i < path.length; i++) { const k = [path[i - 1], path[i]].sort().join('|'); E.set(k, k.split('|')); }
+  const V = [...new Set([...E.values()].flat().concat(DATA.ids))];
+  const W = 1000, H = Math.max(420, Math.min(900, 160 + V.length * 22));
+  const P = new Map(V.map((id, i) => { const sel = ids.has(id), a = (2 * Math.PI * [...ids].indexOf(id)) / ids.size - Math.PI / 2;
+    return [id, sel ? { x: W / 2 + 380 * Math.cos(a), y: H / 2 + (H / 2 - 60) * Math.sin(a), fixed: false } : { x: W / 2 + (Math.random() - .5) * 200, y: H / 2 + (Math.random() - .5) * 200 }]; }));
+  for (let it = 0; it < 400; it++) {
+    const t = 1 - it / 400;
+    for (const a of V) for (const b of V) { if (a >= b) continue; const p = P.get(a), q = P.get(b); let dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy) || 1;
+      const f = Math.min(40, 90000 / (d * d)) * t; dx /= d; dy /= d; p.x += dx * f; p.y += dy * f; q.x -= dx * f; q.y -= dy * f; }
+    for (const [a, b] of E.values()) { const p = P.get(a), q = P.get(b), dx = q.x - p.x, dy = q.y - p.y, d = Math.hypot(dx, dy) || 1, f = (d - 170) * 0.05 * t;
+      p.x += (dx / d) * f; p.y += (dy / d) * f; q.x -= (dx / d) * f; q.y -= (dy / d) * f; }
+    for (const p of P.values()) { p.x = Math.min(W - 110, Math.max(110, p.x)); p.y = Math.min(H - 30, Math.max(30, p.y)); }
+  }
+  const nm = (id) => tc((DATA.nodes[id] || {}).name || id);
+  let s = '';
+  for (const [k, [a, b]] of E) { const p = P.get(a), q = P.get(b), rs = DATA.roles[k] || [], own = rs.some((r) => OWN.has(r.role)), live = rs.some((r) => !r.valid_to && !r.uncertain_after);
+    s += `<line class="ge ${own ? 'own' : ''} ${live ? '' : 'end'}" data-a="${a}" data-b="${b}" x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}"><title>${esc(rs.map((r) => (ROLE[r.role] || r.role) + ' ' + span(r)).join(', '))}</title></line>`; }
+  for (const id of V) { const p = P.get(id), n = DATA.nodes[id] || {}, t = nm(id), w = Math.min(230, Math.max(110, t.length * 7.4 + 34)), co = id.startsWith('c:') || id.startsWith('f:');
+    s += `<g class="gn ${ids.has(id) ? 'focus' : ''}" data-id="${id}"><rect class="cd" x="${p.x - w / 2}" y="${p.y - 17}" width="${w}" height="34" rx="${co ? 5 : 17}"/>
+      ${co ? `<rect class="mk-c ${n.contracts ? '' : 'no'}" x="${p.x - w / 2 + 11}" y="${p.y - 5}" width="10" height="10" rx="2"/>` : `<circle class="mk-p" cx="${p.x - w / 2 + 16}" cy="${p.y}" r="5"/>`}
+      <text class="nm" x="${p.x - w / 2 + 28}" y="${p.y + 4.5}">${esc(t.length > 27 ? t.slice(0, 26) + '…' : t)}</text></g>`; }
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = s;
+  svg.onmouseover = (e) => { const g = e.target.closest('.gn'); svg.classList.toggle('dim', !!g); svg.querySelectorAll('.hot').forEach((x) => x.classList.remove('hot')); if (!g) return;
+    const id = g.dataset.id; g.classList.add('hot'); svg.querySelectorAll(`line[data-a="${id}"], line[data-b="${id}"]`).forEach((l) => { l.classList.add('hot'); svg.querySelector(`.gn[data-id="${l.dataset.a === id ? l.dataset.b : l.dataset.a}"]`)?.classList.add('hot'); }); };
+  svg.onmouseleave = () => { svg.classList.remove('dim'); svg.querySelectorAll('.hot').forEach((x) => x.classList.remove('hot')); };
+})();
+</script>
+{% endblock %}

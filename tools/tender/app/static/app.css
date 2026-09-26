@@ -273,3 +273,26 @@ details.more[open] > summary { margin-bottom: 14px; }
 .fbtn { display: flex; align-items: center; gap: 16px; height: 38px; }
 .fbtn .reset { align-self: center; }
 td.side { width: 170px; min-width: 150px; overflow-wrap: break-word; }
+/* connect: pick people and companies, show the shortest registry paths between them */
+.cn-pick { margin: 18px 0 20px; padding: 16px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+.cn-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 12px; border: 1px solid var(--line); border-radius: 8px; font-weight: 600; font-size: 14.5px; }
+.chip i { width: 9px; height: 9px; background: var(--slate); border-radius: 50%; } .chip.co i { border-radius: 2px; background: var(--accent); }
+.chip a { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 5px; color: var(--ink-3); font-size: 17px; } .chip a:hover { background: var(--line-2); color: var(--ink); }
+.cn-find { display: flex; gap: 8px; max-width: 640px; }
+.cn-find input[name=q] { flex: 1; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; font: 400 15px var(--font-body); }
+.cn-find input[name=q]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+#cands .results { max-width: 640px; }
+.cn-opts { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.cn-pair { margin-top: 16px; }
+.cn-chain { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; padding: 12px 0; border-top: 1px solid var(--line-2); }
+.cn-chain:first-of-type { border-top: 0; }
+.cn-box { display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; max-width: 280px; font-size: 14.5px; }
+.cn-box.sel { border: 2px solid var(--accent); }
+.cn-box i { width: 9px; height: 9px; flex: none; background: var(--slate); border-radius: 50%; transform: translateY(-1px); }
+.cn-box.co i { border-radius: 2px; background: var(--ink-4); }
+.cn-box small { display: block; color: var(--ink-3); font-size: 12.5px; }
+.cn-link { display: grid; gap: 2px; padding: 0 10px; font-size: 12.5px; color: var(--ink-2); min-width: 120px; }
+.cn-link span { white-space: nowrap; } .cn-link span.own { color: var(--accent-ink); } .cn-link span.end { opacity: .6; }
+.cn-link small { color: var(--ink-3); }
+.cn-graph svg { width: 100%; height: auto; display: block; }

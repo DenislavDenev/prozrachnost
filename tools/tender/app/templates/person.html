@@ -11,7 +11,7 @@
   <div class="grow"><h1>{{ p.name | tc }}</h1>
     <div class="meta"><span>Лице</span>{% if p.figure %}<span><a class="l" href="https://www.wikidata.org/wiki/{{ p.figure.wikidata_qid }}" rel="noopener">{{ p.figure.description or 'публична фигура' }}</a></span>{% endif %}<span><b>{{ comps | length }}</b> дружества</span><span>{{ active | length }} с действащи роли</span>
       {% if p.roles %}<span>в регистъра от {{ p.roles[0].valid_from.year }}</span>{% endif %}</div></div>
-  <div class="acts"><a class="btn" href="/legal#корекции-и-възражения">Сигнал за неточност</a></div>
+  <div class="acts"><a class="btn" href="/connect?n=p:{{ p.id }}">Свържи с…</a><a class="btn" href="/legal#корекции-и-възражения">Сигнал за неточност</a></div>
 </div>
 <p class="lede">Вписан в <b>{{ comps | length }} дружества</b> в Търговския регистър.
   {% if m.all_history.n %}Свързаните с него дружества имат <b>{{ m.all_history.n | num }} договора</b> за <b>{{ m.all_history.eur | big }}</b>;

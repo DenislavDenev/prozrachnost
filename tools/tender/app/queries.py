@@ -266,6 +266,95 @@ def node_info(node):
                   LEFT JOIN live.company_stats cs ON cs.key = n.ref AND n.kind = 'company' WHERE n.id = %s""", node)
 
 
+# ---------- connect: how are these people and companies linked ----------
+
+HUB = 100  # a node with more registry links than this (large boards, holdings) can be skipped on request
+
+
+def _neighbours(conn, nodes, active):
+    cond = "AND valid_to IS NULL AND uncertain_after IS NULL" if active else ""
+    adj = {}
+    for h, c in conn.execute(f"SELECT holder, company FROM live.edge WHERE (holder = ANY(%s) OR company = ANY(%s)) {cond}",
+                             (nodes, nodes)).fetchall():
+        adj.setdefault(h, set()).add(c)
+        adj.setdefault(c, set()).add(h)
+    return adj
+
+
+def shortest_paths(conn, a, b, max_steps=8, active=False, skip_hubs=False, limit=5):
+    """All shortest registry paths between two nodes (up to `limit`), by breadth-first search from both
+    ends at once; each step reads the edges of the smaller frontier. Returns (paths, hubs_skipped)."""
+    if a == b:
+        return [], set()
+    dist, preds, front = [{a: 0}, {b: 0}], [{}, {}], [{a}, {b}]
+    skipped, meet, steps = set(), set(), 0
+    while front[0] and front[1] and steps < max_steps and not meet:
+        side = 0 if len(front[0]) <= len(front[1]) else 1
+        adj = _neighbours(conn, list(front[side]), active)
+        nxt = set()
+        for x in front[side]:
+            if skip_hubs and x not in (a, b) and len(adj.get(x, ())) > HUB:
+                skipped.add(x)
+                continue
+            for y in adj.get(x, ()):
+                d = dist[side][x] + 1
+                if dist[side].get(y, d) < d:
+                    continue
+                if y not in dist[side]:
+                    dist[side][y] = d
+                    nxt.add(y)
+                preds[side].setdefault(y, set()).add(x)
+        front[side] = nxt
+        steps += 1
+        meet = {y for y in nxt if y in dist[1 - side]}
+    if not meet:
+        return [], skipped
+    best = min(dist[0][m] + dist[1][m] for m in meet)
+    out = []
+
+    def back(node, side, acc):  # walk predecessors to the end of `side`
+        if len(out) >= limit * 4:
+            return
+        if node == (a if side == 0 else b):
+            yield acc
+            return
+        for p in sorted(preds[side].get(node, ())):
+            yield from back(p, side, acc + [p])
+
+    for m in sorted(x for x in meet if dist[0][x] + dist[1][x] == best):
+        for left in back(m, 0, [m]):
+            for right in back(m, 1, [m]):
+                out.append(list(reversed(left)) + right[1:])
+                if len(out) >= limit:
+                    return out, skipped
+    return out, skipped
+
+
+def connections(ids, max_steps=8, active=False, skip_hubs=False):
+    """Shortest paths between every pair of the chosen nodes, with the roles on each step."""
+    pairs = []
+    with connect() as conn:
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                paths, skipped = shortest_paths(conn, ids[i], ids[j], max_steps, active, skip_hubs)
+                pairs.append({"a": ids[i], "b": ids[j], "paths": paths, "skipped": sorted(skipped)})
+    nodes = sorted({n for p in pairs for path in p["paths"] for n in path} | set(ids))
+    steps = {tuple(sorted((x, y))) for p in pairs for path in p["paths"] for x, y in zip(path, path[1:])}
+    info = {r["id"]: r for r in rows("""SELECT n.id, n.kind, coalesce(n.label, (SELECT holder_name FROM live.edge WHERE holder = n.id LIMIT 1)) name,
+               n.ref, cs.contracts, cs.amount_eur eur,
+               (SELECT count(*) FROM live.edge e WHERE e.holder = n.id OR e.company = n.id) links
+        FROM live.node n LEFT JOIN live.company_stats cs ON cs.key = n.ref AND n.kind = 'company' WHERE n.id = ANY(%s)""", nodes)}
+    roles = {}
+    if steps:
+        flat = [x for s in steps for x in s]
+        for r in rows("""SELECT holder, company, role, share, valid_from, valid_to, uncertain_after FROM live.edge
+                         WHERE holder = ANY(%s) AND company = ANY(%s) ORDER BY valid_from""", flat, flat):
+            key = tuple(sorted((r["holder"], r["company"])))
+            if key in steps:
+                roles.setdefault(key, []).append(r)
+    return {"pairs": pairs, "nodes": info, "roles": {f"{k[0]}|{k[1]}": v for k, v in roles.items()}}
+
+
 def top_buyers(nodes):
     """Main buyer of each company node, by contract value (for the reach table)."""
     return {r["node"]: r for r in rows("""SELECT DISTINCT ON (k.node) k.node, b.name, c.buyer_eik eik, round(sum(c.amount_eur)) eur

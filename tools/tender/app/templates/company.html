@@ -9,6 +9,7 @@
       {% if c.registered_on %}<span>в регистъра от {{ c.registered_on.year }}</span>{% endif %}{% if c.capital_eur %}<span>капитал {{ c.capital_eur | eur }}</span>{% endif %}
       {% if c.deed_status == 'E' %}<span class="warn">заличена</span>{% endif %}{% if c.is_public_body %}<span>публичен възложител</span>{% endif %}</div></div>
   <div class="acts">
+    {% if c.eik %}<a class="btn" href="/connect?n=c:{{ c.eik[:9] }}">Свържи с…</a>{% endif %}
     <a class="btn" href="/companies/{{ c.key | q }}/contracts.csv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>CSV</a>
     {% if c.eik and c.eik|length == 9 %}<a class="btn go" href="https://portal.registryagency.bg/CR/bg/Reports/ActiveConditionTabResult?uic={{ c.eik }}" rel="noopener" target="_blank"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>Партида в ТР</a>{% endif %}
   </div>
