@@ -128,7 +128,11 @@ addEventListener('load', async () => {
   ] });
 
   function draw(relayout = true) {
-    const { vis, dist } = visibleSet();
+    const { vis } = visibleSet();
+    // rings follow the real distance inside what is shown, so nodes added by a path or a search sit
+    // at their own step, not piled on the outermost ring
+    const dist = new Map([[FOCUS, 0]]), bq = [FOCUS];
+    while (bq.length) { const x = bq.shift(); for (const y of ADJ.get(x) || []) if (vis.has(y) && !dist.has(y)) { dist.set(y, dist.get(x) + 1); bq.push(y); } }
     const els = [];
     for (const id of vis) { const n = N.get(id); if (!n) continue;
       const hub = isHub(id) && id !== FOCUS, label = n.name + (hub ? `\n${nf.format(n.links)} връзки` : n.kind === 'c' && n.n ? `\n${big(+n.eur || 0)}` : '');
