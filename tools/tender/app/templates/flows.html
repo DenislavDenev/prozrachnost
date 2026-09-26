@@ -62,7 +62,7 @@ addEventListener('load', () => {
     $('ftotal').textContent = T ? `${big(T)} в ${nf.format(d.total.n)} ${unit()}` + (d.next ? ` · ${nf.format(d.parts)} ${DIM[d.next]}` : '') : 'Няма данни за тази година.';
     // the path so far is one stream, then the next step fans out into its largest parts and "Други"
     // (node text is `txt`: `label` is ECharts' own label style)
-    const chain = [{ id: 'root', label: `Всички ${d.year}`, v: T, i: 0 }, ...st.path.map((s, i) => ({ id: 'p' + i, label: s.label, v: T, i: i + 1 }))];
+    const chain = [{ id: 'root', label: `Всички ${d.year}`, v: d.whole, i: 0 }, ...st.path.map((s, i) => ({ id: 'p' + i, label: s.label, v: s.v, i: i + 1 }))];
     const nodes = chain.map((c) => ({ name: c.id, txt: c.label, v: c.v, kind: 'path', i: c.i, itemStyle: { color: '#3a4450' }, label: { position: 'top', align: 'left', offset: [-8, 0], overflow: 'truncate' } }));
     const links = chain.slice(1).map((c, k) => ({ source: chain[k].id, target: c.id, value: T || 1, kind: 'path', i: c.i }));
     const last = chain[chain.length - 1].id;
@@ -77,7 +77,7 @@ addEventListener('load', () => {
     chart.setOption({
       tooltip: { trigger: 'item', formatter: (x) => x.dataType === 'edge'
         ? `${esc(nodes.find((n) => n.name === x.data.target)?.txt || '')}<br><b>${eur(x.data.value)}</b>${x.data.n ? ` · ${nf.format(x.data.n)} ${unit()}` : ''}`
-        : `${esc(x.data.txt)}<br><b>${eur(x.data.v)}</b>${T ? ` · ${pct((100 * x.data.v) / T)}` : ''}` },
+        : `${esc(x.data.txt)}<br><b>${eur(x.data.v)}</b>${T && x.data.kind !== 'path' ? ` · ${pct((100 * x.data.v) / T)}` : ''}` },
       series: [{
         type: 'sankey', nodeAlign: 'left', nodeGap: 12, nodeWidth: 16, layoutIterations: 0, draggable: false,
         emphasis: { focus: 'adjacency' }, left: 8, right: R, top: 46, bottom: 12,

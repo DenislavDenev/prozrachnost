@@ -685,9 +685,14 @@ def flows_json(request: Request, year: int = 0, mode: str = "contracts"):
     names = flow_names(mode, {nxt: [r["k"] for r in parts]}) if nxt else {}
     shown = sum(float(r["v"] or 0) for r in parts[:FLOW_TOP])
     path_names = flow_names(mode, {k: [v] for k, v in filters.items()})
+    # the whole of each step of the path (the year, the sector, the buyer in it), for the labels
+    keys = list(filters)
+    sums = [float(Q.one(f"SELECT round(sum({v2})) v {b2} WHERE {w2}", *a2)["v"] or 0)
+            for b2, w2, a2, v2 in (flow_base(mode, year, {k: filters[k] for k in keys[:i]}) for i in range(len(keys)))] + [float(total["v"] or 0)]
     return JSONResponse(json.loads(json.dumps({
         "mode": mode, "year": year, "next": nxt, "total": total,
-        "path": [{"dim": k, "key": v, "label": path_names.get(f"{k}|{v}", v)} for k, v in filters.items()],
+        "whole": sums[0],
+        "path": [{"dim": k, "key": v, "label": path_names.get(f"{k}|{v}", v), "v": sums[i + 1]} for i, (k, v) in enumerate(filters.items())],
         "all": [{"key": r["k"], "label": names.get(f"{nxt}|{r['k']}", r["k"]), "v": float(r["v"] or 0), "n": r["n"]} for r in parts],
         "parts": parts[0]["parts"] if parts else 0, "top": FLOW_TOP,
         "rest": max(0.0, float(total["v"] or 0) - shown), "other_label": names.get(f"{nxt}|~") if nxt else None,
