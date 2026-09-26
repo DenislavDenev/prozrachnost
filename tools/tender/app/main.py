@@ -219,38 +219,54 @@ def node_of(kind, ref):
     return None
 
 
-@app.get("/connect", response_class=HTMLResponse)
-def connect_page(request: Request, n: list[str] = Query([]), q: str = "", active: str = "", hubs: str = ""):
-    """„Свържи“: pick two to six people or companies, see how the Trade Register links them."""
-    ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))[:6]
+def conn_args(n, lim, budget):
+    ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))
+    lim = min(int(lim), 100000) if lim.isdigit() and int(lim) > 0 else 50
+    budget = 60.0 if budget == "long" else 10.0
+    return ids, lim, budget
+
+
+@app.get("/connect")
+def connect_old(request: Request):
+    return RedirectResponse("/svarzanosti" + (f"?{request.url.query}" if request.url.query else ""), status_code=301)
+
+
+@app.get("/svarzanosti", response_class=HTMLResponse)
+def connect_page(request: Request, n: list[str] = Query([]), q: str = "", active: str = "", hubs: str = "", lim: str = "", budget: str = ""):
+    """„Свързаности“: pick people or companies, see every shortest way the Trade Register links each pair."""
+    ids, lim_n, secs = conn_args(n, lim, budget)
     chosen = [Q.node_info(x) or {"id": x, "name": x, "kind": ""} for x in ids]
-    hits = (Q.search(q, "person") + Q.search(q, "company")) if q.strip() else []
-    cands = [dict(r, node=node_of(r["kind"], r["ref"])) for r in sorted(hits, key=lambda r: (-float(r["sim"]), -float(r["weight"] or 0)))]
+    hits = Q.search(q, kinds=["person", "company"]) if q.strip() else []
+    cands = [dict(r, node=node_of(r["kind"], r["ref"])) for r in hits]
     cands = [c for c in cands if c["node"] and c["node"] not in ids][:12]
-    res = Q.connections(ids, active=bool(active), skip_hubs=bool(hubs)) if len(ids) >= 2 else None
-    if request.headers.get("HX-Request"):
-        return page(request, "connect_cands.html", ids=ids, cands=cands, q=q, active=active, hubs=hubs)
-    return page(request, "connect.html", ids=ids, chosen=chosen, cands=cands, q=q, res=res, active=active, hubs=hubs, nav="Свържи")
+    res = Q.connections(ids, active=bool(active), skip_hubs=bool(hubs), limit=lim_n, budget=secs) if len(ids) >= 2 else None
+    return page(request, "connect.html", ids=ids, chosen=chosen, cands=cands, q=q, res=res, active=active, hubs=hubs,
+                lim=lim_n, budget=budget, nav="Свързаности")
 
 
 @app.get("/connect.json")
-def connect_json(n: list[str] = Query([]), active: str = "", hubs: str = ""):
-    ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))[:6]
+def connect_json(n: list[str] = Query([]), active: str = "", hubs: str = "", lim: str = "", budget: str = ""):
+    ids, lim_n, secs = conn_args(n, lim, budget)
     if len(ids) < 2:
         raise HTTPException(400)
-    return JSONResponse(json.loads(json.dumps(Q.connections(ids, active=bool(active), skip_hubs=bool(hubs)), default=jdefault)))
+    return JSONResponse(json.loads(json.dumps(Q.connections(ids, active=bool(active), skip_hubs=bool(hubs), limit=lim_n, budget=secs), default=jdefault)))
 
 
 @app.get("/find.json")
-def find_json(q: str = ""):
-    """Search hits that exist in the registry network, as node ids (for the explorer and „Свържи“)."""
+def find_json(q: str = "", kinds: str = "", net: str = ""):
+    """Autocomplete for every search field (static/combo.js). kinds: any of buyer,company,person,tender;
+    net=1 keeps only people and companies in the registry network (item.node). Without kinds: the network
+    search of the graph pages (people and companies with a node)."""
+    ks = [k for k in kinds.split(",") if k in ("buyer", "company", "person", "tender")]
+    net = bool(net) or not ks
     out = []
-    hits = (Q.search(q, "person") + Q.search(q, "company")) if q.strip() else []
-    for r in sorted(hits, key=lambda r: (-float(r["sim"]), -float(r["weight"] or 0))):
+    for r in Q.search(q, kinds=ks or ["person", "company"], limit=40 if net else 10) if q.strip() else []:
         node = node_of(r["kind"], r["ref"])
-        if node:
-            out.append({"node": node, "kind": r["kind"], "label": tc(r["label"]), "sub": r["sub"]})
-    return JSONResponse(out[:12])
+        if net and not node:
+            continue
+        out.append({"kind": r["kind"], "ref": r["ref"], "node": node, "sub": r["sub"], "href": link(r["kind"], r["ref"]),
+                    "label": r["label"] if r["kind"] == "tender" else tc(r["label"])})
+    return JSONResponse(out[:10])
 
 
 @app.get("/lab/explore", response_class=HTMLResponse)

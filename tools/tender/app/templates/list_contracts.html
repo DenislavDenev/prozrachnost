@@ -6,8 +6,8 @@
 <h1 class="h1s">Договори</h1>
 <details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/contracts">
-  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. асфалт"></label>
-  <label class="fld grow"><span>Възложител или изпълнител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
+  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. асфалт" data-combo="tender" data-pick="go"></label>
+  <label class="fld grow"><span>Възложител или изпълнител</span><input name="who" value="{{ L.get('who') }}" data-combo="buyer,company,person" data-pick="filter" placeholder="име или ЕИК"></label>
   <label class="fld"><span>Процедура</span><select name="procedure"><option value="">Всички</option>
     {% for p in procedures %}<option {{ 'selected' if L.get('procedure') == p }}>{{ p }}</option>{% endfor %}</select></label>
   <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>

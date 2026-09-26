@@ -6,8 +6,8 @@
 <p class="sub">Процедурите в ЦАИС ЕОП по УНП. Датата е на обявлението, а ако то липсва в отворените данни, на първия договор.</p>
 <details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/tenders">
-  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. ремонт на училище"></label>
-  <label class="fld grow"><span>Възложител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК"></label>
+  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. ремонт на училище" data-combo="tender" data-pick="go"></label>
+  <label class="fld grow"><span>Възложител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК" data-combo="buyer" data-pick="filter"></label>
   <label class="fld"><span>Процедура</span><select name="procedure"><option value="">Всички</option>
     {% for p in procedures %}<option {{ 'selected' if L.get('procedure') == p }}>{{ p }}</option>{% endfor %}</select></label>
   <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>

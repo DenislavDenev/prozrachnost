@@ -6,7 +6,7 @@
 <p class="sub">Лица с роля в дружества от Търговския регистър. Договорите са на техните дружества, сключени докато лицето има роля там; всеки договор се брои веднъж.</p>
 <details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/persons">
-  <label class="fld grow"><span>Име</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Иванов или Ivanov"></label>
+  <label class="fld grow"><span>Име</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Иван Петров или Ivanov" data-combo="person" data-pick="go"></label>
   <label class="fld"><span>Договори</span><select name="with"><option value="">Всички лица</option>
     <option value="contracts" {{ 'selected' if L.get('with') == 'contracts' }}>Само с договори</option></select></label>
   {{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/persons">Изчисти</a>{% endif %}</div>

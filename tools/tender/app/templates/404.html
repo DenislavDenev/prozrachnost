@@ -3,5 +3,5 @@
 {% block main %}
 <h1 class="h1s">Няма такава страница</h1>
 <p class="lede">Възможно е записът още да не е зареден. Потърси по име, ЕИК или УНП.</p>
-<form class="bigfind" action="/search" role="search" style="max-width:640px"><input name="q" placeholder="Фирма, лице, ЕИК или УНП" aria-label="Търсене"><button class="btn go">Търси</button></form>
+<form class="bigfind" action="/search" role="search" style="max-width:640px"><input name="q" data-combo="buyer,company,person,tender" data-pick="go" placeholder="Фирма, лице, ЕИК или УНП" aria-label="Търсене"><button class="btn go">Търси</button></form>
 {% endblock %}

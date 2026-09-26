@@ -147,3 +147,31 @@ def test_clean_name_drops_personal_numbers_and_representatives():
     assert N.clean_name('"ДИВА - 90" ООД') == '"ДИВА - 90" ООД'  # a number in the registered name stays
     assert N.clean_name('Аспарух Михайлов Минчев, ЕГН:') == 'Аспарух Михайлов Минчев'
     assert N.clean_name('МЕТКА ЕГН СОЛАР ООД') == 'МЕТКА ЕГН СОЛАР ООД' and N.clean_name('АНГЕЛ АНЕГНОСТИЕВ') == 'АНГЕЛ АНЕГНОСТИЕВ'
+
+
+def test_prefix_query_ignores_order_and_middle_name():
+    from app.queries import prefix_query
+    assert prefix_query("Иван  ПЕТРОВ") == "иван:* & петров:*"  # matches "ИВАН ГЕОРГИЕВ ПЕТРОВ" in any order
+    assert prefix_query("a, b") is None and prefix_query("x") == "x:*"
+
+
+class FakeConn:
+    """live.edge as a list of (holder, company) for the path search."""
+    def __init__(self, edges):
+        self.edges = edges
+
+    def execute(self, sql, params):
+        nodes = set(params[0])
+        rows = [(h, c) for h, c in self.edges if h in nodes or c in nodes]
+        return type("R", (), {"fetchall": lambda _: rows})()
+
+
+def test_every_shortest_path_is_counted_and_paged():
+    from app.queries import shortest_paths
+    # a and b are linked through c1..c3 (three 2-step paths) and through a long chain (not shortest)
+    edges = [("p:a", f"c:{i}") for i in (1, 2, 3)] + [("p:b", f"c:{i}") for i in (1, 2, 3)] + [("p:a", "c:9"), ("p:x", "c:9"), ("p:x", "c:8"), ("p:b", "c:8")]
+    r = shortest_paths(FakeConn(edges), "p:a", "p:b", limit=2)
+    assert r["total"] == 3 and len(r["paths"]) == 2 and all(len(p) == 3 for p in r["paths"])
+    rest = shortest_paths(FakeConn(edges), "p:a", "p:b", offset=2, limit=2)["paths"]
+    assert len(rest) == 1 and rest[0] not in r["paths"]
+    assert shortest_paths(FakeConn(edges), "p:a", "p:zz")["total"] == 0  # not linked: searched to the end, no cap

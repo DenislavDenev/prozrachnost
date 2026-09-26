@@ -1,7 +1,7 @@
 {# Search hits that can be added to the connect board; each link keeps the current selection. #}
 {% set label = {"company": "Фирма", "person": "Лице"} %}
 {% if q %}<ul class="results">
-{% for c in cands %}<li><a href="/connect?{% for x in ids %}n={{ x | urlencode }}&amp;{% endfor %}n={{ c.node | urlencode }}{% if active %}&amp;active=1{% endif %}{% if hubs %}&amp;hubs=1{% endif %}">
+{% for c in cands %}<li><a href="/svarzanosti?{% for x in ids %}n={{ x | urlencode }}&amp;{% endfor %}n={{ c.node | urlencode }}{% if active %}&amp;active=1{% endif %}{% if hubs %}&amp;hubs=1{% endif %}">
   <span class="k">+ {{ label[c.kind] }}</span><span class="t">{{ c.label | tc }}</span><span class="s">{{ c.sub }}</span></a></li>
 {% else %}<li class="empty">Няма лице или фирма с партида за „{{ q }}“.</li>{% endfor %}
 </ul>{% endif %}

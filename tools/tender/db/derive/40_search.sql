@@ -1,11 +1,13 @@
--- One search index over buyers, companies, persons and procedures. Matching is trigram on a
--- normalized key (upper case, no quotes) plus the Latin->Cyrillic transliteration of the query
--- done in the app (app/translit.py), so "Ivanov" finds "Иванов".
+-- One search index over buyers, companies, persons and procedures (app/queries.py search()).
+-- Every word of the query is a prefix of some word of the name, in any order ("Иван Петров" finds
+-- "Иван Георгиев Петров"): tsvector 'simple' on the normalized key. Trigram similarity ranks the
+-- hits and catches typos when nothing matches. Latin queries are transliterated in the app.
 SET search_path = stage, public;
 
 CREATE TABLE search_item (
   kind text NOT NULL, ref text NOT NULL, label text NOT NULL, sub text, key text NOT NULL,
-  weight numeric NOT NULL DEFAULT 0
+  weight numeric NOT NULL DEFAULT 0,
+  words tsvector GENERATED ALWAYS AS (to_tsvector('simple', key)) STORED
 );
 
 INSERT INTO search_item
@@ -32,4 +34,5 @@ SELECT 'tender', t.unp, coalesce(t.subject, t.unp), 'Поръчка · ' || t.un
 FROM tender t;
 
 CREATE INDEX ON search_item USING gin (key gin_trgm_ops);
+CREATE INDEX ON search_item USING gin (words);
 CREATE INDEX ON search_item (kind, ref);

@@ -209,7 +209,7 @@ async function vazby(FOCUS) {
     ingest(edges); snap();
     const p = d.pairs[0];
     $('banner').classList.remove('on');
-    if (!p.paths.length) { R.list = []; $('path').innerHTML = `<b>${esc(N.get(from)?.name)}</b> и <b>${esc(N.get(to)?.name)}</b> не са свързани до 8 стъпки. <button class="btn sm" id="pclose">Затвори</button>`; $('path').classList.add('on'); $('pclose').onclick = () => $('path').classList.remove('on'); return; }
+    if (!p.paths.length) { R.list = []; $('path').innerHTML = `<b>${esc(N.get(from)?.name)}</b> и <b>${esc(N.get(to)?.name)}</b> не са свързани в регистъра. <button class="btn sm" id="pclose">Затвори</button>`; $('path').classList.add('on'); $('pclose').onclick = () => $('path').classList.remove('on'); return; }
     R.list = p.paths; showRoutes();
   }
   // every shortest route between the two is drawn and described at once
@@ -262,13 +262,10 @@ async function vazby(FOCUS) {
   $('fit').onclick = () => (S.path.size ? cy.fit(cy.nodes('.route'), 60) : cy.fit(undefined, 50));
   $('undo').onclick = () => { if (!hist.length) return; const o = JSON.parse(hist.pop()); Object.assign(S, o, { expanded: new Set(o.expanded), hidden: new Set(o.hidden), added: new Set(o.added), path: new Set(o.path), pathPairs: new Set(o.pathPairs) });
     $('undo').disabled = !hist.length; $('onlylive').checked = S.live; if (!S.path.size) $('path').classList.remove('on'); draw(); setYear(S.year); };
-  let tmr; $('addq').oninput = () => { clearTimeout(tmr); tmr = setTimeout(async () => { const q = $('addq').value.trim(); if (!q) { $('addres').innerHTML = ''; return; }
-    const r = await (await fetch('/find.json?q=' + encodeURIComponent(q))).json();
-    $('addres').innerHTML = r.map((x) => `<li><a data-n="${esc(x.node)}"><span class="k">${x.kind === 'person' ? 'Лице' : 'Фирма'}</span><span class="t">${esc(x.label)}</span><span class="s">${esc(x.sub)}</span></a></li>`).join('') || '<li class="empty">Няма резултат с партида.</li>'; }, 250); };
-  $('addres').onclick = async (e) => { const a = e.target.closest('[data-n]'); if (!a) return; const id = a.dataset.n; $('addres').innerHTML = ''; $('addq').value = '';
+  $('addq').addEventListener('combopick', async (e) => { const id = e.detail.node;
     await load(id);
     if (M.from) return finishConnect(id);
-    snap(); S.added.add(id); draw(); card(id); };
+    snap(); S.added.add(id); draw(); card(id); });
 
   await load(FOCUS); draw(true);
   // ?with=<node> opens the route from the object to it, ?y=<year> sets the year: a view can be shared

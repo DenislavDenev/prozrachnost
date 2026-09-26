@@ -247,14 +247,23 @@ def _neighbours(conn, nodes, active):
     return adj
 
 
-def shortest_paths(conn, a, b, max_steps=8, active=False, skip_hubs=False, limit=5):
-    """All shortest registry paths between two nodes (up to `limit`), by breadth-first search from both
-    ends at once; each step reads the edges of the smaller frontier. Returns (paths, hubs_skipped)."""
+def shortest_paths(conn, a, b, active=False, skip_hubs=False, offset=0, limit=50, budget=10.0):
+    """Every shortest registry path between two nodes, by breadth-first search from both ends at once
+    (each step reads the edges of the smaller frontier). No cap on the number of steps: the search runs
+    until the two sides meet or one side has nothing left. The paths themselves can be combinatorially
+    many, so they are counted exactly and listed in pages (offset/limit).
+    ponytail: a time budget (seconds) stops very long searches; the result says so and can be re-run longer.
+    Returns dict(paths, total, skipped, timed_out)."""
+    res = {"paths": [], "total": 0, "skipped": [], "timed_out": False}
     if a == b:
-        return [], set()
+        return res
+    t0 = time.monotonic()
     dist, preds, front = [{a: 0}, {b: 0}], [{}, {}], [{a}, {b}]
-    skipped, meet, steps = set(), set(), 0
-    while front[0] and front[1] and steps < max_steps and not meet:
+    skipped, meet = set(), set()
+    while front[0] and front[1] and not meet:
+        if time.monotonic() - t0 > budget:
+            res["timed_out"] = True
+            break
         side = 0 if len(front[0]) <= len(front[1]) else 1
         adj = _neighbours(conn, list(front[side]), active)
         nxt = set()
@@ -271,39 +280,54 @@ def shortest_paths(conn, a, b, max_steps=8, active=False, skip_hubs=False, limit
                     nxt.add(y)
                 preds[side].setdefault(y, set()).add(x)
         front[side] = nxt
-        steps += 1
         meet = {y for y in nxt if y in dist[1 - side]}
+    res["skipped"] = sorted(skipped)
     if not meet:
-        return [], skipped
+        return res
     best = min(dist[0][m] + dist[1][m] for m in meet)
-    out = []
+    ends = (a, b)
+    ways = [{}, {}]
 
-    def back(node, side, acc):  # walk predecessors to the end of `side`
-        if len(out) >= limit * 4:
-            return
-        if node == (a if side == 0 else b):
+    def count(node, side):  # number of shortest ways from node back to its side's end
+        if node == ends[side]:
+            return 1
+        if node not in ways[side]:
+            ways[side][node] = sum(count(p, side) for p in preds[side].get(node, ()))
+        return ways[side][node]
+
+    def back(node, side, acc):
+        if node == ends[side]:
             yield acc
             return
         for p in sorted(preds[side].get(node, ())):
             yield from back(p, side, acc + [p])
 
-    for m in sorted(x for x in meet if dist[0][x] + dist[1][x] == best):
+    mids = sorted(x for x in meet if dist[0][x] + dist[1][x] == best)
+    res["total"] = sum(count(m, 0) * count(m, 1) for m in mids)
+    k = 0
+    for m in mids:
+        n = count(m, 0) * count(m, 1)
+        if k + n <= offset:  # the whole page of this meeting node is before the offset
+            k += n
+            continue
         for left in back(m, 0, [m]):
             for right in back(m, 1, [m]):
-                out.append(list(reversed(left)) + right[1:])
-                if len(out) >= limit:
-                    return out, skipped
-    return out, skipped
+                if k >= offset:
+                    res["paths"].append(list(reversed(left)) + right[1:])
+                    if len(res["paths"]) >= limit:
+                        return res
+                k += 1
+    return res
 
 
-def connections(ids, max_steps=8, active=False, skip_hubs=False):
-    """Shortest paths between every pair of the chosen nodes, with the roles on each step."""
+def connections(ids, active=False, skip_hubs=False, offset=0, limit=50, budget=10.0):
+    """Every shortest path between every pair of the chosen nodes (a page of each), with the roles on each step."""
     pairs = []
     with connect() as conn:
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
-                paths, skipped = shortest_paths(conn, ids[i], ids[j], max_steps, active, skip_hubs, limit=20)
-                pairs.append({"a": ids[i], "b": ids[j], "paths": paths, "skipped": sorted(skipped)})
+                r = shortest_paths(conn, ids[i], ids[j], active, skip_hubs, offset, limit, budget)
+                pairs.append({"a": ids[i], "b": ids[j], **r})
     nodes = sorted({n for p in pairs for path in p["paths"] for n in path} | set(ids))
     steps = {tuple(sorted((x, y))) for p in pairs for path in p["paths"] for x, y in zip(path, path[1:])}
     info = {r["id"]: r for r in rows("""SELECT n.id, n.kind, coalesce(n.label, (SELECT holder_name FROM live.edge WHERE holder = n.id LIMIT 1)) name,
@@ -415,32 +439,52 @@ def translit(q):
     return s
 
 
-def search(q, kind=None, limit=40):
-    """Trigram search over live.search_item; each term is its own index-backed query."""
+WORD = re.compile(r"\w+")
+
+
+def prefix_query(q):
+    """'Иван петров' -> 'иван:* & петров:*' (every word a prefix, any order); None if no usable word."""
+    words = [w.lower() for w in WORD.findall(q) if len(w) > 1 or q.strip().isalnum()]
+    return " & ".join(w + ":*" for w in words) or None
+
+
+def search(q, kind=None, limit=40, kinds=None):
+    """Names: every query word is a prefix of a word of the name, in any order, any case, Latin or
+    Cyrillic; ranked exact > all words at word starts (strict_word_similarity) > weight (money or
+    links). Typos: trigram similarity, only when nothing matched. Digits: ЕИК / УНП exact, then substring."""
     q = q.strip()
     if not q:
         return []
-    terms = [q.upper()]
+    kinds = kinds or ([kind] if kind else ["buyer", "company", "person", "tender"])
+    terms = [q]
     if any("a" <= ch.lower() <= "z" for ch in q):
-        terms.append(translit(q).upper())
-    kinds = [kind] if kind else ["buyer", "company", "person", "tender"]
-    parts, args = ["SELECT kind, ref, label, sub, weight, 1.0 sim FROM live.search_item WHERE ref = ANY(%s) AND kind = ANY(%s)"], [[q, "eik:" + q], kinds]
-    # trigram similarity only on names: procedure subjects are long and would each match many trigrams,
-    # so procedures are found by substring (and by УНП) only
-    names = [k for k in kinds if k != "tender"] if not re.fullmatch(r"[\d\s\-]+", q) else []  # numbers: ЕИК / УНП, exact or substring
-    for t in terms:
-        if names:
-            parts.append("SELECT kind, ref, label, sub, weight, similarity(key, %s) sim FROM live.search_item "
-                         "WHERE kind = ANY(%s) AND key %% %s")
-            args += [t, names, t]
-        parts.append("SELECT kind, ref, label, sub, weight, 0.35 sim FROM live.search_item "
-                     "WHERE kind = ANY(%s) AND key LIKE %s")
-        args += [kinds, "%" + t.replace("%", "") + "%"]
+        terms.append(translit(q))
+    parts, args = ["SELECT kind, ref, label, sub, weight, 2.0 sim FROM live.search_item WHERE ref = ANY(%s) AND kind = ANY(%s)"], [[q, "eik:" + q], kinds]
+    if re.fullmatch(r"[\d\s\-]+", q):  # ЕИК / УНП
+        parts.append("SELECT kind, ref, label, sub, weight, 0.5 sim FROM live.search_item WHERE kind = ANY(%s) AND key LIKE %s")
+        args += [kinds, "%" + q.replace("%", "") + "%"]
+    else:
+        for t in terms:
+            tq = prefix_query(t)
+            if tq:
+                parts.append("""SELECT kind, ref, label, sub, weight,
+                    CASE WHEN key = upper(%s) THEN 1.5 ELSE 0.5 + strict_word_similarity(upper(%s), key) END sim
+                    FROM live.search_item WHERE kind = ANY(%s) AND words @@ to_tsquery('simple', %s)""")
+                args += [t, t, kinds, tq]
     sql = f"""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM ({' UNION ALL '.join(parts)}) x
               GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s"""
-    return rows(sql, *args, limit)
+    res = rows(sql, *args, limit)
+    names = [k for k in kinds if k != "tender"]  # subjects are long: no fuzzy matching on them
+    if not res and names and not re.fullmatch(r"[\d\s\-]+", q):
+        fz = " UNION ALL ".join(["SELECT kind, ref, label, sub, weight, similarity(key, upper(%s)) sim FROM live.search_item "
+                                 "WHERE kind = ANY(%s) AND key %% upper(%s)"] * len(terms))
+        fa = [a for t in terms for a in (t, names, t)]
+        res = rows(f"""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM ({fz}) x
+                       GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s""", *fa, limit)
+    return res
 
 
 if __name__ == "__main__":
     assert translit("Ivanov") == "иванов" and translit("Shtilianov") == "щилианов"
+    assert prefix_query("Иван  ПЕТРОВ") == "иван:* & петров:*" and prefix_query("a, b") is None and prefix_query("x") == "x:*"
     print("ok", dt.date.today())
