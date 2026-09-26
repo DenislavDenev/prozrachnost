@@ -76,6 +76,7 @@ async function vazby(FOCUS) {
     { selector: '.faded', style: { opacity: .15 } },
   ] });
   new ResizeObserver(() => cy.resize()).observe($('cy'));
+  vazby.cy = cy;  // for tests and the console
 
   const P = new Map([[FOCUS, { x: 0, y: 0 }]]);
   function place(ids) {
