@@ -341,7 +341,7 @@ def connections(ids, max_steps=8, active=False, skip_hubs=False):
     with connect() as conn:
         for i in range(len(ids)):
             for j in range(i + 1, len(ids)):
-                paths, skipped = shortest_paths(conn, ids[i], ids[j], max_steps, active, skip_hubs)
+                paths, skipped = shortest_paths(conn, ids[i], ids[j], max_steps, active, skip_hubs, limit=20)
                 pairs.append({"a": ids[i], "b": ids[j], "paths": paths, "skipped": sorted(skipped)})
     nodes = sorted({n for p in pairs for path in p["paths"] for n in path} | set(ids))
     steps = {tuple(sorted((x, y))) for p in pairs for path in p["paths"] for x, y in zip(path, path[1:])}

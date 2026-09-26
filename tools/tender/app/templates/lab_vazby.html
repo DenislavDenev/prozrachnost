@@ -143,12 +143,26 @@ addEventListener('load', async () => {
       kids.forEach((id, i) => { const a = par === FOCUS ? -Math.PI / 2 + (2 * Math.PI * i) / kids.length : away - sweep / 2 + (sweep * (i + .5)) / kids.length;
         P.set(id, { x: p.x + r * Math.cos(a), y: p.y + r * Math.sin(a) }); });
     }
-    const vis = [...P.keys()].filter((id) => id === FOCUS || cy.getElementById(id).length || ids.includes(id));
-    for (let it = 0; it < 60; it++) { let moved = false;
-      for (let i = 0; i < vis.length; i++) for (let j = i + 1; j < vis.length; j++) { const a = P.get(vis[i]), b = P.get(vis[j]); if (!a || !b) continue;
-        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, need = 120;
-        if (d < need) { moved = true; const f = (need - d) / 2, ux = dx / d, uy = dy / d;
-          if (vis[i] !== FOCUS) { a.x -= ux * f; a.y -= uy * f; } if (vis[j] !== FOCUS) { b.x += ux * f; b.y += uy * f; } } }
+    separate([...P.keys()].filter((id) => id === FOCUS || cy.getElementById(id).length || ids.includes(id)));
+  }
+  // a node takes its circle plus the label under it; boxes may not overlap (12 px air between them)
+  function box(id) {
+    const n = N.get(id) || { name: '' }, name = n.name || '', lines = Math.max(1, Math.ceil((name.length * 6.6) / 150)) + (n.kind === 'c' && n.n ? 1 : 0);
+    const r = id === FOCUS ? 34 : 27, w = Math.max(2 * r, Math.min(156, name.length * 6.6 + 8));
+    return { w, top: r, bottom: r + 8 + lines * 14 };
+  }
+  function separate(ids) {
+    const B = new Map(ids.map((id) => [id, box(id)]));
+    for (let it = 0; it < 120; it++) { let moved = false;
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        const a = P.get(ids[i]), b = P.get(ids[j]); if (!a || !b) continue;
+        const A = B.get(ids[i]), Bb = B.get(ids[j]);
+        const acy = a.y + (A.bottom - A.top) / 2, bcy = b.y + (Bb.bottom - Bb.top) / 2;
+        const ox = (A.w + Bb.w) / 2 + 12 - Math.abs(b.x - a.x), oy = (A.top + A.bottom + Bb.top + Bb.bottom) / 2 + 12 - Math.abs(bcy - acy);
+        if (ox > 0 && oy > 0) { moved = true;
+          const fa = ids[i] === FOCUS ? 0 : ids[j] === FOCUS ? 1 : .5, fb = 1 - fa;
+          if (ox < oy) { const d = (b.x >= a.x ? 1 : -1) * ox; a.x -= d * fa; b.x += d * fb; }
+          else { const d = (bcy >= acy ? 1 : -1) * oy; a.y -= d * fa; b.y += d * fb; } } }
       if (!moved) break; }
   }
   let pairs = new Map();
@@ -165,7 +179,7 @@ addEventListener('load', async () => {
     for (const e of E.values()) { if (!vis.has(e.holder) || !vis.has(e.company) || !shownEdge(e)) continue; const k = e.holder + '>' + e.company; if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(e); }
     for (const [k, rs] of pairs) { const [h, c] = k.split('>'), kind = rs.map((r) => linkOf(r.role)).sort((a, b) => LINKS.indexOf(a) - LINKS.indexOf(b))[0];
       els.push({ group: 'edges', data: { id: 'e:' + k, source: h, target: c, color: kind[2], label: rs.map((r) => roleTxt(r) + ' ' + when(r)).join('\n') },
-        classes: [rs.some(liveNow) ? '' : 'end', S.pathPairs.has([h, c].sort().join('|')) ? 'path show' : ''].join(' ') }); }
+        classes: [rs.some(liveNow) ? '' : 'end', S.pathPairs.has([h, c].sort().join('|')) ? 'path' : ''].join(' ') }); }
     cy.batch(() => { cy.elements().remove(); cy.add(els); });
     light();
     if (fit) cy.fit(undefined, 50);
@@ -186,9 +200,9 @@ addEventListener('load', async () => {
     route();
   }
   cy.on('mouseover', 'node', (e) => { const h = e.target.closedNeighborhood(); cy.elements().not(h).addClass('faded'); h.edges().addClass('show'); });
-  cy.on('mouseout', 'node', () => { cy.elements().removeClass('faded'); cy.edges().not('.path').removeClass('show'); });
+  cy.on('mouseout', 'node', () => { cy.elements().removeClass('faded'); cy.edges().removeClass('show'); });
   cy.on('mouseover', 'edge', (e) => e.target.addClass('show'));
-  cy.on('mouseout', 'edge', (e) => { if (!e.target.hasClass('path')) e.target.removeClass('show'); });
+  cy.on('mouseout', 'edge', (e) => e.target.removeClass('show'));
   cy.on('dragfree', 'node', (e) => P.set(e.target.id(), { ...e.target.position() }));
   const M = { from: null };
   const onBadge = (nd, pos) => {  // the badge sits at (24, -24) of the 70-unit picture, radius 9
@@ -245,13 +259,12 @@ addEventListener('load', async () => {
     const p = d.pairs[0];
     $('banner').classList.remove('on');
     if (!p.paths.length) { R.list = []; $('path').innerHTML = `<b>${esc(N.get(from)?.name)}</b> и <b>${esc(N.get(to)?.name)}</b> не са свързани до 8 стъпки. <button class="btn sm" id="pclose">Затвори</button>`; $('path').classList.add('on'); $('pclose').onclick = () => $('path').classList.remove('on'); return; }
-    R.list = p.paths; setRoute(0);
+    R.list = p.paths; showRoutes();
   }
-  // one route at a time; "друг път" steps through the equally short ones
-  const R = { list: [], i: 0 };
-  function setRoute(i) {
-    R.i = i; const r = R.list[i];
-    S.path = new Set(r); S.pathPairs = new Set(r.slice(1).map((y, k) => [r[k], y].sort().join('|')));
+  // every shortest route between the two is drawn and described at once
+  const R = { list: [] };
+  function showRoutes() {
+    S.path = new Set(R.list.flat()); S.pathPairs = new Set(R.list.flatMap((r) => r.slice(1).map((y, k) => [r[k], y].sort().join('|'))));
     $('card').classList.remove('on'); draw(false);
     // frame the route itself, clear of the description panel on the left
     const w = $('path').offsetWidth || 360;
@@ -261,16 +274,17 @@ addEventListener('load', async () => {
   }
   function route() {
     if (!S.path.size || !R.list.length) { $('path').classList.remove('on'); return; }
-    const r = R.list[R.i], rolesOf = (a, b) => [...E.values()].filter((e) => (e.holder === a && e.company === b) || (e.holder === b && e.company === a));
+    const rolesOf = (a, b) => [...E.values()].filter((e) => (e.holder === a && e.company === b) || (e.holder === b && e.company === a));
     const live = (a, b) => !S.year || rolesOf(a, b).some((e) => inYear(e, S.year));
-    const n = r.slice(1).filter((y, k) => live(r[k], y)).length, all = r.length - 1;
-    $('path').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px"><b>${all} ${all === 1 ? 'стъпка' : 'стъпки'}</b>
-        <span>${R.list.length > 1 ? `<button class="btn sm" id="pnext">Друг път ${R.i + 1}/${R.list.length}</button> ` : ''}<button class="btn sm" id="pclose">Изчисти</button></span></div>
-      ${S.year ? `<div class="${n === all ? '' : 'warn'}" style="margin-bottom:6px">През ${S.year}: ${n} от ${all} връзки действат${n === all ? ', пътят е цял' : ''}</div>` : ''}
-      ${r.map((id, k) => `${k ? `<div class="r" style="${live(r[k - 1], id) ? '' : 'opacity:.45;text-decoration:line-through'}">↓ ${esc(rolesOf(r[k - 1], id).map((e) => roleTxt(e) + ' ' + when(e)).join(', '))}</div>` : ''}<div><b>${esc(N.get(id)?.name || id)}</b></div>`).join('')}`;
+    const whole = (r) => r.slice(1).every((y, k) => live(r[k], y));
+    const steps = R.list[0].length - 1, ok = R.list.filter(whole).length;
+    $('path').innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+        <b>${R.list.length === 1 ? 'Един път' : `${R.list.length} пътя`} по ${steps} ${steps === 1 ? 'стъпка' : 'стъпки'}</b><button class="btn sm" id="pclose">Изчисти</button></div>
+      ${S.year ? `<div class="${ok ? '' : 'warn'}" style="margin-bottom:8px">През ${S.year}: ${ok ? `${ok} от ${R.list.length} ${R.list.length === 1 ? 'пътя е цял' : 'пътя са цели'}` : 'нито един път не е цял'}</div>` : ''}
+      ${R.list.map((r, i) => `<div style="padding:6px 0;border-top:1px solid var(--line-2)"><div class="mut" style="margin-bottom:2px">Път ${i + 1}${S.year ? (whole(r) ? ' · цял' : ' · прекъснат') : ''}</div>
+        ${r.map((id, k) => `${k ? `<div class="r" style="${live(r[k - 1], id) ? '' : 'opacity:.45;text-decoration:line-through'}">↓ ${esc(rolesOf(r[k - 1], id).map((e) => roleTxt(e) + ' ' + when(e)).join(', '))}</div>` : ''}<div><b>${esc(N.get(id)?.name || id)}</b></div>`).join('')}</div>`).join('')}`;
     $('path').classList.add('on');
     $('pclose').onclick = () => { snap(); S.path = new Set(); S.pathPairs = new Set(); R.list = []; draw(); };
-    $('pnext')?.addEventListener('click', () => setRoute((R.i + 1) % R.list.length));
   }
   // ---------- years: slider and a slideshow that plays through them ----------
   let timer = null;
