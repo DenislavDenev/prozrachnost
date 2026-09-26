@@ -11,7 +11,7 @@ CREATE TABLE company AS
 WITH parties AS (
   SELECT party_key, eik, name FROM contract_supplier
   UNION ALL SELECT party_key, eik, name FROM subcontract
-  UNION ALL SELECT 'eik:' || eik, eik, name FROM tr.deed WHERE status = 'ok'
+  UNION ALL SELECT 'eik:' || eik, eik, clean_name(name) FROM tr.deed WHERE status = 'ok'
   -- companies that hold roles but whose own partida is not read yet still get a page
   UNION ALL SELECT 'eik:' || holder_id, holder_id, clean_name(holder_name) FROM tr.role
             WHERE holder_kind = 'entity' AND holder_id ~ '^\d{9}$'
@@ -23,7 +23,7 @@ WITH parties AS (
 ), keys AS (SELECT DISTINCT party_key FROM parties)
 SELECT k.party_key AS key,
        coalesce(m.eik, CASE WHEN k.party_key LIKE 'eik:%' THEN substr(k.party_key, 5) END) AS eik,
-       coalesce(d.name, m.name) AS name,
+       coalesce(clean_name(d.name), m.name) AS name,
        d.legal_form, d.seat, d.registered_on, d.deed_status, d.capital_eur,
        d.status AS tr_status, d.fetched_at AS tr_fetched_at,
        EXISTS (SELECT 1 FROM buyer b WHERE b.eik = coalesce(m.eik, substr(k.party_key, 5))
