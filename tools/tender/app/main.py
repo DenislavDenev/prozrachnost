@@ -371,52 +371,57 @@ def contains(L, key, *exprs):
         L.add("(" + " OR ".join(f"{e} ILIKE %s" for e in exprs) + ")", *[f"%{v}%"] * len(exprs))
 
 
-def map_filter(frm, to, scope):
-    where, args = [], []
-    for v, op in ((frm, ">="), (to, "<=")):
-        if v:
-            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
-                raise HTTPException(400)
-            where.append(f"c.effective_date {op} %s")
-            args.append(v)
-    if scope == "municipal":
-        where.append("bp.basis = 'municipality'")
-    return " AND ".join(where) or "true", args
+# the map's levels: municipality, oblast (NUTS 3), planning region (NUTS 2), macro-region (NUTS 1)
+LEVEL = {"muni": "bp.municipality", "oblast": "m.nuts3", "region": "m.nuts2", "macro": "m.nuts1"}
+AREA = re.compile(r"\d{9,13}|BG\d{1,3}")
+
+
+def map_filter(request):
+    """The contract filters of /contracts (period, procedure, sector, one offer, over estimate, clean),
+    plus scope=municipal (only the municipality and its units)."""
+    L = Listing(request, {"x": ("1", "asc")}, "x")
+    contract_filters(L)
+    if L.get("scope") == "municipal":
+        L.add("bp.basis = 'municipality'")
+    return " AND ".join(L.where) or "true", L.args
+
+
+def area_cond(aid):
+    if not AREA.fullmatch(aid):
+        raise HTTPException(400)
+    return ("bp.municipality = %s", [aid]) if aid[0].isdigit() else ("%s IN (m.nuts3, m.nuts2, m.nuts1)", [aid])
 
 
 @app.get("/map", response_class=HTMLResponse)
 def map_page(request: Request):
-    return page(request, "map.html", nav="Карта")
+    return page(request, "map.html", **choices(), nav="Карта")
 
 
 @app.get("/map.json")
-def map_data(frm: str = "", to: str = "", scope: str = "all"):
-    """Contracts per municipality of the buyer (methodology 7), plus what could not be placed."""
-    where, args = map_filter(frm, to, scope)
-    munis = Q.rows(f"""SELECT bp.municipality id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers,
-            {SINGLE} single_pct
-        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik WHERE {where} GROUP BY 1""", *args)
+def map_data(request: Request, level: str = "muni"):
+    """Contracts per area of the buyer (methodology 7), plus what could not be placed."""
+    where, args = map_filter(request)
+    g = LEVEL.get(level, LEVEL["muni"])
+    areas = Q.rows(f"""SELECT {g} id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
+        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality
+        WHERE {where} GROUP BY 1""", *args)
     cover = Q.one(f"""SELECT round({Q.SUM}) eur, round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND bp.eik IS NOT NULL)) placed
         FROM live.contract c LEFT JOIN live.buyer_place bp ON bp.eik = c.buyer_eik
         WHERE {where.replace("bp.basis = 'municipality'", "true")}""", *args)
-    names = {r["id"]: r["name_bg"] for r in Q.cached("munis", lambda: Q.rows("SELECT id, name_bg FROM live.municipality"))}
-    for m in munis:
-        m["name"] = names.get(m["id"], m["id"])
-    return JSONResponse(json.loads(json.dumps({"munis": munis, "cover": cover}, default=jdefault)))
+    return JSONResponse(json.loads(json.dumps({"areas": areas, "cover": cover, "level": level}, default=jdefault)))
 
 
-@app.get("/map/{mid}.json")
-def map_detail(mid: str, frm: str = "", to: str = "", scope: str = "all"):
-    if not re.fullmatch(r"\d{9,13}", mid):
-        raise HTTPException(400)
-    where, args = map_filter(frm, to, scope)
-    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur,
-            {SINGLE} single_pct
-        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
-        WHERE bp.municipality = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", mid, *args)
+@app.get("/map/{aid}.json")
+def map_detail(request: Request, aid: str):
+    cond, a0 = area_cond(aid)
+    where, args = map_filter(request)
+    base = "FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality"
+    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
+        {base} LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
     suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
-        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.contract_supplier s ON s.contract_id = c.id
-        WHERE bp.municipality = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", mid, *args)
+        {base} JOIN live.contract_supplier s ON s.contract_id = c.id
+        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
     return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
 
 
@@ -498,6 +503,9 @@ def contracts(request: Request):
         L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
     if L.get("municipality"):
         L.add("c.buyer_eik IN (SELECT eik FROM live.buyer_place WHERE municipality = %s)", L.get("municipality"))
+    if AREA.fullmatch(L.get("area")):  # oblast / region / macro-region (NUTS code) of the buyer
+        L.add("""c.buyer_eik IN (SELECT bp.eik FROM live.buyer_place bp JOIN live.municipality m ON m.id = bp.municipality
+                 WHERE %s IN (m.nuts3, m.nuts2, m.nuts1))""", L.get("area"))
     if L.get("person"):  # contracts of the companies where the person had a role on the contract date
         L.add("""c.id IN (SELECT k.contract_id FROM live.edge e JOIN live.node_contract k ON k.node = e.company
                  JOIN live.contract c2 ON c2.id = k.contract_id WHERE e.holder = 'p:' || %s

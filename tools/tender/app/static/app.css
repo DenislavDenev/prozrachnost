@@ -233,6 +233,7 @@ details.more[open] > summary { margin-bottom: 14px; }
 .mapbox path { stroke: #fff; stroke-width: .8; cursor: pointer; transition: fill .15s; }
 .mapbox path:hover, .mapbox path:focus-visible { stroke: var(--ink); stroke-width: 1.4; outline: none; }
 .mapbox path.sel { stroke: var(--ink); stroke-width: 2; }
+.mapbox .ob path { fill: none; stroke: var(--ink-2); stroke-width: 1.3; pointer-events: none; display: none; } .mapbox .ob.on path { display: block; }
 .mkey { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 28px; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
 .mkey .grad { position: relative; width: min(360px, 100%); height: 34px; }
 .mkey .grad .bar { height: 10px; border-radius: 2px; }

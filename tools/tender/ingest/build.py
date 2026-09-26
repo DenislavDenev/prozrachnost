@@ -69,7 +69,8 @@ def step_derive(conn, stats):
     from . import networks
     with conn.transaction():
         # reference data kept in the repo (db/ref), loaded as stage tables before the derive SQL
-        conn.execute("CREATE TABLE stage.municipality (id text PRIMARY KEY, name_bg text NOT NULL, name_en text, drawn_as text NOT NULL)")
+        conn.execute("""CREATE TABLE stage.municipality (id text PRIMARY KEY, name_bg text NOT NULL, name_en text, drawn_as text NOT NULL,
+                        oblast text NOT NULL, nuts3 text NOT NULL, nuts2 text NOT NULL, nuts1 text NOT NULL)""")
         with (DERIVE.parent / "ref" / "municipality.csv").open(encoding="utf-8") as fh,                 conn.cursor().copy("COPY stage.municipality FROM STDIN WITH (FORMAT csv, HEADER true)") as cp:
             cp.write(fh.read())
         for f in sorted(DERIVE.glob("[0-9][0-9]_*.sql")):

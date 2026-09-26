@@ -11,6 +11,14 @@ comes as two polygons, and Сърница (split from Велинград in 2015
 is drawn inside Велинград and its contracts are added there.
 
   python tools/build_municipalities.py <geojson> <buyers.txt: eik|name per line>
+
+Areas above the municipality (the map's level selector) come from geoBoundaries BGR ADM1 (28 oblasts,
+same commit and licence): each municipality goes to the oblast holding most of its boundary points, and
+the oblast outlines are added to the JSON (key "oblasts"). NUTS codes of the oblasts are in OBLAST
+below (NUTS 2024; checked on 2026-09-26 by placing each Eurostat GISCO NUTS 3 label point in the ADM1
+polygons). Adds the columns oblast, nuts3, nuts2, nuts1 to municipality.csv:
+
+  python tools/build_municipalities.py --areas <ADM1 geojson> <ADM2 geojson>
 """
 import csv
 import json
@@ -46,7 +54,23 @@ def muni_name(buyer_name):
     return "Столична" if buyer_name.strip().upper() == "СТОЛИЧНА ОБЩИНА" else None
 
 
+# ISO 3166-2:BG -> oblast, NUTS 3, NUTS 2 (район за планиране), NUTS 1 (макрорайон)
+OBLAST = {
+    "BG-05": ("Видин", "BG311"), "BG-12": ("Монтана", "BG312"), "BG-06": ("Враца", "BG313"), "BG-15": ("Плевен", "BG314"),
+    "BG-11": ("Ловеч", "BG315"), "BG-04": ("Велико Търново", "BG321"), "BG-07": ("Габрово", "BG322"), "BG-18": ("Русе", "BG323"),
+    "BG-17": ("Разград", "BG324"), "BG-19": ("Силистра", "BG325"), "BG-03": ("Варна", "BG331"), "BG-08": ("Добрич", "BG332"),
+    "BG-27": ("Шумен", "BG333"), "BG-25": ("Търговище", "BG334"), "BG-02": ("Бургас", "BG341"), "BG-20": ("Сливен", "BG342"),
+    "BG-28": ("Ямбол", "BG343"), "BG-24": ("Стара Загора", "BG344"), "BG-22": ("София (столица)", "BG411"),
+    "BG-23": ("София област", "BG412"), "BG-01": ("Благоевград", "BG413"), "BG-14": ("Перник", "BG414"),
+    "BG-10": ("Кюстендил", "BG415"), "BG-16": ("Пловдив", "BG421"), "BG-26": ("Хасково", "BG422"),
+    "BG-13": ("Пазарджик", "BG423"), "BG-21": ("Смолян", "BG424"), "BG-09": ("Кърджали", "BG425"),
+}
+NUTS_NAME = {"BG31": "Северозападен", "BG32": "Северен централен", "BG33": "Североизточен", "BG34": "Югоизточен",
+             "BG41": "Югозападен", "BG42": "Южен централен",
+             "BG3": "Северна и Югоизточна България", "BG4": "Югозападна и Южна централна България"}
+
 BYALA_EAST = "000093435"   # Бяла, област Варна; the western Бяла (област Русе) is 000530493
+BYALA = {BYALA_EAST: "BG-03", "000530493": "BG-18"}  # two municipalities share the name: oblast by ЕИК
 EXTRA = {"176806228": "Сърница"}  # ЕИК -> name, municipalities without a polygon (see docstring)
 
 
@@ -101,5 +125,75 @@ def main(geojson, buyers_txt):
     print(len(shapes), "drawn municipalities;", len(missing), "unmatched:", missing)
 
 
+def rings(g):
+    return g["coordinates"] if g["type"] == "Polygon" else [r for p in g["coordinates"] for r in p]
+
+
+def inside(pt, ring):
+    x, y = pt
+    c = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            c = not c
+    return c
+
+
+def areas(adm1, adm2):
+    """Oblast and NUTS codes per municipality, and the oblast outlines, from ADM1 (see the docstring)."""
+    obl = json.loads(Path(adm1).read_text(encoding="utf-8"))["features"]
+    mun = json.loads(Path(adm2).read_text(encoding="utf-8"))["features"]
+    polys = [(f["properties"]["shapeISO"], rings(f["geometry"])) for f in obl]
+    of = {}
+    for f in mun:
+        # points of a grid that fall inside the municipality (boundary points sit on shared, slightly
+        # misaligned borders and vote wrong for small municipalities)
+        own = rings(f["geometry"])
+        xs, ys = [p[0] for r in own for p in r], [p[1] for r in own for p in r]
+        grid = [(min(xs) + (max(xs) - min(xs)) * (i + .5) / 16, min(ys) + (max(ys) - min(ys)) * (j + .5) / 16) for i in range(16) for j in range(16)]
+        pts = [p for p in grid if sum(inside(p, r) for r in own) % 2]
+        votes = {iso: sum(any(inside(p, r) for r in rs) for p in pts) for iso, rs in polys}
+        of[f["properties"]["shapeName"]] = max(votes, key=votes.get)
+    path = ROOT / "db" / "ref" / "municipality.csv"
+    rows = list(csv.DictReader(open(path, encoding="utf-8")))
+    by_id = {r["id"]: r for r in rows}
+    for r in rows:
+        en = r["name_en"] or by_id[r["drawn_as"]]["name_en"]  # Сърница: drawn inside Велинград
+        name, n3 = OBLAST[BYALA.get(r["id"]) or of[en]]
+        r.update(oblast=name, nuts3=n3, nuts2=n3[:4], nuts1=n3[:3])
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, ["id", "name_bg", "name_en", "drawn_as", "oblast", "nuts3", "nuts2", "nuts1"], lineterminator="\n")
+        w.writeheader()
+        w.writerows(rows)
+    # oblast outlines in the same projection as the municipalities
+    pts = [c for f in mun for ring in rings(f["geometry"]) for c in ring]
+    lon0, lon1 = min(p[0] for p in pts), max(p[0] for p in pts)
+    lat0, lat1 = min(p[1] for p in pts), max(p[1] for p in pts)
+    k = math.cos(math.radians((lat0 + lat1) / 2))
+    s = 1000 / ((lon1 - lon0) * k)
+    js = ROOT / "app" / "static" / "bg-municipalities.json"
+    out = json.loads(js.read_text(encoding="utf-8"))
+    for r in rows:  # each drawn municipality knows its oblast, so the map can colour it by any level
+        if r["id"] == r["drawn_as"] and r["id"] in out["shapes"]:
+            out["shapes"][r["id"]]["o"] = r["nuts3"]
+    out["oblasts"] = {}
+    for iso, rs in polys:
+        name, n3 = OBLAST[iso]
+        d = "".join("M" + "L".join(f"{round((x - lon0) * k * s, 1):g},{round((lat1 - y) * s, 1):g}" for x, y in r[::2] + r[-1:]) + "Z" for r in rs)
+        out["oblasts"][n3] = {"n": name, "d": d}
+    out["names"] = NUTS_NAME
+    js.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # self-check: municipalities per oblast as in the administrative division (265 in total)
+    per = {"Видин": 11, "Монтана": 11, "Враца": 10, "Плевен": 11, "Ловеч": 8, "Велико Търново": 10, "Габрово": 4, "Русе": 8,
+           "Разград": 7, "Силистра": 7, "Варна": 12, "Добрич": 8, "Шумен": 10, "Търговище": 5, "Бургас": 13, "Сливен": 4,
+           "Ямбол": 5, "Стара Загора": 11, "Благоевград": 14, "Перник": 6, "Кюстендил": 9, "Пловдив": 18, "Хасково": 11,
+           "Пазарджик": 12, "Смолян": 10, "Кърджали": 7, "София област": 22, "София (столица)": 1}
+    got = {o: sum(r["oblast"] == o for r in rows) for o in per}
+    assert got == per, {o: (got[o], n) for o, n in per.items() if got[o] != n}
+    print(len(rows), "municipalities placed in", len({r["nuts3"] for r in rows}), "oblasts")
+
+
 if __name__ == "__main__":
-    main(*sys.argv[1:3])
+    if sys.argv[1] == "--areas":
+        areas(*sys.argv[2:4])
+    else:
+        main(*sys.argv[1:3])

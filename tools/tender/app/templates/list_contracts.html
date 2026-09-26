@@ -17,9 +17,9 @@
     <label class="chk"><input type="checkbox" name="single" value="1" {{ 'checked' if L.get('single') }}> с една оферта</label>
     <label class="chk"><input type="checkbox" name="over" value="1" {{ 'checked' if L.get('over') }}> поне 2× над прогнозната</label>
     <label class="chk"><input type="checkbox" name="clean" value="1" {{ 'checked' if L.get('clean') }}> без рамкови и съмнителни стойности</label></div>
-  {{ keep(L, ['sort', 'dir', 'buyer', 'company', 'municipality', 'person']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}</div>
+  {{ keep(L, ['sort', 'dir', 'buyer', 'company', 'municipality', 'area', 'person']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}</div>
 </form></details>
-{% if L.get('buyer') or L.get('company') or L.get('municipality') or L.get('person') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else ('изпълнител ' ~ L.get('company') if L.get('company') else ('фирмите на лицето, докато има роля в тях' if L.get('person') else 'възложители в избраната община')) }} · <a class="l" href="{{ L.href(buyer=None, company=None, municipality=None, person=None, offset=None) }}">покажи всички</a></p>{% endif %}
+{% if L.get('buyer') or L.get('company') or L.get('municipality') or L.get('area') or L.get('person') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else ('изпълнител ' ~ L.get('company') if L.get('company') else ('фирмите на лицето, докато има роля в тях' if L.get('person') else ('възложители в избраната община' if L.get('municipality') else 'възложители в избраната област или район'))) }} · <a class="l" href="{{ L.href(buyer=None, company=None, municipality=None, area=None, person=None, offset=None) }}">покажи всички</a></p>{% endif %}
 {{ count(L, 'договора') }}
 <section class="p">
 {% include "_contracts_table.html" %}
