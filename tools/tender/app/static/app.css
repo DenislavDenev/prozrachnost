@@ -270,3 +270,6 @@ details.more[open] > summary { margin-bottom: 14px; }
 .mapbox path { fill: var(--line-2); }
 .tabs button { white-space: nowrap; }
 .tree .tg { align-self: start; } .tree .mk { align-self: start; margin-top: 6px; }
+.fbtn { display: flex; align-items: center; gap: 16px; height: 38px; }
+.fbtn .reset { align-self: center; }
+td.side { max-width: 190px; overflow-wrap: anywhere; }

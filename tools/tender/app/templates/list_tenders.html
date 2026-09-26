@@ -15,7 +15,7 @@
   <label class="fld"><span>Състояние</span><select name="state"><option value="">Всички</option>
     {% for v, l in [('contracted', 'С договор'), ('open', 'Без договор'), ('cancelled', 'Прекратени')] %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
   {{ period(L) }}
-  {{ keep(L, ['sort', 'dir', 'buyer']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}
+  {{ keep(L, ['sort', 'dir', 'buyer']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}</div>
 </form></details>
 {{ count(L, 'поръчки') }}
 <section class="p">

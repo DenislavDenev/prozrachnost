@@ -6,7 +6,7 @@
 <p class="sub">Договорите по {{ 'вид процедура' if kind == 'procedure' else 'сектор (първите две цифри на CPV кода)' }} за избрания период. Стойността е без таваните на рамкови споразумения. Делът с една оферта е от договорите с известен брой оферти.</p>
 <details class="filt" open><summary class="btn">Филтри</summary>
 <form class="filters" action="/{{ 'procedures' if kind == 'procedure' else 'sectors' }}">
-  {{ period(L) }}{{ keep(L, ['sort', 'dir']) }}<button class="btn go">Покажи</button>
+  {{ period(L) }}{{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Покажи</button></div>
 </form></details>
 {{ count(L, 'реда') }}
 <section class="p">

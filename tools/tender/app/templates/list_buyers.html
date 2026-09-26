@@ -8,7 +8,7 @@
   <label class="fld grow"><span>Име или ЕИК</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Община Варна"></label>
   <label class="fld"><span>Вид</span><select name="type"><option value="">Всички</option>
     {% for t in types %}<option {{ 'selected' if L.get('type') == t }}>{{ t }}</option>{% endfor %}</select></label>
-  {{ keep(L, ['sort', 'dir']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/buyers">Изчисти</a>{% endif %}
+  {{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/buyers">Изчисти</a>{% endif %}</div>
 </form></details>
 {{ count(L, 'възложители') }}
 <section class="p">

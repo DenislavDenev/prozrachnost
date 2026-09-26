@@ -8,7 +8,7 @@
 <form class="filters" action="/companies">
   <label class="fld grow"><span>Име или ЕИК</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Софарма"></label>
   <label class="fld"><span>Седалище</span><input name="seat" value="{{ L.get('seat') }}" placeholder="напр. Пловдив"></label>
-  {{ keep(L, ['sort', 'dir']) }}<button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/companies">Изчисти</a>{% endif %}
+  {{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/companies">Изчисти</a>{% endif %}</div>
 </form></details>
 {{ count(L, 'фирми') }}
 <section class="p">
