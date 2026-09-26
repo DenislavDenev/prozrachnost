@@ -59,9 +59,11 @@ def dashboard():
                 FROM live.contract c GROUP BY 1 ORDER BY n DESC LIMIT 6"""),
         "sectors": rows(f"""WITH s AS (SELECT left(cpv, 2) d, count(*) n, {SUM} eur,
                   round(100.0 * count(*) FILTER (WHERE offers_count = 1)
-                        / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
+                        / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct,
+                  round(100.0 * sum(c.amount_eur) FILTER (WHERE offers_count = 1 AND NOT c.is_framework)
+                        / nullif(sum(c.amount_eur) FILTER (WHERE offers_count IS NOT NULL AND NOT c.is_framework), 0), 1) single_eur_pct
                   FROM live.contract c WHERE cpv ~ '^[0-9]{{2}}' GROUP BY 1)
-                SELECT s.d, round(s.eur) eur, s.n, s.single_pct,
+                SELECT s.d, round(s.eur) eur, s.n, s.single_pct, s.single_eur_pct,
                   coalesce((SELECT c.cpv_description FROM live.contract c WHERE c.cpv LIKE s.d || '000000%%' LIMIT 1),
                            'CPV ' || s.d) name
                 FROM s ORDER BY eur DESC NULLS LAST LIMIT 6"""),

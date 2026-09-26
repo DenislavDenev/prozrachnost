@@ -49,10 +49,11 @@ function line(el, rows, key, ref, W = 400, H = 250) {
   rows.forEach((r, i) => { o += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle">${r.y}</text>`; });
   el.innerHTML = pts.length ? o : '';
 }
-function hbars(el, rows, { name, val, right, href, marker }) {
+// share(r): percent of this row's bar (e.g. single-bid share), drawn inside the bar
+function hbars(el, rows, { name, val, right, href, share }) {
   const max = Math.max(...rows.map((r) => +val(r) || 0)) || 1;
   el.innerHTML = rows.map((r) => `<div class="r"><a class="nm u" href="${href ? href(r) : '#'}">${esc(name(r))}</a><span class="val">${right(r)}</span>
-    <div class="tr"><i style="width:${((+val(r) || 0) / max) * 100}%"></i>${marker && marker(r) != null ? `<s style="left:${marker(r)}%" title="${marker(r)}%"></s>` : ''}</div></div>`).join('');
+    <div class="tr"><i style="width:${((+val(r) || 0) / max) * 100}%">${share && share(r) != null ? `<b style="width:${share(r)}%"></b>` : ''}</i></div></div>`).join('');
 }
 function offersStack(stack, key, offers) {
   const off = Object.fromEntries(offers.map((o) => [o.k, o.n]));

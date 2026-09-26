@@ -1,0 +1,4 @@
+{
+  "cytoscape": {"version": "3.34.3", "file": "cytoscape.min.js", "license": "MIT"},
+  "echarts": {"version": "6.1.0", "file": "echarts.min.js", "license": "Apache-2.0"}
+}

@@ -1,11 +1,12 @@
 {# Visual register of links (after rejstrik.penize.cz): company and person pages, /lab/vazby. Needs cytoscape + static/vazby.js. #}
+<div class="vz" id="vz">
 <div class="vz-legend" id="legend" aria-label="Легенда"></div>
 <div class="vz-top">
   <button class="btn sm go" id="play">▶ Пусни годините</button>
   <span class="yr"><label class="chk"><input type="checkbox" id="byyear"> Към година</label><b id="yout">—</b>
     <input type="range" id="year" min="2000" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" aria-label="Година"></span>
   <label class="chk"><input type="checkbox" id="onlylive"> Само действащи днес</label>
-  <button class="btn sm" id="fit">Фокус</button><button class="btn sm" id="undo" disabled>Назад</button>
+  <button class="btn sm" id="fit">Фокус</button><button class="btn sm" id="undo" disabled>Назад</button><button class="btn sm" id="full" aria-pressed="false">На цял екран</button>
   <span class="grow"></span>
   <div class="vz-add"><input id="addq" placeholder="Добави фирма или лице…" autocomplete="off" aria-label="Добави фирма или лице"><ul class="results" id="addres"></ul></div>
 </div>
@@ -15,5 +16,6 @@
   <div class="vz-banner" id="banner"></div>
   <div class="vz-card" id="card" aria-live="polite"></div>
   <div class="vz-path" id="path" aria-live="polite"></div>
+</div>
 </div>
 <div class="vz-status">Кликни кръгче за подробности. „+“ горе вдясно на кръгчето показва още връзки, „−“ ги скрива (или двоен клик).</div>

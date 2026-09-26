@@ -29,27 +29,31 @@
   const qs = () => new URLSearchParams({ frm: $('frm').value, to: $('to').value, scope: $('scope').value });
   g.innerHTML = Object.entries(geo.shapes).map(([id, s]) => `<path d="${s.d}" data-id="${id}" tabindex="0" role="button" aria-label="${esc(s.n)}"><title>${esc(s.n)}</title></path>`).join('');
   async function load() { st.data = await (await fetch('/map.json?' + qs())).json(); draw(); st.sel ? pick(st.sel) : top(); }
-  function buckets(vals) {  // six quantile classes over the municipalities that have a value
+  // one continuous scale: log for money and counts (a few municipalities dwarf the rest), linear 0-100 for the share
+  function scale(vals) {
     const v = vals.filter((x) => x != null && x > 0).sort((a, b) => a - b);
-    return [1, 2, 3, 4, 5].map((i) => v[Math.floor((v.length * i) / 6)] ?? 0);
+    if (st.k === 'single_pct') return { t: (x) => x / 100, ticks: [0, 50, 100] };
+    const lo = v[0] || 1, hi = v[v.length - 1] || 1, L = Math.log(hi / lo) || 1;
+    return { t: (x) => Math.log(Math.max(x, lo) / lo) / L, ticks: [lo, v[Math.floor(v.length / 2)] ?? lo, hi] };
   }
+  const MIN = 8, shade = (tone, t) => `color-mix(in srgb, ${tone} ${Math.round(MIN + t * (100 - MIN))}%, #fff)`;
   function draw() {
     const by = new Map(st.data.munis.map((m) => [m.id, m])), vals = st.data.munis.map((m) => m[st.k] == null ? null : +m[st.k]);
-    const cut = buckets(vals), tone = st.k === 'single_pct' ? 'var(--amber)' : 'var(--accent)', mix = [14, 30, 46, 62, 80, 100];
-    const cls = (v) => cut.filter((c) => v >= c).length;
+    const sc = scale(vals), tone = st.k === 'single_pct' ? 'var(--amber)' : 'var(--accent)';
     g.querySelectorAll('path').forEach((p) => {
       const m = by.get(p.dataset.id), v = m && m[st.k] != null ? +m[st.k] : null;
-      p.style.fill = v ? `color-mix(in srgb, ${tone} ${mix[cls(v)]}%, #fff)` : 'var(--line-2)';
+      p.style.fill = v != null && (v > 0 || st.k === 'single_pct') ? shade(tone, sc.t(v)) : 'var(--line-2)';
       p.querySelector('title').textContent = `${geo.shapes[p.dataset.id].n}: ${m ? fmt[st.k](m[st.k] ?? 0) : 'няма договори'}`;
       p.classList.toggle('sel', p.dataset.id === st.sel);
     });
-    const lo = [0, ...cut], hi = [...cut, null];
-    $('mkey').innerHTML = mix.map((x, i) => `<div><em style="background:color-mix(in srgb, ${tone} ${x}%, #fff)"></em>${hi[i] == null ? 'над ' + fmt[st.k](lo[i]) : fmt[st.k](lo[i]) + ' – ' + fmt[st.k](hi[i])}</div>`).join('') + '<div><em style="background:var(--line-2)"></em>няма данни</div>';
+    $('mkey').innerHTML = `<div class="grad"><div class="bar" style="background:linear-gradient(90deg, ${shade(tone, 0)}, ${shade(tone, 1)})"></div>
+      ${sc.ticks.map((x, i) => `<span style="left:${sc.t(x) * 100}%" class="${['a', 'm', 'z'][i]}">${i === 1 && st.k !== 'single_pct' ? 'медиана ' : ''}${fmt[st.k](x)}</span>`).join('')}</div>
+      <div><em style="background:var(--line-2)"></em>няма договори</div>`;
     const c = st.data.cover; $('cover').textContent = c && c.eur ? `На картата са ${Math.round((100 * c.placed) / c.eur)}% от стойността на договорите за периода (${big(+c.placed)} от ${big(+c.eur)}).` : '';
   }
   function top() {
     const rows = [...st.data.munis].filter((m) => m[st.k] != null).sort((a, b) => b[st.k] - a[st.k]).slice(0, 12);
-    side.innerHTML = `<h2>Общини по ${({ eur: 'стойност', n: 'брой договори', single_pct: 'дял с една оферта' })[st.k]}</h2><div class="sub" style="margin-bottom:16px">Избери община на картата</div><div class="hb" id="mtop"></div>`;
+    side.innerHTML = `<h2>Общини по ${({ eur: 'стойност', n: 'брой договори', single_pct: 'дял с една оферта' })[st.k]}</h2><div class="sub" style="margin-bottom:16px">Избери община на картата</div><div class="hb st" id="mtop"></div>`;
     hbars($('mtop'), rows, { name: (r) => r.name, val: (r) => +r[st.k], href: (r) => '#' + r.id, right: (r) => fmt[st.k](r[st.k]) });
     side.querySelectorAll('.nm').forEach((a) => a.onclick = (e) => { e.preventDefault(); pick(a.getAttribute('href').slice(1)); });
   }
@@ -57,10 +61,13 @@
     st.sel = id; draw();
     const m = st.data.munis.find((x) => x.id === id) || {}, d = await (await fetch(`/map/${id}.json?` + qs())).json();
     side.innerHTML = `<div class="ph"><div><h2>${esc(geo.shapes[id].n)}</h2><div class="sub">${m.n ? `${nf.format(m.n)} договора · ${big(+m.eur || 0)} · ${pct(m.single_pct)} с една оферта` : 'Няма договори за периода'}</div></div><a class="l" href="#" id="back">Всички</a></div>
-      <h3 class="h3s">Възложители</h3><div class="hb" id="mb"></div><h3 class="h3s">Изпълнители</h3><div class="hb" id="ms"></div>
+      <h3 class="h3s">Възложители</h3><div class="hb st few" id="mb"></div><h3 class="h3s">Изпълнители</h3><div class="hb st few" id="ms"></div>
       <a class="btn" style="margin-top:18px" href="/contracts?municipality=${id}${$('frm').value ? '&from=' + $('frm').value : ''}${$('to').value ? '&to=' + $('to').value : ''}">Договорите в общината</a>`;
     hbars($('mb'), d.buyers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
     hbars($('ms'), d.suppliers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/companies/' + encodeURIComponent(r.key), right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
+    // five of each at first; "още" opens the rest (up to 12)
+    for (const el of [$('mb'), $('ms')]) if (el.children.length > 5)
+      el.insertAdjacentHTML('afterend', `<button class="l more" type="button">още ${el.children.length - 5}</button>`), el.nextElementSibling.onclick = (e) => { el.classList.remove('few'); e.target.remove(); };
     $('back').onclick = (e) => { e.preventDefault(); st.sel = null; draw(); top(); };
   }
   g.addEventListener('click', (e) => { const p = e.target.closest('path'); if (p) pick(p.dataset.id); });

@@ -251,6 +251,14 @@ async function vazby(FOCUS) {
     timer = setInterval(() => { y += 1; if (y > YEAR_NOW) { stop(); return; } setYear(y); }, 1100);
   };
   $('onlylive').onchange = () => { S.live = $('onlylive').checked; light(); };
+  // full screen: legend, controls and graph together, so the year slideshow can be recorded as a timelapse
+  $('full').hidden = !document.fullscreenEnabled;
+  $('full').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : $('vz').requestFullscreen());
+  document.addEventListener('fullscreenchange', () => {
+    const on = document.fullscreenElement === $('vz');
+    $('full').textContent = on ? 'Изход от цял екран' : 'На цял екран'; $('full').setAttribute('aria-pressed', on);
+    requestAnimationFrame(() => { cy.resize(); cy.fit(undefined, 50); });
+  });
   $('fit').onclick = () => (S.path.size ? cy.fit(cy.nodes('.route'), 60) : cy.fit(undefined, 50));
   $('undo').onclick = () => { if (!hist.length) return; const o = JSON.parse(hist.pop()); Object.assign(S, o, { expanded: new Set(o.expanded), hidden: new Set(o.hidden), added: new Set(o.added), path: new Set(o.path), pathPairs: new Set(o.pathPairs) });
     $('undo').disabled = !hist.length; $('onlylive').checked = S.live; if (!S.path.size) $('path').classList.remove('on'); draw(); setYear(S.year); };
