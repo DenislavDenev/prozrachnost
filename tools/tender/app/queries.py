@@ -461,10 +461,14 @@ def search(q, kind=None, limit=40):
         terms.append(translit(q).upper())
     kinds = [kind] if kind else ["buyer", "company", "person", "tender"]
     parts, args = ["SELECT kind, ref, label, sub, weight, 1.0 sim FROM live.search_item WHERE ref = ANY(%s) AND kind = ANY(%s)"], [[q, "eik:" + q], kinds]
+    # trigram similarity only on names: procedure subjects are long and would each match many trigrams,
+    # so procedures are found by substring (and by УНП) only
+    names = [k for k in kinds if k != "tender"]
     for t in terms:
-        parts.append("SELECT kind, ref, label, sub, weight, similarity(key, %s) sim FROM live.search_item "
-                     "WHERE kind = ANY(%s) AND key %% %s")
-        args += [t, kinds, t]
+        if names:
+            parts.append("SELECT kind, ref, label, sub, weight, similarity(key, %s) sim FROM live.search_item "
+                         "WHERE kind = ANY(%s) AND key %% %s")
+            args += [t, names, t]
         parts.append("SELECT kind, ref, label, sub, weight, 0.35 sim FROM live.search_item "
                      "WHERE kind = ANY(%s) AND key LIKE %s")
         args += [kinds, "%" + t.replace("%", "") + "%"]

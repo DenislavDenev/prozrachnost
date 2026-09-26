@@ -224,7 +224,8 @@ def connect_page(request: Request, n: list[str] = Query([]), q: str = "", active
     """„Свържи“: pick two to six people or companies, see how the Trade Register links them."""
     ids = list(dict.fromkeys(x for x in n if NODE_ID.fullmatch(x)))[:6]
     chosen = [Q.node_info(x) or {"id": x, "name": x, "kind": ""} for x in ids]
-    cands = [dict(r, node=node_of(r["kind"], r["ref"])) for r in (Q.search(q, None) if q.strip() else [])]
+    hits = (Q.search(q, "person") + Q.search(q, "company")) if q.strip() else []
+    cands = [dict(r, node=node_of(r["kind"], r["ref"])) for r in sorted(hits, key=lambda r: (-float(r["sim"]), -float(r["weight"] or 0)))]
     cands = [c for c in cands if c["node"] and c["node"] not in ids][:12]
     res = Q.connections(ids, active=bool(active), skip_hubs=bool(hubs)) if len(ids) >= 2 else None
     if request.headers.get("HX-Request"):
@@ -244,7 +245,8 @@ def connect_json(n: list[str] = Query([]), active: str = "", hubs: str = ""):
 def find_json(q: str = ""):
     """Search hits that exist in the registry network, as node ids (for the explorer and „Свържи“)."""
     out = []
-    for r in (Q.search(q, None) if q.strip() else []):
+    hits = (Q.search(q, "person") + Q.search(q, "company")) if q.strip() else []
+    for r in sorted(hits, key=lambda r: (-float(r["sim"]), -float(r["weight"] or 0))):
         node = node_of(r["kind"], r["ref"])
         if node:
             out.append({"node": node, "kind": r["kind"], "label": tc(r["label"]), "sub": r["sub"]})
