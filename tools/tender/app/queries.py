@@ -426,6 +426,16 @@ def tender(unp, raw=True):
     return t
 
 
+def offers_state(tender_id):
+    """Where the procedure stands in the offers reader (eopsvc.queue). A pending one is moved to the front,
+    so a page someone opens is read within seconds; its offers show after the next build (each morning)."""
+    if not str(tender_id or "").isdigit():
+        return None
+    return (one("""UPDATE eopsvc.queue SET reason = 'visit' WHERE tender_id = %s AND status = 'pending' AND reason = 'backfill'
+                   RETURNING status, fetched_at""", int(tender_id))
+            or one("SELECT status, fetched_at FROM eopsvc.queue WHERE tender_id = %s", int(tender_id)))
+
+
 def tender_events(t, lots):
     """What happened when, for the procedure page: announced, offers as submitted, the deadline, the
     contracts and their amendments, oldest first. When every offer came on the same day the offers are one

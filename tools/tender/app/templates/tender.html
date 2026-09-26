@@ -23,13 +23,19 @@
   <div class="tile {{ 'wide' if (t.buyer_name or '') | length > 38 }}"><span>Възложител</span><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></div>
   <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else '—' }}</b></div>
   <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else '—' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
-  <div class="tile"><span>Оферти</span><b>{{ n_offers if n_offers else '—' }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span>{% if n_offers %}<b>{{ n_offers }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}
+    {% elif n_reported %}<b>{{ n_reported }}</b><small>по договорите; цените още не са прочетени</small>{% else %}<b>—</b>{% endif %}</div>
   <div class="tile {{ 'wide' if (t.procedure_type or '') | length > 30 }}"><span>Процедура</span><b>{{ t.procedure_type or '—' }}</b></div>
   <div class="tile {{ 'wide' if (method or '') | length > 30 }}"><span>Критерий</span><b>{{ method or '—' }}</b></div>
   <div class="tile"><span>Вид</span><b>{{ t.contract_type or '—' }}</b></div>
   <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else '—' }}</b></div>
   {% if t.is_eu_funded %}<div class="tile {{ 'wide' if t.european_program }}"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small title="{{ t.european_program }}">{{ t.european_program }}</small>{% endif %}</div>{% endif %}
 </div>
+
+{% if not n_offers and t.tender_id %}<p class="sub">{% if read and read.status == 'done' %}Офертите са прочетени от ЦАИС ЕОП {{ read.fetched_at | date }} и ще се покажат тук след сутрешното обновяване на данните.
+  {% elif read and read.status == 'pending' %}Офертите от ЦАИС ЕОП още не са прочетени при нас: четем всички поръчки от 2020 г. насам, по една на няколко секунди. Тази поръчка е преместена първа на опашката и офертите ѝ ще се покажат след сутрешното обновяване на данните.
+  {% else %}Офертите от ЦАИС ЕОП за тази поръчка още не са прочетени.{% endif %}
+  Дотогава ги виж в <a class="l" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">ЦАИС ЕОП</a>.</p>{% endif %}
 
 {% if desc %}<section class="p"><details class="more" {{ 'open' if desc | length < 600 }}><summary><h2>Описание</h2>{% if desc | length >= 600 %}<span class="sub">{{ desc[:220] }}…</span>{% endif %}</summary>
   <div class="prose desc">{{ desc }}</div></details></section>{% endif %}
@@ -49,7 +55,7 @@
 {% endif %}
 {% for l in lots %}
 <section class="p lot" data-lot="{{ l.lot_no }}" {% if not loop.first %}hidden{% endif %}>
-  <div class="ph"><div><h2>{{ lot_title(l) }}</h2><div class="sub">{{ l.offers | length }} оферти{% if l.estimated_eur %} · прогнозна {{ l.estimated_eur | eur }}{% endif %}{% if l.status %} · <span class="st {{ l.status }}">{{ STATE.get(l.status, '') }}</span>{% endif %}</div></div></div>
+  <div class="ph"><div><h2>{{ lot_title(l) }}</h2><div class="sub">{% if l.offers %}{{ l.offers | length }} оферти{% elif l.contracts and l.contracts[0].offers_count %}{{ l.contracts[0].offers_count }} оферти по договора{% else %}офертите още не са прочетени{% endif %}{% if l.estimated_eur %} · прогнозна {{ l.estimated_eur | eur }}{% endif %}{% if l.status %} · <span class="st {{ l.status }}">{{ STATE.get(l.status, '') }}</span>{% endif %}</div></div></div>
   {% if l.not_lowest and price_only %}<p class="warn strong">Спечели оферта, която не е най-ниската, при критерий „{{ method }}“.</p>{% elif l.not_lowest %}<p class="mut">Спечели оферта, която не е най-ниската: при критерий „{{ method or 'неизвестен' }}“ цената не е единственото мерило.</p>{% endif %}
   {% if l.low is not none %}<svg class="strip" data-est="{{ l.estimated_eur or '' }}" data-offers='{{ l.offers | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-won='{{ l.offers | selectattr("won") | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-names='{{ l.offers | selectattr("price_eur") | map(attribute="bidder_name") | map("tc") | list | json }}' viewBox="0 0 900 96" role="img" aria-label="Цените на офертите спрямо прогнозната стойност"></svg>{% endif %}
   {{ offers_table(l) }}

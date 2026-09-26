@@ -192,6 +192,8 @@ def contract(request: Request, cid: str):
         raise HTTPException(404)
     if as_json:
         return JSONResponse(json.loads(json.dumps(c, default=jdefault)))
+    if not (c["lot"] and c["lot"]["offers"]):
+        Q.offers_state(c.get("unp_tender_id"))  # not read yet: to the front of the reader's queue
     return page(request, "contract.html", c=c, nav="Договори")
 
 
@@ -201,7 +203,10 @@ def tender(request: Request, unp: str):
     if not t:
         raise HTTPException(404)
     lots = Q.tender_lots(t)
-    return page(request, "tender.html", t=t, lots=lots, events=Q.tender_events(t, lots), nav="Поръчки")
+    read = Q.offers_state(t["tender_id"]) if not any(l["offers"] for l in lots) else None
+    # until the offers are read: the counts the contracts report (open data), the largest per lot
+    n_reported = sum(max((c["offers_count"] or 0 for c in l["contracts"]), default=0) for l in lots)
+    return page(request, "tender.html", t=t, lots=lots, events=Q.tender_events(t, lots), read=read, n_reported=n_reported, nav="Поръчки")
 
 
 @app.get("/network.json")

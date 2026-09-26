@@ -37,7 +37,7 @@
   <section class="p s12"><div class="ph"><div><h2>Офертите за {{ 'позицията' if c.lot and c.lot.lot_no else 'поръчката' }}</h2>
     <div class="sub">От страницата на поръчката в ЦАИС ЕОП. Зелено: спечелилата оферта.</div></div>
     {% if c.unp_tender_id %}<a class="btn" href="https://app.eop.bg/today/{{ c.unp_tender_id }}" target="_blank" rel="noopener">Документи и оферти в ЦАИС ЕОП</a>{% endif %}</div>
-    {% if c.lot %}{{ offers_table(c.lot) }}{% else %}<p class="mut">Офертите още не са прочетени от ЦАИС ЕОП.</p>{% endif %}</section>
+    {% if c.lot %}{{ offers_table(c.lot) }}{% else %}<p class="mut">Офертите още не са прочетени от ЦАИС ЕОП. Поръчката е преместена първа на опашката за четене и офертите ще се покажат след сутрешното обновяване на данните.</p>{% endif %}</section>
 
   {% if c.amendments %}<section class="p s12"><h2>Анекси</h2>
     <table class="sortable"><thead><tr><th>Публикуван</th><th>Изменение</th><th class="n">Преди</th><th class="n">След</th><th class="n">Разлика</th></tr></thead><tbody>
