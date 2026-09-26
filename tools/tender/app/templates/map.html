@@ -79,7 +79,7 @@
     const p = qs(); p.delete('level'); p.delete('scope'); p.set(/^\d/.test(id) ? 'municipality' : 'area', id);
     side.innerHTML = `<div class="ph"><div><h2>${esc(nameOf(id))}</h2><div class="sub">${m.n ? `${nf.format(m.n)} договора · ${big(+m.eur || 0)} · ${pct(m.single_pct)} с една оферта` : 'Няма договори по тези филтри'}</div></div><a class="l" href="#" id="back">Всички</a></div>
       <h3 class="h3s">Възложители</h3><div class="hb st few" id="mb"></div><h3 class="h3s">Изпълнители</h3><div class="hb st few" id="ms"></div>
-      <a class="btn" style="margin-top:18px" href="/contracts?${p}">Договорите тук</a>`;
+      <div class="acts" style="margin-top:18px"><a class="btn go" href="/places/${id}">Профил на мястото</a><a class="btn" href="/contracts?${p}">Договорите тук</a></div>`;
     hbars($('mb'), d.buyers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
     hbars($('ms'), d.suppliers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/companies/' + encodeURIComponent(r.key), right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
     // five of each at first; "още" opens the rest (up to 12)

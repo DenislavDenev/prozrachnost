@@ -411,6 +411,41 @@ def map_data(request: Request, level: str = "muni"):
     return JSONResponse(json.loads(json.dumps({"areas": areas, "cover": cover, "level": level}, default=jdefault)))
 
 
+NUTS_NAME = {"BG31": "Северозападен район", "BG32": "Северен централен район", "BG33": "Североизточен район",
+             "BG34": "Югоизточен район", "BG41": "Югозападен район", "BG42": "Южен централен район",
+             "BG3": "Северна и Югоизточна България", "BG4": "Югозападна и Южна централна България"}
+
+
+@app.get("/places/{aid}", response_class=HTMLResponse)
+def place(request: Request, aid: str):
+    """Profile of a municipality (by its ЕИК), an oblast, a planning region or a macro-region (NUTS code)."""
+    cond, a0 = area_cond(aid)
+    if aid[0].isdigit():
+        m = Q.one("SELECT name_bg name, oblast, nuts3, nuts2 FROM live.municipality WHERE id = %s", aid)
+        kind, name = "Община", m and m["name"]
+    elif len(aid) == 5:
+        m = Q.one("SELECT DISTINCT oblast name, nuts3, nuts2 FROM live.municipality WHERE nuts3 = %s", aid)
+        kind, name = "Област", m and m["name"]
+    else:
+        m, kind, name = {"nuts2": aid[:4] if len(aid) == 4 else None}, "Район за планиране" if len(aid) == 4 else "Макрорайон", NUTS_NAME.get(aid)
+    if not name:
+        raise HTTPException(404)
+    up = [(f"/places/{m['nuts3']}", "област " + m["oblast"])] if aid[0].isdigit() else []
+    if m.get("nuts2") and len(aid) > 4:
+        up.append((f"/places/{m['nuts2']}", NUTS_NAME[m["nuts2"]]))
+    base = "FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality"
+    stats = Q.one(f"SELECT count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct {base} WHERE {cond}", *a0)
+    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur {base} LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+        WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
+    suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+        {base} JOIN live.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
+    by_year = Q.rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
+        {base} WHERE {cond} AND {Q.YEARS} GROUP BY 1 ORDER BY 1""", *a0)
+    param = "municipality" if aid[0].isdigit() else "area"
+    return page(request, "place.html", aid=aid, name=name, kind=kind, up=up, s=stats, buyers=buyers, suppliers=suppliers,
+                by_year=by_year, param=param, nav="Карта")
+
+
 @app.get("/map/{aid}.json")
 def map_detail(request: Request, aid: str):
     cond, a0 = area_cond(aid)

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} · Тендер{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/map">Карта</a>{% for h, t in up | reverse %} / <a href="{{ h }}">{{ t }}</a>{% endfor %} / {{ name }}</div>
+<div class="head"><div><h1>{{ name }}</h1><div class="meta"><span>{{ kind }}</span>{% if not aid[0].isdigit() %}<span>NUTS <b>{{ aid }}</b></span>{% endif %}</div></div>
+  <div class="acts"><a class="btn" href="/contracts?{{ param }}={{ aid }}">Всички договори</a></div></div>
+<p class="lede"><b>{{ s.n | num }} договора</b> за <b>{{ s.eur | big }}</b> на <b>{{ s.buyers | num }} възложители</b> с място тук; {{ s.single_pct | default('—', true) }}% от тях с една оферта.</p>
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Договори по години</h2><div class="sub">Без таваните на рамкови споразумения</div></div>
+    <div class="tabs" id="t-years" role="group" aria-label="Мярка"><button aria-pressed="true" data-k="eur">Стойност</button><button aria-pressed="false" data-k="n">Брой</button></div></div>
+    <svg class="ch" id="years" viewBox="0 0 720 250" role="img" aria-label="Договори по години"></svg></section>
+  <section class="p s4"><div class="ph"><div><h2>Договори с една оферта</h2><div class="sub">Дял по години</div></div></div>
+    <svg class="ch" id="single" viewBox="0 0 400 250" role="img" aria-label="Дял на договорите с една оферта"></svg></section>
+  <section class="p s6"><div class="ph"><h2>Възложители</h2></div><div class="hb st" id="pb"></div></section>
+  <section class="p s6"><div class="ph"><h2>Изпълнители</h2></div><div class="hb st" id="ps"></div></section>
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Кликни заглавие на колона, за да подредиш</div></div></div>
+    <div class="embed" hx-get="/contracts?{{ param }}={{ aid }}&amp;embed=1&amp;per=12" hx-trigger="load"><p class="mut">Зареждане…</p></div></section>
+</div>
+<script type="application/json" id="data">{{ {"by_year": by_year, "buyers": buyers, "suppliers": suppliers} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA;
+barTabs($('t-years'), $('years'), D.by_year);
+line($('single'), D.by_year, 'single_pct', null);
+hbars($('pb'), D.buyers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
+hbars($('ps'), D.suppliers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/companies/' + encodeURIComponent(r.key), right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
+</script>
+{% endblock %}
