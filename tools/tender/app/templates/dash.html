@@ -33,12 +33,12 @@
   <section class="p s6"><div class="ph"><div><h2>Най-големи изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div><a class="l" href="/companies">Всички</a></div><div class="hb" id="comps"></div></section>
 
   <section class="p s12"><div class="ph"><div><h2>Най-скъпи договори през последните 60 дни</h2><div class="sub">Без рамковите споразумения (те са таван, не разход) и без стойности с вероятна грешка при въвеждане</div></div><a class="l" href="/contracts?days=60&amp;sort=eur&amp;dir=desc&amp;clean=1">Всички</a></div>
-    <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Възложител · изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
+    <table class="sortable"><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Възложител · изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
     {% for k in d.recent_big %}
-      <tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
+      <tr><td class="mut nw" data-v="{{ k.effective_date }}">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
         <td class="hide-s mut"><a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a><br>{{ k.supplier | tc }}</td>
         <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td>
-        <td class="n strong">{{ k.eur | big }}</td></tr>
+        <td class="n strong" data-v="{{ k.eur }}">{{ k.eur | big }}</td></tr>
     {% endfor %}</tbody></table></section>
 </div>
 <script type="application/json" id="data">{{ d | json | safe }}</script>

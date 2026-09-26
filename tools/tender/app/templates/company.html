@@ -47,8 +47,8 @@
 
   {% if c.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
     <ul class="results">{% for a in c.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
-  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Последните {{ contracts | length }} от {{ c.contracts | num }}</div></div><div class="acts"><a class="btn" href="/contracts?company={{ c.key | urlencode }}">Всички</a><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">CSV</a></div></div>
-    {% include "_contracts.html" %}</section>
+  <section class="p s12"><div class="ph"><div><h2>Договори</h2><div class="sub">Кликни заглавие на колона, за да подредиш</div></div><div class="acts"><a class="btn" href="/contracts?company={{ c.key | urlencode }}">Всички</a><a class="btn" href="/companies/{{ c.key | q }}/contracts.csv">CSV</a></div></div>
+    <div class="embed" hx-get="/contracts?company={{ c.key | urlencode }}&amp;embed=1&amp;per=12&amp;hide=supplier" hx-trigger="load"><p class="mut">Зареждане…</p></div></section>
   {% endif %}
 </div>
 <script type="application/json" id="data">{{ {"by_year": c.by_year, "offers": c.offers, "buyers": c.buyers_top, "ind": c.indicators, "roles": c.roles, "node": ("c:" ~ c.eik[:9]) if c.eik else None} | json | safe }}</script>

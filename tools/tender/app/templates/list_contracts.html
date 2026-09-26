@@ -17,21 +17,11 @@
     <label class="chk"><input type="checkbox" name="single" value="1" {{ 'checked' if L.get('single') }}> с една оферта</label>
     <label class="chk"><input type="checkbox" name="over" value="1" {{ 'checked' if L.get('over') }}> поне 2× над прогнозната</label>
     <label class="chk"><input type="checkbox" name="clean" value="1" {{ 'checked' if L.get('clean') }}> без рамкови и съмнителни стойности</label></div>
-  {{ keep(L, ['sort', 'dir', 'buyer', 'company', 'municipality']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}</div>
+  {{ keep(L, ['sort', 'dir', 'buyer', 'company', 'municipality', 'person']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/contracts">Изчисти</a>{% endif %}</div>
 </form></details>
-{% if L.get('buyer') or L.get('company') or L.get('municipality') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else ('изпълнител ' ~ L.get('company') if L.get('company') else 'възложители в избраната община') }} · <a class="l" href="{{ L.href(buyer=None, company=None, municipality=None, offset=None) }}">покажи всички</a></p>{% endif %}
+{% if L.get('buyer') or L.get('company') or L.get('municipality') or L.get('person') %}<p class="sub">Само договорите на {{ 'възложител с ЕИК ' ~ L.get('buyer') if L.get('buyer') else ('изпълнител ' ~ L.get('company') if L.get('company') else ('фирмите на лицето, докато има роля в тях' if L.get('person') else 'възложители в избраната община')) }} · <a class="l" href="{{ L.href(buyer=None, company=None, municipality=None, person=None, offset=None) }}">покажи всички</a></p>{% endif %}
 {{ count(L, 'договора') }}
 <section class="p">
-<table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'subject', 'Предмет') }}{{ th(L, 'buyer', 'Възложител', 'hide-s') }}{{ th(L, 'supplier', 'Изпълнител', 'hide-s') }}
-  {{ th(L, 'offers', 'Оферти', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
-{% for k in rows %}<tr><td class="mut nw">{{ k.effective_date | date }}</td>
-  <td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject or '—' }}</a><div class="mut">{{ k.procedure_type or '' }}{{ flags(k) }}</div></td>
-  <td class="hide-s mut side"><a class="u clamp" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a></td>
-  <td class="hide-s mut side"><div class="clamp">{% if k.supplier_key %}<a class="u" href="/companies/{{ k.supplier_key | q }}">{{ k.supplier | tc }}</a>{% else %}{{ k.supplier | tc }}{% endif %}</div></td>
-  <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td>
-  <td class="n strong">{{ k.eur | eur }}</td></tr>
-{% else %}<tr><td colspan="6" class="mut">Няма договори по тези филтри.</td></tr>{% endfor %}
-</tbody></table>
-{{ pager(L) }}
+{% include "_contracts_table.html" %}
 </section>
 {% endblock %}

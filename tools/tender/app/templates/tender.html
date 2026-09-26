@@ -15,15 +15,15 @@
 {% if t.synthetic %}<p class="mut">Обявлението за тази поръчка не е в отворените данни; показани са само договорите по нея.</p>{% endif %}
 <div class="grid">
   <section class="p s12"><h2>Договори</h2>
-    <table><thead><tr><th>Позиция</th><th>Дата</th><th>Изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
-    {% for k in t.contracts %}<tr><td class="mut">{{ k.lot_no or '—' }}</td><td class="mut nw">{{ k.effective_date | date }}</td>
+    <table class="sortable"><thead><tr><th>Позиция</th><th>Дата</th><th>Изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
+    {% for k in t.contracts %}<tr><td class="mut">{{ k.lot_no or '—' }}</td><td class="mut nw" data-v="{{ k.effective_date }}">{{ k.effective_date | date }}</td>
       <td><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a><div class="mut">{% if k.supplier_key %}<a class="u" href="/companies/{{ k.supplier_key | q }}">профил на изпълнителя</a>{% endif %}{{ flags(k) }}</div></td>
-      <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong">{{ k.eur | eur }}</td></tr>
+      <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong" data-v="{{ k.eur }}">{{ k.eur | eur }}</td></tr>
     {% else %}<tr><td colspan="5" class="mut">Няма сключени договори.</td></tr>{% endfor %}</tbody></table></section>
   {% if t.lots %}<section class="p s12"><h2>Обособени позиции</h2>
-    <table><thead><tr><th>№</th><th>Предмет</th><th class="hide-s">CPV</th><th class="n">Прогнозна стойност</th></tr></thead><tbody>
+    <table class="sortable"><thead><tr><th>№</th><th>Предмет</th><th class="hide-s">CPV</th><th class="n">Прогнозна стойност</th></tr></thead><tbody>
     {% for l in t.lots %}<tr><td class="mut">{{ l.lot_no }}</td><td>{{ l.title }}</td><td class="hide-s mut">{{ l.cpv or '' }}</td>
-      <td class="n">{{ l.estimated_eur | eur if l.estimated_eur is not none else (l.estimated_value | eurc(l.currency)) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+      <td class="n" data-v="{{ l.estimated_eur }}">{{ l.estimated_eur | eur if l.estimated_eur is not none else (l.estimated_value | eurc(l.currency)) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
   {{ ocds(t.ocds) }}
   {% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
   {% if header %}{{ record(header[-1]) }}{% endif %}

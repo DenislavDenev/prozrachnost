@@ -77,6 +77,28 @@ function timeline(el, groups, Y0 = 2008, Y1 = 2027) {
   el.innerHTML = o;
 }
 
+// complete small tables (class sortable) sort in the browser; a cell's data-v, when present, is its sort value
+function sortable(t) {
+  const ths = [...t.tHead.rows[0].cells], NUM = /^-?[\d\s\u00a0.,]+$/;
+  const key = (tr, i) => { const c = tr.cells[i], v = (c?.dataset.v ?? c?.textContent ?? '').trim();
+    return NUM.test(v) && /\d/.test(v) ? parseFloat(v.replace(/[\s\u00a0]/g, '').replace(',', '.')) : v.toLowerCase(); };
+  ths.forEach((th, i) => {
+    if (th.dataset.nosort != null) return;
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'sort'; b.append(...th.childNodes); th.append(b);
+    th.setAttribute('aria-sort', 'none');
+    b.onclick = () => {
+      const dir = th.getAttribute('aria-sort') === 'descending' ? 'ascending' : 'descending';
+      ths.forEach((x) => x.hasAttribute('aria-sort') && x.setAttribute('aria-sort', 'none')); th.setAttribute('aria-sort', dir);
+      const rows = [...t.tBodies[0].rows].filter((r) => r.cells.length === ths.length);
+      rows.sort((a, z) => { const x = key(a, i), y = key(z, i);
+        const r = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'bg');
+        return dir === 'ascending' ? r : -r; });
+      t.tBodies[0].append(...rows);
+    };
+  });
+}
+document.querySelectorAll('table.sortable').forEach(sortable);
+
 // list filters fold away on phones unless a filter is set
 if (matchMedia('(max-width: 720px)').matches && !/[?&](?!sort=|dir=|offset=)[^=&]+=[^&]/.test(location.search))
   document.querySelectorAll('details.filt').forEach((d) => { d.open = false; });

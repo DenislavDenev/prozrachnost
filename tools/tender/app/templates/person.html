@@ -40,12 +40,9 @@
 
   {% if p.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
     <ul class="results">{% for a in p.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
-  <section class="p s12"><div class="ph"><div><h2>Последни договори по време на ролите му</h2><div class="sub">Само дружества, в които лицето има роля към датата на договора</div></div></div>
-    <table><thead><tr><th>Дата</th><th>Предмет</th><th class="hide-s">Дружество · възложител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
-    {% for k in p.contracts %}<tr><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="subj u" href="/contracts/{{ k.id }}">{{ k.subject }}</a></td>
-      <td class="hide-s mut"><a class="u" href="/companies/{{ k.company_key | q }}">{{ k.company_name | tc }}</a><br><a class="u" href="/buyers/{{ k.buyer_eik }}">{{ k.buyer | tc }}</a></td>
-      <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong">{{ k.eur | eur }}</td></tr>
-    {% else %}<tr><td colspan="5" class="mut">Няма договори, сключени по време на ролите му.</td></tr>{% endfor %}</tbody></table></section>
+  <section class="p s12"><div class="ph"><div><h2>Договори по време на ролите му</h2><div class="sub">Само дружества, в които лицето има роля към датата на договора. Кликни заглавие на колона, за да подредиш.</div></div>
+    <div class="acts"><a class="btn" href="/contracts?person={{ p.id }}">Всички</a></div></div>
+    <div class="embed" hx-get="/contracts?person={{ p.id }}&amp;embed=1&amp;per=12" hx-trigger="load"><p class="mut">Зареждане…</p></div></section>
 </div>
 <script type="application/json" id="data">{{ {"roles": p.roles, "node": "p:" ~ p.id} | json | safe }}</script>
 {% endblock %}

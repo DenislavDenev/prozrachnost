@@ -168,12 +168,6 @@ def person(pid):
     p["figure"] = one("""SELECT * FROM ed.public_figure WHERE person_id = %s AND status = 'confirmed'
                          ORDER BY reviewed_at DESC LIMIT 1""", pid)
     p["articles"] = articles("person", pid)
-    p["contracts"] = rows("""SELECT DISTINCT ON (c.effective_date, c.id) c.id, c.unp, c.effective_date, c.subject,
-        b.name buyer, c.buyer_eik, round(c.amount_eur) eur, c.offers_count, co.name company_name, co.key company_key
-        FROM live.edge e JOIN live.node_contract k ON k.node = e.company JOIN live.contract c ON c.id = k.contract_id
-        LEFT JOIN live.buyer b ON b.eik = c.buyer_eik LEFT JOIN live.company co ON co.key = 'eik:' || substr(e.company, 3)
-        WHERE e.holder = %s AND c.effective_date >= e.valid_from AND (e.valid_to IS NULL OR c.effective_date < e.valid_to)
-        ORDER BY c.effective_date DESC, c.id LIMIT 12""", holder)
     return p
 
 

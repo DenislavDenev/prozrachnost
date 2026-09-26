@@ -32,9 +32,9 @@
     </dl></section>
 
   {% if c.amendments %}<section class="p s12"><h2>Анекси</h2>
-    <table><thead><tr><th>Публикуван</th><th>Изменение</th><th class="n">Преди</th><th class="n">След</th><th class="n">Разлика</th></tr></thead><tbody>
-    {% for a in c.amendments %}<tr><td class="mut nw">{{ a.published_at | date }}</td><td>{{ a.reason or '' }}<div class="mut">{{ a.description or '' }}</div></td>
-      <td class="n">{{ a.last_value | eurc(a.currency) }}</td><td class="n">{{ a.current_value | eurc(a.currency) }}</td><td class="n strong">{{ a.difference | eurc(a.currency) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+    <table class="sortable"><thead><tr><th>Публикуван</th><th>Изменение</th><th class="n">Преди</th><th class="n">След</th><th class="n">Разлика</th></tr></thead><tbody>
+    {% for a in c.amendments %}<tr><td class="mut nw" data-v="{{ a.published_at }}">{{ a.published_at | date }}</td><td>{{ a.reason or '' }}<div class="mut">{{ a.description or '' }}</div></td>
+      <td class="n" data-v="{{ a.last_value }}">{{ a.last_value | eurc(a.currency) }}</td><td class="n" data-v="{{ a.current_value }}">{{ a.current_value | eurc(a.currency) }}</td><td class="n strong" data-v="{{ a.difference }}">{{ a.difference | eurc(a.currency) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
 
   {{ ocds(c.ocds) }}
   {% if c.records %}{{ record(c.records[-1]) }}{% endif %}

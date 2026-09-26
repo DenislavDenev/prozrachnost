@@ -109,7 +109,7 @@ def fperiod(r):
 T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
                      json=lambda o: json.dumps(o, default=jdefault, ensure_ascii=False).replace("</", "<\\/"),
-                     q=lambda s: quote(s, safe=":"))
+                     q=lambda s: quote(s, safe=":"), noembed=lambda h: re.sub(r"(?<=[?&])embed=1(&|$)", "", h).rstrip("?&"))
 
 
 # static assets carry their newest mtime as ?v=, so a deploy is never served from a stale browser cache
@@ -157,7 +157,7 @@ def company(request: Request, key: str):
     c = Q.company(key)
     if not c:
         raise HTTPException(404)
-    return page(request, "company.html", c=c, contracts=Q.contracts_of(key=key, limit=12), nav="Фирми")
+    return page(request, "company.html", c=c, nav="Фирми")
 
 
 @app.get("/persons/{pid}", response_class=HTMLResponse)
@@ -175,7 +175,7 @@ def buyer(request: Request, eik: str, offset: int = 0):
     b = Q.buyer(eik)
     if not b:
         raise HTTPException(404)
-    return page(request, "buyer.html", b=b, contracts=Q.contracts_of(buyer=eik, limit=12), nav="Възложители")
+    return page(request, "buyer.html", b=b, nav="Възложители")
 
 
 @app.get("/contracts/{cid}", response_class=HTMLResponse)
@@ -285,11 +285,16 @@ def lab_top_buyers(nodes: str):
 
 class Listing:
     """Sort, filter and page state of a list page, read from the query string. `cols` maps a column
-    key to (SQL expression, default direction); only those keys can be sorted on."""
+    key to (SQL expression, default direction); only those keys can be sorted on.
+    embed=1 renders only the table (profiles load it in place and re-sort it there); per= sets the page size."""
     PER = 50
 
     def __init__(self, request, cols, default):
         self.qp = {k: v for k, v in request.query_params.items() if v != ""}
+        self.path = request.url.path
+        self.embed = self.qp.get("embed") == "1"
+        per = self.qp.get("per", "")
+        self.PER = min(int(per), 200) if per.isdigit() and int(per) >= 5 else Listing.PER
         self.cols = cols
         self.sort = self.qp.get("sort") if self.qp.get("sort") in cols else default
         d = self.qp.get("dir")
@@ -315,7 +320,10 @@ class Listing:
 
     def href(self, **kw):
         q = {**self.qp, **kw}
-        return "?" + urlencode({k: v for k, v in q.items() if v not in (None, "")})
+        return self.path + "?" + urlencode({k: v for k, v in q.items() if v not in (None, "")})
+
+    def hide(self, col):
+        return col in self.get("hide").split(",")
 
     def sort_href(self, key):
         d = ("asc" if self.dir == "desc" else "desc") if key == self.sort else self.cols[key][1]
@@ -474,13 +482,17 @@ def contracts(request: Request):
         L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
     if L.get("municipality"):
         L.add("c.buyer_eik IN (SELECT eik FROM live.buyer_place WHERE municipality = %s)", L.get("municipality"))
+    if L.get("person"):  # contracts of the companies where the person had a role on the contract date
+        L.add("""c.id IN (SELECT k.contract_id FROM live.edge e JOIN live.node_contract k ON k.node = e.company
+                 JOIN live.contract c2 ON c2.id = k.contract_id WHERE e.holder = 'p:' || %s
+                 AND c2.effective_date >= e.valid_from AND (e.valid_to IS NULL OR c2.effective_date < e.valid_to))""", L.get("person"))
     contract_filters(L)
     rows = L.fetch("""SELECT c.id, c.unp, c.effective_date, c.subject, c.buyer_eik, b.name buyer, c.supplier_display supplier,
                         s0.party_key supplier_key, round(c.amount_eur) eur, c.offers_count, c.value_flag, c.is_framework, c.estimate_ratio,
                         c.annex_count, c.awarded_to_group, c.procedure_type
                       FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
                       LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0 WHERE {where}""")
-    return page(request, "list_contracts.html", L=L, rows=rows, **choices(), nav="Договори")
+    return page(request, "_contracts_table.html" if L.embed else "list_contracts.html", L=L, rows=rows, **choices(), nav="Договори")
 
 
 @app.get("/tenders", response_class=HTMLResponse)
@@ -506,7 +518,7 @@ def tenders(request: Request):
                          t.is_cancelled, s.contracts, s.amount_eur, s.single_bid
                        FROM live.tender t LEFT JOIN live.tender_stats s USING (unp) LEFT JOIN live.buyer b ON b.eik = t.buyer_eik
                        WHERE {{where}}""")
-    return page(request, "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")
+    return page(request, "_tenders_table.html" if L.embed else "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")
 
 
 ROLLUP = {"name": ("name", "asc"), "n": ("n", "desc"), "eur": ("eur", "desc"), "single": ("single_pct", "desc")}
