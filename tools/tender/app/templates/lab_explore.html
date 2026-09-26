@@ -166,7 +166,9 @@ addEventListener('load', async () => {
       own: { name: 'breadthfirst', directed: true, spacingFactor: 1.15, avoidOverlap: true, animate: true, animationDuration: 350 },
       free: { name: 'cose', animate: 'end', animationDuration: 400, idealEdgeLength: () => 140, nodeRepulsion: () => 12000, nodeDimensionsIncludeLabels: true },
     }[S.view];
-    cy.layout({ ...opts, fit: true, padding: 30 }).run();
+    const l = cy.layout({ ...opts, fit: true, padding: 30 });
+    l.one('layoutstop', () => cy.animate({ fit: { padding: 30 }, duration: 200 }));
+    l.run();
   }
   // hover: the node and its neighbours stay, the rest fades (Kumu focus, Bloom "select related")
   cy.on('mouseover', 'node', (e) => { const nb = e.target.closedNeighborhood(); cy.elements().not(nb).addClass('faded'); nb.edges().removeClass('quiet').addClass('hl'); });
