@@ -309,3 +309,28 @@ td.side { width: 170px; min-width: 150px; overflow-wrap: break-word; }
 .vz-status { font-size: 13px; color: var(--ink-3); padding: 8px 2px; }
 .vz-year { position: absolute; top: 12px; right: 14px; z-index: 6; font: 700 26px var(--font-head); color: var(--ink); background: color-mix(in srgb, var(--surface) 85%, transparent); padding: 2px 8px; border-radius: 6px; pointer-events: none; }
 .vz-year.dim { font-size: 15px; font-weight: 600; color: var(--ink-3); padding-top: 8px; }
+
+/* procedure page designs (lab_tender.html) */
+.lab-v { display: flex; gap: 8px; margin: 6px 0 16px; } .lab-v .btn[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 18px 0; }
+.tiles.col { grid-template-columns: minmax(0, 1fr); margin: 0; }
+.tile { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; display: grid; gap: 2px; align-content: start; background: var(--surface); }
+.tile > span { font-size: 12.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .03em; }
+.tile b, .tile a { font-size: 16px; font-weight: 600; } .tile small { color: var(--ink-3); font-size: 13px; }
+.lottabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.lottabs button { display: grid; justify-items: center; min-width: 54px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font: 600 15px var(--font-body); cursor: pointer; }
+.lottabs button small { font-weight: 400; font-size: 12px; color: var(--ink-3); } .lottabs button[aria-selected=true] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+svg.strip { width: 100%; height: auto; margin: 6px 0 14px; display: block; }
+svg.strip .ax { stroke: var(--line); stroke-width: 2; } svg.strip .est { stroke: var(--ink-3); stroke-width: 1.5; stroke-dasharray: 4 4; }
+svg.strip .of { fill: var(--surface); stroke: var(--slate); stroke-width: 2; } svg.strip .won { fill: var(--accent); }
+svg.strip .lbl { font-size: 13px; fill: var(--ink-3); }
+tr.win td { background: var(--accent-soft); } .mxt td.won { background: var(--accent-soft); font-weight: 600; } .mxt td small { display: block; color: var(--ink-3); font-weight: 400; }
+.mxt tr.est td { border-top: 2px solid var(--line); }
+.scrollx { overflow-x: auto; }
+.kline { padding: 6px 0; }
+ol.flow { list-style: none; margin: 14px 0 0; padding: 0 0 0 22px; border-left: 2px solid var(--line); display: grid; gap: 18px; }
+ol.flow > li { position: relative; } ol.flow > li::before { content: ""; position: absolute; left: -29px; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); }
+ol.flow > li > b { margin-right: 10px; }
+ol.rank { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+ol.rank li { display: flex; gap: 12px; align-items: baseline; } ol.rank li span { flex: 1; } ol.rank li.win { color: var(--accent-ink); } ol.rank li em { font-style: normal; font-size: 13px; }
+

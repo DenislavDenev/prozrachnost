@@ -40,8 +40,8 @@ def migrate(conn):
     return applied
 
 
-# one step at a time per lane: 'build' (eop -> publish) and 'tr' (register reads) run independently
-LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703, "seed": 7_070_704}
+# one step at a time per lane: 'build' (eop -> publish), 'tr' (register reads) and 'offers' (procedure pages) run independently
+LOCKS = {"build": 7_070_701, "tr": 7_070_702, "enrich": 7_070_703, "seed": 7_070_704, "offers": 7_070_705}
 
 
 class Busy(RuntimeError):

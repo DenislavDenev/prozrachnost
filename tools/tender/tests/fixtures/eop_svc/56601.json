@@ -1,0 +1,418 @@
+{
+ "participation": {
+  "AuctionQuotationMethod": false,
+  "AuctionStartDate": null,
+  "IsMainTender": true,
+  "Lots": [
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50038,
+        "Hash": "9A3BE447312D5A8C9C09DF3CD28A083A",
+        "IsPriceOpened": false,
+        "OfferEntityId": 48,
+        "OfferId": 50040,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"ОЗК - ЗАСТРАХОВАНЕ \" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"ОЗК - ЗАСТРАХОВАНЕ \" АД",
+        "Price": null,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "121265177",
+        "SubmissionDate": "/Date(1582017362000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 49704,
+        "Hash": "53B75221E4E76E951F1A8C93B5F64475",
+        "IsPriceOpened": false,
+        "OfferEntityId": 48,
+        "OfferId": 49706,
+        "OfferName": "ЗАСТРАХОВАТЕЛНА КОМПАНИЯ ЛЕВ ИНС АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНА КОМПАНИЯ ЛЕВ ИНС АД",
+        "Price": null,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "121130788",
+        "SubmissionDate": "/Date(1582203389000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48626,
+        "Hash": "AD0BF05279F58DA76389C7B59DDBDB35",
+        "IsPriceOpened": false,
+        "OfferEntityId": 48,
+        "OfferId": 48628,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ЕДНОЛИЧНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" ЕАД",
+        "Price": null,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "000694286",
+        "SubmissionDate": "/Date(1582280995000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48608,
+        "Hash": "AC0457C2DEC6B2FB2A5D2590D5A9E742",
+        "IsPriceOpened": false,
+        "OfferEntityId": 48,
+        "OfferId": 48610,
+        "OfferName": "ЗД \"БУЛ ИНС\" АД",
+        "OrganizationName": "ЗД \"БУЛ ИНС\" АД",
+        "Price": null,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "831830482",
+        "SubmissionDate": "/Date(1582289300000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50047,
+        "Hash": "0DD95AE2D0C707351015F9D73192890A",
+        "IsPriceOpened": false,
+        "OfferEntityId": 48,
+        "OfferId": 50049,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "Price": null,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "200140730",
+        "SubmissionDate": "/Date(1582299576000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1582876800000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "- Общи изисквания"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50038,
+        "Hash": "9A3BE447312D5A8C9C09DF3CD28A083A",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 50039,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"ОЗК - ЗАСТРАХОВАНЕ \" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"ОЗК - ЗАСТРАХОВАНЕ \" АД",
+        "Price": 111445.2,
+        "PriceExportDocumentId": 3452260,
+        "RegistryNumber": "121265177",
+        "SubmissionDate": "/Date(1582017362000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 49704,
+        "Hash": "53B75221E4E76E951F1A8C93B5F64475",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 49705,
+        "OfferName": "ЗАСТРАХОВАТЕЛНА КОМПАНИЯ ЛЕВ ИНС АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНА КОМПАНИЯ ЛЕВ ИНС АД",
+        "Price": 60123.49,
+        "PriceExportDocumentId": 2591164,
+        "RegistryNumber": "121130788",
+        "SubmissionDate": "/Date(1582203389000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48626,
+        "Hash": "AD0BF05279F58DA76389C7B59DDBDB35",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48627,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ЕДНОЛИЧНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" ЕАД",
+        "Price": 195631.9,
+        "PriceExportDocumentId": 3452292,
+        "RegistryNumber": "000694286",
+        "SubmissionDate": "/Date(1582280995000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48608,
+        "Hash": "AC0457C2DEC6B2FB2A5D2590D5A9E742",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48609,
+        "OfferName": "ЗД \"БУЛ ИНС\" АД",
+        "OrganizationName": "ЗД \"БУЛ ИНС\" АД",
+        "Price": 178520.4,
+        "PriceExportDocumentId": 1550671,
+        "RegistryNumber": "831830482",
+        "SubmissionDate": "/Date(1582289300000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1583139600000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "1. Застраховане на автомобили, собственост на ИАРА със застраховка „КАСКО“ или еквивалентно"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48626,
+        "Hash": "AD0BF05279F58DA76389C7B59DDBDB35",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48629,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ЕДНОЛИЧНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" ЕАД",
+        "Price": 6007.8,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "000694286",
+        "SubmissionDate": "/Date(1582280995000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50047,
+        "Hash": "0DD95AE2D0C707351015F9D73192890A",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 50050,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "Price": 1802.34,
+        "PriceExportDocumentId": 33662337,
+        "RegistryNumber": "200140730",
+        "SubmissionDate": "/Date(1582299576000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1583139600000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "2. Застраховане на автомобили, собственост на Изпълнителна агенция по рибарство и аквакултури със застраховка „Злополука на местата“ или еквивалентно"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48626,
+        "Hash": "AD0BF05279F58DA76389C7B59DDBDB35",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48630,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ЕДНОЛИЧНО АКЦИОНЕРНО ДРУЖЕСТВО \"БУЛСТРАД ВИЕНА ИНШУРЪНС ГРУП\" ЕАД",
+        "Price": 10919.6,
+        "PriceExportDocumentId": 2753397,
+        "RegistryNumber": "000694286",
+        "SubmissionDate": "/Date(1582280995000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1583139600000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "3. Застраховане на плавателни средства собственост на ИАРА със застраховки „Гражданска отговорност“ или еквивалент, „Злополука“ или еквивалент“ и „Каско“ или еквивалент"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48608,
+        "Hash": "AC0457C2DEC6B2FB2A5D2590D5A9E742",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48613,
+        "OfferName": "ЗД \"БУЛ ИНС\" АД",
+        "OrganizationName": "ЗД \"БУЛ ИНС\" АД",
+        "Price": 971.48,
+        "PriceExportDocumentId": 4428933,
+        "RegistryNumber": "831830482",
+        "SubmissionDate": "/Date(1582289300000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50047,
+        "Hash": "0DD95AE2D0C707351015F9D73192890A",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 50052,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "Price": 764.25,
+        "PriceExportDocumentId": 2753440,
+        "RegistryNumber": "200140730",
+        "SubmissionDate": "/Date(1582299576000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1583139600000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "4. Застраховане на недвижимо имущество, собственост на Изпълнителна агенция по рибарство и аквакултури"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 48608,
+        "Hash": "AC0457C2DEC6B2FB2A5D2590D5A9E742",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 48614,
+        "OfferName": "ЗД \"БУЛ ИНС\" АД",
+        "OrganizationName": "ЗД \"БУЛ ИНС\" АД",
+        "Price": 12920.1,
+        "PriceExportDocumentId": 2753453,
+        "RegistryNumber": "831830482",
+        "SubmissionDate": "/Date(1582289300000)/"
+       },
+       {
+        "ConsortiumMembers": [],
+        "FirstRoundOfferId": 50047,
+        "Hash": "0DD95AE2D0C707351015F9D73192890A",
+        "IsPriceOpened": true,
+        "OfferEntityId": 48,
+        "OfferId": 50053,
+        "OfferName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "OrganizationName": "ЗАСТРАХОВАТЕЛНО ДРУЖЕСТВО \"ОЗОК Инс\" АД",
+        "Price": 8785.7,
+        "PriceExportDocumentId": null,
+        "RegistryNumber": "200140730",
+        "SubmissionDate": "/Date(1582299576000)/"
+       }
+      ],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": "/Date(1583139600000)/",
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "5. Застраховане на бордово оборудване за спътниково наблюдение на риболовни кораби и оборудване  за изследване, монтирано на научноизсл. кораб Академик"
+   },
+   {
+    "AuctionQuotationMethod": false,
+    "AuctionStartDate": null,
+    "IsMainTender": false,
+    "Lots": null,
+    "Rounds": [
+     {
+      "HasSeparatePriceOpening": true,
+      "Offers": [],
+      "OpeningOfOffersDate": "/Date(1582531200000)/",
+      "OpeningOfPriceOffersDate": null,
+      "OrderNumber": 1,
+      "RoundDisplayName": "Подаване на оферти",
+      "ShowSuppliersOnToday": true
+     }
+    ],
+    "TenderName": "6. Застраховане на хардуер, собственост на Изпълнителна агенция по рибарство и аквакултури"
+   }
+  ],
+  "Rounds": [],
+  "TenderName": "„Предоставяне на услуги по застраховане на активите на Изпълнителна агенция по рибарство и аквакултури в шест обособени позиции“"
+ },
+ "lots": [
+  {
+   "OrderNumber": 0,
+   "TenderId": 56603,
+   "TenderName": "Общи изисквания",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 1,
+   "TenderId": 56602,
+   "TenderName": "Застраховане на автомобили, собственост на ИАРА със застраховка „КАСКО“ или еквивалентно",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 2,
+   "TenderId": 56604,
+   "TenderName": "Застраховане на автомобили, собственост на Изпълнителна агенция по рибарство и аквакултури със застраховка „Злополука на местата“ или еквивалентно",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 3,
+   "TenderId": 56605,
+   "TenderName": "Застраховане на плавателни средства собственост на ИАРА със застраховки „Гражданска отговорност“ или еквивалент, „Злополука“ или еквивалент“ и „Каско“ или еквивалент",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 4,
+   "TenderId": 56606,
+   "TenderName": "Застраховане на недвижимо имущество, собственост на Изпълнителна агенция по рибарство и аквакултури",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 5,
+   "TenderId": 56607,
+   "TenderName": "Застраховане на бордово оборудване за спътниково наблюдение на риболовни кораби и оборудване  за изследване, монтирано на научноизсл. кораб Академик",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  },
+  {
+   "OrderNumber": 6,
+   "TenderId": 56610,
+   "TenderName": "Застраховане на хардуер, собственост на Изпълнителна агенция по рибарство и аквакултури",
+   "ExplicitTenderStatus": 1,
+   "ExplicitTenderStatusChangeDate": null
+  }
+ ]
+}

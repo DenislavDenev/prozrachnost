@@ -281,6 +281,15 @@ def lab_explore(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
     return page(request, "lab_explore.html", node=node, info=Q.node_info(node), nav="")
 
 
+@app.get("/lab/tender/{unp}", response_class=HTMLResponse)
+def lab_tender(request: Request, unp: str, v: str = "a"):
+    """Three designs of the procedure page with the offers (A comparison, B timeline, C table)."""
+    t = Q.tender(unp)
+    if not t:
+        raise HTTPException(404)
+    return page(request, "lab_tender.html", t=t, lots=Q.tender_lots(t), v=v if v in ("a", "b", "c") else "a", nav="Поръчки")
+
+
 @app.get("/lab/vazby", response_class=HTMLResponse)
 def lab_vazby(request: Request, node: str = "c:201090465"):
     """Prototype after rejstrik.penize.cz „Vizualizace vztahů“: icon nodes, +/- expansion, time slider."""

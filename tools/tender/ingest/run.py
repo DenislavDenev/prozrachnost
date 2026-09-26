@@ -1,7 +1,8 @@
 """CLI for n8n and humans: python -m ingest.run --step <name> [--budget SECONDS]
 
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
-               tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich)
+               tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich) |
+               eop-check (validity check of the offers reader; exit 1 = repair needed), eop-offers (offers)
 Prints one JSON line with the stats; exit code 1 on failure.
 """
 import argparse
@@ -9,7 +10,7 @@ import datetime as dt
 import json
 import sys
 
-from . import build, db, enrich, tr_worker
+from . import build, db, enrich, eop_offers, tr_worker
 
 BUILD = {"eop": build.step_eop, "fx": build.step_fx, "normalize": build.step_normalize,
          "derive": build.step_derive, "publish": build.step_publish}
@@ -39,6 +40,17 @@ def main():
                 with db.job(name) as (conn, stats):
                     BUILD[name](conn, stats)
                     out[name] = stats
+        elif a.step == "eop-check":
+            with db.job(a.step, lane="offers") as (conn, stats):
+                stats.update(eop_offers.check(conn))
+                out.update(stats)
+            if not stats["ok"]:
+                raise RuntimeError("the offers reader failed its check: repair needed")
+        elif a.step == "eop-offers":
+            with db.job(a.step, lane="offers") as (conn, stats):
+                stats["queued"] = eop_offers.enqueue(conn)
+                eop_offers.work(conn, a.budget, stats)
+                out.update(stats)
         elif a.step == "tr-seed":
             with db.job(a.step, lane="seed") as (conn, stats):
                 stats["queued"] = tr_worker.seed_from_contracts(conn)

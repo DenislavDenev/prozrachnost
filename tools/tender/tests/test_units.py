@@ -191,3 +191,23 @@ def test_lot_and_tender_status():
     lots = {(l["unp"], l["lot_no"]): l["status"] for l in res["lot"]}
     assert state == {"A": "contracted", "B": "cancelled", "C": "unawarded", "D": "no_contract"}
     assert lots == {("A", 1): "contracted", ("A", 2): "unawarded"}
+
+
+def test_offers_parse_lots_prices_and_identifiers():
+    import json
+    from pathlib import Path
+    from ingest import eop_offers as O
+    fx = lambda t: json.loads((Path(__file__).parent / "fixtures" / "eop_svc" / f"{t}.json").read_text(encoding="utf-8"))
+    one = fx(495012)
+    rows = O.parse(495012, one["participation"], one["lots"])
+    assert len(rows) == 3 and {r["lot_no"] for r in rows} == {0} and round(sum(r["price"] for r in rows), 2) == 1648930.56
+    assert all(r["bidder_eik"] and len(r["bidder_eik"]) == 9 for r in rows) and rows[0]["submitted_at"].year == 2025
+    lots = fx(56601)
+    rows = O.parse(56601, lots["participation"], lots["lots"])
+    assert {r["lot_no"] for r in rows} <= set(range(0, 7)) and all(r["price"] is None for r in rows if not r["price_opened"])
+    assert O.eik("8001011234") is None  # a 10-digit personal number is never kept
+    try:
+        O.parse(1, {"Rounds": [{"Offers": [{"OfferId": 1}]}]})
+        assert False, "a changed answer must raise"
+    except O.ShapeError:
+        pass

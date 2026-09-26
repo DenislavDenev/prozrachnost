@@ -1,0 +1,64 @@
+{
+ "participation": {
+  "AuctionQuotationMethod": false,
+  "AuctionStartDate": null,
+  "IsMainTender": false,
+  "Lots": null,
+  "Rounds": [
+   {
+    "HasSeparatePriceOpening": false,
+    "Offers": [
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2356743,
+      "Hash": "CB685AA69AB113F8F31A3EDE30F85AA5",
+      "IsPriceOpened": true,
+      "OfferEntityId": 48,
+      "OfferId": 2356743,
+      "OfferName": "ФЕДЕРАЛНА СЛУЖБА ЗА БЕЗОПАСНОСТ - ДОБРИЧ ООД",
+      "OrganizationName": "ФЕДЕРАЛНА СЛУЖБА ЗА БЕЗОПАСНОСТ - ДОБРИЧ ООД",
+      "Price": 547697.88,
+      "PriceExportDocumentId": 46396939,
+      "RegistryNumber": "124546400",
+      "SubmissionDate": "/Date(1749455167797)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2356724,
+      "Hash": "09117F9AAAE86E885FA4A638345DA310",
+      "IsPriceOpened": true,
+      "OfferEntityId": 48,
+      "OfferId": 2356724,
+      "OfferName": "ВИП СЕКЮРИТИ ЕООД",
+      "OrganizationName": "ВИП СЕКЮРИТИ ЕООД",
+      "Price": 551476.32,
+      "PriceExportDocumentId": 46396940,
+      "RegistryNumber": "121819662",
+      "SubmissionDate": "/Date(1749459274547)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2356972,
+      "Hash": "9E3E715B3A96075381557D9ED183111C",
+      "IsPriceOpened": true,
+      "OfferEntityId": 48,
+      "OfferId": 2356972,
+      "OfferName": "СЕКЮРИТИ БУРГАС СОТ ООД",
+      "OrganizationName": "СЕКЮРИТИ БУРГАС СОТ ООД",
+      "Price": 549756.36,
+      "PriceExportDocumentId": 46396941,
+      "RegistryNumber": "202099848",
+      "SubmissionDate": "/Date(1749535203060)/"
+     }
+    ],
+    "OpeningOfOffersDate": "/Date(1749812400000)/",
+    "OpeningOfPriceOffersDate": null,
+    "OrderNumber": 1,
+    "RoundDisplayName": "Подаване на оферти",
+    "ShowSuppliersOnToday": true
+   }
+  ],
+  "TenderName": "„Охрана на общински обекти“"
+ },
+ "lots": []
+}

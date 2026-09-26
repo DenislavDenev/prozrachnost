@@ -405,6 +405,33 @@ def tender(unp):
     return t
 
 
+def tender_lots(t):
+    """Per lot (0 = no lots): title, estimate, status, offers (cheapest first) and contracts, for the
+    procedure page. Offers come from the procedure pages of ЦАИС ЕОП (live.offer); empty until read."""
+    unp = t["unp"]
+    has = one("SELECT to_regclass('live.offer') IS NOT NULL ok")["ok"]  # the first build after migration 0003 creates it
+    offers = rows("""SELECT lot_no, round, bidder_name, bidder_eik, company_key, consortium, submitted_at, price_eur,
+        price_opened, won FROM live.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at""", unp) if has else []
+    lots = {l["lot_no"]: dict(l, offers=[], contracts=[]) for l in t["lots"]}
+    for o in offers:
+        lots.setdefault(o["lot_no"], {"lot_no": o["lot_no"], "title": None, "estimated_eur": None, "status": None,
+                                      "offers": [], "contracts": []})["offers"].append(o)
+    for c in t["contracts"]:
+        n = c["lot_no"] or 0
+        lots.setdefault(n, {"lot_no": n, "title": None, "estimated_eur": None, "status": None, "offers": [], "contracts": []})["contracts"].append(c)
+    if not t["lots"] and 0 in lots:
+        lots[0].update(title=t["subject"], estimated_eur=t["estimated_eur"], status=t.get("state"))
+    out = sorted(lots.values(), key=lambda l: l["lot_no"])
+    for l in out:
+        prices = [o["price_eur"] for o in l["offers"] if o["price_eur"] is not None]
+        l["low"] = min(prices) if prices else None
+        l["high"] = max(prices) if prices else None
+        win = [o for o in l["offers"] if o["won"]]
+        # the award went above the lowest opened price (a flag only where the criterion is the price alone)
+        l["not_lowest"] = bool(win and l["low"] is not None and win[0]["price_eur"] is not None and win[0]["price_eur"] > l["low"] + 0.01)
+    return out
+
+
 @lru_cache(maxsize=8)
 def _raw_rows(day, kind):
     from ingest import eop
