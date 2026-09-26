@@ -4,12 +4,15 @@ Each successful source replaces only its own rows. A failed fetch leaves the las
 known snapshot available and marks its status as stale.
 """
 import argparse
+import csv
+import io
 import json
 import re
 import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from datetime import datetime, timezone
 
 from db import connect
@@ -21,8 +24,8 @@ ARCGIS = "https://services6.arcgis.com/GLbanbtRQ5XHYhZ4/arcgis/rest/services/Net
 MVR = "https://www.mvr.bg/PTPShapeResult/ptp.zip"
 
 
-def fetch(url, timeout=40):
-    request = urllib.request.Request(url, headers={"User-Agent": "Prozrachnost/0.1 (+https://github.com/DenislavDenev)", "Accept": "application/json,text/html,application/xml,*/*"})
+def fetch(url, timeout=40, user_agent="Prozrachnost/0.1 (+https://github.com/DenislavDenev)"):
+    request = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json,text/html,application/xml,*/*"})
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -159,6 +162,49 @@ def load_risk(db):
         print(f"risk: ERROR {exc}")
 
 
+def parse_mvr_csv(raw):
+    rows = []
+    skipped = 0
+    reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
+    required = {"latitude","longitude","crashdatetime","crashtype","diedcount","injuredcount"}
+    if not reader.fieldnames or not required.issubset(reader.fieldnames):
+        raise ValueError("Unexpected MVR CSV schema")
+    for index, item in enumerate(reader, 1):
+        try:
+            lat, lon = float(item["latitude"]), float(item["longitude"])
+            if not 40.5 <= lat <= 44.5 or not 21.5 <= lon <= 29:
+                raise ValueError("Out-of-range coordinates")
+            date = item["crashdatetime"].strip()
+            if not re.match(r"^20\d\d-\d\d-\d\d", date):
+                raise ValueError("Invalid date")
+            description = (item.get("crashtype") or "Пътнотранспортно произшествие").strip()
+            rows.append((str(index),date,lat,lon,description,int(item["diedcount"] or 0),int(item["injuredcount"] or 0)))
+        except (TypeError,ValueError,KeyError):
+            skipped += 1
+    return rows, skipped
+
+
+def load_mvr(db):
+    try:
+        raw = fetch(MVR,timeout=90,user_agent="Mozilla/5.0")
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            name = next((n for n in archive.namelist() if n.lower().endswith(".csv")),None)
+            if not name:
+                raise ValueError("CSV missing from MVR ZIP")
+            rows, skipped = parse_mvr_csv(archive.read(name))
+        if len(rows) < 10000:
+            raise ValueError(f"Incomplete MVR snapshot: {len(rows)} geocoded records")
+        with db:
+            db.execute("DELETE FROM crashes")
+            db.executemany("INSERT INTO crashes VALUES(?,?,?,?,?,?,?)",rows)
+            record(db,"crashes","МВР · катастрофи",MVR,len(rows))
+        print(f"crashes: {len(rows)} with coordinates, {skipped} without valid coordinates/date")
+    except Exception as exc:
+        with db:
+            record(db,"crashes","МВР · катастрофи",MVR,error=str(exc)[:220])
+        print(f"crashes: ERROR {exc}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sources",nargs="*",choices=["toll","events","risk","mvr"],default=["toll","events","risk","mvr"])
@@ -167,12 +213,7 @@ def main():
     if "toll" in args.sources: load_toll(db)
     if "events" in args.sources: load_events(db)
     if "risk" in args.sources: load_risk(db)
-    if "mvr" in args.sources:
-        # The published URL currently responds 403 to automated retrieval.
-        # Keep this explicit instead of showing an invented or incomplete crash layer.
-        with db:
-            record(db,"crashes","МВР · катастрофи",MVR,error="Официалният ZIP източник отказва автоматично изтегляне (HTTP 403).")
-        print("crashes: source unavailable (HTTP 403)")
+    if "mvr" in args.sources: load_mvr(db)
 
 
 if __name__ == "__main__": main()

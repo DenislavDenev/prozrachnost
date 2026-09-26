@@ -1,6 +1,6 @@
 import unittest
 
-from ingest import parse_datex
+from ingest import parse_datex, parse_mvr_csv
 
 
 class DatexTests(unittest.TestCase):
@@ -17,6 +17,14 @@ class DatexTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][:6], ("r-1", "Затворен път", "Затворен път", "Ремонт", 42.1, 23.4))
         self.assertEqual(rows[0][6], "2026-09-26T08:00:00+0300")
+
+    def test_mvr_skips_rows_without_coordinates(self):
+        csv_data = ("diedcount,injuredcount,crashtype,crashdatetime,latitude,longitude\n"
+                    "1,2,Сблъсък,2026-09-26 10:00:00,42.5,23.3\n"
+                    "0,0,ПТП,2026-09-26 11:00:00,,\n").encode("utf-8-sig")
+        rows, skipped = parse_mvr_csv(csv_data)
+        self.assertEqual((len(rows), skipped), (1, 1))
+        self.assertEqual(rows[0][5:], (1, 2))
 
 
 if __name__ == "__main__":
