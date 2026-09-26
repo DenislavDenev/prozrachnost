@@ -19,14 +19,7 @@
 <div class="asof">Търговски регистър · ЕГН, адреси и дати на раждане не се показват · регистърни факти, не оценка</div>
 
 <div class="grid">
-  <section class="p s12 net" id="net">
-    <div class="side"><div><h2>Мрежа от свързани лица и дружества</h2><div class="sub">Дружествата на лицето и другите лица в тях</div></div>
-      <div><div class="lb">Изглед</div><div class="tabs"><button data-view="all" aria-pressed="true">Всички</button><button data-view="ownership" aria-pressed="false">Собственост</button><button data-view="management" aria-pressed="false">Управление</button></div></div>
-      <div><div class="lb">Време</div><label class="chk"><input type="checkbox"> Само действащи към година</label><div class="yr"><input type="range" min="2008" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" disabled aria-label="Година"><output>—</output></div></div>
-      {% include "_net_key.html" %}
-      <div class="caveat">Кликни лице или фирма, за да видиш ролите и периодите. Връзка в регистъра не означава контрол. <span class="cap"></span></div></div>
-    <div class="canvas"><svg role="img" aria-label="Мрежа от свързани лица и дружества"><g></g></svg><div class="det" aria-live="polite"></div></div>
-  </section>
+  {% set node = "p:" ~ p.id %}{% if node %}{% include "_net.html" %}{% endif %}
 
   <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
   <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж</div></div></div>
@@ -56,6 +49,6 @@ const D = DATA, by = new Map();
 for (const r of D.roles) { if (!by.has(r.company)) by.set(r.company, []); by.get(r.company).push(r); }
 timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].company_name || 'ЕИК ' + rs[0].eik), href: rs[0].company_key ? '/companies/' + rs[0].company_key : '#',
   sub: rs[0].contracts ? `${nf.format(rs[0].contracts)} договора` : 'без договори', roles: rs })));
-network($('net'), D.node);
+links($('net'), D.node);
 </script>
 {% endblock %}

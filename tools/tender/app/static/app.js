@@ -99,13 +99,13 @@ function radial(nodes, edges, focus, W, H) {
   rest.forEach((n, i) => { const a = (2 * Math.PI * i) / rest.length; pos.set(n.id, { x: cx + W * .46 * Math.cos(a), y: cy + H * .46 * Math.sin(a) }); });
   return pos;
 }
-function network(host, focus) {
+function network(host, focus, st) {
   const svg = host.querySelector('.canvas svg'), g = svg.querySelector('g'), det = host.querySelector('.det'), note = host.querySelector('.cap');
-  // phones get a portrait canvas so node labels stay readable instead of shrinking a landscape one
-  const narrow = svg.parentElement.clientWidth < 700, W = narrow ? 560 : 980, H = narrow ? 900 : 600;
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  const st = { view: 'all', at: null, sel: null, data: null };
+  let W = 980, H = 600;
   async function load() {
+    // phones get a portrait canvas so node labels stay readable instead of shrinking a landscape one
+    const narrow = svg.parentElement.clientWidth < 700; W = narrow ? 560 : 980; H = narrow ? 900 : 600;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     const q = new URLSearchParams({ focus, view: st.view }); if (st.at) q.set('at', st.at + '-07-01');
     const r = await fetch('/network.json?' + q); st.data = await r.json(); draw();
   }
@@ -170,11 +170,104 @@ function network(host, focus) {
   }
   g.addEventListener('click', (e) => { const n = e.target.closest('.gn'); st.sel = n && st.sel !== n.dataset.id ? n.dataset.id : null; draw(); });
   g.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.closest('.gn')?.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
-  host.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => { host.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.view = b.dataset.view; st.sel = null; load(); });
-  const at = host.querySelector('.yr input'), on = host.querySelector('.chk input'), out = host.querySelector('.yr output');
-  const set = () => { at.disabled = !on.checked; st.at = on.checked ? +at.value : null; out.textContent = st.at ?? '—'; load(); };
+  return load;
+}
+
+// ---------- lineage tree ----------
+// The node at the top, then everything linked to it, level by level, to the last link. Each level is
+// fetched when opened; a node already on the path above is not repeated below itself.
+function lineage(host, focus, st) {
+  const box = host.querySelector('.tree'), seen = new Map();
+  const esc2 = (s) => esc(tc(s || ''));
+  const when = (r) => span({ valid_from: r.from, valid_to: r.to, uncertain_after: r.open ? null : 1 });
+  function phrase(c, parent) {
+    const person = c.kind !== 'company' && !String(c.id).startsWith('c:') && !String(c.id).startsWith('f:');
+    return c.roles.map((r) => {
+      const role = (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '');
+      // between two companies say who holds whom; with a person the person is always the holder
+      const txt = person || (parent.kind !== 'company' && !parent.id.startsWith('c:')) ? role
+        : r.down ? `${esc2(parent.name)} е ${role}` : `${role} на ${esc2(parent.name)}`;
+      return `<span class="${OWN.has(r.role) ? 'own' : 'mg'} ${r.to || !r.open ? 'end' : ''}">${txt} <small>${when(r)}</small></span>`;
+    }).join('');
+  }
+  const href = (c) => c.ref ? (String(c.id).startsWith('p:') ? '/persons/' + c.ref : '/companies/' + c.ref) : null;
+  function row(c, parent, path) {
+    const li = document.createElement('li');
+    const isCo = String(c.id).startsWith('c:') || String(c.id).startsWith('f:');
+    const again = seen.has(c.id);
+    seen.set(c.id, (seen.get(c.id) || 0) + 1);
+    li.dataset.id = c.id; li.dataset.path = path.join(',');
+    const facts = isCo ? (c.contracts ? `${nf.format(c.contracts)} дог. · ${big(+c.eur || 0)}` : 'без договори')
+      : '';
+    const h = href(c);
+    li.innerHTML = `<div class="row">${c.more > 0 ? `<button class="tg" aria-expanded="false" aria-label="Разгъни ${esc2(c.name)}"></button>` : '<span class="tg-x"></span>'}
+      <span class="mk ${isCo ? 'c' : 'p'} ${isCo && c.contracts ? 'on' : ''}"></span>
+      ${h ? `<a class="nm u" href="${h}">${esc2(c.name)}</a>` : `<span class="nm">${esc2(c.name)}</span>`}
+      <span class="rl">${phrase(c, parent)}</span>
+      <span class="fx">${facts}${c.more > 0 ? `<small>${nf.format(c.more)} ${c.more === 1 ? 'връзка' : 'връзки'} по-нататък</small>` : ''}${again ? '<small>вече е в дървото</small>' : ''}</span></div>`;
+    return li;
+  }
+  async function open(li, auto) {
+    const btn = li.querySelector(':scope > .row > .tg'); if (!btn) return [];
+    if (btn.getAttribute('aria-expanded') === 'true' && !auto) { btn.setAttribute('aria-expanded', 'false'); li.querySelector(':scope > ul')?.remove(); return []; }
+    if (btn.getAttribute('aria-expanded') === 'true') return [...li.querySelectorAll(':scope > ul > li')];
+    btn.setAttribute('aria-expanded', 'true');
+    const path = [...(li.dataset.path ? li.dataset.path.split(',') : []), li.dataset.id];
+    const q = new URLSearchParams({ node: li.dataset.id, view: st.view, path: path.slice(0, -1).join(',') }); if (st.at) q.set('at', st.at + '-07-01');
+    const d = await (await fetch('/lineage.json?' + q)).json();
+    const ul = document.createElement('ul'), me = { id: li.dataset.id, name: li.querySelector('.nm').textContent, kind: li.dataset.id.startsWith('c:') ? 'company' : 'person' };
+    d.children.forEach((c) => ul.append(row(c, me, path)));
+    if (!d.children.length) ul.innerHTML = '<li class="empty">Няма други връзки за избрания изглед.</li>';
+    li.append(ul);
+    return [...ul.children].filter((x) => x.dataset.id);
+  }
+  box.onclick = (e) => { const b = e.target.closest('.tg'); if (b) open(b.closest('li')); };
+  async function load() {
+    seen.clear();
+    const q = new URLSearchParams({ node: focus, view: st.view }); if (st.at) q.set('at', st.at + '-07-01');
+    const d = await (await fetch('/lineage.json?' + q)).json();
+    const r = d.root || { id: focus, name: '', kind: '' }, isCo = focus.startsWith('c:');
+    seen.set(focus, 1);
+    box.innerHTML = `<ul class="root"><li data-id="${focus}" data-path=""><div class="row top"><span class="tg-x"></span><span class="mk ${isCo ? 'c' : 'p'} ${r.contracts ? 'on' : ''}"></span>
+      <span class="nm">${esc2(r.name)}</span><span class="rl"></span><span class="fx">${isCo ? (r.contracts ? `${nf.format(r.contracts)} дог. · ${big(+r.eur || 0)}` : 'без договори') : ''}</span></div><ul></ul></li></ul>`;
+    const ul = box.querySelector('.root > li > ul'), me = { id: focus, name: r.name, kind: isCo ? 'company' : 'person' };
+    d.children.forEach((c) => ul.append(row(c, me, [focus])));
+    if (!d.children.length) ul.innerHTML = '<li class="empty">Няма прочетени връзки в Търговския регистър за избрания изглед.</li>';
+  }
+  // open level by level until every branch ends or the cap is reached
+  async function expandAll(btn, cap = 400) {
+    btn.disabled = true; btn.textContent = 'Разгъвам…';
+    let level = [...box.querySelectorAll('.root > li > ul > li')].filter((x) => x.dataset.id), shown = level.length;
+    while (level.length && shown < cap) {
+      const next = [];
+      for (const li of level) {
+        if (shown >= cap) break;
+        if ((seen.get(li.dataset.id) || 0) > 1) continue;  // repeated elsewhere: do not open twice
+        const kids = await open(li, true); shown += kids.length; next.push(...kids);
+      }
+      level = next;
+    }
+    btn.disabled = false; btn.textContent = 'Разгъни всичко';
+    host.querySelector('.cap').textContent = shown >= cap ? `Показани са първите ${cap} връзки; отвори клоните по-надолу ръчно.` : 'Показани са всички връзки до последната.';
+  }
+  host.querySelector('.expand').onclick = (e) => expandAll(e.currentTarget);
+  return load;
+}
+
+// the links section: shared view/year controls over the tree and the graph
+function links(host, focus) {
+  const st = { view: 'all', at: null, sel: null, data: null, show: 'tree' };
+  const tree = lineage(host, focus, st), graph = network(host, focus, st);
+  const reload = () => { host.querySelector('.cap').textContent = ''; (st.show === 'tree' ? tree : graph)(); };
+  host.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => { host.querySelectorAll('[data-view]').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.view = b.dataset.view; st.sel = null; reload(); });
+  host.querySelectorAll('[data-show]').forEach((b) => b.onclick = () => {
+    host.querySelectorAll('[data-show]').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.show = b.dataset.show;
+    host.querySelector('.tree').hidden = st.show !== 'tree'; host.querySelector('.canvas').hidden = st.show !== 'graph';
+    host.querySelector('.expand').hidden = st.show !== 'tree'; reload(); });
+  const at = host.querySelector('.yr input'), on = host.querySelector('.yr-on'), out = host.querySelector('.yr output');
+  const set = () => { at.disabled = !on.checked; st.at = on.checked ? +at.value : null; out.textContent = st.at ?? '—'; reload(); };
   at.onchange = set; at.oninput = () => { out.textContent = at.value; }; on.onchange = set;
-  load();
+  reload();
 }
 
 // list filters fold away on phones unless a filter is set

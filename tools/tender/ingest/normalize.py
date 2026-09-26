@@ -12,7 +12,7 @@ from collections import defaultdict
 
 from .config import BGN_PER_EUR
 
-RULES_VERSION = "normalize_v1"
+RULES_VERSION = "normalize_v2"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers
 
 YES = {"Да": True, "Не": False}
 
@@ -207,17 +207,34 @@ def normalize(days_rows, fx):
     contracts = {}
     annexes = defaultdict(list)
     ocds_contracts = []
+    # where each tender / contract / OCDS release sits in the raw files, so the pages can show
+    # every published field of the original record (source_record)
+    src = []
+    places = {}  # buyer ЕИК -> address from OCDS parties (the flat files carry none)
     for day, kind, rows in days_rows:
-        for r in rows:
+        for i, r in enumerate(rows):
             if kind == "tenders":
-                _tender_row(r, day, tenders, buyers)
+                unp = _tender_row(r, day, tenders, buyers)
+                if unp:
+                    src.append({"entity": "tender", "ref": unp, "day": day, "kind": kind, "idx": i})
             elif kind == "contracts":
-                _contract_row(r, day, contracts, buyers)
+                cid = _contract_row(r, day, contracts, buyers)
+                if cid:
+                    src.append({"entity": "contract", "ref": cid, "day": day, "kind": kind, "idx": i})
             elif kind == "annexes":
                 key = (text(r.get("uniqueProcurementNumber")), text(r.get("contractNumber")))
                 annexes[key].append((ts_of(r.get("publicationDate")), day, r))
             elif kind == "ocds":
                 ocds_contracts.extend(_ocds_contracts(r, day))
+                tid = text((r.get("tender") or {}).get("id"))
+                if tid:
+                    src.append({"entity": "ocds", "ref": tid, "day": day, "kind": kind, "idx": i})
+                for party in r.get("parties") or []:
+                    eik = clean_eik((party.get("identifier") or {}).get("id"))
+                    a = party.get("address") or {}
+                    if eik and "buyer" in (party.get("roles") or []) and a.get("locality"):
+                        places[eik] = {"locality": text(a.get("locality")), "postal_code": text(a.get("postalCode")),
+                                       "nuts": text(a.get("region"))}
 
     # OCDS adds only contracts whose number the flat feed does not have (SIGMA ADR-0006)
     known = {(c["unp_raw_tender_id"], c["contract_number"]) for c in contracts.values()}
@@ -267,9 +284,14 @@ def normalize(days_rows, fx):
         cur_eur, _ = fx.to_eur(current, cur_code, on)
         own_est_eur, _ = fx.to_eur(c["estimated_value"], c["estimate_currency"] or cur_code, on)
         t = tenders.get(c["unp"])
-        proc_est_eur = None
+        proc_est_eur = lot_est_eur = None
         if t and t["estimated_value"] is not None:
             proc_est_eur, _ = fx.to_eur(t["estimated_value"], t["currency"], on)
+        lot = t["lots"].get(c["lot_no"]) if t else None
+        if lot and lot["estimated_value"] is not None:
+            lot_est_eur, _ = fx.to_eur(lot["estimated_value"], lot["currency"] or t["currency"], on)
+        # value against the closest estimate: the contract's own, else its lot's, else the procedure's
+        ref_est = own_est_eur or lot_est_eur or proc_est_eur
         vflag, basis = value_flag(eff_eur, proc_est_eur, own_est_eur, initial, current, steps)
         amount_eur = {"effective": eff_eur, "estimate": proc_est_eur,
                       "initial": init_eur if init_eur is not None else cur_eur}[basis]
@@ -279,7 +301,8 @@ def normalize(days_rows, fx):
         c.update({
             "value_current": current, "value_initial_eur": init_eur, "value_current_eur": cur_eur,
             "amount_eur": amount_eur, "value_flag": vflag, "date_flag": dflag,
-            "fx_rate": rate, "estimated_eur": own_est_eur, "annex_count": len(chain),
+            "fx_rate": rate, "estimated_eur": ref_est, "annex_count": len(chain),
+            "estimate_ratio": round(eff_eur / ref_est, 3) if eff_eur and ref_est and ref_est > 0 else None,
             "date_basis": "contract" if c["contract_date"] and not bad_date else ("publication" if on else None),
             "effective_date": on,
         })
@@ -300,22 +323,26 @@ def normalize(days_rows, fx):
                 "unp": c["unp"], "tender_id": None, "buyer_eik": c["buyer_eik"],
                 "subject": c["subject"], "procedure_type": c["procedure_type"] or "неизвестна",
                 "cpv": c["cpv"], "cpv_description": c["cpv_description"],
-                "contract_type": c["contract_type"], "estimated_value": None, "currency": None,
+                "contract_type": c["contract_type"], "estimated_value": None, "estimated_eur": None, "currency": None,
                 "is_eu_funded": c["is_eu_funded"], "european_program": c["european_program"],
                 "lots_count": None, "submission_deadline": None, "published_at": None,
                 "notice_type": None, "is_cancelled": None, "execution_nuts": None,
                 "source_day": c["source_day"], "synthetic": True, "lots": {}}
     lots = []
     for t in tenders.values():
+        on = t["published_at"].date() if t["published_at"] else dt.date.fromisoformat(str(t["source_day"]))
+        t["estimated_eur"] = fx.to_eur(t["estimated_value"], t["currency"], on)[0]
         for n, l in t.pop("lots").items():
-            lots.append({"unp": t["unp"], "lot_no": n, **l})
-    for b in buyers.values():
+            l_eur = fx.to_eur(l["estimated_value"], l["currency"] or t["currency"], on)[0]
+            lots.append({"unp": t["unp"], "lot_no": n, **l, "estimated_eur": l_eur})
+    for eik, b in buyers.items():
         b.pop("_names", None)
+        b.update(places.get(eik) or {"locality": None, "postal_code": None, "nuts": None})
     for t in tenders.values():
         t.pop("synthetic_header", None)
     return {"buyer": list(buyers.values()), "tender": list(tenders.values()), "lot": lots,
             "contract": out_contracts, "contract_supplier": suppliers, "amendment": amendments,
-            "subcontract": subcontracts, "_stats": {"ocds_added": ocds_added}}
+            "subcontract": subcontracts, "source_record": src, "_stats": {"ocds_added": ocds_added}}
 
 
 def _buyer(r, buyers):
@@ -337,7 +364,7 @@ def _buyer(r, buyers):
 def _tender_row(r, day, tenders, buyers):
     unp = text(r.get("uniqueProcurementNumber"))
     if not unp:
-        return
+        return None
     buyer = _buyer(r, buyers)
     pub = ts_of(r.get("publicationDate"))
     t = tenders.get(unp)
@@ -350,12 +377,13 @@ def _tender_row(r, day, tenders, buyers):
             t["lots"][n] = {"title": text(r.get("lotTenderName")) or text(r.get("subject")),
                             "estimated_value": num(r.get("estimatedValue")),
                             "currency": text(r.get("currency")), "cpv": text(r.get("mainCpvCode"))}
-        return
+        return unp
     if t and not t.get("synthetic_header") and t["published_at"] and pub and pub < t["published_at"]:
-        return  # keep the latest header
+        return unp  # keep the latest header
     lots = t["lots"] if t else {}
     tenders[unp] = _tender_header(r, day, buyer, pub)
     tenders[unp]["lots"] = lots
+    return unp
 
 
 def _tender_header(r, day, buyer, pub):
@@ -376,7 +404,7 @@ def _tender_header(r, day, buyer, pub):
 
 def _contract_row(r, day, contracts, buyers):
     if flag(r.get("noAwarding")):  # a lot closed without award: no contract exists
-        return
+        return None
     unp = text(r.get("uniqueProcurementNumber"))
     number = text(r.get("contractNumber"))
     members = split_members(r.get("supplierName"), r.get("supplierRegisterNumber"))
@@ -386,7 +414,7 @@ def _contract_row(r, day, contracts, buyers):
     pub = ts_of(r.get("publicationDate"))
     prev = contracts.get(cid)
     if prev and prev["published_at"] and pub and pub < prev["published_at"]:
-        return  # republished: keep the latest notice
+        return cid  # republished: keep the latest notice
     subs = []
     if flag(r.get("hasSubcontractors")):
         for e, n in split_members(r.get("subcontractorName"), r.get("subcontractorRegistryNumber")):
@@ -422,6 +450,7 @@ def _contract_row(r, day, contracts, buyers):
         "contract_period_days": r.get("contractPeriod"),
         "_members": members, "_subs": subs,
     }
+    return cid
 
 
 def _ocds_contracts(rel, day):

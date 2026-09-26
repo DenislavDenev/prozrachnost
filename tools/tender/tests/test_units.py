@@ -122,3 +122,17 @@ def test_union_find_and_translit():
     comp = union_find([("p:1", "c:1"), ("c:1", "p:2"), ("p:3", "c:2")])
     assert comp["p:1"] == comp["p:2"] != comp["p:3"]
     assert translit("Ivanov") == "иванов" and translit("Zhivkov") == "живков"
+
+
+def test_estimate_ratio_eur_estimates_and_implausible_date():
+    t = {"uniqueProcurementNumber": "U", "subject": "S", "estimatedValue": "195583", "currency": "BGN",
+         "publicationDate": "2024-01-10T10:00:00", "buyerRegistryNumber": "000093435"}
+    c = {"noAwarding": "Не", "uniqueProcurementNumber": "U", "contractNumber": "1", "contractValue": "250000",
+         "contractCurrency": "EUR", "supplierName": "А", "supplierRegisterNumber": "202210490",
+         "contractDate": "14.05.2029", "publicationDate": "2024-05-23T09:00:00"}
+    res = N.normalize([("2024-01-10", "tenders", [t]), ("2024-05-23", "contracts", [c])], N.Fx({}))
+    k, tt = res["contract"][0], res["tender"][0]
+    assert round(tt["estimated_eur"]) == 100000                       # BGN at 1.95583
+    assert k["estimate_ratio"] == 2.5 and k["value_flag"] == "ok"     # 2.5x the estimate, below the 10x review
+    assert str(k["effective_date"]) == "2024-05-23" and k["date_flag"] == "contract_date_implausible"
+    assert {r["entity"] for r in res["source_record"]} == {"tender", "contract"}

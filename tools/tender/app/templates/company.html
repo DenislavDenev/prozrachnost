@@ -30,14 +30,7 @@
     <div class="flags">{% for t in c.tags %}<div class="{{ 'w' if t.kind == 'statistical' }}"><span><b>{{ t.label }}</b>. {{ t.reason }}</span></div>{% else %}<div>Няма автоматични тагове по методологията</div>{% endfor %}</div></section>
   {% endif %}
 
-  <section class="p s12 net" id="net">
-    <div class="side"><div><h2>Мрежа от свързани лица и дружества</h2><div class="sub">Регистърни връзки от Търговския регистър, до 2 стъпки</div></div>
-      <div><div class="lb">Изглед</div><div class="tabs"><button data-view="all" aria-pressed="true">Всички</button><button data-view="ownership" aria-pressed="false">Собственост</button><button data-view="management" aria-pressed="false">Управление</button></div></div>
-      <div><div class="lb">Време</div><label class="chk"><input type="checkbox"> Само действащи към година</label><div class="yr"><input type="range" min="2008" max="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" value="{{ fresh.eop_last_day.year if fresh.eop_last_day else 2026 }}" disabled aria-label="Година"><output>—</output></div></div>
-      {% include "_net_key.html" %}
-      <div class="caveat">Кликни лице или фирма, за да видиш ролите и периодите. Връзка в регистъра не означава контрол. <span class="cap"></span></div></div>
-    <div class="canvas"><svg role="img" aria-label="Мрежа от свързани лица и дружества"><g></g></svg><div class="det" aria-live="polite"></div></div>
-  </section>
+  {% set node = ("c:" ~ c.eik[:9]) if c.eik else "" %}{% if node %}{% include "_net.html" %}{% endif %}
 
   <section class="p s7"><div class="ph"><div><h2>Лица в дружеството</h2><div class="sub">Роли по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
   {% if c.contracts %}
@@ -69,6 +62,6 @@ const by = new Map(); for (const r of D.roles) { if (!by.has(r.holder)) by.set(r
 timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].holder_name), roles: rs,
   href: rs[0].person_id && rs[0].holder.startsWith('p:') ? '/persons/' + rs[0].person_id : rs[0].holder.startsWith('c:') ? '/companies/' + rs[0].holder.slice(2) : '#',
   sub: rs[0].others ? `още ${rs[0].others} дружества` : '', text: (r) => (ROLE[r.role] || r.role) + (r.share ? ' · дял ' + r.share : '') })));
-if (D.node) network($('net'), D.node); else $('net').remove();
+if (D.node) links($('net'), D.node);
 </script>
 {% endblock %}

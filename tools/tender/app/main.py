@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import queries as Q
+from .fields import fields, ocds_fields
 
 HERE = Path(__file__).parent
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -33,7 +34,7 @@ ROLE = {"manager": "управител", "sole_owner": "едноличен со�
         "controlling_board": "член на КС", "branch_manager": "управител на клон", "trustee": "синдик"}
 FORM = {"OOD": "ООД", "EOOD": "ЕООД", "AD": "АД", "EAD": "ЕАД", "ET": "ЕТ", "K": "КД", "KD": "КД", "SD": "СД"}
 FLAG = {"review": "≥ 10× прогнозната стойност", "value_low": "много ниска стойност",
-        "value_suspect": "съмнителна стойност, сумира се прогнозната", "annex_suspect": "съмнителен анекс, сумира се първоначалната"}
+        "value_suspect": "съмнителна стойност", "annex_suspect": "съмнителен анекс"}
 
 
 def fnum(v, d=0):
@@ -58,6 +59,28 @@ def fbig(v):
     return feur(v)
 
 
+def to_eur(v, currency):
+    """A published amount in EUR: BGN at the fixed rate 1.95583; None for other currencies."""
+    from ingest.normalize import num
+    v = num(v) if isinstance(v, str) else v
+    if v is None:
+        return None
+    c = (currency or "BGN").strip().upper()
+    if c == "EUR":
+        return float(v)
+    if c in ("BGN", "ЛВ", "ЛВ."):
+        return float(v) / 1.95583
+    return None
+
+
+def feurc(v, currency, d=2):
+    """Amount in EUR; an amount in a third currency is shown as published, with its code."""
+    e = to_eur(v, currency)
+    if e is not None:
+        return fnum(e, d) + " €"
+    return "—" if v in (None, "") else f"{v} {currency or ''}".strip()
+
+
 def fdate(v):
     return v.strftime("%d.%m.%Y") if v else "—"
 
@@ -76,10 +99,13 @@ def jdefault(o):
     return str(o)
 
 
-T.env.filters.update(eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
+T.env.filters.update(eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
                      json=lambda o: json.dumps(o, default=jdefault, ensure_ascii=False).replace("</", "<\\/"),
                      q=lambda s: quote(s, safe=":"))
+
+
+T.env.globals.update(fields=fields, ocds_fields=ocds_fields)
 
 
 def page(request, name, **ctx):
@@ -235,6 +261,70 @@ def contains(L, key, *exprs):
         L.add("(" + " OR ".join(f"{e} ILIKE %s" for e in exprs) + ")", *[f"%{v}%"] * len(exprs))
 
 
+def map_filter(frm, to, scope):
+    where, args = [], []
+    for v, op in ((frm, ">="), (to, "<=")):
+        if v:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+                raise HTTPException(400)
+            where.append(f"c.effective_date {op} %s")
+            args.append(v)
+    if scope == "municipal":
+        where.append("bp.basis = 'municipality'")
+    return " AND ".join(where) or "true", args
+
+
+@app.get("/map", response_class=HTMLResponse)
+def map_page(request: Request):
+    return page(request, "map.html", nav="Карта")
+
+
+@app.get("/map.json")
+def map_data(frm: str = "", to: str = "", scope: str = "all"):
+    """Contracts per municipality of the buyer (methodology 8), plus what could not be placed."""
+    where, args = map_filter(frm, to, scope)
+    munis = Q.rows(f"""SELECT bp.municipality id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers,
+            {SINGLE} single_pct
+        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik WHERE {where} GROUP BY 1""", *args)
+    cover = Q.one(f"""SELECT round({Q.SUM}) eur, round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND bp.eik IS NOT NULL)) placed
+        FROM live.contract c LEFT JOIN live.buyer_place bp ON bp.eik = c.buyer_eik
+        WHERE {where.replace("bp.basis = 'municipality'", "true")}""", *args)
+    names = {r["id"]: r["name_bg"] for r in Q.cached("munis", lambda: Q.rows("SELECT id, name_bg FROM live.municipality"))}
+    for m in munis:
+        m["name"] = names.get(m["id"], m["id"])
+    return JSONResponse(json.loads(json.dumps({"munis": munis, "cover": cover}, default=jdefault)))
+
+
+@app.get("/map/{mid}.json")
+def map_detail(mid: str, frm: str = "", to: str = "", scope: str = "all"):
+    if not re.fullmatch(r"\d{9,13}", mid):
+        raise HTTPException(400)
+    where, args = map_filter(frm, to, scope)
+    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur,
+            {SINGLE} single_pct
+        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+        WHERE bp.municipality = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", mid, *args)
+    suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.contract_supplier s ON s.contract_id = c.id
+        WHERE bp.municipality = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", mid, *args)
+    return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
+
+
+@app.get("/lineage.json")
+def lineage(node: str, view: str = "all", at: str | None = None, path: str = ""):
+    """Children of `node` in the lineage tree; `path` is the comma list of nodes above it."""
+    ok = re.compile(r"[pcfl]:[\w:-]+")
+    ex = [x for x in path.split(",") if x]
+    if view not in ("all", "ownership", "management") or not ok.fullmatch(node) or not all(ok.fullmatch(x) for x in ex):
+        raise HTTPException(400)
+    if at and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", at):
+        raise HTTPException(400)
+    out = {"children": Q.lineage(node, view, at, ex + [node])}
+    if not ex:
+        out["root"] = Q.node_info(node)
+    return JSONResponse(json.loads(json.dumps(out, default=jdefault)))
+
+
 @app.get("/buyers", response_class=HTMLResponse)
 def buyers(request: Request):
     L = Listing(request, {"name": ("b.name", "asc"), "type": ("b.type", "asc"), "contracts": ("s.contracts", "desc"),
@@ -294,6 +384,8 @@ def contract_filters(L, alias="c"):
         L.add(f"left({alias}.cpv, 2) = %s", L.get("sector"))
     if L.get("single"):
         L.add(f"{alias}.offers_count = 1")
+    if L.get("over"):
+        L.add(f"{alias}.estimate_ratio >= 2 AND {alias}.value_flag IN ('ok', 'review')")
     if L.get("clean"):
         L.add(f"NOT {alias}.is_framework AND {alias}.value_flag = 'ok'")
 
@@ -309,9 +401,11 @@ def contracts(request: Request):
         L.add("c.buyer_eik = %s", L.get("buyer"))
     if L.get("company"):
         L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
+    if L.get("municipality"):
+        L.add("c.buyer_eik IN (SELECT eik FROM live.buyer_place WHERE municipality = %s)", L.get("municipality"))
     contract_filters(L)
     rows = L.fetch("""SELECT c.id, c.unp, c.effective_date, c.subject, c.buyer_eik, b.name buyer, c.supplier_display supplier,
-                        s0.party_key supplier_key, round(c.amount_eur) eur, c.offers_count, c.value_flag, c.is_framework,
+                        s0.party_key supplier_key, round(c.amount_eur) eur, c.offers_count, c.value_flag, c.is_framework, c.estimate_ratio,
                         c.annex_count, c.awarded_to_group, c.procedure_type
                       FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
                       LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0 WHERE {where}""")
@@ -323,7 +417,7 @@ def tenders(request: Request):
     day = "coalesce(t.published_at::date, s.first_contract)"
     L = Listing(request, {"date": (day, "desc"), "subject": ("t.subject", "asc"), "buyer": ("b.name", "asc"),
                           "procedure": ("t.procedure_type", "asc"), "contracts": ("s.contracts", "desc"),
-                          "estimate": ("t.estimated_value", "desc"), "eur": ("s.amount_eur", "desc")}, "date")
+                          "estimate": ("t.estimated_eur", "desc"), "eur": ("s.amount_eur", "desc")}, "date")
     contains(L, "q", "t.subject", "t.unp")
     contains(L, "who", "b.name", "t.buyer_eik")
     if L.get("buyer"):
@@ -337,8 +431,8 @@ def tenders(request: Request):
              "open": "s.contracts IS NULL AND NOT coalesce(t.is_cancelled, false)"}.get(L.get("state"))
     if state:
         L.add(state)
-    rows = L.fetch(f"""SELECT t.unp, {day} AS day, t.subject, t.buyer_eik, b.name buyer, t.procedure_type, t.estimated_value,
-                         t.currency, t.is_cancelled, s.contracts, s.amount_eur, s.single_bid
+    rows = L.fetch(f"""SELECT t.unp, {day} AS day, t.subject, t.buyer_eik, b.name buyer, t.procedure_type, t.estimated_eur,
+                         t.is_cancelled, s.contracts, s.amount_eur, s.single_bid
                        FROM live.tender t LEFT JOIN live.tender_stats s USING (unp) LEFT JOIN live.buyer b ON b.eik = t.buyer_eik
                        WHERE {{where}}""")
     return page(request, "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")

@@ -1,0 +1,19 @@
+{# Every published field of the raw records behind a tender or contract, and the OCDS release. #}
+{% macro record(r, title='Всички публикувани полета') %}
+<section class="p s12"><div class="ph"><div><h2>{{ title }}</h2>
+  <div class="sub">Последната публикация от {{ r.day }} в отворените данни на ЦАИС ЕОП, поле по поле. Сумите са в евро (левовете по 1,95583).</div></div></div>
+  <dl class="dl rec">{% for label, key, v, cur in fields(r.rec) %}<dt>{{ label }}</dt><dd>{% if cur is not none or key in ('estimatedValue', 'contractValue') %}{{ v | eurc(cur) }}{% else %}{{ v }}{% endif %}</dd>{% endfor %}</dl>
+</section>
+{% endmacro %}
+
+{% macro history(recs) %}{% if recs | length > 1 %}
+<section class="p s12"><div class="ph"><div><h2>Публикации</h2><div class="sub">Всички записи за {{ 'поръчката' if recs[0].kind == 'tenders' else 'договора' }} в отворените данни, по ред</div></div></div>
+  <table><thead><tr><th>Ден</th><th>Вид</th><th>Позиция</th><th class="n">Обявление</th></tr></thead><tbody>
+  {% for r in recs %}<tr><td class="mut nw">{{ r.day }}</td><td>{{ r.rec.noticeType or r.rec.procedureType or '—' }}</td><td class="mut">{{ r.rec.lotIdentifier or '—' }}</td><td class="n mut">{{ r.rec.noticeId or '' }}</td></tr>{% endfor %}
+  </tbody></table></section>{% endif %}{% endmacro %}
+
+{% macro ocds(recs) %}{% if recs %}{% set rel = recs[-1].rec %}{% set t = rel.tender or {} %}
+{% if t.description %}<section class="p s12"><h2>Описание</h2><div class="prose desc">{{ t.description }}</div></section>{% endif %}
+<section class="p s12"><details class="more"><summary><h2>Разширени данни (OCDS)</h2><span class="sub">Структурираният запис на ЦАИС ЕОП от {{ recs[-1].day }}: позиции, срокове, критерии, документи</span></summary>
+  <dl class="dl rec">{% for path, v in ocds_fields(rel) %}<dt>{{ path }}</dt><dd>{% if v is string and v.startswith('http') %}<a class="l" href="{{ v }}" rel="noopener nofollow" target="_blank">{{ v }}</a>{% else %}{{ v }}{% endif %}</dd>{% endfor %}</dl>
+</details></section>{% endif %}{% endmacro %}

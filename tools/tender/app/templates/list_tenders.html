@@ -26,7 +26,7 @@
   <td class="hide-s mut"><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer | tc }}</a></td>
   <td class="hide-s mut">{{ t.procedure_type or '—' }}</td>
   <td class="n">{{ t.contracts | num if t.contracts else '—' }}</td>
-  <td class="n hide-s mut">{% if t.estimated_value is not none %}{{ t.estimated_value | num }} {{ t.currency or '' }}{% else %}—{% endif %}</td>
+  <td class="n hide-s mut">{{ t.estimated_eur | big }}</td>
   <td class="n strong">{{ t.amount_eur | big }}</td></tr>
 {% else %}<tr><td colspan="7" class="mut">Няма поръчки по тези филтри.</td></tr>{% endfor %}
 </tbody></table>

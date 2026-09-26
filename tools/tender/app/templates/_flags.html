@@ -1,0 +1,2 @@
+{# Markers after a contract's subject: group award, annexes, framework, value checks. #}
+{% macro flags(k) %}{% if k.awarded_to_group %} · обединение{% endif %}{% if k.annex_count %} · {{ k.annex_count }} анекса{% endif %}{% if k.is_framework %} · рамково{% endif %}{% if k.estimate_ratio and k.estimate_ratio >= 2 and k.value_flag in ('ok', 'review') %} · <span class="warn">{{ k.estimate_ratio | num(1) }}× прогнозната стойност</span>{% endif %}{% if k.value_flag not in ('ok', 'review') %} · <span class="warn">{{ k.value_flag | flag }}</span>{% endif %}{% endmacro %}

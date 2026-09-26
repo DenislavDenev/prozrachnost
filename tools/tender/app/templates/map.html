@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Карта по общини · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Карта по общини</h1>
+<p class="sub">Договорите по общината, в която е възложителят: самата община и нейните звена, и другите възложители със седалище в град от общината. Възложители в села и без публикуван адрес остават извън картата; делът им е посочен под нея.</p>
+<div class="filters mapctl">
+  <div class="fld"><span>Показател</span><div class="tabs" id="metric" role="group" aria-label="Показател">
+    <button data-k="eur" aria-pressed="true">Стойност</button><button data-k="n" aria-pressed="false">Брой</button><button data-k="single_pct" aria-pressed="false">Една оферта</button></div></div>
+  <label class="fld"><span>Възложители</span><select id="scope"><option value="all">Всички в общината</option><option value="municipal">Само общината и звената ѝ</option></select></label>
+  <label class="fld"><span>От</span><input type="date" id="frm" min="2020-01-01"></label>
+  <label class="fld"><span>До</span><input type="date" id="to" min="2020-01-01"></label>
+  <div class="fld presets"><span>Бързо</span><div><a class="l" href="#" data-days="365">12 месеца</a><a class="l" href="#" data-year="2025">2025</a><a class="l" href="#" data-year="2024">2024</a><a class="l" href="#" data-days="">всички</a></div></div>
+</div>
+<div class="grid" style="margin-top:18px">
+  <section class="p s8 mapbox"><svg id="bgmap" role="img" aria-label="Карта на общините"><g></g></svg>
+    <div class="mkey" id="mkey"></div><p class="mut" id="cover"></p></section>
+  <section class="p s4" id="side" aria-live="polite"></section>
+</div>
+<p class="mut" style="margin-top:14px">Граници на общините: geoBoundaries (BGR ADM2), обществено достояние. Сърница няма отделен контур в източника и е показана заедно с Велинград.</p>
+{% endblock %}
+{% block scripts %}
+<script>
+(async () => {
+  const geo = await (await fetch('/static/bg-municipalities.json')).json();
+  const svg = $('bgmap'), g = svg.querySelector('g'), side = $('side');
+  svg.setAttribute('viewBox', `-6 -6 1012 ${geo.h + 12}`);
+  const st = { k: 'eur', sel: null, data: null };
+  const fmt = { eur: (v) => big(+v), n: (v) => nf.format(v) + ' дог.', single_pct: (v) => pct(v) };
+  const qs = () => new URLSearchParams({ frm: $('frm').value, to: $('to').value, scope: $('scope').value });
+  g.innerHTML = Object.entries(geo.shapes).map(([id, s]) => `<path d="${s.d}" data-id="${id}" tabindex="0" role="button" aria-label="${esc(s.n)}"><title>${esc(s.n)}</title></path>`).join('');
+  async function load() { st.data = await (await fetch('/map.json?' + qs())).json(); draw(); st.sel ? pick(st.sel) : top(); }
+  function buckets(vals) {  // six quantile classes over the municipalities that have a value
+    const v = vals.filter((x) => x != null && x > 0).sort((a, b) => a - b);
+    return [1, 2, 3, 4, 5].map((i) => v[Math.floor((v.length * i) / 6)] ?? 0);
+  }
+  function draw() {
+    const by = new Map(st.data.munis.map((m) => [m.id, m])), vals = st.data.munis.map((m) => m[st.k] == null ? null : +m[st.k]);
+    const cut = buckets(vals), tone = st.k === 'single_pct' ? 'var(--amber)' : 'var(--accent)', mix = [14, 30, 46, 62, 80, 100];
+    const cls = (v) => cut.filter((c) => v >= c).length;
+    g.querySelectorAll('path').forEach((p) => {
+      const m = by.get(p.dataset.id), v = m && m[st.k] != null ? +m[st.k] : null;
+      p.style.fill = v ? `color-mix(in srgb, ${tone} ${mix[cls(v)]}%, #fff)` : 'var(--line-2)';
+      p.querySelector('title').textContent = `${geo.shapes[p.dataset.id].n}: ${m ? fmt[st.k](m[st.k] ?? 0) : 'няма договори'}`;
+      p.classList.toggle('sel', p.dataset.id === st.sel);
+    });
+    const lo = [0, ...cut], hi = [...cut, null];
+    $('mkey').innerHTML = mix.map((x, i) => `<div><em style="background:color-mix(in srgb, ${tone} ${x}%, #fff)"></em>${hi[i] == null ? 'над ' + fmt[st.k](lo[i]) : fmt[st.k](lo[i]) + ' – ' + fmt[st.k](hi[i])}</div>`).join('') + '<div><em style="background:var(--line-2)"></em>няма данни</div>';
+    const c = st.data.cover; $('cover').textContent = c && c.eur ? `На картата са ${Math.round((100 * c.placed) / c.eur)}% от стойността на договорите за периода (${big(+c.placed)} от ${big(+c.eur)}).` : '';
+  }
+  function top() {
+    const rows = [...st.data.munis].filter((m) => m[st.k] != null).sort((a, b) => b[st.k] - a[st.k]).slice(0, 12);
+    side.innerHTML = `<h2>Общини по ${({ eur: 'стойност', n: 'брой договори', single_pct: 'дял с една оферта' })[st.k]}</h2><div class="sub" style="margin-bottom:16px">Избери община на картата</div><div class="hb" id="mtop"></div>`;
+    hbars($('mtop'), rows, { name: (r) => r.name, val: (r) => +r[st.k], href: (r) => '#' + r.id, right: (r) => fmt[st.k](r[st.k]) });
+    side.querySelectorAll('.nm').forEach((a) => a.onclick = (e) => { e.preventDefault(); pick(a.getAttribute('href').slice(1)); });
+  }
+  async function pick(id) {
+    st.sel = id; draw();
+    const m = st.data.munis.find((x) => x.id === id) || {}, d = await (await fetch(`/map/${id}.json?` + qs())).json();
+    side.innerHTML = `<div class="ph"><div><h2>${esc(geo.shapes[id].n)}</h2><div class="sub">${m.n ? `${nf.format(m.n)} договора · ${big(+m.eur || 0)} · ${pct(m.single_pct)} с една оферта` : 'Няма договори за периода'}</div></div><a class="l" href="#" id="back">Всички</a></div>
+      <h3 class="h3s">Възложители</h3><div class="hb" id="mb"></div><h3 class="h3s">Изпълнители</h3><div class="hb" id="ms"></div>
+      <a class="btn" style="margin-top:18px" href="/contracts?municipality=${id}${$('frm').value ? '&from=' + $('frm').value : ''}${$('to').value ? '&to=' + $('to').value : ''}">Договорите в общината</a>`;
+    hbars($('mb'), d.buyers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/buyers/' + r.eik, right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
+    hbars($('ms'), d.suppliers, { name: (r) => tc(r.name), val: (r) => +r.eur, href: (r) => '/companies/' + encodeURIComponent(r.key), right: (r) => `${short(+r.eur || 0)} €<small>${nf.format(r.n)} дог.</small>` });
+    $('back').onclick = (e) => { e.preventDefault(); st.sel = null; draw(); top(); };
+  }
+  g.addEventListener('click', (e) => { const p = e.target.closest('path'); if (p) pick(p.dataset.id); });
+  g.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const p = e.target.closest('path'); if (p) pick(p.dataset.id); } });
+  $('metric').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('metric').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.k = b.dataset.k; draw(); if (!st.sel) top(); };
+  ['scope', 'frm', 'to'].forEach((id) => $(id).onchange = load);
+  document.querySelectorAll('[data-days],[data-year]').forEach((a) => a.onclick = (e) => {
+    e.preventDefault(); const y = a.dataset.year, d = a.dataset.days;
+    $('frm').value = y ? y + '-01-01' : d ? new Date(Date.now() - d * 864e5).toISOString().slice(0, 10) : '';
+    $('to').value = y ? y + '-12-31' : ''; load(); });
+  load();
+})();
+</script>
+{% endblock %}

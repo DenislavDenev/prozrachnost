@@ -57,7 +57,8 @@ def step_normalize(conn, stats):
     with conn.transaction():
         conn.execute((DERIVE / "schema.sql").read_text(encoding="utf-8"))
         conn.execute("SET search_path = public")
-        for table in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract"):
+        for table in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract",
+                      "source_record"):
             stats[table] = _copy(conn, table, res[table])
     stats.update(res["_stats"])
     stats["rules"] = normalize.RULES_VERSION
@@ -67,6 +68,10 @@ def step_derive(conn, stats):
     """Run db/derive/NN_*.sql against stage (companies, networks, tags, search)."""
     from . import networks
     with conn.transaction():
+        # reference data kept in the repo (db/ref), loaded as stage tables before the derive SQL
+        conn.execute("CREATE TABLE stage.municipality (id text PRIMARY KEY, name_bg text NOT NULL, name_en text, drawn_as text NOT NULL)")
+        with (DERIVE.parent / "ref" / "municipality.csv").open(encoding="utf-8") as fh,                 conn.cursor().copy("COPY stage.municipality FROM STDIN WITH (FORMAT csv, HEADER true)") as cp:
+            cp.write(fh.read())
         for f in sorted(DERIVE.glob("[0-9][0-9]_*.sql")):
             conn.execute(f.read_text(encoding="utf-8"))
             if f.name.startswith("20_"):  # edges exist: compute components in Python

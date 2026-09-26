@@ -1,20 +1,32 @@
 {% extends "base.html" %}
+{% from "_record.html" import record, history, ocds %}
+{% from "_flags.html" import flags %}
 {% block title %}Поръчка {{ t.unp }} · Тендер{% endblock %}
 {% block main %}
 <div class="crumbs"><a href="/tenders">Поръчки</a> / {{ t.unp }}</div>
 <div class="head"><div><h1 class="h1s">{{ t.subject or 'Поръчка ' ~ t.unp }}</h1>
   <div class="meta"><span>УНП <b>{{ t.unp }}</b></span><span><a class="l" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></span>
-    <span>{{ t.procedure_type or 'неизвестна процедура' }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}</div></div>
+    <span>{{ t.procedure_type or 'неизвестна процедура' }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}
+    {% if t.is_cancelled %}<span class="warn">прекратена</span>{% endif %}</div></div>
   {% if t.tender_id %}<div class="acts"><a class="btn go" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">В ЦАИС ЕОП</a></div>{% endif %}</div>
+<p class="lede">{% if t.estimated_eur %}Прогнозна стойност <b>{{ t.estimated_eur | big }}</b>. {% endif %}
+  {% if t.stats.n %}<b>{{ t.stats.n | num }} {{ 'договор' if t.stats.n == 1 else 'договора' }}</b> за <b>{{ t.stats.eur | big }}</b>{% if t.estimated_eur and t.stats.eur %}, {{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната{% endif %}.{% else %}Още няма сключени договори.{% endif %}
+  {% if t.submission_deadline %}Срок за оферти {{ t.submission_deadline | date }}.{% endif %}</p>
 {% if t.synthetic %}<p class="mut">Обявлението за тази поръчка не е в отворените данни; показани са само договорите по нея.</p>{% endif %}
 <div class="grid">
   <section class="p s12"><h2>Договори</h2>
     <table><thead><tr><th>Позиция</th><th>Дата</th><th>Изпълнител</th><th class="n">Оферти</th><th class="n">Стойност</th></tr></thead><tbody>
-    {% for k in t.contracts %}<tr><td class="mut">{{ k.lot_no or '—' }}</td><td class="mut nw">{{ k.effective_date | date }}</td><td><a class="u" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a></td>
+    {% for k in t.contracts %}<tr><td class="mut">{{ k.lot_no or '—' }}</td><td class="mut nw">{{ k.effective_date | date }}</td>
+      <td><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a><div class="mut">{% if k.supplier_key %}<a class="u" href="/companies/{{ k.supplier_key | q }}">профил на изпълнителя</a>{% endif %}{{ flags(k) }}</div></td>
       <td class="n"><span class="cnt {{ 'one' if k.offers_count == 1 }}">{{ k.offers_count if k.offers_count is not none else '—' }}</span></td><td class="n strong">{{ k.eur | eur }}</td></tr>
     {% else %}<tr><td colspan="5" class="mut">Няма сключени договори.</td></tr>{% endfor %}</tbody></table></section>
   {% if t.lots %}<section class="p s12"><h2>Обособени позиции</h2>
-    <table><thead><tr><th>№</th><th>Предмет</th><th class="n">Прогнозна стойност</th></tr></thead><tbody>
-    {% for l in t.lots %}<tr><td class="mut">{{ l.lot_no }}</td><td>{{ l.title }}</td><td class="n">{{ l.estimated_value | num(2) }} {{ l.currency or '' }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+    <table><thead><tr><th>№</th><th>Предмет</th><th class="hide-s">CPV</th><th class="n">Прогнозна стойност</th></tr></thead><tbody>
+    {% for l in t.lots %}<tr><td class="mut">{{ l.lot_no }}</td><td>{{ l.title }}</td><td class="hide-s mut">{{ l.cpv or '' }}</td>
+      <td class="n">{{ l.estimated_eur | eur if l.estimated_eur is not none else (l.estimated_value | eurc(l.currency)) }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+  {{ ocds(t.ocds) }}
+  {% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
+  {% if header %}{{ record(header[-1]) }}{% endif %}
+  {{ history(t.records) }}
 </div>
 {% endblock %}
