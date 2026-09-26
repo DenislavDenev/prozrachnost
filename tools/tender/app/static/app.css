@@ -267,3 +267,5 @@ details.more[open] > summary { margin-bottom: 14px; }
 .mkey div { display: flex; align-items: center; gap: 6px; } .mkey em { width: 14px; height: 10px; border-radius: 2px; }
 .h3s { font-size: 15px; margin: 18px 0 10px; }
 .mapctl .tabs { height: 38px; align-items: center; }
+.mapbox path { fill: var(--line-2); }
+.tabs button { white-space: nowrap; }
