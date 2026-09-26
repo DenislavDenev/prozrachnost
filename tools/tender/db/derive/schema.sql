@@ -3,14 +3,21 @@ DROP SCHEMA IF EXISTS stage CASCADE;
 CREATE SCHEMA stage;
 SET search_path = stage;
 
--- Names as the sources write them sometimes carry a personal number („…, ЕГН 1234567890“) or the
--- representative of a company holder („X ООД, представлявано от Y ЕГН …“). They are shown without
--- either: never a personal number, and the holder is the company, not its representative.
+-- Names as the sources write them sometimes carry an identity number („…, ЕГН 1234567890“, „ЕИК …“)
+-- or the representative of a company holder („X ООД, представлявано от Y ЕГН …“). Shown names carry
+-- neither: no identity number of any kind, and the holder is the company, not its representative.
+-- A person's name has no digits at all; a company keeps short numbers that are part of its
+-- registered name („Дива - 90“). ingest/normalize.py clean_name() is the same rule.
 CREATE FUNCTION clean_name(t text) RETURNS text LANGUAGE sql IMMUTABLE AS $f$
-  SELECT nullif(btrim(regexp_replace(regexp_replace(regexp_replace(t,
+  SELECT nullif(btrim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(t,
     '[,;]?\s*([Пп]редставлява[нщ][а-я]*|[Чч]рез|[Сс]\s+представляващ)\s.*$', ''),
-    '([Ее][Гг][Нн]|[Лл][Нн][Чч])[\s:№.]*[0-9]+', '', 'g'),
-    '(^|[^0-9])[0-9]{10}($|[^0-9])', '', 'g'), ' ,;-–—'), '')
+    '([Ее][Гг][Нн]|[Лл][Нн][Чч]|[Ее][Ии][Кк]|[Бб][Уу][Лл][Сс][Тт][Аа][Тт])[\s:№.]*[0-9]+', '', 'g'),
+    '[0-9]{6,}', '', 'g'),
+    '[,;]?\s*([Ее][Гг][Нн]|[Лл][Нн][Чч])\s*[:№.]*\s*$', ''),
+    '\s{2,}', ' ', 'g'), ' ,;-–—'), '')
+$f$;
+CREATE FUNCTION clean_person(t text) RETURNS text LANGUAGE sql IMMUTABLE AS $f$
+  SELECT nullif(btrim(regexp_replace(regexp_replace(clean_name(t), '[0-9]', '', 'g'), '\s{2,}', ' ', 'g'), ' ,;-–—'), '')
 $f$;
 
 CREATE TABLE buyer (

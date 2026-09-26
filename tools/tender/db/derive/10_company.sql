@@ -73,7 +73,7 @@ ALTER TABLE tender_stats ADD PRIMARY KEY (unp);
 
 -- persons the register identifies by hash; public id is tr.person.id, the hash never leaves the db
 CREATE TABLE person AS
-SELECT p.id, clean_name(p.name) AS name, p.name_key, p.indent_type FROM tr.person p;
+SELECT p.id, clean_person(p.name) AS name, p.name_key, p.indent_type FROM tr.person p;
 ALTER TABLE person ADD PRIMARY KEY (id);
 CREATE INDEX ON person (name_key);
 

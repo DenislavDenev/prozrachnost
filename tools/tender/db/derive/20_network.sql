@@ -14,7 +14,7 @@ SELECT
     ELSE 'f:' || md5(r.holder_id)
   END AS holder,
   'c:' || r.eik AS company,
-  r.holder_kind, clean_name(r.holder_name) AS holder_name, r.role,
+  r.holder_kind, CASE WHEN r.holder_kind = 'person' THEN clean_person(r.holder_name) ELSE clean_name(r.holder_name) END AS holder_name, r.role,
   CASE WHEN r.role IN ('partner', 'sole_owner', 'trader') THEN 'ownership' ELSE 'management' END AS view,
   r.share,
   r.field_ident, r.entry_no, r.sub_uic, r.valid_from, r.valid_to, r.uncertain_after, r.observed_at,

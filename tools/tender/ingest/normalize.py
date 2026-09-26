@@ -121,17 +121,18 @@ def party_key(eik, name):
 
 
 _REP = re.compile(r"[,;]?\s*([Пп]редставлява[нщ][а-я]*|[Чч]рез|[Сс]\s+представляващ)\s.*$")
-_PID = re.compile(r"([Ее][Гг][Нн]|[Лл][Нн][Чч])[\s:№.]*\d+")
-_TEN = re.compile(r"(?<!\d)\d{10}(?!\d)")
+_PID = re.compile(r"([Ее][Гг][Нн]|[Лл][Нн][Чч]|[Ее][Ии][Кк]|[Бб][Уу][Лл][Сс][Тт][Аа][Тт])[\s:№.]*\d+")
+_LONG = re.compile(r"\d{6,}")
 
 
 def clean_name(v):
-    """A name as shown: no personal number (ЕГН/ЛНЧ or a bare 10-digit number) and, for a company
-    holder, not its representative. Mirrors clean_name() in db/derive/schema.sql."""
+    """A name as shown: no identity number (ЕГН, ЛНЧ, ЕИК, БУЛСТАТ or any run of 6+ digits) and,
+    for a company holder, not its representative. Mirrors clean_name() in db/derive/schema.sql."""
     if v is None:
         return None
-    s = _TEN.sub("", _PID.sub("", _REP.sub("", str(v))))
-    return s.strip(" ,;-–—") or None
+    s = _LONG.sub("", _PID.sub("", _REP.sub("", str(v))))
+    s = re.sub(r"[,;]?\s*([Ее][Гг][Нн]|[Лл][Нн][Чч])\s*[:№.]*\s*$", "", s)  # a bare „ЕГН:“ left at the end
+    return re.sub(r"\s{2,}", " ", s).strip(" ,;-–—") or None
 
 
 def split_members(names, eiks):

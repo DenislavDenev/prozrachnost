@@ -143,4 +143,7 @@ def test_clean_name_drops_personal_numbers_and_representatives():
     assert N.clean_name('ВЕРА ИВАНОВНА ДИМИТРОВА, ЕГН 1234567890') == 'ВЕРА ИВАНОВНА ДИМИТРОВА'
     assert N.clean_name('ЛУДВИК БАЛЕКА - 1234567890') == 'ЛУДВИК БАЛЕКА'
     assert N.clean_name('"АСЕТС ГРУП"АД, с представляващ Ю.Л. Бисерка Асенова, ЕГН 1234567890') == '"АСЕТС ГРУП"АД'
-    assert N.clean_name('Ефармогес АД, ЕИК 123456789') == 'Ефармогес АД, ЕИК 123456789'  # a 9-digit ЕИК stays
+    assert N.clean_name('Ефармогес АД, ЕИК 123456789') == 'Ефармогес АД'
+    assert N.clean_name('"ДИВА - 90" ООД') == '"ДИВА - 90" ООД'  # a number in the registered name stays
+    assert N.clean_name('Аспарух Михайлов Минчев, ЕГН:') == 'Аспарух Михайлов Минчев'
+    assert N.clean_name('МЕТКА ЕГН СОЛАР ООД') == 'МЕТКА ЕГН СОЛАР ООД' and N.clean_name('АНГЕЛ АНЕГНОСТИЕВ') == 'АНГЕЛ АНЕГНОСТИЕВ'
