@@ -211,3 +211,14 @@ def test_offers_parse_lots_prices_and_identifiers():
         assert False, "a changed answer must raise"
     except O.ShapeError:
         pass
+
+
+def test_sebra_rows_drop_personal_details():
+    from ingest import sebra as S
+    head = S.COLS + ["CLIENT_NAME_HASH"]
+    row = lambda name, acc: ["02.04.2026", name, acc, "BIC", "0010000008", "Народно събрание", "3249.8", "EUR", "ДОГОВОР", "№ 5",
+                             "02.04.2026", "E1", "10", "Народно събрание", "Народно събрание", "001", "h"]
+    out = S.parse([head, row("ХЕМУСХОТЕЛС АД", "BG19BUIN95611000648772"), row("ФИЗИЧЕСКО ЛИЦЕ", "812313634")])
+    assert out[0]["receiver_iban"].startswith("BG19") and out[0]["amount"] == 3249.8 and out[0]["settlement_date"].month == 4
+    assert out[1]["is_person"] and out[1]["receiver_iban"] is None and out[1]["reason"] is None and out[1]["reg_no"] is None
+    assert S.amount("1 234,56") == 1234.56 and S.amount("17265.6") == 17265.6
