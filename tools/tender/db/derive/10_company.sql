@@ -56,7 +56,8 @@ SELECT c.buyer_eik AS eik, count(*) AS contracts,
        sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur,
        count(*) FILTER (WHERE c.amount_eur IS NULL) AS contracts_without_value,
        count(DISTINCT s.party_key) AS suppliers,
-       min(c.effective_date) AS first_contract, max(c.effective_date) AS last_contract
+       min(c.effective_date) AS first_contract, max(c.effective_date) AS last_contract,
+       (SELECT count(*) FROM tender t WHERE t.buyer_eik = c.buyer_eik) AS tenders
 FROM contract c LEFT JOIN contract_supplier s ON s.contract_id = c.id AND s.position = 0
 WHERE c.buyer_eik IS NOT NULL
 GROUP BY c.buyer_eik;

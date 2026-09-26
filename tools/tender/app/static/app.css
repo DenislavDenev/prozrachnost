@@ -170,6 +170,7 @@ a.tab[aria-current="page"] { background: var(--surface); color: var(--ink); box-
 .mode { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 16px; padding: 14px 0; border-top: 1px solid var(--line-2); font-size: 14.5px; }
 .mode:first-child { border-top: 0; padding-top: 0; } .mode b { font-weight: 600; }
 .mode .n { font: var(--head-w) 22px var(--font-head); text-align: right; } .mode .why { grid-column: 1 / -1; font-size: 13.5px; color: var(--ink-3); }
+.st { font-weight: 600; } .st.contracted { color: var(--accent-ink); } .st.cancelled, .st.unawarded { color: var(--amber); } .st.open { color: var(--ink-2); } .st.no_contract { color: var(--ink-3); font-weight: 400; }
 .nw { white-space: nowrap; } .strong { font-weight: 600; } .warn { color: var(--amber); }
 .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .h1s { font-size: 32px; }

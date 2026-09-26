@@ -106,6 +106,10 @@ def fperiod(r):
     return f"{y(r['valid_from'])}–?" if r.get("uncertain_after") else f"от {y(r['valid_from'])}"
 
 
+# status of a procedure or lot (normalize.py): label shown in lists and pages
+STATE = {"contracted": "с договор", "cancelled": "прекратена", "unawarded": "без възложен договор", "open": "в ход",
+         "no_contract": "без публикуван договор"}
+T.env.globals.update(STATE=STATE)
 T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
                      json=lambda o: json.dumps(o, default=jdefault, ensure_ascii=False).replace("</", "<\\/"),
@@ -462,12 +466,12 @@ def map_detail(request: Request, aid: str):
 
 @app.get("/buyers", response_class=HTMLResponse)
 def buyers(request: Request):
-    L = Listing(request, {"name": ("b.name", "asc"), "type": ("b.type", "asc"), "contracts": ("s.contracts", "desc"),
+    L = Listing(request, {"name": ("b.name", "asc"), "type": ("b.type", "asc"), "tenders": ("s.tenders", "desc"), "contracts": ("s.contracts", "desc"),
                           "suppliers": ("s.suppliers", "desc"), "eur": ("s.amount_eur", "desc")}, "eur")
     contains(L, "q", "b.name", "b.eik")
     if L.get("type"):
         L.add("b.type = %s", L.get("type"))
-    rows = L.fetch("""SELECT b.eik, b.name, b.type, s.contracts, s.amount_eur, s.suppliers FROM live.buyer b
+    rows = L.fetch("""SELECT b.eik, b.name, b.type, s.tenders, s.contracts, s.amount_eur, s.suppliers FROM live.buyer b
                       JOIN live.buyer_stats s USING (eik) WHERE {where}""")
     types = Q.cached("buyer_types", lambda: [r["type"] for r in Q.rows(
         "SELECT DISTINCT type FROM live.buyer WHERE type IS NOT NULL ORDER BY 1")])
@@ -569,12 +573,10 @@ def tenders(request: Request):
         L.add("t.procedure_type = %s", L.get("procedure"))
     if re.fullmatch(r"\d{2}", L.get("sector")):
         L.add("left(t.cpv, 2) = %s", L.get("sector"))
-    state = {"contracted": "s.contracts > 0", "cancelled": "t.is_cancelled",
-             "open": "s.contracts IS NULL AND NOT coalesce(t.is_cancelled, false)"}.get(L.get("state"))
-    if state:
-        L.add(state)
+    if L.get("state") in STATE:
+        L.add("t.state = %s", L.get("state"))
     rows = L.fetch(f"""SELECT t.unp, {day} AS day, t.subject, t.buyer_eik, b.name buyer, t.procedure_type, t.estimated_eur,
-                         t.is_cancelled, s.contracts, s.amount_eur, s.single_bid
+                         t.is_cancelled, t.state, s.contracts, s.amount_eur, s.single_bid
                        FROM live.tender t LEFT JOIN live.tender_stats s USING (unp) LEFT JOIN live.buyer b ON b.eik = t.buyer_eik
                        WHERE {{where}}""")
     return page(request, "_tenders_table.html" if L.embed else "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")

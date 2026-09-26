@@ -30,11 +30,13 @@ CREATE TABLE tender (
   cpv text, cpv_description text, contract_type text, estimated_value numeric, currency text,
   estimated_eur numeric, is_eu_funded boolean, european_program text, lots_count int, submission_deadline timestamp,
   published_at timestamp, notice_type text, is_cancelled boolean, execution_nuts text,
-  source_day date, synthetic boolean NOT NULL
+  source_day date, synthetic boolean NOT NULL,
+  state text  -- contracted | cancelled | unawarded | open | no_contract (normalize.py)
 );
 
 CREATE TABLE lot (
   unp text, lot_no int, title text, estimated_value numeric, currency text, cpv text, estimated_eur numeric,
+  status text,  -- as tender.state, per lot
   PRIMARY KEY (unp, lot_no)
 );
 

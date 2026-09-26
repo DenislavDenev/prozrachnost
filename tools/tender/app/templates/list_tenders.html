@@ -13,7 +13,7 @@
   <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>
     {% for s in sectors %}<option value="{{ s.d }}" {{ 'selected' if L.get('sector') == s.d }}>{{ s.d }} · {{ s.name }}</option>{% endfor %}</select></label>
   <label class="fld"><span>Състояние</span><select name="state"><option value="">Всички</option>
-    {% for v, l in [('contracted', 'С договор'), ('open', 'Без договор'), ('cancelled', 'Прекратени')] %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
+    {% for v, l in STATE.items() %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
   {{ period(L) }}
   {{ keep(L, ['sort', 'dir', 'buyer']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}</div>
 </form></details>

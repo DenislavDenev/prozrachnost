@@ -175,3 +175,19 @@ def test_every_shortest_path_is_counted_and_paged():
     rest = shortest_paths(FakeConn(edges), "p:a", "p:b", offset=2, limit=2)["paths"]
     assert len(rest) == 1 and rest[0] not in r["paths"]
     assert shortest_paths(FakeConn(edges), "p:a", "p:zz")["total"] == 0  # not linked: searched to the end, no cap
+
+
+def test_lot_and_tender_status():
+    T = lambda unp, lot, **kw: {"uniqueProcurementNumber": unp, "lotIdentifier": lot, "isLot": "Да" if lot else "Не",
+                                "publicationDate": "2021-01-01T10:00:00", "subject": "x", **kw}
+    tenders = [T("A", None), T("A", "LOT-0001"), T("A", "LOT-0002"), T("B", None, isCancelled="Да"), T("C", None), T("D", None)]
+    contracts = [{"noAwarding": "Не", "uniqueProcurementNumber": "A", "lotIdentifier": "LOT-0001", "contractNumber": "1",
+                  "contractValue": "100,00", "contractCurrency": "EUR", "supplierName": "А", "supplierRegisterNumber": "202210490",
+                  "contractDate": "01.02.2021"},
+                 {"noAwarding": "Да", "uniqueProcurementNumber": "A", "lotIdentifier": "LOT-0002"},
+                 {"noAwarding": "Да", "uniqueProcurementNumber": "C"}]
+    res = N.normalize([("2021-01-02", "tenders", tenders), ("2021-03-01", "contracts", contracts), ("2023-01-01", "annexes", [])], N.Fx({}))
+    state = {t["unp"]: t["state"] for t in res["tender"]}
+    lots = {(l["unp"], l["lot_no"]): l["status"] for l in res["lot"]}
+    assert state == {"A": "contracted", "B": "cancelled", "C": "unawarded", "D": "no_contract"}
+    assert lots == {("A", 1): "contracted", ("A", 2): "unawarded"}

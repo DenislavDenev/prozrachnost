@@ -3,7 +3,7 @@
 {% if L.embed %}{{ count(L, 'поръчки') }}{% endif %}<table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'subject', 'Предмет') }}{% if not L.hide('buyer') %}{{ th(L, 'buyer', 'Възложител', 'hide-s') }}{% endif %}{{ th(L, 'procedure', 'Процедура', 'hide-s') }}
   {{ th(L, 'contracts', 'Договори', 'n') }}{{ th(L, 'estimate', 'Прогнозна', 'n hide-s') }}{{ th(L, 'eur', 'Договорено', 'n') }}</tr></thead><tbody>
 {% for t in rows %}<tr><td class="mut nw">{{ t.day | date }}</td>
-  <td><a class="subj u" href="/tenders/{{ t.unp | q }}">{{ t.subject or t.unp }}</a><div class="mut">УНП {{ t.unp }}{% if t.is_cancelled %} · <span class="warn">прекратена</span>{% endif %}{% if t.single_bid %} · {{ t.single_bid }} с една оферта{% endif %}</div></td>
+  <td><a class="subj u" href="/tenders/{{ t.unp | q }}">{{ t.subject or t.unp }}</a><div class="mut">УНП {{ t.unp }} · <span class="st {{ t.state }}">{{ STATE.get(t.state, '') }}</span>{% if t.single_bid %} · {{ t.single_bid }} с една оферта{% endif %}</div></td>
   {% if not L.hide('buyer') %}<td class="hide-s mut"><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer | tc }}</a></td>{% endif %}
   <td class="hide-s mut">{{ t.procedure_type or '—' }}</td>
   <td class="n">{{ t.contracts | num if t.contracts else '—' }}</td>

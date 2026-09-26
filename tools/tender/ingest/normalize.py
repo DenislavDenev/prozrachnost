@@ -12,7 +12,7 @@ from collections import defaultdict
 
 from .config import BGN_PER_EUR
 
-RULES_VERSION = "normalize_v2"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers
+RULES_VERSION = "normalize_v3"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status
 
 YES = {"Да": True, "Не": False}
 
@@ -226,13 +226,18 @@ def normalize(days_rows, fx):
     # every published field of the original record (source_record)
     src = []
     places = {}  # buyer ЕИК -> address from OCDS parties (the flat files carry none)
+    unawarded, unawarded_tid = set(), set()  # (unp | OCDS tender id, lot) closed without a contract
+    last_day = None
     for day, kind, rows in days_rows:
+        last_day = max(last_day or day, day)
         for i, r in enumerate(rows):
             if kind == "tenders":
                 unp = _tender_row(r, day, tenders, buyers)
                 if unp:
                     src.append({"entity": "tender", "ref": unp, "day": day, "kind": kind, "idx": i})
             elif kind == "contracts":
+                if flag(r.get("noAwarding")):
+                    unawarded.add((text(r.get("uniqueProcurementNumber")), lot_no(r.get("lotIdentifier"))))
                 cid = _contract_row(r, day, contracts, buyers)
                 if cid:
                     src.append({"entity": "contract", "ref": cid, "day": day, "kind": kind, "idx": i})
@@ -242,6 +247,9 @@ def normalize(days_rows, fx):
             elif kind == "ocds":
                 ocds_contracts.extend(_ocds_contracts(r, day))
                 tid = text((r.get("tender") or {}).get("id"))
+                for a in r.get("awards") or []:
+                    if a.get("status") == "unsuccessful" and tid:
+                        unawarded_tid.add((tid, lot_no((a.get("relatedLots") or [None])[0])))
                 if tid:
                     src.append({"entity": "ocds", "ref": tid, "day": day, "kind": kind, "idx": i})
                 for party in r.get("parties") or []:
@@ -343,6 +351,25 @@ def normalize(days_rows, fx):
                 "lots_count": None, "submission_deadline": None, "published_at": None,
                 "notice_type": None, "is_cancelled": None, "execution_nuts": None,
                 "source_day": c["source_day"], "synthetic": True, "lots": {}}
+    # status of every lot and procedure: a contract wins over everything; then cancelled; then closed
+    # without award (flat noAwarding, OCDS award "unsuccessful"); then still open (deadline ahead or
+    # published within a year of the last data day); else no contract published
+    unawarded |= {(tid2unp[t], n) for t, n in unawarded_tid if t in tid2unp}
+    contracted = {(c["unp"], c["lot_no"]) for c in out_contracts if c["unp"]}
+    with_contract = {u for u, _ in contracted}
+    ref = dt.date.fromisoformat(str(last_day)) if last_day else dt.date.today()
+    for u, n in unawarded:
+        if u in tenders and n is not None and n not in tenders[u]["lots"]:
+            tenders[u]["lots"][n] = {"title": None, "estimated_value": None, "currency": None, "cpv": None}
+    for t in tenders.values():
+        u = t["unp"]
+        recent = (t["submission_deadline"] and t["submission_deadline"].date() >= ref) or \
+                 (t["published_at"] and (ref - t["published_at"].date()).days <= 365)
+        t["state"] = ("contracted" if u in with_contract else "cancelled" if t["is_cancelled"]
+                      else "unawarded" if any(x == u for x, _ in unawarded) else "open" if recent else "no_contract")
+        for n, l in t["lots"].items():
+            l["status"] = ("contracted" if (u, n) in contracted else "unawarded" if (u, n) in unawarded
+                           else "cancelled" if t["is_cancelled"] else "open" if recent else "no_contract")
     lots = []
     for t in tenders.values():
         on = t["published_at"].date() if t["published_at"] else dt.date.fromisoformat(str(t["source_day"]))

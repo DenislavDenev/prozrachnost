@@ -12,12 +12,12 @@
 </form></details>
 {{ count(L, 'възложители') }}
 <section class="p">
-<table><thead><tr>{{ th(L, 'name', 'Възложител') }}{{ th(L, 'type', 'Вид', 'hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}
+<table><thead><tr>{{ th(L, 'name', 'Възложител') }}{{ th(L, 'type', 'Вид', 'hide-s') }}{{ th(L, 'tenders', 'Поръчки', 'n') }}{{ th(L, 'contracts', 'Договори', 'n hide-s') }}
   {{ th(L, 'suppliers', 'Изпълнители', 'n hide-s') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
 {% for r in rows %}<tr><td><a class="u strong" href="/buyers/{{ r.eik }}">{{ r.name | tc }}</a><div class="mut">ЕИК {{ r.eik }}</div></td>
-  <td class="hide-s mut">{{ r.type or '' }}</td><td class="n">{{ r.contracts | num }}</td>
+  <td class="hide-s mut">{{ r.type or '' }}</td><td class="n">{{ r.tenders | num }}</td><td class="n hide-s">{{ r.contracts | num }}</td>
   <td class="n hide-s">{{ r.suppliers | num }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>
-{% else %}<tr><td colspan="5" class="mut">Няма възложители по тези филтри.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="6" class="mut">Няма възложители по тези филтри.</td></tr>{% endfor %}
 </tbody></table>
 {{ pager(L) }}
 </section>
