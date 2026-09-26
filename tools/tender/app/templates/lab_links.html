@@ -119,11 +119,11 @@ const FOCUS = {{ node | tojson }};
         return { n, l: ls.length, bc: ls.reduce((s, x) => s + idx.get(x), 0) / Math.max(1, ls.length) }; }).filter((x) => x.l > 0);
       c.sort((a, b) => (b.l >= 2) - (a.l >= 2) || (a.l >= 2 && b.l >= 2 ? b.l - a.l : a.bc - b.bc) || ((+b.n.eur || 0) - (+a.n.eur || 0)));
       const keep = c.filter((x) => x.l >= 2 || k === 2 || (x.n.kind === 'c' && x.n.n));
-      shown[k] = keep.slice(0, k === 2 ? 40 : 30).map((x) => ({ ...x.n, share: x.l >= 2 }));
+      shown[k] = keep.slice(0, k === 2 ? 40 : 30).map((x) => ({ ...x.n, share: x.l >= 2, links: x.l }));
       shown[k].hidden = cols[k].length - shown[k].length;
     }
     const heads = ['Обект', 'Пряко свързани', 'Следваща стъпка', 'Трета стъпка'];
-    const CW = 300, GAP = 90, RH = 38, TOP = 34, W = 4 * CW + 3 * GAP;
+    const CW = 262, GAP = 64, RH = 48, TOP = 34, NH = 40, W = 4 * CW + 3 * GAP;
     const H = TOP + Math.max(...shown.map((c) => c.length + (c.hidden ? 1 : 0))) * RH + 10;
     const pos = new Map();
     shown.forEach((c, k) => c.forEach((n, i) => pos.set(n.id, { x: k * (CW + GAP), y: TOP + i * RH })));
@@ -131,15 +131,15 @@ const FOCUS = {{ node | tojson }};
     const seen = new Set();
     for (const [a, p] of pos) for (const [b, rs] of A.get(a)) {
       const pb = pos.get(b); if (!pb || pb.x <= p.x || seen.has(a + b)) continue; seen.add(a + b);
-      const x1 = p.x + CW, y1 = p.y + 15, x2 = pb.x, y2 = pb.y + 15, mx = (x1 + x2) / 2;
+      const x1 = p.x + CW, y1 = p.y + NH / 2, x2 = pb.x, y2 = pb.y + NH / 2, mx = (x1 + x2) / 2;
       es += `<path class="ln ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" data-a="${a}" data-b="${b}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"><title>${esc(rs.map(roleTxt).join(', '))}</title></path>`;
     }
     shown.forEach((c, k) => {
       ns += `<text class="lh" x="${k * (CW + GAP)}" y="16">${heads[k]} · ${nf.format(c.length + (c.hidden || 0))}</text>`;
-      c.forEach((n) => { const p = pos.get(n.id), nm = n.name.length > 30 ? n.name.slice(0, 29) + '…' : n.name;
-        ns += `<g class="nd ${n.share ? 'share' : ''}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${CW}" height="30" rx="4"/>
-          ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${p.x + 10}" y="${p.y + 10}" width="10" height="10" rx="2"/>` : `<circle class="k" cx="${p.x + 15}" cy="${p.y + 15}" r="5"/>`}
-          <text class="t" x="${p.x + 28}" y="${p.y + 19.5}">${esc(nm)}</text><text class="m" x="${p.x + CW - 8}" y="${p.y + 19.5}" text-anchor="end">${esc(money(n))}</text></g>`; });
+      c.forEach((n) => { const p = pos.get(n.id), nm = n.name.length > 31 ? n.name.slice(0, 30) + '…' : n.name;
+        ns += `<g class="nd ${n.share ? 'share' : ''}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${CW}" height="${NH}" rx="4"/>
+          ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${p.x + 10}" y="${p.y + 10}" width="9" height="9" rx="2"/>` : `<circle class="k" cx="${p.x + 14.5}" cy="${p.y + 14.5}" r="4.5"/>`}
+          <text class="t" x="${p.x + 26}" y="${p.y + 18}">${esc(nm)}</text><text class="m" x="${p.x + 26}" y="${p.y + 33}">${esc(money(n))}${n.share ? ' · свързва ' + n.links : ''}</text></g>`; });
       if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още ${k === 3 ? '(без договори и без общи връзки)' : ''}</text>`;
     });
     const box = $('layers'); box.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${es}${ns}</svg>`;
@@ -229,7 +229,7 @@ const FOCUS = {{ node | tojson }};
         <div class="sub2">${esc(N.get(FOCUS).name)}: ${esc(rs.map(roleTxt).join(', '))} · <b>${esc(money(f))}</b></div>
         <ul>${kids.slice(0, 14).map(([b, brs]) => { const n = N.get(b), also = where.get(b).filter((x) => x !== f.id), hu = href(n);
           return `<li class="${live(brs) ? '' : 'end'}"><span>${n.kind === 'c' ? '▪ ' : ''}${hu ? `<a class="u" href="${hu}">${esc(n.name)}</a>` : esc(n.name)}</span><span class="n">${n.kind === 'c' && n.n ? big(+n.eur || 0) : ''}</span>
-            <span class="r">${esc(brs.map(roleTxt).join(', '))}</span>${also.length ? `<span class="also">също в: ${esc(also.map((x) => N.get(x).name).join(', '))}</span>` : ''}</li>`; }).join('')}
+            <span class="r">${esc(brs.map(roleTxt).join(', '))}</span>${also.length ? `<span class="also">също в ${also.length === 1 ? esc(N.get(also[0]).name) : `${also.length} други: ` + esc(also.slice(0, 3).map((x) => N.get(x).name).join(', ')) + (also.length > 3 ? '…' : '')}</span>` : ''}</li>`; }).join('')}
           ${kids.length > 14 ? `<li class="mut">и още ${kids.length - 14}</li>` : ''}${kids.length ? '' : '<li class="mut">няма други прочетени връзки</li>'}</ul></div>`; }).join('');
   }
 
