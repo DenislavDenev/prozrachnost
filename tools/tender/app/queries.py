@@ -423,6 +423,10 @@ def tender_lots(t):
         lots[0].update(title=t["subject"], estimated_eur=t["estimated_eur"], status=t.get("state"))
     out = sorted(lots.values(), key=lambda l: l["lot_no"])
     for l in out:
+        l["estimated_eur"] = float(l["estimated_eur"]) if l.get("estimated_eur") is not None else None
+    for l in out:
+        for o in l["offers"]:
+            o["price_eur"] = float(o["price_eur"]) if o["price_eur"] is not None else None
         prices = [o["price_eur"] for o in l["offers"] if o["price_eur"] is not None]
         l["low"] = min(prices) if prices else None
         l["high"] = max(prices) if prices else None
