@@ -82,8 +82,7 @@ addEventListener('load', () => {
         type: 'sankey', nodeAlign: 'left', nodeGap: 12, nodeWidth: 16, layoutIterations: 0, draggable: false,
         emphasis: { focus: 'adjacency' }, left: 8, right: R, top: 46, bottom: 12,
         lineStyle: { color: 'target', opacity: .28, curveness: .5 },
-        label: { fontSize: 13, color: cssVar('--ink'), formatter: (x) => { const t = x.data.txt || ''; if (x.data.kind === 'path') return t + '
-{v|' + short(x.data.v) + ' €}'; return (t.length > max ? t.slice(0, max - 1) + '…' : t) + '  {v|' + short(x.data.v) + ' €}'; },
+        label: { fontSize: 13, color: cssVar('--ink'), formatter: (x) => { const t = x.data.txt || ''; if (x.data.kind === 'path') return t + '\n{v|' + short(x.data.v) + ' €}'; return (t.length > max ? t.slice(0, max - 1) + '…' : t) + '  {v|' + short(x.data.v) + ' €}'; },
           rich: { v: { fontWeight: 600, color: cssVar('--ink-2') } } },
         data: nodes, links,
       }],
