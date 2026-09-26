@@ -16,7 +16,7 @@
 <header class="bar"><div class="bar-in">
   <a class="word" href="/"><i></i>Тендер</a>
   <nav class="menu" aria-label="Основна навигация">
-    {% for t, h in [("Табло", "/"), ("Карта", "/map"), ("Възложители", "/buyers"), ("Фирми", "/companies"), ("Лица", "/persons"), ("Поръчки", "/tenders"), ("Договори", "/contracts"), ("Свързаности", "/svarzanosti")] %}
+    {% for t, h in [("Табло", "/"), ("Карта", "/map"), ("Възложители", "/buyers"), ("Фирми", "/companies"), ("Лица", "/persons"), ("Поръчки", "/tenders"), ("Договори", "/contracts"), ("Потоци", "/flows"), ("Свързаности", "/svarzanosti")] %}
     <a href="{{ h }}" class="{{ 'on' if nav == t }}" {% if nav == t %}aria-current="page"{% endif %}>{{ t }}</a>
     {% endfor %}
   </nav>

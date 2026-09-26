@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Потоци · Тендер{% endblock %}
+{% block head %}<script src="/static/vendor/echarts.min.js?v={{ v }}" defer></script>{% endblock %}
+{% block main %}
+<h1 class="h1s">Потоци</h1>
+<p class="sub">Накъде отиват парите за една календарна година. <b>Договорено</b>: договорите от ЦАИС ЕОП по сектор, възложител и изпълнител (без таваните на рамкови споразумения и без стойности с вероятна грешка; всеки договор веднъж, при първия изпълнител). <b>Платено</b>: плащанията от бюджета през СЕБРА по първостепенен разпоредител, разпоредител и получател (от юли 2022 г.; без общините извън София). Във всяка колона са първите {{ 14 }}, останалите са „Други“. Клик на кръгче влиза в него, клик на лента показва договорите или плащанията зад нея.</p>
+<form class="filters mapctl" id="ff" onsubmit="return false">
+  <div class="fld"><span>Какво</span><div class="tabs" id="mode" role="group" aria-label="Какво">
+    <button type="button" data-k="contracts" aria-pressed="true">Договорено</button><button type="button" data-k="payments" aria-pressed="false">Платено (СЕБРА)</button></div></div>
+  <label class="fld"><span>Година</span><select id="year">{% for y in range(year_now, 2019, -1) %}<option {{ 'selected' if y == year_now - 1 }}>{{ y }}</option>{% endfor %}</select></label>
+  <div class="fld"><span>&nbsp;</span><div class="crumbs fl-crumbs" id="crumbs"></div></div>
+</form>
+<section class="p fl-box"><div class="fl-head"><div id="ftotal" class="sub"></div><button class="btn sm" id="fzoom" type="button">Побери</button></div>
+  <div id="sankey" class="fl-chart" role="img" aria-label="Потоци на парите"></div></section>
+<section class="p" id="fdetail" hidden><div class="ph"><div><h2 id="fdt"></h2><div class="sub">Кликни заглавие на колона, за да подредиш</div></div><a class="btn" id="fdall" href="#">Всички</a></div>
+  <div class="embed" id="fdembed"></div></section>
+<section class="p"><details class="more"><summary><h2>Таблица с точните суми</h2><span class="sub">Всяка лента от графиката</span></summary>
+  <table class="sortable" id="ftable"><thead><tr><th>От</th><th>Към</th><th class="n">Брой</th><th class="n">Сума</th></tr></thead><tbody></tbody></table></details></section>
+{% endblock %}
+{% block scripts %}
+<script>
+addEventListener('load', () => {
+  const chart = echarts.init($('sankey'), null, { renderer: 'svg' });
+  const st = { mode: 'contracts', filters: {}, names: {} };
+  const DIM = { sector: 'Сектор', buyer: 'Възложител', supplier: 'Изпълнител', primary: 'Първостепенен разпоредител', org: 'Разпоредител', receiver: 'Получател' };
+  const color = { sector: '#6b7a8c', buyer: '#2c5f8e', supplier: '#0b7a5e', primary: '#6b7a8c', org: '#2c5f8e', receiver: '#0b7a5e' };
+  new ResizeObserver(() => chart.resize()).observe($('sankey'));
+  // the contracts or payments behind a node or a link, as the list pages filter them
+  function detailUrl(parts) {
+    const p = new URLSearchParams(), y = $('year').value;
+    if (st.mode === 'contracts') {
+      p.set('from', y + '-01-01'); p.set('to', y + '-12-31'); p.set('clean', '1'); p.set('sort', 'eur'); p.set('dir', 'desc');
+      for (const [d, k] of Object.entries(parts)) { if (k === '~') continue; p.set({ sector: 'sector', buyer: 'buyer', supplier: 'company' }[d], k); }
+      return '/contracts?' + p;
+    }
+    p.set('year', y); p.set('sort', 'eur'); p.set('dir', 'desc');
+    for (const [d, k] of Object.entries(parts)) { if (k === '~') continue; p.set({ primary: 'primary', org: 'org', receiver: 'receiver' }[d], k); }
+    return '/payments?' + p;
+  }
+  function detail(title, parts) {
+    const u = detailUrl({ ...st.filters, ...parts });
+    $('fdetail').hidden = false; $('fdt').textContent = title; $('fdall').href = u;
+    htmx.ajax('GET', u + '&embed=1&per=20', { target: '#fdembed', swap: 'innerHTML' });
+    $('fdetail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function crumbs() {
+    const c = Object.entries(st.filters);
+    $('crumbs').innerHTML = `<a href="#" data-i="0">Всички</a>` + c.map(([d, k], i) => ` / <a href="#" data-i="${i + 1}">${esc(st.names[d + '|' + k] || k)}</a>`).join('');
+  }
+  $('crumbs').onclick = (e) => { const a = e.target.closest('[data-i]'); if (!a) return; e.preventDefault();
+    st.filters = Object.fromEntries(Object.entries(st.filters).slice(0, +a.dataset.i)); load(); };
+  async function load() {
+    const p = new URLSearchParams({ mode: st.mode, year: $('year').value, ...st.filters });
+    chart.showLoading('default', { text: '', color: cssVar('--accent') });
+    const d = await (await fetch('/flows.json?' + p)).json();
+    chart.hideLoading();
+    Object.assign(st.names, d.filter_names);
+    d.nodes.forEach((n) => { st.names[n.name] = n.label; });
+    crumbs();
+    const perCol = Math.max(1, ...d.cols.map((c) => d.nodes.filter((n) => n.dim === c).length));
+    $('sankey').style.height = Math.max(420, perCol * 34 + 60) + 'px'; chart.resize();
+    $('ftotal').textContent = d.total && d.total.v ? `${d.year}: ${big(+d.total.v)} в ${nf.format(d.total.n)} ${st.mode === 'contracts' ? 'договора' : 'плащания'}` + (Object.keys(st.filters).length ? ' (в избраното)' : '') : 'Няма данни за тази година.';
+    chart.setOption({
+      tooltip: { trigger: 'item', formatter: (x) => x.dataType === 'edge'
+        ? `${esc(st.names[x.data.source])} → ${esc(st.names[x.data.target])}<br><b>${eur(x.data.value)}</b> · ${nf.format(x.data.n)} ${st.mode === 'contracts' ? 'договора' : 'плащания'}`
+        : `${esc(x.data.label)}<br><b>${eur(x.value)}</b><br><small>${DIM[x.data.dim]}</small>` },
+      series: [{
+        type: 'sankey', roam: true, nodeAlign: 'justify', nodeGap: 10, nodeWidth: 14, layoutIterations: 48, draggable: false,
+        emphasis: { focus: 'trajectory' }, left: 8, right: 190, top: 16, bottom: 16,
+        lineStyle: { color: 'gradient', opacity: .35, curveness: .5 },
+        label: { fontSize: 12.5, color: cssVar('--ink'), formatter: (x) => { const t = x.data.label || ''; return (t.length > 34 ? t.slice(0, 33) + '…' : t) + '  ' + short(x.value) + ' €'; } },
+        data: d.nodes.map((n) => ({ name: n.name, label: n.label, dim: n.dim, key: n.key, itemStyle: { color: n.key === '~' ? '#b9c0c8' : color[n.dim] } })),
+        links: d.links,
+      }],
+    }, true);
+    const rows = d.links.slice().sort((a, b) => b.value - a.value);
+    $('ftable').tBodies[0].innerHTML = rows.map((l) => `<tr><td>${esc(st.names[l.source])}</td><td>${esc(st.names[l.target])}</td><td class="n">${nf.format(l.n)}</td><td class="n strong" data-v="${l.value}">${eur(l.value)}</td></tr>`).join('');
+  }
+  chart.on('click', (x) => {
+    if (x.dataType === 'edge') return detail(`${st.names[x.data.source]} → ${st.names[x.data.target]}`, { [x.data.sd]: x.data.sk, [x.data.td]: x.data.tk });
+    const n = x.data; if (!n) return;
+    if (n.key === '~') return detail(n.label, {});
+    if (st.filters[n.dim] === undefined && Object.keys(st.filters).length < 2) { st.filters[n.dim] = n.key; load(); }
+    else detail(n.label, { [n.dim]: n.key });
+  });
+  $('mode').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('mode').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); st.mode = b.dataset.k; st.filters = {}; load(); };
+  $('year').onchange = load;
+  $('fzoom').onclick = () => chart.setOption({ series: [{ zoom: 1, center: null }] });
+  load();
+});
+</script>
+{% endblock %}

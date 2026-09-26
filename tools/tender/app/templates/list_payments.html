@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_list.html" import keep, period, count %}
+{% block title %}Плащания от бюджета · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Плащания от бюджета</h1>
+<p class="sub">Отделните плащания от 5 000 лв. нагоре през СЕБРА, по тримесечните списъци на data.egov.bg, от юли 2022 г. Плащанията на общините (без София) не минават през СЕБРА. Получателят е свързан с фирма само при точно съвпадение на името. Данните за физическите лица са анонимни.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
+<form class="filters" action="/payments">
+  <label class="fld grow"><span>Получател, основание или платец</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. АПИ"></label>
+  {{ period(L) }}
+  {{ keep(L, ['sort', 'dir', 'primary', 'org', 'company', 'buyer', 'receiver', 'year']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/payments">Изчисти</a>{% endif %}</div>
+</form></details>
+{{ count(L, 'плащания') }}
+<section class="p">{% include "_payments_table.html" %}</section>
+{% endblock %}

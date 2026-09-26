@@ -616,6 +616,123 @@ def sectors(request: Request):
     return page(request, "list_rollup.html", L=L, rows=rows, title="Сектори", kind="sector", nav="")
 
 
+# ---------- flows: one calendar year as a Sankey (contracts: sector -> buyer -> supplier; payments:
+# first-level budget organisation -> organisation -> receiver), the top of each column and "Други" ----------
+
+FLOW_DIMS = {
+    "contracts": {"sector": "left(c.cpv, 2)", "buyer": "c.buyer_eik", "supplier": "s.party_key"},
+    "payments": {"primary": "p.primary_org_code", "org": "p.organization",
+                 "receiver": "CASE WHEN p.is_person THEN 'persons' WHEN p.company_key IS NOT NULL THEN p.company_key ELSE 'name:' || p.receiver_name END"},
+}
+FLOW_TOP = 14
+
+
+def flow_base(mode, year, filters):
+    if mode == "payments":
+        where = ["p.settlement_date >= make_date(%s, 1, 1)", "p.settlement_date < make_date(%s + 1, 1, 1)", "p.amount_eur > 0"]
+        args = [year, year]
+        base = "FROM live.payment p"
+        val = "p.amount_eur"
+    else:
+        # contracts once each (first supplier), no framework ceilings, no values the checks mark as errors
+        where = ["c.effective_date >= make_date(%s, 1, 1)", "c.effective_date < make_date(%s + 1, 1, 1)", "NOT c.is_framework",
+                 "c.value_flag = 'ok'", "c.amount_eur > 0"]
+        args = [year, year]
+        base = "FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id AND s.position = 0"
+        val = "c.amount_eur"
+    for k, v in filters.items():
+        where.append(f"{FLOW_DIMS[mode][k]} = %s")
+        args.append(v)
+    return base, " AND ".join(where), args, val
+
+
+@app.get("/flows", response_class=HTMLResponse)
+def flows_page(request: Request):
+    return page(request, "flows.html", year_now=dt.date.today().year, nav="Потоци")
+
+
+@app.get("/flows.json")
+def flows_json(request: Request, year: int = 0, mode: str = "contracts"):
+    """Columns of the chosen mode minus the dimensions filtered on; each column keeps its top FLOW_TOP
+    nodes by value, the rest become one "Други" node; links between neighbouring columns."""
+    mode = mode if mode in FLOW_DIMS else "contracts"
+    year = year or dt.date.today().year - 1
+    dims = FLOW_DIMS[mode]
+    filters = {k: request.query_params[k] for k in dims if request.query_params.get(k)}
+    cols = [k for k in dims if k not in filters]
+    base, where, args, val = flow_base(mode, year, filters)
+    tops = {}
+    for k in cols:
+        tops[k] = [r["k"] for r in Q.rows(f"SELECT {dims[k]} k, sum({val}) v {base} WHERE {where} AND {dims[k]} IS NOT NULL "
+                                          f"GROUP BY 1 ORDER BY v DESC NULLS LAST LIMIT {FLOW_TOP}", *args)]
+    links = []
+    for a, b in zip(cols, cols[1:]):
+        ca = f"CASE WHEN {dims[a]} = ANY(%s) THEN {dims[a]} ELSE '~' END"
+        cb = f"CASE WHEN {dims[b]} = ANY(%s) THEN {dims[b]} ELSE '~' END"
+        for r in Q.rows(f"SELECT {ca} s, {cb} t, round(sum({val})) v, count(*) n {base} WHERE {where} GROUP BY 1, 2",
+                        tops[a], tops[b], *args):
+            links.append({"source": f"{a}|{r['s']}", "target": f"{b}|{r['t']}", "value": float(r["v"] or 0), "n": r["n"],
+                          "sk": r["s"], "tk": r["t"], "sd": a, "td": b})
+    total = Q.one(f"SELECT round(sum({val})) v, count(*) n {base} WHERE {where}", *args)
+    names = flow_names(mode, {k: tops[k] for k in cols})
+    nodes = sorted({(l["source"]) for l in links} | {l["target"] for l in links})
+    return JSONResponse(json.loads(json.dumps({"mode": mode, "year": year, "cols": cols, "filters": filters,
+        "filter_names": flow_names(mode, {k: [v] for k, v in filters.items()}),
+        "nodes": [{"name": n, "label": names.get(n, n.split("|", 1)[1]), "dim": n.split("|", 1)[0], "key": n.split("|", 1)[1]} for n in nodes],
+        "links": links, "total": total}, default=jdefault)))
+
+
+def flow_names(mode, keys):
+    out = {}
+    for dim, ks in keys.items():
+        ks = [k for k in ks if k and k != "~"]
+        other = {"sector": "Други сектори", "buyer": "Други възложители", "supplier": "Други изпълнители",
+                 "primary": "Други първостепенни", "org": "Други разпоредители", "receiver": "Други получатели"}[dim]
+        out[f"{dim}|~"] = other
+        if dim == "sector":
+            sn = {r["d"]: r["name"] for r in Q.cached("sectors", lambda: Q.rows(SECTOR_NAMES))}
+            out.update({f"sector|{k}": sn.get(k, "CPV " + k) for k in ks})
+        elif dim == "buyer":
+            out.update({f"buyer|{r['eik']}": tc(r["name"]) for r in Q.rows("SELECT eik, name FROM live.buyer WHERE eik = ANY(%s)", ks)})
+        elif dim == "supplier":
+            out.update({f"supplier|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM live.company WHERE key = ANY(%s)", ks)})
+            out.update({f"supplier|{k}": tc(k[5:]) for k in ks if k.startswith("name:")})
+        elif dim == "primary":
+            out.update({f"primary|{r['k']}": r["n"] for r in Q.rows(
+                "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM live.payment WHERE primary_org_code = ANY(%s)", ks)})
+        elif dim == "org":
+            out.update({f"org|{k}": k for k in ks})
+        else:
+            out.update({f"receiver|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM live.company WHERE key = ANY(%s)", ks)})
+            out.update({f"receiver|{k}": k[5:] for k in ks if k.startswith("name:")})
+            out["receiver|persons"] = "Физически лица"
+    return out
+
+
+@app.get("/payments", response_class=HTMLResponse)
+def payments(request: Request):
+    """Budget payments (СЕБРА) with filters; embed=1 for the flows page and profiles."""
+    L = Listing(request, {"date": ("p.settlement_date", "desc"), "receiver": ("p.receiver_name", "asc"), "org": ("p.organization", "asc"),
+                          "eur": ("p.amount_eur", "desc")}, "date")
+    period(L, "p.settlement_date")
+    if L.get("year").isdigit():
+        L.add("p.settlement_date >= make_date(%s, 1, 1) AND p.settlement_date < make_date(%s + 1, 1, 1)", int(L.get("year")), int(L.get("year")))
+    for key, col in (("primary", "p.primary_org_code"), ("org", "p.organization"), ("company", "p.company_key"), ("buyer", "p.buyer_eik")):
+        if L.get(key):
+            L.add(f"{col} = %s", L.get(key))
+    r = L.get("receiver")
+    if r == "persons":
+        L.add("p.is_person")
+    elif r.startswith("name:"):
+        L.add("p.receiver_name = %s AND p.company_key IS NULL", r[5:])
+    elif r:
+        L.add("p.company_key = %s", r)
+    contains(L, "q", "p.receiver_name", "p.reason", "p.organization")
+    rows = L.fetch("""SELECT p.settlement_date, p.receiver_name, p.is_person, p.company_key, p.amount_eur, p.reason, p.pay_code,
+                        p.organization, p.primary_organization, p.buyer_eik FROM live.payment p WHERE {where}""")
+    return page(request, "_payments_table.html" if L.embed else "list_payments.html", L=L, rows=rows, nav="Потоци")
+
+
 @app.get("/legal", response_class=HTMLResponse)
 def legal(request: Request):
     md = (HERE.parent / "docs" / "legal.md").read_text(encoding="utf-8")
