@@ -299,7 +299,11 @@ const FOCUS = {{ node | tojson }};
   }
 
   let done = {};
-  if (!(await build(3))) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
+  // ?depth=2..5 and ?all=1 in the address, so a view can be shared
+  const U = new URLSearchParams(location.search), D0 = [2, 3, 4, 5].includes(+U.get('depth')) ? +U.get('depth') : 3;
+  $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', +x.dataset.d === D0));
+  if (U.get('all') === '1') $('lall').checked = true;
+  if (!(await build(D0))) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
   pan();
   $('depth').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return;
     $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
