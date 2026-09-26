@@ -222,3 +222,11 @@ def test_sebra_rows_drop_personal_details():
     assert out[0]["receiver_iban"].startswith("BG19") and out[0]["amount"] == 3249.8 and out[0]["settlement_date"].month == 4
     assert out[1]["is_person"] and out[1]["receiver_iban"] is None and out[1]["reason"] is None and out[1]["reg_no"] is None
     assert S.amount("1 234,56") == 1234.56 and S.amount("17265.6") == 17265.6
+
+
+def test_contract_lots_follow_the_service_numbering():
+    from ingest import eop_offers as O
+    cl = {"ContractListItems": [], "Lots": [{"LotNumber": 6, "ContractListItems": [{"Id": 264875}]},
+                                           {"LotNumber": 1, "ContractListItems": [{"Id": 263941}]}]}
+    assert O.parse_contracts(cl) == [(6, "264875"), (1, "263941")]
+    assert O.parse_contracts({"ContractListItems": [{"Id": 201257}], "Lots": []}) == [(0, "201257")] and O.parse_contracts(None) == []

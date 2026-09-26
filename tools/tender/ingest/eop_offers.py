@@ -102,19 +102,32 @@ def parse(tender_id, part, lots=()):
     return out
 
 
+def parse_contracts(cl):
+    """GetPublishedContractListItems -> [(lot_no, contract id)]; the id is the open data's contract number."""
+    if not isinstance(cl, dict):
+        return []
+    out = [(0, str(c["Id"])) for c in cl.get("ContractListItems") or []]
+    for L in cl.get("Lots") or []:
+        out += [(L.get("LotNumber") or 0, str(c["Id"])) for c in L.get("ContractListItems") or []]
+    return out
+
+
 def fetch(tender_id):
-    """(rows, raw bytes) for one procedure: participation, plus the lot numbering when it has lots."""
+    """One procedure: offers, the lot of each contract and the lot titles, as ЦАИС ЕОП numbers them.
+    Returns ({offers, contract_lots, lots}, raw bytes of the three answers)."""
     raw = call("GetPublicTenderParticipation", tenderId=tender_id, cultureId=CULTURE_BG)
     part = json.loads(raw) if raw else None
-    lots, raw_lots = [], b""
+    lots = []
     if part and part.get("Lots"):
-        raw_lots = call("GetPublishedLots", tenderId=tender_id)
-        lots = json.loads(raw_lots) or []
-    blob = json.dumps({"participation": part, "lots": lots}, ensure_ascii=False).encode()
-    return (parse(tender_id, part, lots) if part else []), blob
+        lots = json.loads(call("GetPublishedLots", tenderId=tender_id) or b"[]") or []
+    cl = json.loads(call("GetPublishedContractListItems", tenderId=tender_id) or b"null")
+    blob = json.dumps({"participation": part, "lots": lots, "contracts": cl}, ensure_ascii=False).encode()
+    titles = [(l.get("OrderNumber") or 0, (l.get("TenderName") or "").strip() or None) for l in lots]
+    return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(cl), "lots": titles}, blob
 
 
-def store(conn, tender_id, rows, blob):
+def store(conn, tender_id, got, blob):
+    rows = got["offers"]
     now = dt.datetime.now(dt.timezone.utc)
     sha = hashlib.sha256(blob).hexdigest()
     d = RAW / str(tender_id)
@@ -128,6 +141,12 @@ def store(conn, tender_id, rows, blob):
                 cp.write_row([r["tender_id"], r["lot_no"], r["round"], r["offer_id"], r["bidder_name"], r["bidder_eik"],
                               json.dumps(r["consortium"], ensure_ascii=False) if r["consortium"] else None,
                               r["submitted_at"], r["price"], r["price_opened"], now])
+        conn.execute("DELETE FROM eopsvc.contract_lot WHERE tender_id = %s", (tender_id,))
+        conn.execute("DELETE FROM eopsvc.lot WHERE tender_id = %s", (tender_id,))
+        for cid, lot in {c: l for l, c in got["contract_lots"]}.items():  # one lot per contract
+            conn.execute("INSERT INTO eopsvc.contract_lot VALUES (%s, %s, %s)", (tender_id, lot, cid))
+        for lot, title in dict(got["lots"]).items():
+            conn.execute("INSERT INTO eopsvc.lot VALUES (%s, %s, %s)", (tender_id, lot, title))
         conn.execute("UPDATE eopsvc.queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0 "
                      "WHERE tender_id = %s", (now, sha, tender_id))
 
@@ -156,10 +175,10 @@ def work(conn, budget_s, stats):
             break
         tid = row[0]
         try:
-            rows, blob = fetch(tid)
-            store(conn, tid, rows, blob)
+            got, blob = fetch(tid)
+            store(conn, tid, got, blob)
             stats["done"] += 1
-            stats["offers"] += len(rows)
+            stats["offers"] += len(got["offers"])
         except ShapeError:
             raise  # the service changed: stop, the check and the repair agent take over
         except Exception as e:  # network trouble: back off this one procedure
@@ -177,7 +196,7 @@ def check(conn):
     ok = True
     for tid, (n, total) in CANARY.items():
         try:
-            rows, _ = fetch(tid)
+            rows = fetch(tid)[0]["offers"]
             got = (len(rows), round(sum(r["price"] or 0 for r in rows), 2))
             rep["canary"][tid] = {"expected": [n, total], "got": list(got)}
             ok &= got == (n, total)

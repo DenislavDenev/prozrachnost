@@ -412,12 +412,15 @@ def tender_lots(t):
     has = one("SELECT to_regclass('live.offer') IS NOT NULL ok")["ok"]  # the first build after migration 0003 creates it
     offers = rows("""SELECT lot_no, round, bidder_name, bidder_eik, company_key, consortium, submitted_at, price_eur,
         price_opened, won FROM live.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at""", unp) if has else []
-    lots = {l["lot_no"]: dict(l, offers=[], contracts=[]) for l in t["lots"]}
+    # the lots and the contracts' lots as ЦАИС ЕОП numbers them, when the procedure page has been read
+    svc = rows("SELECT lot_no, title, estimated_eur, status FROM live.offer_lot WHERE unp = %s", unp) if has else []
+    clot = {r["contract_id"]: r["lot_no"] for r in rows("SELECT contract_id, lot_no FROM live.contract_lot WHERE unp = %s", unp)} if has else {}
+    lots = {l["lot_no"]: dict(l, offers=[], contracts=[]) for l in (svc or t["lots"])}
     for o in offers:
         lots.setdefault(o["lot_no"], {"lot_no": o["lot_no"], "title": None, "estimated_eur": None, "status": None,
                                       "offers": [], "contracts": []})["offers"].append(o)
     for c in t["contracts"]:
-        n = c["lot_no"] or 0
+        n = clot.get(c["id"], c["lot_no"]) or 0
         lots.setdefault(n, {"lot_no": n, "title": None, "estimated_eur": None, "status": None, "offers": [], "contracts": []})["contracts"].append(c)
     if not t["lots"] and 0 in lots:
         lots[0].update(title=t["subject"], estimated_eur=t["estimated_eur"], status=t.get("state"))
