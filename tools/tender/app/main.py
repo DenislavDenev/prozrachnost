@@ -190,11 +190,11 @@ def tender(request: Request, unp: str):
 
 @app.get("/network.json")
 def network(focus: str, view: str = "all", at: str | None = None, depth: int = 2):
-    if view not in ("all", "ownership", "management") or not re.fullmatch(r"[pcfl]:[\w:-]+", focus) or not 1 <= depth <= 3:
+    if view not in ("all", "ownership", "management") or not re.fullmatch(r"[pcfl]:[\w:-]+", focus) or not 1 <= depth <= 5:
         raise HTTPException(400)
     if at and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", at):
         raise HTTPException(400)
-    return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at, depth=depth, max_nodes=800 if depth == 3 else 500),
+    return JSONResponse(json.loads(json.dumps(Q.network(focus, view, at, depth=depth, max_nodes=2000 if depth >= 3 else 500),
                                               default=jdefault)))
 
 
