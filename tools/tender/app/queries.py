@@ -104,6 +104,7 @@ def company(key):
         UNION ALL SELECT e.code, e.code, 'editorial', e.note FROM ed.tag e
         WHERE e.entity_type = 'company' AND e.entity_id = %s AND e.removed_at IS NULL""", k, k)
     c["indicators"] = indicators(k)
+    c["paid"] = paid("company_key", k)
     c["articles"] = articles("company", k)
     node = "c:" + c["eik"][:9] if c.get("eik") else None
     c["roles"] = rows("""SELECT e.holder, e.holder_kind, e.holder_name, e.role, e.view, e.share, e.share_pct,
@@ -353,6 +354,14 @@ def top_buyers(nodes):
         ORDER BY k.node, sum(c.amount_eur) DESC NULLS LAST""", list(nodes))}
 
 
+def paid(col, v):
+    """Budget payments (СЕБРА) by year to a company or from a buyer; [] before the first build with them."""
+    if not one("SELECT to_regclass('live.payment') IS NOT NULL ok")["ok"]:
+        return []
+    return rows(f"""SELECT extract(year FROM settlement_date)::int y, round(sum(amount_eur)) eur, count(*) n
+        FROM live.payment WHERE {col} = %s GROUP BY 1 ORDER BY 1""", v)
+
+
 # ---------- buyer / contract / tender ----------
 
 def buyer(eik):
@@ -368,6 +377,7 @@ def buyer(eik):
     b["procedures"] = rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,
         round(100.0 * count(*) FILTER (WHERE offers_count = 1) / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
         FROM live.contract c WHERE buyer_eik = %s GROUP BY 1 ORDER BY n DESC LIMIT 6""", eik)
+    b["paid"] = paid("buyer_eik", eik)
     b["offers"] = rows("""SELECT CASE WHEN offers_count IS NULL THEN 'unknown' WHEN offers_count >= 4 THEN '4+'
         ELSE offers_count::text END k, count(*) n FROM live.contract WHERE buyer_eik = %s GROUP BY 1""", eik)
     return b

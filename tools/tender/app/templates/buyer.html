@@ -19,6 +19,7 @@
   <section class="p s6"><div class="ph"><div><h2>Основни изпълнители</h2><div class="sub">Съвместните договори са в пълен размер</div></div></div><div class="hb" id="sup"></div></section>
   <section class="p s6"><div class="ph"><div><h2>Процедури</h2><div class="sub">По брой · <span class="tick" aria-hidden="true"></span> оранжевата част е с една оферта</div></div></div><div class="hb" id="proc"></div>
     <div class="ph" style="margin:28px 0 12px"><h2>Конкуренция</h2></div><div class="stack" id="stack"></div><div class="key" id="offers"></div></section>
+  {% from "_paid.html" import paid_table %}{{ paid_table(b.paid, b.by_year, "/payments?buyer=" ~ b.eik, ", платец с точно същото име като възложителя") }}
   <section class="p s12"><div class="ph"><div><h2>Поръчки</h2><div class="sub">Кликни заглавие на колона, за да подредиш</div></div><div class="acts"><a class="btn" href="/tenders?buyer={{ b.eik }}">Всички поръчки</a><a class="btn" href="/contracts?buyer={{ b.eik }}">Всички договори</a><a class="btn" href="/buyers/{{ b.eik }}.csv">CSV</a></div></div>
     <div class="embed" hx-get="/tenders?buyer={{ b.eik }}&amp;embed=1&amp;per=12&amp;hide=buyer" hx-trigger="load"><p class="mut">Зареждане…</p></div></section>
 </div>
