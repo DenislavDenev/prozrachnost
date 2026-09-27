@@ -40,6 +40,13 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def toll_time(value):
+    """BGToll documents its timezone-less timestamps as UTC."""
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).isoformat()
+
+
 def record(db, key, label, url, count=None, error=None):
     previous = db.execute("SELECT updated,count FROM sources WHERE key=?", (key,)).fetchone()
     db.execute("REPLACE INTO sources VALUES(?,?,?,?,?,?)", (key,label,url, now() if error is None else (previous["updated"] if previous else None), count if error is None else (previous["count"] if previous else 0), error))
@@ -58,9 +65,9 @@ def load_toll(db):
                     if not 40.5 <= lat <= 44.5 or not 21.5 <= lon <= 29:
                         continue
                     if table == "traffic":
-                        rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("count15min"),item.get("count1Hour"),item.get("average_speed_15min"),item.get("time")))
+                        rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("count15min"),item.get("count1Hour"),item.get("average_speed_15min"),toll_time(item.get("time"))))
                     else:
-                        rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("air"),item.get("surface"),item.get("humidity"),item.get("wind"),item.get("time")))
+                        rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("air"),item.get("surface"),item.get("humidity"),item.get("wind"),toll_time(item.get("time"))))
                 except (KeyError, ValueError, TypeError):
                     continue
             if not rows:
