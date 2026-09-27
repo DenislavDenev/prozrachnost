@@ -14,17 +14,21 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 
-from db import connect
+from db import DB, connect
+import feedback
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="Пътна обстановка", docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+app.include_router(feedback.router("DenislavDenev/patna-obstanovka", DB.parent))
 
 
 @app.get("/", response_class=HTMLResponse)
 def home():
-    return (ROOT / "index.html").read_text(encoding="utf-8").replace("{{HUB_URL}}", os.getenv("HUB_URL", "http://localhost:8001"))
+    hub = os.getenv("HUB_URL", "http://localhost:8001")
+    return ((ROOT / "index.html").read_text(encoding="utf-8").replace("{{HUB_URL}}", hub)
+            .replace("{{FEEDBACK}}", feedback.BUTTON).replace("{{SUPPORT}}", feedback.support_link(hub)))
 
 
 @app.get("/favicon.svg")

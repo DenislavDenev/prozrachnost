@@ -29,6 +29,13 @@ HUB_URL=http://localhost:8001 .venv/bin/uvicorn app:app --host 0.0.0.0 --port 80
 
 Хедърът използва общия знак и пропорции на семейството инструменти, с различим фавикон за всеки сайт. Премахнати са декоративната стрелка, микрозаглавието над основното заглавие и ем дашовете в интерфейса. Предложенията за финални знаци и планът за внедряване са в `../brand-options.svg` и `../brand-plan.md`.
 
+## Обратна връзка и подкрепа
+
+Най-вдясно в хедъра е „Обратна връзка“ ([feedback.py](feedback.py), копие от хъба без промяна): прави issue в
+това репо. Токенът е `GITHUB_ISSUES_TOKEN` от `/etc/prozrachnost/feedback.env`; неизпратените чакат в
+`feedback-pending.jsonl` до `ROAD_DB`. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`
+(на телефон футърът показва само него). Правилата са в `prozrachnost/docs/plans/STANDARD.md`, раздел 4.
+
 ## API
 
 `/api/status`, `/api/traffic`, `/api/weather`, `/api/events`, `/api/risk/all` (пълна GeoJSON мрежа), `/api/road-conditions`, `/api/crashes/summary`, `/api/crashes/points`, `/api/dangerous-sections`, `/healthz`. Старият `/api/crashes` остава за съвместимост.

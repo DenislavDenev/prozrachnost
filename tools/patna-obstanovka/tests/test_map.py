@@ -81,5 +81,14 @@ class MapDataTests(unittest.TestCase):
                 db.DB = original
 
 
+class FeedbackTests(unittest.TestCase):
+    def test_feedback_last_in_header_and_support_last_in_footer(self):
+        from app import home
+        html = home()
+        self.assertNotIn("{{", html)
+        self.assertTrue(html.split("</header>")[0].endswith("</script></div>"))
+        self.assertTrue(html.split("</footer>")[0].endswith('href="http://localhost:8001/podkrepi">Подкрепи проекта</a>'))
+
+
 if __name__ == "__main__":
     unittest.main()
