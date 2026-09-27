@@ -10,8 +10,6 @@ import pytest
 
 DSN = os.environ.get("TENDER_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="TENDER_TEST_DSN not set")
-if DSN:
-    os.environ["TENDER_DSN"] = DSN
 
 A, B, C = "202210490", "831641791", "130873641"
 P1, P2, P3, P4 = "1" * 64, "2" * 64, "3" * 64, "4" * 64

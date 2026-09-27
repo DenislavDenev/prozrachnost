@@ -12,8 +12,6 @@ import pytest
 
 DSN = os.environ.get("TENDER_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="TENDER_TEST_DSN not set")
-if DSN:
-    os.environ["TENDER_DSN"] = DSN
 
 YESTERDAY = dt.date.today() - dt.timedelta(days=1)
 
