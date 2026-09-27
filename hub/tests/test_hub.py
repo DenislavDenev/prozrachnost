@@ -1,5 +1,4 @@
 import json
-import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -60,20 +59,12 @@ def test_json_and_health():
 
 
 @pytest.mark.parametrize("t", [t for t in REG["tools"] if t["status"] == "soon"], ids=lambda t: t["slug"])
-def test_card_pictures(t):
-    svg = ROOT / "static" / "cards" / f"{t['slug']}.svg"
-    root = ET.fromstring(svg.read_text(encoding="utf-8"))
-    assert root.get("viewBox") == "0 0 420 260"
-    assert "http" not in svg.read_text(encoding="utf-8").replace("http://www.w3.org/2000/svg", "")
-
-
-def test_pictures_are_deterministic():
-    pytest.importorskip("shapely", exc_type=ImportError)
-    map_path = ROOT.parent / "tender" / "app" / "static" / "bg-municipalities.json"
-    if not map_path.exists():
-        pytest.skip("Tender map file not here")
-    r = subprocess.run([sys.executable, str(ROOT / "tools" / "build_card_visuals.py"), str(map_path), "--check"], capture_output=True, text=True)
-    assert r.returncode == 0, r.stdout + r.stderr
+def test_illustrations(t):
+    svg = (ROOT / "static" / "illustrations" / f"{t['slug']}.svg").read_text(encoding="utf-8")
+    root = ET.fromstring(svg)
+    assert root.get("viewBox")
+    assert "<script" not in svg.lower() and "http" not in svg.replace("http://www.w3.org/2000/svg", "").replace("http://www.w3.org/1999/xlink", "")
+    assert "#6c63ff" not in svg.lower()  # unDraw's default purple is recoloured to the hub green
 
 
 def test_broken_registry_refuses_to_start(tmp_path):
