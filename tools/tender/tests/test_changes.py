@@ -379,6 +379,10 @@ def test_termination_form_names_and_bidders_without_eik_in_the_build(conn):
     # the pages render with all of it (a template error is a 500 for every procedure)
     for unp, word in (("W", "прекратена"), ("P", "3 оферти по обявлението"), ("K", "с договор")):
         assert word in page(f"/tenders/{unp}")
+    # Обратна връзка is the last thing in the header, Подкрепи проекта the last in the footer (every tool)
+    html = page("/tenders/K")
+    assert html.split("</header>")[0].rstrip().endswith("</script>\n</div>") and 'action="/feedback"' in html
+    assert html.split("</footer>")[0].rstrip().endswith('href="http://192.168.1.68:8001/podkrepi">Подкрепи проекта</a>\n</div>')
 
 
 def page(path):

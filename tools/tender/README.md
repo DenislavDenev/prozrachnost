@@ -81,6 +81,11 @@ data.egov.bg, СЕБРА (тримесечно) ─► ingest/sebra.py ─► se
 - **Дълго четене на ЦАИС ЕОП**: `tender-offers-reader.service` чете опашката на офертите, докато се изпразни
   (или 30 дни), и спира. Пуска се наново при всяко стартиране на CT 118 и при всяко внедряване. Дневното
   `offers` на n8n чете новото, когато тази услуга не върви.
+- **Обратна връзка и подкрепа**: най-вдясно в хедъра на всяка страница е „Обратна връзка“
+  ([app/feedback.py](app/feedback.py), копие от хъба без промяна), който прави issue в `DenislavDenev/tender`.
+  Токенът е `GITHUB_ISSUES_TOKEN` от `/etc/prozrachnost/feedback.env`; неизпратените чакат в
+  `/opt/tender/data/feedback-pending.jsonl`. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`.
+  Правилата са в `prozrachnost/docs/plans/STANDARD.md`, раздел 4.
 - **Разписание**: n8n workflow **Tender** (`nFa93aNfs7kmkz5U`) пуска `deploy/ops.sh` по SSH.
   Часовете са в UTC:
 

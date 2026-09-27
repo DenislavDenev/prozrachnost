@@ -19,8 +19,9 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
 
-from . import queries as Q
+from . import feedback, queries as Q
 from .fields import fields, ocds_fields
 
 HERE = Path(__file__).parent
@@ -126,7 +127,9 @@ T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, d
 
 # static assets carry their newest mtime as ?v=, so a deploy is never served from a stale browser cache
 ASSET_V = str(int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*"))))
-T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V)
+T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V, feedback_button=Markup(feedback.BUTTON),
+                     support_link=Markup(feedback.support_link(os.getenv("HUB_URL", "http://192.168.1.68:8001"))))
+app.include_router(feedback.router("DenislavDenev/tender", os.getenv("TENDER_DATA", "/opt/tender/data")))
 
 
 def page(request, name, **ctx):
