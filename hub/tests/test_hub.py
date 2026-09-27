@@ -1,6 +1,5 @@
 import json
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
@@ -60,11 +59,12 @@ def test_json_and_health():
 
 @pytest.mark.parametrize("t", [t for t in REG["tools"] if t["status"] == "soon"], ids=lambda t: t["slug"])
 def test_illustrations(t):
-    svg = (ROOT / "static" / "illustrations" / f"{t['slug']}.svg").read_text(encoding="utf-8")
-    root = ET.fromstring(svg)
-    assert root.get("viewBox")
-    assert "<script" not in svg.lower() and "http" not in svg.replace("http://www.w3.org/2000/svg", "").replace("http://www.w3.org/1999/xlink", "")
-    assert "#6c63ff" not in svg.lower()  # unDraw's default purple is recoloured to the hub green
+    from PIL import Image
+    p = ROOT / "static" / "illustrations" / f"{t['slug']}.webp"
+    im = Image.open(p)
+    assert im.format == "WEBP" and im.size == (1200, 720)  # 5:3, the card and page boxes
+    assert im.mode == "RGBA" and im.getpixel((2, 2))[3] == 0  # transparent ground, the card gives the colour
+    assert p.stat().st_size < 150_000
 
 
 def test_broken_registry_refuses_to_start(tmp_path):

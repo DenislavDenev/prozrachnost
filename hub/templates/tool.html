@@ -6,7 +6,7 @@
 <span class="kicker">В ПОДГОТОВКА</span>
 <h1>{{ t.name }}</h1>
 <p class="tool-line">{{ t.line }}</p>
-<div class="card-visual soon-visual tool-visual" aria-hidden="true"><img src="/static/illustrations/{{ t.slug }}.svg" alt=""></div>
+<div class="card-visual soon-visual tool-visual" aria-hidden="true"><img src="/static/illustrations/{{ t.slug }}.webp" alt="" width="1200" height="720"></div>
 <div class="tool-cols">
 <section><h2>Ще отговаря на</h2><ul>{% for q in t.questions %}<li>{{ q }}</li>{% endfor %}</ul></section>
 <section><h2>Източници</h2><ul>{% for s in t.sources %}<li><a href="{{ s.url }}"{% if s.url.startswith("http") %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ s.name }}</a></li>{% endfor %}</ul>
