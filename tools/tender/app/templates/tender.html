@@ -66,7 +66,7 @@
 {% if events %}<section class="p"><h2>Хронология</h2>
 <ol class="flow">{% for e in events %}<li class="{{ e.kind }}"><b>{{ e.title }}</b><span class="mut">{{ e.when | date }}{% if e.kind == 'offer' %} {{ e.when.strftime('%H:%M') }}{% endif %}</span>
   {% if e.kind == 'award' %}<div class="mut">обявлението за възложена поръчка</div>{% endif %}
-  {% if e.kind == 'noaward' %}<div>{% if lots | length > 1 and e.lots | select | list %}{{ 'позиция' if e.lots | length == 1 else 'позиции' }} {{ e.lots | select | join(', ') }}{% if e.offers is not none %} · {% endif %}{% endif %}{% if e.offers is not none %}{{ e.offers }} {{ 'оферта' if e.offers == 1 else 'оферти' }} по обявлението{% endif %}</div>
+  {% if e.kind == 'noaward' %}<div>{% if lots | length > 1 and e.lots | select | list %}{{ 'позиция' if e.lots | length == 1 else 'позиции' }} {{ e.lots | select | join(', ') }}{% if e.n_offers is not none %} · {% endif %}{% endif %}{% if e.n_offers is not none %}{{ e.n_offers }} {{ 'оферта' if e.n_offers == 1 else 'оферти' }} по обявлението{% endif %}</div>
     <div class="mut">{% if e.notice_id %}F-{{ e.notice_id }}{% endif %}{% if e.link_oj %} · <a class="l" href="{{ e.link_oj }}" target="_blank" rel="noopener">в ОВ на ЕС</a>{% endif %}</div>{% endif %}
   {% if e.kind == 'notice' %}<div class="mut">F-{{ e.pub.id }}{% if e.pub.ted_number %} · ОВ на ЕС {{ e.pub.ted_number }}{% endif %}</div>{% endif %}
   {% if e.kind == 'appeal' %}<div>{{ e.appeal.register_id }}{% if e.appeal.proceedings_number %} · {{ e.appeal.proceedings_number }}{% endif %}{% if e.appeal.initiators %} · жалбоподател {{ e.appeal.initiators | map('tc') | join(', ') }}{% endif %}</div>

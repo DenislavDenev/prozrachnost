@@ -460,7 +460,7 @@ def test_tender_events_show_no_award_opening_decisions_and_appeals():
     ev = tender_events(t, [])
     kinds = [e["kind"] for e in ev]
     assert kinds == ["notice", "pub", "appeal", "deadline", "opening", "noaward"]   # the deadline in ЦАИС ЕОП is the notice's: once
-    assert ev[-1]["offers"] == 6 and ev[0]["title"].startswith("Решение по чл. 22")
+    assert ev[-1]["n_offers"] == 6 and "offers" not in ev[-1]   # "offers" is the list of bids and ev[0]["title"].startswith("Решение по чл. 22")
 
 
 def test_a_procedure_known_only_from_its_contracts_keeps_its_eop_id():

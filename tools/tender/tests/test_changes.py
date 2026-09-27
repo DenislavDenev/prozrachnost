@@ -360,7 +360,9 @@ def test_termination_form_names_and_bidders_without_eik_in_the_build(conn):
     won = {"noAwarding": "Не", "uniqueProcurementNumber": "K", "tenderId": "1003", "contractNumber": "1", "contractValue": "10",
            "contractCurrency": "EUR", "supplierName": "Б ЕООД", "supplierRegisterNumber": "831641791", "contractDate": "01.07.2026",
            "noticeId": "5", "publicationDate": "2026-07-02T10:00:00"}
-    res = N.normalize([("2026-05-01", "tenders", tenders), ("2026-07-02", "contracts", [won])], N.Fx({}))
+    no_award = {"noAwarding": "Да", "uniqueProcurementNumber": "P", "tenderId": "1002", "lotIdentifier": "LOT-0001", "noticeId": "6",
+                "publicationDate": "2026-07-03T10:00:00", "offersCount": 3}
+    res = N.normalize([("2026-05-01", "tenders", tenders), ("2026-07-02", "contracts", [won, no_award])], N.Fx({}))
     for tid, aid, title in ((1001, 1, "РЕШЕНИЕ ЗА ПРЕКРАТЯВАНЕ на процедурата"), (1002, 2, "Решение за прекратяване на обособена позиция № 2"),
                             (1003, 3, "Решение за прекратяване"), (1001, 4, "Решение за отмяна на решение за прекратяване")):
         conn.execute("INSERT INTO eopsvc.announcement (tender_id, id, title) VALUES (%s, %s, %s)", (tid, aid, title))
@@ -369,11 +371,25 @@ def test_termination_form_names_and_bidders_without_eik_in_the_build(conn):
         (1001, 0, 1, 1, 'Б ЕООД', NULL, false, now()), (1001, 0, 1, 2, 'Физическо лице', NULL, false, now())""")
     build_small(conn, res)
     q = lambda sql: conn.execute(sql).fetchall()
-    assert dict(q("SELECT unp, state FROM live.tender")) == {"W": "cancelled", "P": "open", "K": "contracted"}  # a contract wins
-    assert dict(q("SELECT lot_no, status FROM live.lot WHERE unp = 'P'")) == {1: "open", 2: "cancelled"}     # only the lot it names
+    assert dict(q("SELECT unp, state FROM live.tender")) == {"W": "cancelled", "P": "unawarded", "K": "contracted"}  # a contract wins
+    assert dict(q("SELECT lot_no, status FROM live.lot WHERE unp = 'P'")) == {1: "unawarded", 2: "cancelled"}  # only the lot it names
     assert dict(q("SELECT form_type, name FROM live.form_type")) == {54: "Обявление за поръчка – Общата директива, стандартен режим",
                                                                      32: "Решение по чл. 22, ал. 1 от ЗОП"}  # 77 unnamed: shown as „Публикация“
     assert dict(q("SELECT offer_id, company_key FROM live.offer")) == {1: "eik:831641791", 2: None}          # by the only company of the name
+    # the pages render with all of it (a template error is a 500 for every procedure)
+    for unp, word in (("W", "прекратена"), ("P", "3 оферти по обявлението"), ("K", "с договор")):
+        assert word in page(f"/tenders/{unp}")
+
+
+def page(path):
+    """Render a page through the app's route, without a server (httpx is not installed for TestClient)."""
+    from starlette.requests import Request
+    from app import main
+    route = next(r for r in main.app.routes if getattr(r, "path", None) == path.rsplit("/", 1)[0] + "/{unp}")
+    req = Request({"type": "http", "method": "GET", "path": path, "headers": [], "query_string": b"", "app": main.app})
+    resp = route.endpoint(req, path.rsplit("/", 1)[1])
+    assert resp.status_code == 200
+    return resp.body.decode()
 
 
 def test_completeness_names_what_one_source_has_and_the_other_not(conn):

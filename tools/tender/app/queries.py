@@ -513,11 +513,11 @@ def tender_events(t, lots):
     seen = {}
     for a in t.get("awards") or []:
         if a["published_at"]:
-            e = seen.setdefault(a["notice_id"] or a["published_at"], {"when": a["published_at"], "kind": "noaward", "lots": [], "offers": None,
+            e = seen.setdefault(a["notice_id"] or a["published_at"], {"when": a["published_at"], "kind": "noaward", "lots": [], "n_offers": None,
                                                                       "title": "Обявление за възложена поръчка: без възлагане", "link_oj": a["link_oj"],
                                                                       "notice_id": a["notice_id"]})
             e["lots"].append(a["lot_no"])
-            e["offers"] = (e["offers"] or 0) + (a["offers_count"] or 0) if a["offers_count"] is not None else e["offers"]
+            e["n_offers"] = (e["n_offers"] or 0) + (a["offers_count"] or 0) if a["offers_count"] is not None else e["n_offers"]
     ev += list(seen.values())
     eop = t.get("eop") or {}
     d = eop.get("detail")
