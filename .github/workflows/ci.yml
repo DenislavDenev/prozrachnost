@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# `shell: bash` runs steps with `bash -eo pipefail`; the default (`bash -e`) would let `pytest | tee` pass on a failed test
+defaults:
+  run:
+    shell: bash
+
 jobs:
   shared:
     runs-on: ubuntu-latest
