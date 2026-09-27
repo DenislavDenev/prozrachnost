@@ -89,3 +89,100 @@ def test_the_access_log_keeps_no_line_of_the_form():
     line = lambda path: logging.LogRecord("uvicorn.access", 20, "", 0, '%s - "%s %s HTTP/%s" %d',  # noqa: E731
                                           ("1.2.3.4:5", "POST", path, "1.1", 200), None)
     assert not log.filter(line("/feedback")) and log.filter(line("/tenders/1"))
+
+
+
+def test_name_and_email_fields_only_when_mail_is_set_up():
+    assert 'name="email"' in F.button(True) and 'name="email"' not in F.button(False)
+
+
+class Mailbox(list):
+    def __call__(self, to, subject, text):
+        self.append((to, subject, text))
+        return not getattr(self, "down", False)
+
+
+def test_an_address_stays_here_and_gets_one_letter_to_confirm(tmp_path, monkeypatch):
+    monkeypatch.setenv("MAIL_SMTP_HOST", "smtp.test")
+    monkeypatch.setenv("MAIL_FROM", "x@test")
+    box, sent = Mailbox(), []
+    F._hits.clear()
+    st, msg = F.accept({"kind": "problem", "text": "грешна сума", "name": "Ива", "email": "iva@example.bg"}, "a", "",
+                       tmp_path / "s.jsonl", "o/r", lambda r, p: sent.append(p) or 17, "https://t.bg/", box)
+    assert st == 200 and "потвърди адреса" in msg
+    assert "iva@example.bg" not in json.dumps(sent) and "Ива" not in json.dumps(sent)       # never in the issue
+    (to, subject, text), = box
+    assert to == "iva@example.bg" and subject.startswith("Обратна връзка ") and "Здравей, Ива!" in text
+    with F.closing(F.db(tmp_path)) as con:
+        row = con.execute("SELECT * FROM follower").fetchone()
+    assert row["issue"] == 17 and row["invited"] and not row["confirmed"]
+    assert f"https://t.bg/feedback/confirm/{row['token']}" in text
+    assert F.accept({"kind": "idea", "text": "още", "email": "не-е-имейл"}, "b", "", tmp_path / "s.jsonl", "o/r",
+                    lambda r, p: 1, "https://t.bg/", box)[0] == 400
+    for n in range(4):                                  # someone signing up another person's address
+        F.accept({"kind": "idea", "text": f"спам {n}", "email": "iva@example.bg"}, f"c{n}", "", tmp_path / "s.jsonl",
+                 "o/r", lambda r, p: 1, "https://t.bg/", box)
+    assert len(box) == 3
+    F._hits.clear()
+
+
+def test_without_mail_an_address_is_not_even_kept(tmp_path, monkeypatch):
+    monkeypatch.delenv("MAIL_SMTP_HOST", raising=False)
+    F._hits.clear()
+    st, _ = F.accept({"kind": "idea", "text": "една идея", "email": "iva@example.bg"}, "a", "", tmp_path / "s.jsonl", "o/r",
+             lambda r, p: 1, "https://t.bg/", Mailbox())
+    assert st == 200 and not (tmp_path / "feedback.db").exists()
+    F._hits.clear()
+
+
+def follower(tmp_path, confirmed=True, created=1000.0):
+    with F.closing(F.db(tmp_path)) as con, con:
+        con.execute("INSERT INTO follower (code, site, name, email, token, issue, created, invited, confirmed) "
+                    "VALUES ('ABCD-2345', 'https://t.bg/', NULL, 'a@b.bg', 'tok', 5, ?, ?, ?)",
+                    (created, created, created if confirmed else None))
+
+
+def test_watch_tells_answers_and_status_and_keeps_the_rest_inside(tmp_path):
+    follower(tmp_path)
+    gh = {"/repos/o/r/issues/5": {"state": "closed", "state_reason": "completed"},
+          "/repos/o/r/issues/5/comments?per_page=100": [
+              {"id": 1, "author_association": "OWNER", "body": "вътрешна бележка"},
+              {"id": 2, "author_association": "OWNER", "body": "Отговор: поправихме сумата."},
+              {"id": 3, "author_association": "NONE", "body": "Отговор: чужд човек"}]}
+    box = Mailbox()
+    F.watch(tmp_path, "o/r", gh.get, box, lambda r, p: 1, now=2000)
+    assert [s.split(": ", 1)[1] for _, s, _ in box] == ["отговор", "затворено: поправено"]
+    assert "поправихме сумата." in box[0][2] and "вътрешна" not in box[0][2] and "https://t.bg/feedback/stop/tok" in box[0][2]
+    F.watch(tmp_path, "o/r", gh.get, box, lambda r, p: 1, now=3000)
+    assert len(box) == 2                                                  # nothing new, nothing sent
+    gh["/repos/o/r/issues/5"] = {"state": "open", "state_reason": "reopened"}
+    F.watch(tmp_path, "o/r", gh.get, box, lambda r, p: 1, now=4000)
+    assert box[-1][1].endswith("отворено отново")
+
+
+def test_a_letter_that_did_not_go_out_is_tried_again(tmp_path):
+    follower(tmp_path)
+    gh = {"/repos/o/r/issues/5": {"state": "closed", "state_reason": "not_planned"},
+          "/repos/o/r/issues/5/comments?per_page=100": [{"id": 9, "author_association": "OWNER", "body": "Отговор: не."}]}
+    box = Mailbox()
+    box.down = True
+    F.watch(tmp_path, "o/r", gh.get, box, lambda r, p: 1, now=2000)
+    box.down = False
+    box.clear()
+    F.watch(tmp_path, "o/r", gh.get, box, lambda r, p: 1, now=3000)
+    assert [s.split(": ", 1)[1] for _, s, _ in box] == ["отговор", "затворено"]
+
+
+def test_addresses_are_forgotten_on_time(tmp_path):
+    follower(tmp_path, confirmed=False, created=0)
+    F.watch(tmp_path, "o/r", {}.get, Mailbox(), lambda r, p: 1, now=F.CONFIRM_DAYS * 86400 + 1)
+    with F.closing(F.db(tmp_path)) as con:
+        assert con.execute("SELECT count(*) FROM follower").fetchone()[0] == 0
+    follower(tmp_path)
+    with F.closing(F.db(tmp_path)) as con, con:
+        con.execute("UPDATE follower SET state = 'completed', closed = 1000")
+    F.watch(tmp_path, "o/r", {"/repos/o/r/issues/5": {"state": "closed", "state_reason": "completed"},
+                              "/repos/o/r/issues/5/comments?per_page=100": []}.get,
+            Mailbox(), lambda r, p: 1, now=1000 + F.KEEP_DAYS * 86400 + 1)
+    with F.closing(F.db(tmp_path)) as con:
+        assert con.execute("SELECT count(*) FROM follower").fetchone()[0] == 0

@@ -84,7 +84,8 @@ data.egov.bg, СЕБРА (тримесечно) ─► ingest/sebra.py ─► se
 - **Обратна връзка и подкрепа**: най-вдясно в хедъра на всяка страница е „Обратна връзка“
   ([app/feedback.py](app/feedback.py), копие от хъба без промяна), който прави issue в `DenislavDenev/tender`.
   Токенът е `GITHUB_ISSUES_TOKEN` от `/etc/prozrachnost/feedback.env`; неизпратените чакат в
-  `/opt/tender/data/feedback-pending.jsonl`. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`.
+  `/opt/tender/data/feedback-pending.jsonl`; `tender-feedback.timer` ги праща на 15 минути, заедно с известията
+  по имейл, когато пощата е настроена. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`.
   Правилата са в `prozrachnost/docs/plans/STANDARD.md`, раздел 4.
 - **Разписание**: n8n workflow **Tender** (`nFa93aNfs7kmkz5U`) пуска `deploy/ops.sh` по SSH.
   Часовете са в UTC:
