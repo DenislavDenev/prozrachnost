@@ -33,7 +33,8 @@ HUB_URL=http://localhost:8001 .venv/bin/uvicorn app:app --host 0.0.0.0 --port 80
 
 Най-вдясно в хедъра е „Обратна връзка“ ([feedback.py](feedback.py), копие от хъба без промяна): прави issue в
 това репо. Токенът е `GITHUB_ISSUES_TOKEN` от `/etc/prozrachnost/feedback.env`; неизпратените чакат в
-`feedback-pending.jsonl` до `ROAD_DB`. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`
+`feedback-pending.jsonl` до `ROAD_DB`; таймерът `patna-obstanovka-feedback.timer` ([deploy/](deploy/)) ги праща
+на 15 минути, заедно с известията по имейл, когато пощата е настроена. Най-вдясно във футъра е „Подкрепи проекта“ към `HUB_URL/podkrepi`
 (на телефон футърът показва само него). Правилата са в `prozrachnost/docs/plans/STANDARD.md`, раздел 4.
 
 ## API
