@@ -16,6 +16,8 @@ import zipfile
 from datetime import datetime, timezone
 
 from db import connect
+from match_crashes import rebuild_matches
+from traffic_bearing import refresh_bearings, refresh_osm_missing
 
 TRAFFIC = "https://bgtoll.bg/index.php/traffic_passes/data"
 WEATHER = "https://bgtoll.bg/index.php/mto/data"
@@ -52,9 +54,23 @@ def record(db, key, label, url, count=None, error=None):
     db.execute("REPLACE INTO sources VALUES(?,?,?,?,?,?)", (key,label,url, now() if error is None else (previous["updated"] if previous else None), count if error is None else (previous["count"] if previous else 0), error))
 
 
+def refresh_matches(db):
+    try:
+        count = rebuild_matches(db)
+        if count:
+            with db:
+                record(db, "matches", "Свързани ПТП с пътни участъци", MVR, count)
+            print(f"matches: {count}")
+    except Exception as exc:
+        with db:
+            record(db, "matches", "Свързани ПТП с пътни участъци", MVR, error=str(exc)[:220])
+        print(f"matches: ERROR {exc}")
+
+
 def load_toll(db):
     for key, label, url, table in [("traffic", "БГТОЛ · измерен трафик", TRAFFIC, "traffic"), ("weather", "БГТОЛ · метеостанции", WEATHER, "weather")]:
         try:
+            previous_bearings = {row["scp"]: row["bearing"] for row in db.execute("SELECT scp,bearing FROM traffic")} if table == "traffic" else {}
             data = json.loads(fetch(url))
             if not isinstance(data, list) or not data:
                 raise ValueError("Empty or unexpected response")
@@ -65,7 +81,8 @@ def load_toll(db):
                     if not 40.5 <= lat <= 44.5 or not 21.5 <= lon <= 29:
                         continue
                     if table == "traffic":
-                        rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("count15min"),item.get("count1Hour"),item.get("average_speed_15min"),toll_time(item.get("time"))))
+                        scp = str(item["scp"])
+                        rows.append((scp,item.get("name"),lat,lon,item.get("count15min"),item.get("count1Hour"),item.get("average_speed_15min"),toll_time(item.get("time")),previous_bearings.get(scp)))
                     else:
                         rows.append((str(item["scp"]),item.get("name"),lat,lon,item.get("air"),item.get("surface"),item.get("humidity"),item.get("wind"),toll_time(item.get("time"))))
                 except (KeyError, ValueError, TypeError):
@@ -81,6 +98,12 @@ def load_toll(db):
             with db:
                 record(db,key,label,url,error=str(exc)[:220])
             print(f"{key}: ERROR {exc}")
+    try:
+        count = refresh_bearings(db)
+        if count:
+            print(f"traffic bearings: {count}")
+    except Exception as exc:
+        print(f"traffic bearings: ERROR {exc}")
 
 
 def parse_datex(raw, kind, source_url):
@@ -151,7 +174,7 @@ def load_risk(db):
                     lats = [p[1] for p in points]
                     lons = [p[0] for p in points]
                     road = attr.get("National_r") or attr.get("Section_ID") or "Пътен участък"
-                    all_rows.append((f"{layer}:{attr.get('FID')}",layer,str(road),str(attr.get("Risk_level") or ""),str(attr.get("Road_Condi") or ""),str(attr.get("Referance_") or ""),str(attr.get("District") or ""),min(lats),max(lats),min(lons),max(lons),json.dumps(paths,separators=(",", ":"))))
+                    all_rows.append((f"{layer}:{attr.get('FID')}",layer,str(road),str(attr.get("Risk_level") or ""),str(attr.get("Road_Condi") or ""),str(attr.get("Referance_") or ""),str(attr.get("District") or ""),min(lats),max(lats),min(lons),max(lons),json.dumps(paths,separators=(",", ":")),attr.get("L__km")))
                 offset += len(features)
                 if len(features) < 1000:
                     break
@@ -160,9 +183,15 @@ def load_risk(db):
             raise ValueError(f"Incomplete risk snapshot: {len(all_rows)}")
         with db:
             db.execute("DELETE FROM risk")
-            db.executemany("INSERT INTO risk VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",all_rows)
+            db.executemany("INSERT INTO risk VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",all_rows)
             record(db,"risk","ДАБДП · оценка на пътния риск",ARCGIS,len(all_rows))
         print(f"risk: {len(all_rows)}")
+        refresh_bearings(db)
+        try:
+            print(f"traffic bearings from OSM: {refresh_osm_missing(db)}")
+        except Exception as exc:
+            print(f"traffic bearings from OSM: ERROR {exc}")
+        refresh_matches(db)
     except Exception as exc:
         with db:
             record(db,"risk","ДАБДП · оценка на пътния риск",ARCGIS,error=str(exc)[:220])
@@ -206,6 +235,7 @@ def load_mvr(db):
             db.executemany("INSERT INTO crashes VALUES(?,?,?,?,?,?,?)",rows)
             record(db,"crashes","МВР · катастрофи",MVR,len(rows))
         print(f"crashes: {len(rows)} with coordinates, {skipped} without valid coordinates/date")
+        refresh_matches(db)
     except Exception as exc:
         with db:
             record(db,"crashes","МВР · катастрофи",MVR,error=str(exc)[:220])

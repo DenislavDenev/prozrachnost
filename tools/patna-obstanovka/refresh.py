@@ -13,8 +13,8 @@ GROUPS = {
 }
 KEYS = {
     "current": ("traffic", "weather", "lima_r01", "lima_r02", "lima_d01"),
-    "mvr": ("crashes",),
-    "risk": ("risk",),
+    "mvr": ("crashes", "matches"),
+    "risk": ("risk", "matches"),
 }
 
 
