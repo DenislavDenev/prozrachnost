@@ -9,11 +9,6 @@ on:
 permissions:
   contents: read
 
-# `shell: bash` runs steps with `bash -eo pipefail`; the default (`bash -e`) would let `pytest | tee` pass on a failed test
-defaults:
-  run:
-    shell: bash
-
 jobs:
   shared:
     runs-on: ubuntu-latest
@@ -66,7 +61,9 @@ jobs:
         with: { python-version: "3.13" }
       - run: pip install -r requirements.txt
       # the database tests skip without TENDER_TEST_DSN; here every one of them must run
+      # steps run as `bash -e` without pipefail: without it `| tee` would hide a failed test
       - run: |
+          set -o pipefail
           python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
           ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
 
