@@ -20,11 +20,8 @@ BOM = "\N{ZERO WIDTH NO-BREAK SPACE}"
 
 @pytest.fixture
 def conn(tmp_path, monkeypatch):
-    """The scratch database, wiped. The DSN is set on the module that connects: ingest.config read the
-    environment when another test file imported it first, so an environment variable set here is too late."""
+    """The scratch database (tests/conftest.py points every connection at it), wiped."""
     from ingest import db, store
-    assert "test" in DSN, f"refusing to wipe {DSN!r}: the test database name must contain 'test'"
-    monkeypatch.setattr(db, "DSN", DSN)
     monkeypatch.setattr(store, "RAW", tmp_path / "raw")
     with db.connect(autocommit=True) as c:
         c.execute("DROP SCHEMA IF EXISTS live, ops CASCADE; DROP TABLE IF EXISTS public.schema_migrations")

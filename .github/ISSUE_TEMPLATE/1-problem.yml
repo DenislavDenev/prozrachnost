@@ -11,6 +11,7 @@ body:
         - Прозрачност (хъбът)
         - Тендер
         - Пътна обстановка
+        - Икономика
     validations:
       required: true
   - type: textarea

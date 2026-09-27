@@ -69,4 +69,7 @@ def parse(raw, pinned=()):
         key = {k: codes[i][c] for i, (k, c) in enumerate(zip(ids, at)) if i not in drop}
         geo, time = key.pop("geo"), key.pop("time")
         rows.append((key, geo, time, v, status.get(pos) or None))
+    flags = (((d.get("extension") or {}).get("status") or {}).get("label")) or {}
+    if flags:
+        labels["flag"] = flags
     return {"label": d.get("label"), "updated": d["updated"], "rows": rows, "labels": labels}

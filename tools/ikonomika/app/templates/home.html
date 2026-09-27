@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Икономика{% endblock %}
+{% macro fl(f) %}{% if f %}<span class="flag" title="{{ f | flag }}">{{ f | flag }}</span>{% endif %}{% endmacro %}
+{% macro src(ind) %}{% set s = IND[ind] %}<div class="src">Eurostat, <a href="https://ec.europa.eu/eurostat/databrowser/view/{{ s.dataset }}/default/table" rel="noopener">{{ s.dataset }}</a> · <a href="/csv/{{ ind }}.csv">CSV</a></div>{% endmacro %}
+{% block main %}
+<h1>Икономиката на България в числа</h1>
+<p class="lede">
+{% if k.hicp %}През {{ k.hicp[0] | period }} цените са с <b>{{ k.hicp[1] | num }}%</b> по-високи от година по-рано{% if k.hicp_eu is not none %} (в ЕС: {{ k.hicp_eu | num }}%){% endif %}.{% endif %}
+{% if k.gdp %}БВП за {{ k.gdp[0] }} г. е <b>{{ (k.gdp[1] / 1000) | num }} млрд. €</b>{% if k.gdp_growth[0] is not none %}, реален ръст {{ k.gdp_growth[0] | num }}%{% endif %}{% if k.gdp[2] %} ({{ k.gdp[2] | flag }}){% endif %}.{% endif %}
+{% if k.unemp %}Безработицата е {{ k.unemp[1] | num }}% ({{ k.unemp[0] | period }}){% endif %}{% if k.debt %}, а държавният дълг {{ k.debt[1] | num }}% от БВП ({{ k.debt[0] }}){% endif %}.
+</p>
+<p class="asof">Всяко число е от Eurostat (данните на НСИ, изпратени по общите правила на ЕС) или от БНБ, с дата и връзка към източника.</p>
+
+<div class="grid">
+  <section class="p s3 kpi"><div class="n">{% if k.hicp %}{{ k.hicp[1] | num }}<small>%</small>{% else %}<span class="nodata">няма данни</span>{% endif %}</div>
+    <div class="t">инфлация (ХИПЦ) спрямо година по-рано</div><div class="w">{{ k.hicp[0] | period if k.hicp }}{{ fl(k.hicp[2]) if k.hicp }}</div></section>
+  <section class="p s3 kpi"><div class="n">{% if k.gdp_q %}{{ k.gdp_q[1] | num }}<small>%</small>{% else %}<span class="nodata">няма данни</span>{% endif %}</div>
+    <div class="t">реален ръст на БВП спрямо година по-рано</div><div class="w">{{ k.gdp_q[0] | period if k.gdp_q }}{{ fl(k.gdp_q[2]) if k.gdp_q }}</div></section>
+  <section class="p s3 kpi"><div class="n">{% if k.pps %}{{ k.pps[1] | num(0) }}<small>% от ЕС</small>{% else %}<span class="nodata">няма данни</span>{% endif %}</div>
+    <div class="t">БВП на човек по покупателна способност</div><div class="w">{{ k.pps[0] if k.pps }}{{ fl(k.pps[2]) if k.pps }}</div></section>
+  <section class="p s3 kpi"><div class="n">{% if k.min_wage %}{{ k.min_wage[1] | num(0) }}<small>€</small>{% else %}<span class="nodata">няма данни</span>{% endif %}</div>
+    <div class="t">минимална месечна заплата</div><div class="w">{{ k.min_wage[0] | period if k.min_wage }}{% if k.salary %} · средна {{ (k.salary[1] / 12) | num(0) }} € на месец ({{ k.salary[0] }}){% endif %}</div></section>
+
+  <section class="p s6"><div class="ph"><div><h2>Инфлация</h2><div class="sub">ХИПЦ, % спрямо същия месец на предходната година</div></div><a class="more" href="/inflaciya">По групи →</a></div>
+    <div class="chart" data-src="/api/hicp_eu.json?geo=BG,EU27_2020,EA&coicop18=TOTAL&since=2010-01" data-digits="1"></div>{{ src("hicp_eu") }}</section>
+  <section class="p s6"><div class="ph"><div><h2>Ръст на икономиката</h2><div class="sub">реален ръст на БВП, % спрямо същото тримесечие на предходната година, сезонно изгладен</div></div></div>
+    <div class="chart" data-src="/api/gdp_q.json?geo=BG,EU27_2020,EA&unit=CLV_PCH_SM&since=2010-Q1" data-digits="1"></div>{{ src("gdp_q") }}</section>
+  <section class="p s6"><div class="ph"><div><h2>Безработица</h2><div class="sub">% от работната сила, месечно, сезонно изгладена</div></div><a class="more" href="/es?p=bezrabotica">В ЕС →</a></div>
+    <div class="chart" data-src="/api/unemp.json?geo=BG,EU27_2020,EA&age=TOTAL&since=2010-01" data-digits="1"></div>{{ src("unemp") }}</section>
+  <section class="p s6"><div class="ph"><div><h2>Държавен дълг</h2><div class="sub">% от БВП, в края на годината</div></div><a class="more" href="/es?p=dalg">В ЕС →</a></div>
+    <div class="chart" data-src="/api/debt.json?geo=BG,EU27_2020,EA&na_item=GD&unit=PC_GDP" data-digits="1" data-zero></div>{{ src("debt") }}</section>
+  <section class="p s6"><div class="ph"><div><h2>Заплати</h2><div class="sub">ръст на заплатите (индекс на разходите за труд), % спрямо година по-рано</div></div></div>
+    <div class="chart" data-src="/api/lci.json?geo=BG" data-digits="1"></div>{{ src("lci") }}</section>
+  <section class="p s6"><div class="ph"><div><h2>Цени на жилищата</h2><div class="sub">% спрямо същото тримесечие на предходната година</div></div><a class="more" href="/es?p=zhilishta">В ЕС →</a></div>
+    <div class="chart" data-src="/api/hpi.json?geo=BG,EU27_2020,EA&purchase=TOTAL&unit=RCH_A" data-digits="1"></div>{{ src("hpi") }}</section>
+</div>
+{% endblock %}

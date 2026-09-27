@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Инфлация{% endblock %}
+{% macro fl(f) %}{% if f %}<span class="flag" title="{{ f | flag }}">{{ f }}</span>{% endif %}{% endmacro %}
+{% block main %}
+<h1>Инфлация по групи</h1>
+<p class="lede">Хармонизираният индекс на потребителските цени (ХИПЦ) по всички {{ main | length + rest | length }} групи стоки и услуги,
+  месечно от 1996 г.{% if month %} Последният месец е <b>{{ month | period }}</b>.{% endif %}</p>
+
+<div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>Годишна промяна по групи</h2><div class="sub">% спрямо същия месец на предходната година; избери групите</div></div></div>
+    <div class="checks" data-for="infl" data-param="coicop18">
+      {% for c in groups %}<label><input type="checkbox" value="{{ c }}" {{ 'checked' if c in ('TOTAL', 'CP01', 'NRG', 'SERV') }}>{{ label('coicop18', c) }}</label>{% endfor %}
+    </div>
+    <div class="chart tall" id="infl" data-src="/api/hicp_rch_a.json?geo=BG&coicop18=TOTAL,CP01,NRG,SERV" data-zoom="2010-01" data-digits="1"></div>
+    <div class="src">Eurostat, <a href="{{ src.url }}" rel="noopener">{{ src.dataset }}</a>{% if src.updated %}, обновено от Eurostat {{ src.updated }}{% endif %} · данните на НСИ</div></section>
+
+  <section class="p s12"><div class="tools"><div><h2>Основните групи{% if month %} за {{ month | period }}{% endif %}</h2></div>
+    <a class="more" href="/csv/hicp_rch_a.csv">CSV: годишна промяна, всички групи</a></div>
+    <table class="sortable"><thead><tr><th>Група</th><th class="n">Спрямо година по-рано, %</th><th class="n">Спрямо предходния месец, %</th><th class="n">Индекс (2015 = 100)</th></tr></thead><tbody>
+    {% for r in main %}<tr{% if r.code == 'TOTAL' %} class="hl"{% endif %}><td>{{ r.name }} <span class="mut">{{ r.code }}</span></td>
+      <td class="n" data-v="{{ r.a[0] if r.a[0] is not none else '' }}">{{ r.a[0] | num }}{{ fl(r.a[1]) }}</td>
+      <td class="n" data-v="{{ r.m[0] if r.m[0] is not none else '' }}">{{ r.m[0] | num }}{{ fl(r.m[1]) }}</td>
+      <td class="n">{{ r.i[0] | num(2) }}</td></tr>{% endfor %}
+    </tbody></table></section>
+
+  <section class="p s12"><details><summary><h2 style="display:inline">Всички {{ rest | length }} подгрупи</h2></summary>
+    <p class="mut">Наименованията на подгрупите са на Eurostat, на английски (Eurostat публикува английски, френски и немски).</p>
+    <div class="tools"><input type="search" placeholder="Търси група или код" aria-label="Търси група" data-filter="all-groups">
+      <span><a class="more" href="/csv/hicp_i15.csv">CSV: индекси</a> · <a class="more" href="/csv/hicp_rch_m.csv">CSV: месечна промяна</a></span></div>
+    <table class="sortable" id="all-groups"><thead><tr><th>Код</th><th>Група</th><th class="n">Година, %</th><th class="n">Месец, %</th><th class="n">Индекс</th></tr></thead><tbody>
+    {% for r in rest %}<tr><td class="mut">{{ r.code }}</td><td>{{ r.name or r.en }}</td>
+      <td class="n">{{ r.a[0] | num }}{{ fl(r.a[1]) }}</td><td class="n">{{ r.m[0] | num }}{{ fl(r.m[1]) }}</td><td class="n">{{ r.i[0] | num(2) }}</td></tr>{% endfor %}
+    </tbody></table></details></section>
+</div>
+{% endblock %}
