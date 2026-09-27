@@ -7,9 +7,11 @@ An app does three things:
     feedback.support_link(hub_url)   -> last element of the footer ("Подкрепи проекта", the hub's /podkrepi)
 The token is GITHUB_ISSUES_TOKEN (fine-grained, Issues read/write only), from /etc/prozrachnost/feedback.env.
 Nothing is lost: a message goes to the spool first and leaves it only when GitHub has created the issue.
-The sender's IP is used for the hourly limit in memory and never written anywhere.
+An issue carries the page and the time, nothing about the sender. The IP only counts the hourly limit in memory,
+and the access log leaves out POST /feedback, so where a message came from is written nowhere.
 """
 import json
+import logging
 import os
 import re
 import threading
@@ -39,10 +41,10 @@ _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
 
 
-def issue(kind, text, page="", page_title="", agent="", now=None):
+def issue(kind, text, page="", page_title="", now=None):
     """The GitHub issue for one message: a titled quote of the text, then where and when it was sent."""
     name, label = KINDS[kind]
-    text = text.strip().replace("@", "@​")  # no @mentions: a sender must not ping anyone on GitHub
+    text = text.strip().replace("@", "@\u200b")  # no @mentions: a sender must not ping anyone on GitHub
     line = " ".join(text.split())
     title = f"{name}: {line[:80]}{'…' if len(line) > 80 else ''}"
     quote = "\n".join(f"> {l}" if l.strip() else ">" for l in text.splitlines())
@@ -51,11 +53,8 @@ def issue(kind, text, page="", page_title="", agent="", now=None):
     when = (now or datetime.now(ZoneInfo("Europe/Sofia"))).strftime("%d.%m.%Y, %H:%M")
     meta = [f"**Страница:** [{shown}]({page})" if page else "**Страница:** не е посочена",
             f"**Изпратено:** {when} (София)"]
-    agent = re.sub(r"[`\r\n]", "", agent or "")[:200]
-    if agent:
-        meta.append(f"**Браузър:** `{agent}`")
     body = (f"### {name}\n\n{quote}\n\n---\n\n" + "  \n".join(meta)
-            + "\n\n<sub>Изпратено с бутона „Обратна връзка“ на сайта. IP адресът на подателя не се пази.</sub>\n")
+            + "\n\n<sub>Изпратено с бутона „Обратна връзка“ на сайта. За подателя не се пази нищо.</sub>\n")
     return {"title": title, "body": body, "labels": [label, LABEL]}
 
 
@@ -108,7 +107,7 @@ def allowed(client, now=None):
         return True
 
 
-def accept(form, client, referer, agent, spool, repo, send=None):
+def accept(form, client, referer, spool, repo, send=None):
     """One submitted form -> (HTTP status, message for the sender)."""
     if form.get("website"):  # the hidden field only bots fill in
         return 200, "Благодарим! Получихме го."
@@ -117,11 +116,18 @@ def accept(form, client, referer, agent, spool, repo, send=None):
         return 400, f"Избери вид и напиши между 5 и {MAX_TEXT} знака."
     if not allowed(client):
         return 429, "Получихме много съобщения за последния час. Опитай пак по-късно."
-    flush(spool, repo, issue(kind, text, form.get("page") or referer, form.get("page_title", ""), agent), send)
+    flush(spool, repo, issue(kind, text, form.get("page") or referer, form.get("page_title", "")), send)
     return 200, "Благодарим! Получихме го и ще го прегледаме."
 
 
+class _NoFeedbackLog(logging.Filter):
+    """uvicorn's access line is `client - "METHOD path HTTP/x"`: drop it for the form, keep every other request."""
+    def filter(self, r):
+        return not (isinstance(r.args, tuple) and len(r.args) > 2 and str(r.args[2]).startswith("/feedback"))
+
+
 def router(repo, spool_dir):
+    logging.getLogger("uvicorn.access").addFilter(_NoFeedbackLog())
     spool = Path(spool_dir) / "feedback-pending.jsonl"
     r = APIRouter()
 
@@ -134,7 +140,7 @@ def router(repo, spool_dir):
         fwd = request.headers.get("x-forwarded-for", "")
         client = fwd.split(",")[0].strip() or (request.client.host if request.client else "")
         status, msg = await run_in_threadpool(accept, form, client, request.headers.get("referer", ""),
-                                              request.headers.get("user-agent", ""), spool, repo)
+                                              spool, repo)
         if "application/json" in request.headers.get("accept", ""):
             return JSONResponse({"ok": status == 200, "message": msg}, status_code=status)
         back = escape(request.headers.get("referer") or "/")
