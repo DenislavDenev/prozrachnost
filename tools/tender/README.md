@@ -78,6 +78,9 @@ data.egov.bg, СЕБРА (тримесечно) ─► ingest/sebra.py ─► se
   - `/opt/tender/data`: `raw/eop`, `raw/tr`, `raw/eop_svc`, `raw/sebra`, `pg`, `backups` (не са в git).
 - **Уеб**: `tender-web.service` (uvicorn :8000) → NPM (CT 109) → `https://tender.denev.work`,
   CNAME в pihole (CT 103).
+- **Дълго четене на ЦАИС ЕОП**: `tender-offers-reader.service` чете опашката на офертите, докато се изпразни
+  (или 30 дни), и спира. Пуска се наново при всяко стартиране на CT 118 и при всяко внедряване. Дневното
+  `offers` на n8n чете новото, когато тази услуга не върви.
 - **Разписание**: n8n workflow **Tender** (`nFa93aNfs7kmkz5U`) пуска `deploy/ops.sh` по SSH.
   Часовете са в UTC:
 
