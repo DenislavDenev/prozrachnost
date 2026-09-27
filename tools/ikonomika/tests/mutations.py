@@ -48,7 +48,20 @@ MUTATIONS = [
 ]
 
 
+def pytest(copy, tests):
+    return subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "-rs", *tests],
+                          cwd=copy, capture_output=True, text=True)
+
+
 def main():
+    # the same tests on the unbroken code must pass and none be skipped, else a broken environment (no database,
+    # a missing package) would count every mutation as caught
+    tests = sorted({t for *_, ts in MUTATIONS for t in ts.split()})
+    r = pytest(ROOT, tests)
+    if r.returncode != 0 or "SKIPPED" in r.stdout:
+        print("the tests do not pass on the unbroken code, no mutation is checked:\n" + r.stdout[-2000:] + r.stderr[-1000:])
+        sys.exit(1)
+    print(f"baseline {r.stdout.strip().splitlines()[-1]}")
     survived = 0
     for name, path, old, new, tests in MUTATIONS:
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,8 +71,7 @@ def main():
             src = f.read_text(encoding="utf-8")
             assert src.count(old) == 1, f"{name}: the code to break is not found once in {path}"
             f.write_text(src.replace(old, new), encoding="utf-8")
-            r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *tests.split()],
-                               cwd=copy, capture_output=True, text=True)
+            r = pytest(copy, tests.split())
             caught = r.returncode != 0
             survived += not caught
             print(f"{'caught  ' if caught else 'SURVIVED'} {name}: {r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:]}")
