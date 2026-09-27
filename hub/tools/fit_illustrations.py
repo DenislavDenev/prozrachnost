@@ -8,9 +8,9 @@ from PIL import Image
 
 DIR = Path(__file__).resolve().parent.parent / "static" / "illustrations"
 W, H = 1200, 720
-MAX_W, MAX_H = 1130, 660  # the drawing never goes closer than 35 px to the sides, 30 px to the top
-BASE = 700                # bottom of every drawing (its ground line) sits here
-AREA = 0.62 * W * H       # same visual size: equal bounding-box area, unless that breaks MAX_W/MAX_H
+MAX_W, MAX_H = 1160, 684  # the drawing never goes closer than 20 px to the sides, 28 px to the top
+BASE = 712                # bottom of every drawing (its ground line) sits here, just above the card edge
+AREA = 0.74 * W * H       # same visual size: equal bounding-box area, unless that breaks MAX_W/MAX_H
 
 
 def fit(img):
@@ -19,11 +19,14 @@ def fit(img):
     art = img.crop(box)
     w, h = art.size
     s = min(MAX_W / w, MAX_H / h, (AREA / (w * h)) ** 0.5)
-    nw, nh = round(w * s), round(h * s)
-    if abs(s - 1) < 0.02 and box[3] in range(BASE - 2, BASE + 3):
-        return None  # already fitted
+    if abs(s - 1) < 0.02:  # right size already: only move it, no resampling
+        if box[3] in range(BASE - 2, BASE + 3):
+            return None
+        s = 1
+    else:
+        art = art.resize((round(w * s), round(h * s)), Image.LANCZOS)
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    out.paste(art.resize((nw, nh), Image.LANCZOS), ((W - nw) // 2, BASE - nh))
+    out.paste(art, ((W - art.width) // 2, BASE - art.height))
     return out
 
 
