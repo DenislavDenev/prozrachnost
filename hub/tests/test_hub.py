@@ -102,3 +102,26 @@ def test_feedback_post_answers_json_and_plain_form(monkeypatch, tmp_path):
     r = client.post("/feedback", data={"kind": "idea", "text": "x"}, headers={"Referer": "http://hub/"})
     assert r.status_code == 400 and 'href="http://hub/"' in r.text
     feedback._hits.clear()
+
+
+
+def test_letter_links_ask_first_then_confirm_or_forget(tmp_path):
+    import feedback
+    from test_feedback import follower
+    r = feedback.router("o/r", tmp_path)
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    app.include_router(r)
+    c = TestClient(app)
+    follower(tmp_path, confirmed=False, created=10**10)
+    assert "Потвърждавам" in c.get("/feedback/confirm/tok").text                 # a scanner's GET changes nothing
+    with feedback.closing(feedback.db(tmp_path)) as con:
+        assert con.execute("SELECT confirmed FROM follower").fetchone()[0] is None
+    assert "Потвърдено" in c.post("/feedback/confirm/tok").text
+    with feedback.closing(feedback.db(tmp_path)) as con:
+        assert con.execute("SELECT confirmed FROM follower").fetchone()[0]
+    assert "изтрит" in c.post("/feedback/stop/tok").text
+    with feedback.closing(feedback.db(tmp_path)) as con:
+        assert con.execute("SELECT count(*) FROM follower").fetchone()[0] == 0
+    assert "не е валидна" in c.post("/feedback/stop/tok").text

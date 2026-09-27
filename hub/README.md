@@ -18,9 +18,8 @@
 - **Обратна връзка и Подкрепи проекта** (задължително за всеки инструмент, [STANDARD.md](docs/plans/STANDARD.md)
   раздел 4): [feedback.py](feedback.py) е най-вдясно в хедъра и прави issue в репото, `/podkrepi` е най-вдясно
   във футъра. Тук е оригиналът на `feedback.py` и `tests/test_feedback.py`; инструментите ги копират без промяна.
-  Хъбът пише неизпратените в `$STATE_DIRECTORY/feedback-pending.jsonl` (`/var/lib/prozrachnost`). Ръчно
-  изпращане: `set -a; . /etc/prozrachnost/feedback.env; .venv/bin/python feedback.py
-  /var/lib/prozrachnost/feedback-pending.jsonl DenislavDenev/prozrachnost`.
+  Хъбът пази неизпратените и имейлите за известия в `/var/lib/prozrachnost` (`StateDirectory`); таймерът
+  `prozrachnost-feedback.timer` ([deploy/](deploy/)) пуска `feedback.py watch` на 15 минути.
 - **`/instrumenti/<слъг>`**: страница за инструмент в подготовка: на какво ще отговаря, източници,
   какво още не знаем. **`/tools.json`**: списъкът за другите инструменти (напр. Моята община).
 - **Нов инструмент заработи:** в `tools.json` се сменя `status` на `active`, добавят се `url_env` и
