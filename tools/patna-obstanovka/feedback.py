@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import threading
 import time
 import urllib.request
@@ -36,12 +37,19 @@ KINDS = {"problem": ("Проблем", "bug"), "idea": ("Предложение"
 LABEL = "обратна връзка"
 MAX_TEXT = 4000
 PER_CLIENT, PER_HOUR = 5, 30  # messages an hour: from one sender, from everyone (per worker)
+CODE_CHARS = "23456789ABCDEFGHJKMNPQRSTVWXYZ"  # no 0/O, 1/I/L, U: easy to read out and type
 URL = re.compile(r"https?://[^\s<>()\[\]|`\"']{1,500}")
 _lock = threading.Lock()
 _hits: dict[str, list[float]] = {}
 
 
-def issue(kind, text, page="", page_title="", now=None):
+def new_code():
+    """The number a sender gets instead of the issue's #N: random, so it says nothing about how many came before."""
+    c = "".join(secrets.choice(CODE_CHARS) for _ in range(8))
+    return f"{c[:4]}-{c[4:]}"
+
+
+def issue(kind, text, page="", page_title="", now=None, code=""):
     """The GitHub issue for one message: a titled quote of the text, then where and when it was sent."""
     name, label = KINDS[kind]
     text = text.strip().replace("@", "@\u200b")  # no @mentions: a sender must not ping anyone on GitHub
@@ -51,7 +59,8 @@ def issue(kind, text, page="", page_title="", now=None):
     page = page if URL.fullmatch(page or "") else ""
     shown = " ".join(re.sub(r"[\[\]`|\\]", "", page_title or "").split())[:150] or page
     when = (now or datetime.now(ZoneInfo("Europe/Sofia"))).strftime("%d.%m.%Y, %H:%M")
-    meta = [f"**Страница:** [{shown}]({page})" if page else "**Страница:** не е посочена",
+    meta = [f"**Номер:** `{code}`"] if code else []
+    meta += [f"**Страница:** [{shown}]({page})" if page else "**Страница:** не е посочена",
             f"**Изпратено:** {when} (София)"]
     body = (f"### {name}\n\n{quote}\n\n---\n\n" + "  \n".join(meta)
             + "\n\n<sub>Изпратено с бутона „Обратна връзка“ на сайта. За подателя не се пази нищо.</sub>\n")
@@ -116,8 +125,9 @@ def accept(form, client, referer, spool, repo, send=None):
         return 400, f"Избери вид и напиши между 5 и {MAX_TEXT} знака."
     if not allowed(client):
         return 429, "Получихме много съобщения за последния час. Опитай пак по-късно."
-    flush(spool, repo, issue(kind, text, form.get("page") or referer, form.get("page_title", "")), send)
-    return 200, "Благодарим! Получихме го и ще го прегледаме."
+    code = new_code()
+    flush(spool, repo, issue(kind, text, form.get("page") or referer, form.get("page_title", ""), code=code), send)
+    return 200, f"Благодарим! Получихме го и ще го прегледаме. Номерът му е {code}."
 
 
 class _NoFeedbackLog(logging.Filter):

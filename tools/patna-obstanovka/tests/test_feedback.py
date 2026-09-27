@@ -21,6 +21,19 @@ def test_issue_is_a_titled_quote_with_page_and_time_and_no_mentions():
     assert "**Страница:** [Поръчка 1 Тендер](https://tender.denev.work/tenders/1?a=b)" in b
     assert "**Изпратено:** 27.09.2026, 21:14 (София)" in b and "Браузър" not in b
     assert F.issue("idea", "x" * 100)["title"] == "Предложение: " + "x" * 80 + "…"
+    assert "**Номер:** `ABCD-2345`  \n**Страница:**" in F.issue("idea", "текст", "https://x.bg/", code="ABCD-2345")["body"]
+
+
+def test_the_sender_gets_a_random_number_that_is_also_in_the_issue(tmp_path):
+    import re
+    sent = []
+    F._hits.clear()
+    msgs = [F.accept({"kind": "idea", "text": f"идея {n}"}, str(n), "", tmp_path / "s", "o/r",
+                     lambda r, p: sent.append(p) or True)[1] for n in range(2)]
+    codes = [re.search(r"Номерът му е ([2-9A-Z]{4}-[2-9A-Z]{4})\.", m).group(1) for m in msgs]
+    assert codes[0] != codes[1] and all(f"`{c}`" in p["body"] for c, p in zip(codes, sent))
+    assert not set("01ILOU") & set("".join(F.new_code() for _ in range(200)))
+    F._hits.clear()
 
 
 def test_a_page_that_is_not_a_plain_url_is_not_linked():
