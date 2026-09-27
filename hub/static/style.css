@@ -16,3 +16,6 @@
 .tool-page{padding:clamp(40px,4vw,64px) clamp(24px,10vw,150px) 80px}.crumbs{display:flex;gap:10px;font-size:14px;color:var(--muted);margin-bottom:26px}.crumbs a:hover{color:var(--green)}.tool-page h1{font-size:clamp(46px,5.4vw,76px);letter-spacing:-.065em;line-height:1;margin:12px 0 16px}.tool-line{color:var(--muted);font-size:clamp(18px,1.6vw,21px);max-width:640px;margin:0}.tool-visual{height:320px;margin:34px 0 40px}.tool-cols{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-bottom:44px}.tool-cols h2{font-size:24px;letter-spacing:-.04em;margin:0 0 12px}.tool-cols h2+p,.tool-cols ul{margin:0 0 26px;line-height:1.5}.tool-cols ul{padding-left:20px}.tool-cols li{margin-bottom:8px}.tool-cols a{color:var(--green);border-bottom:1px solid #a1c9b2}.tool-page .text-link span{margin:0 10px 0 0}
 @media(max-width:1100px){.card-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.card-grid{grid-template-columns:1fr}.tool-cols{grid-template-columns:1fr;gap:10px}.tool-visual{height:220px}.group-head h3{font-size:26px}}
+
+/* Обратна връзка (feedback.py) sits last in the header, Подкрепи проекта last in the footer. */
+.head-right{display:flex;align-items:center;gap:22px}@media(max-width:760px){.head-right .header-link{display:none}}

@@ -15,6 +15,12 @@
   илюстрация се пуска `python tools/fit_illustrations.py`: изрязва празното и нарисуваната линия на
   земята, привежда рисунката до общия размер и я изправя на долния ръб на картона (той е земята), за
   да са всички картони в един мащаб.
+- **Обратна връзка и Подкрепи проекта** (задължително за всеки инструмент, [STANDARD.md](docs/plans/STANDARD.md)
+  раздел 4): [feedback.py](feedback.py) е най-вдясно в хедъра и прави issue в репото, `/podkrepi` е най-вдясно
+  във футъра. Тук е оригиналът на `feedback.py` и `tests/test_feedback.py`; инструментите ги копират без промяна.
+  Хъбът пише неизпратените в `$STATE_DIRECTORY/feedback-pending.jsonl` (`/var/lib/prozrachnost`). Ръчно
+  изпращане: `set -a; . /etc/prozrachnost/feedback.env; .venv/bin/python feedback.py
+  /var/lib/prozrachnost/feedback-pending.jsonl DenislavDenev/prozrachnost`.
 - **`/instrumenti/<слъг>`**: страница за инструмент в подготовка: на какво ще отговаря, източници,
   какво още не знаем. **`/tools.json`**: списъкът за другите инструменти (напр. Моята община).
 - **Нов инструмент заработи:** в `tools.json` се сменя `status` на `active`, добавят се `url_env` и
@@ -30,7 +36,8 @@ ROAD_URL=http://localhost:8002 TENDER_URL=https://tender.denev.work .venv/bin/uv
 
 На Windows използвай `.venv\\Scripts\\python -m uvicorn app:app --port 8001`.
 
-Настройки: `ROAD_URL`, `TENDER_URL`. Проверка: `/healthz`. Тестове: `pytest tests`. Няма собствена база данни или външни заявки при отваряне на страницата. Шрифтовете Sofia Sans се сервират локално.
+Настройки: `ROAD_URL`, `TENDER_URL`, `GITHUB_ISSUES_TOKEN` (от `/etc/prozrachnost/feedback.env`), `SUPPORT_URL`
+(страницата в Stripe; докато я няма, `/podkrepi` казва „скоро“). Unit-ът има `StateDirectory=prozrachnost`. Проверка: `/healthz`. Тестове: `pytest tests`. Няма собствена база данни или външни заявки при отваряне на страницата. Шрифтовете Sofia Sans се сервират локално.
 
 ## Публикуване
 

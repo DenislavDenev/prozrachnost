@@ -4,14 +4,20 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup
+
+import feedback
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="Прозрачност", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 templates = Jinja2Templates(directory=ROOT / "templates")
+templates.env.globals.update(feedback_button=Markup(feedback.BUTTON), support_link=Markup(feedback.support_link("")))
+# STATE_DIRECTORY comes from the unit's StateDirectory=prozrachnost (/var/lib/prozrachnost)
+app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STATE_DIRECTORY", ROOT / ".data")))
 
 
 def load_registry(path=ROOT / "tools.json"):
@@ -52,6 +58,14 @@ def tool(request: Request, slug: str):
         raise HTTPException(404)
     group = next(g for g in GROUPS if g["key"] == t["group"])
     return templates.TemplateResponse(request, "tool.html", {"t": t, "group": group})
+
+
+@app.get("/podkrepi", include_in_schema=False)
+def support(request: Request):
+    """Every tool's footer links here; SUPPORT_URL (the Stripe page, once it exists) turns it into a redirect."""
+    if os.getenv("SUPPORT_URL"):
+        return RedirectResponse(os.environ["SUPPORT_URL"], status_code=302)
+    return templates.TemplateResponse(request, "podkrepi.html", {})
 
 
 @app.get("/tools.json")

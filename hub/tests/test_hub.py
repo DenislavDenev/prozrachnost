@@ -73,3 +73,32 @@ def test_broken_registry_refuses_to_start(tmp_path):
     p.write_text(json.dumps(bad), encoding="utf-8")
     with pytest.raises(AssertionError):
         hub.load_registry(p)
+
+
+@pytest.mark.parametrize("path", ["/", "/instrumenti/byudzhet", "/podkrepi"])
+def test_feedback_is_last_in_the_header_and_support_last_in_the_footer(path):
+    html = client.get(path).text
+    header = html.split("<header", 1)[1].split("</header>", 1)[0]
+    assert header.rstrip().endswith("</script></div>") and 'popovertarget="fb-pop"' in header
+    footer = html.split("<footer", 1)[1].split("</footer>", 1)[0]
+    assert footer.endswith('<a class="fb-support" href="/podkrepi">Подкрепи проекта</a>')
+
+
+def test_support_page_waits_for_stripe_then_redirects(monkeypatch):
+    assert "Stripe" in client.get("/podkrepi").text
+    monkeypatch.setenv("SUPPORT_URL", "https://donate.stripe.com/test")
+    r = client.get("/podkrepi", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "https://donate.stripe.com/test"
+
+
+def test_feedback_post_answers_json_and_plain_form(monkeypatch, tmp_path):
+    import feedback
+    sent = []
+    monkeypatch.setattr(feedback, "post", lambda repo, p: sent.append((repo, p)) or True)
+    feedback._hits.clear()
+    r = client.post("/feedback", data={"kind": "idea", "text": "още един инструмент", "page": "http://hub/"},
+                    headers={"Accept": "application/json"})
+    assert r.status_code == 200 and r.json()["ok"] and sent[0][0] == "DenislavDenev/prozrachnost"
+    r = client.post("/feedback", data={"kind": "idea", "text": "x"}, headers={"Referer": "http://hub/"})
+    assert r.status_code == 400 and 'href="http://hub/"' in r.text
+    feedback._hits.clear()
