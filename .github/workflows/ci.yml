@@ -54,7 +54,7 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       TENDER_TEST_DSN: host=localhost user=postgres password=postgres dbname=tender_test
-      TENDER_DATA: ${{ runner.temp }}/tender-data
+      TENDER_DATA: /tmp/tender-data
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
