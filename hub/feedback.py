@@ -1,8 +1,8 @@
 """Обратна връзка: the rightmost header button on every page files an issue in the tool's own GitHub repo.
 
-The same file is copied unchanged into every Prozrachnost tool (docs/plans/STANDARD.md, "Обратна връзка").
+The same file is copied unchanged into every tool of this repo (AGENTS.md, "Обратна връзка"; CI checks the copies).
 An app does three things:
-    app.include_router(feedback.router("DenislavDenev/<repo>", data_dir))
+    app.include_router(feedback.router("DenislavDenev/prozrachnost", data_dir, "<Име на инструмента>"))
     feedback.BUTTON                  -> last element of the header
     feedback.support_link(hub_url)   -> last element of the footer ("Подкрепи проекта", the hub's /podkrepi)
 and a timer runs `python feedback.py watch <data_dir> <owner/repo>` every 15 minutes.
@@ -46,7 +46,7 @@ try:
 except ImportError:  # ponytail: Windows dev runs are one process, the thread lock is enough there
     fcntl = None
 
-KINDS = {"problem": ("Проблем", "bug"), "idea": ("Предложение", "enhancement")}
+KINDS = {"problem": ("Проблем", "проблем"), "idea": ("Предложение", "предложение")}
 LABEL = "обратна връзка"
 MAX_TEXT = 4000
 PER_CLIENT, PER_HOUR = 5, 30  # messages an hour: from one sender, from everyone (per worker)
@@ -70,12 +70,12 @@ def new_code():
     return f"{c[:4]}-{c[4:]}"
 
 
-def issue(kind, text, page="", page_title="", now=None, code=""):
+def issue(kind, text, page="", page_title="", now=None, code="", tool=""):
     """The GitHub issue for one message: a titled quote of the text, then where and when it was sent."""
     name, label = KINDS[kind]
     text = text.strip().replace("@", "@​")  # no @mentions: a sender must not ping anyone on GitHub
     line = " ".join(text.split())
-    title = f"{name}: {line[:80]}{'…' if len(line) > 80 else ''}"
+    title = f"[{name}] {tool + ': ' if tool else ''}{line[:80]}{'…' if len(line) > 80 else ''}"
     quote = "\n".join(f"> {l}" if l.strip() else ">" for l in text.splitlines())
     page = page if URL.fullmatch(page or "") else ""
     shown = " ".join(re.sub(r"[\[\]`|\\]", "", page_title or "").split())[:150] or page
@@ -86,7 +86,7 @@ def issue(kind, text, page="", page_title="", now=None, code=""):
     body = (f"### {name}\n\n{quote}\n\n---\n\n" + "  \n".join(meta)
             + "\n\n<sub>Изпратено с бутона „Обратна връзка“ на сайта. Отговор към подателя: коментар, който започва с"
             + f" „{ANSWER}“.</sub>\n")
-    return {"title": title, "body": body, "labels": [label, LABEL]}
+    return {"title": title, "body": body, "labels": [label, LABEL] + ([tool.lower()] if tool else [])}
 
 
 def github(path, payload=None):
@@ -213,7 +213,7 @@ def follow(data_dir, code, site, name, email, mail=None, now=None):
     return True
 
 
-def accept(form, client, referer, spool, repo, send=None, base="", mail=None):
+def accept(form, client, referer, spool, repo, send=None, base="", mail=None, tool=""):
     """One submitted form -> (HTTP status, message for the sender)."""
     if form.get("website"):  # the hidden field only bots fill in
         return 200, "Благодарим! Получихме го."
@@ -228,7 +228,7 @@ def accept(form, client, referer, spool, repo, send=None, base="", mail=None):
     code = new_code()
     asked = email and follow(spool.parent, code, base, " ".join((form.get("name") or "").split())[:80], email, mail)
     flush(spool, repo, {"code": code, "issue": issue(kind, text, form.get("page") or referer,
-                                                     form.get("page_title", ""), code=code)}, send)
+                                                     form.get("page_title", ""), code=code, tool=tool)}, send)
     return 200, (f"Благодарим! Получихме го и ще го прегледаме. Номерът му е {code}."
                  + (" Пратихме ти писмо: потвърди адреса, за да ти пишем." if asked else ""))
 
@@ -290,7 +290,7 @@ def _page(msg, form=""):
                         f'<p><a href="/">Към сайта</a></p></body></html>')
 
 
-def router(repo, data_dir):
+def router(repo, data_dir, tool=""):
     logging.getLogger("uvicorn.access").addFilter(_NoFeedbackLog())
     data_dir = Path(data_dir)
     spool = data_dir / "feedback-pending.jsonl"
@@ -305,7 +305,7 @@ def router(repo, data_dir):
         fwd = request.headers.get("x-forwarded-for", "")
         client = fwd.split(",")[0].strip() or (request.client.host if request.client else "")
         status, msg = await run_in_threadpool(accept, form, client, request.headers.get("referer", ""),
-                                              spool, repo, None, str(request.base_url))
+                                              spool, repo, None, str(request.base_url), None, tool)
         if "application/json" in request.headers.get("accept", ""):
             return JSONResponse({"ok": status == 200, "message": msg}, status_code=status)
         back = escape(request.headers.get("referer") or "/")

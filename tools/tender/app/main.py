@@ -129,7 +129,7 @@ T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, d
 ASSET_V = str(int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*"))))
 T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V, feedback_button=Markup(feedback.BUTTON),
                      support_link=Markup(feedback.support_link(os.getenv("HUB_URL", "http://192.168.1.68:8001"))))
-app.include_router(feedback.router("DenislavDenev/tender", os.getenv("TENDER_DATA", "/opt/tender/data")))
+app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("TENDER_DATA", "/opt/tender/data"), "Тендер"))
 
 
 def page(request, name, **ctx):

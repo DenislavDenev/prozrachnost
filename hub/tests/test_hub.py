@@ -22,7 +22,6 @@ def test_registry_shape():
     for t in tools:
         assert t["group"] in keys and t["status"] in ("active", "new", "soon")
         if t["status"] == "soon":
-            assert list((ROOT / "docs" / "plans").glob(f"{t['no']:02d}-{t['slug']}.md")), f"no plan for {t['slug']}"
             assert len(t["questions"]) >= 3 and t["sources"]
 
 

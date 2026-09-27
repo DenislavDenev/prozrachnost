@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent
 app = FastAPI(title="Пътна обстановка", docs_url=None, redoc_url=None)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
-app.include_router(feedback.router("DenislavDenev/patna-obstanovka", DB.parent))
+app.include_router(feedback.router("DenislavDenev/prozrachnost", DB.parent, "Пътна обстановка"))
 
 
 @app.get("/", response_class=HTMLResponse)

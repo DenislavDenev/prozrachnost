@@ -13,14 +13,14 @@ import feedback as F  # noqa: E402
 def test_issue_is_a_titled_quote_with_page_and_time_and_no_mentions():
     i = F.issue("problem", "Сумата е грешна @someone\n\nвтори ред", "https://tender.denev.work/tenders/1?a=b",
                 "Поръчка [1] | Тендер", datetime(2026, 9, 27, 21, 14))
-    assert i["title"] == "Проблем: Сумата е грешна @​someone втори ред"
-    assert i["labels"] == ["bug", "обратна връзка"]
+    assert i["title"] == "[Проблем] Сумата е грешна @​someone втори ред"
+    assert i["labels"] == ["проблем", "обратна връзка"]
     b = i["body"]
     assert b.startswith("### Проблем\n\n> Сумата е грешна @​someone\n>\n> втори ред\n\n---\n")
     assert "@someone" not in b
     assert "**Страница:** [Поръчка 1 Тендер](https://tender.denev.work/tenders/1?a=b)" in b
     assert "**Изпратено:** 27.09.2026, 21:14 (София)" in b and "Браузър" not in b
-    assert F.issue("idea", "x" * 100)["title"] == "Предложение: " + "x" * 80 + "…"
+    assert F.issue("idea", "x" * 100)["title"] == "[Предложение] " + "x" * 80 + "…"
     assert "**Номер:** `ABCD-2345`  \n**Страница:**" in F.issue("idea", "текст", "https://x.bg/", code="ABCD-2345")["body"]
 
 
@@ -36,6 +36,12 @@ def test_the_sender_gets_a_random_number_that_is_also_in_the_issue(tmp_path):
     F._hits.clear()
 
 
+def test_the_tool_is_in_the_title_and_a_label():
+    i = F.issue("problem", "грешна сума", tool="Пътна обстановка")
+    assert i["title"] == "[Проблем] Пътна обстановка: грешна сума"
+    assert i["labels"] == ["проблем", "обратна връзка", "пътна обстановка"]
+
+
 def test_a_page_that_is_not_a_plain_url_is_not_linked():
     b = F.issue("idea", "текст", "javascript:alert(1)")["body"]
     assert "javascript" not in b and "не е посочена" in b
@@ -48,7 +54,7 @@ def test_nothing_is_lost_when_github_does_not_take_it(tmp_path):
     st, _ = F.accept({"kind": "problem", "text": "първо"}, "a", "", spool, "o/r", send=lambda r, p: False)
     assert st == 200 and len(spool.read_text(encoding="utf-8").splitlines()) == 1
     F.accept({"kind": "idea", "text": "второ"}, "b", "", spool, "o/r", send=lambda r, p: sent.append(p) or True)
-    assert [p["title"] for p in sent] == ["Проблем: първо", "Предложение: второ"]
+    assert [p["title"] for p in sent] == ["[Проблем] първо", "[Предложение] второ"]
     assert spool.read_text(encoding="utf-8") == ""
 
 

@@ -1,0 +1,21 @@
+name: Предложение
+description: Идея за нов инструмент, данни или подобрение
+title: "[Предложение] Инструмент: "
+labels: ["предложение"]
+body:
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Инструмент
+      options:
+        - Прозрачност (хъбът)
+        - Тендер
+        - Пътна обстановка
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Какво предлагаш и защо
+    validations:
+      required: true

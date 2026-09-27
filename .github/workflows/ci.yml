@@ -1,0 +1,75 @@
+name: ci
+# Every PR runs every test: the hub, each tool (Tender against a real Postgres 17) and the shared-copy check.
+# `ci-ok` is the one required check for merging into main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: feedback.py and its test are the same everywhere
+        run: |
+          for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py; do cmp hub/feedback.py "$f"; done
+          for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
+
+  hub:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: hub } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt pytest httpx2 pillow
+      - run: python -m pytest -q
+
+  patna-obstanovka:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/patna-obstanovka } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt pytest httpx2
+      - run: python -m pytest -q
+
+  tender:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/tender } }
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tender_test
+          POSTGRES_INITDB_ARGS: --locale=C.UTF-8 --encoding=UTF8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TENDER_TEST_DSN: host=localhost user=postgres password=postgres dbname=tender_test
+      TENDER_DATA: ${{ runner.temp }}/tender-data
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt
+      # the database tests skip without TENDER_TEST_DSN; here every one of them must run
+      - run: |
+          python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+          ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+
+  ci-ok:
+    if: always()
+    needs: [shared, hub, patna-obstanovka, tender]
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo '${{ toJSON(needs) }}'
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false" ]

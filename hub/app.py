@@ -17,7 +17,7 @@ app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 templates = Jinja2Templates(directory=ROOT / "templates")
 templates.env.globals.update(feedback_button=Markup(feedback.BUTTON), support_link=Markup(feedback.support_link("")))
 # STATE_DIRECTORY comes from the unit's StateDirectory=prozrachnost (/var/lib/prozrachnost)
-app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STATE_DIRECTORY", ROOT / ".data")))
+app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STATE_DIRECTORY", ROOT / ".data"), "Прозрачност"))
 
 
 def load_registry(path=ROOT / "tools.json"):

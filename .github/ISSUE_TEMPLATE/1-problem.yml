@@ -1,0 +1,27 @@
+name: Проблем
+description: Нещо не работи или показва грешни данни
+title: "[Проблем] Инструмент: "
+labels: ["проблем"]
+body:
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Инструмент
+      options:
+        - Прозрачност (хъбът)
+        - Тендер
+        - Пътна обстановка
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Какво видя
+      description: Страница (адрес), какво показва и какво очакваше. Без лични данни.
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Източник
+      description: Къде е вярната стойност (връзка към ЦАИС ЕОП, регистъра и т.н.), ако я знаеш.

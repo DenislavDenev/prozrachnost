@@ -2,7 +2,7 @@
 
 Лек хъб за публичните инструменти с дизайна „София“ и слогана „По-ясна картина за България“. Показва
 всичките 27 инструмента в 6 категории: 2 работят (Обществени поръчки, Пътна обстановка), 25 са в
-подготовка. Плановете им са в [docs/plans](docs/plans/README.md).
+подготовка.
 
 - **Хедър:** името с малки букви и зелена точка („прозрачност.“), без знак. Иконка има само в таба на
   браузъра (`favicon.svg`). Същото правило важи за хедъра на всеки инструмент.
@@ -15,31 +15,25 @@
   илюстрация се пуска `python tools/fit_illustrations.py`: изрязва празното и нарисуваната линия на
   земята, привежда рисунката до общия размер и я изправя на долния ръб на картона (той е земята), за
   да са всички картони в един мащаб.
-- **Обратна връзка и Подкрепи проекта** (задължително за всеки инструмент, [STANDARD.md](docs/plans/STANDARD.md)
-  раздел 4): [feedback.py](feedback.py) е най-вдясно в хедъра и прави issue в репото, `/podkrepi` е най-вдясно
-  във футъра. Тук е оригиналът на `feedback.py` и `tests/test_feedback.py`; инструментите ги копират без промяна.
-  Хъбът пази неизпратените и имейлите за известия в `/var/lib/prozrachnost` (`StateDirectory`); таймерът
-  `prozrachnost-feedback.timer` ([deploy/](deploy/)) пуска `feedback.py watch` на 15 минути.
+- **Обратна връзка и Подкрепи проекта** (задължително за всеки инструмент, [AGENTS.md](../AGENTS.md)):
+  [feedback.py](feedback.py) е най-вдясно в хедъра и прави issue в това репо, `/podkrepi` е най-вдясно във
+  футъра. Тук е оригиналът на `feedback.py` и `tests/test_feedback.py`; инструментите ги копират без промяна.
 - **`/instrumenti/<слъг>`**: страница за инструмент в подготовка: на какво ще отговаря, източници,
   какво още не знаем. **`/tools.json`**: списъкът за другите инструменти (напр. Моята община).
 - **Нов инструмент заработи:** в `tools.json` се сменя `status` на `active`, добавят се `url_env` и
-  `url_default`, задава се env променливата в `prozrachnost-web.service`.
+  `url_default` и се задава env променливата.
 
 ## Стартиране
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-ROAD_URL=http://localhost:8002 TENDER_URL=https://tender.denev.work .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001
+ROAD_URL=http://localhost:8002 TENDER_URL=http://localhost:8000 .venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001
 ```
 
 На Windows използвай `.venv\\Scripts\\python -m uvicorn app:app --port 8001`.
 
-Настройки: `ROAD_URL`, `TENDER_URL`, `GITHUB_ISSUES_TOKEN` (от `/etc/prozrachnost/feedback.env`), `SUPPORT_URL`
-(страницата в Stripe; докато я няма, `/podkrepi` казва „скоро“). Unit-ът има `StateDirectory=prozrachnost`. Проверка: `/healthz`. Тестове: `pytest tests`. Няма собствена база данни или външни заявки при отваряне на страницата. Шрифтовете Sofia Sans се сервират локално.
-
-## Публикуване
-
-Хъбът може да стои на същия LXC като Tender, но на самостоятелен порт 8001. Добави отделен Proxy Host в Nginx Proxy Manager към `192.168.1.68:8001` и DNS запис за избрания домейн. Това не изисква втори LXC или втори публичен IP адрес. Задай `ROAD_URL` на публичния адрес на пътния инструмент.
+Настройки: `ROAD_URL`, `TENDER_URL`, `GITHUB_ISSUES_TOKEN` (обратната връзка), `SUPPORT_URL` (страницата за
+дарения; докато я няма, `/podkrepi` казва „скоро“), `STATE_DIRECTORY` (папка за неизпратените съобщения). Проверка: `/healthz`. Тестове: `pytest tests`. Няма собствена база данни или външни заявки при отваряне на страницата. Шрифтовете Sofia Sans се сервират локално.
 
 Лиценз на шрифта: [SIL OFL](static/fonts/OFL.txt).

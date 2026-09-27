@@ -1,0 +1,39 @@
+name: Задача
+description: Работа по кода (функция, поправка, поддръжка, документация)
+title: "[Функция] Инструмент: "
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Вид
+      description: Смени и думата в скобите в заглавието.
+      options:
+        - Функция
+        - Поправка
+        - Поддръжка
+        - Документация
+    validations:
+      required: true
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Инструмент
+      options:
+        - Прозрачност (хъбът)
+        - Тендер
+        - Пътна обстановка
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Какво и защо
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Готово е, когато
+      description: Проверими условия, включително тестовете.
+    validations:
+      required: true

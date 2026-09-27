@@ -1,0 +1,16 @@
+# The private repo (plans, infrastructure, deploy, n8n, mockups) is checked out here and never published.
+/private/
+# Internal files that belong in private/, even if someone drops them in a tool folder by mistake.
+docs/plans/
+*/deploy/
+*/*/deploy/
+*/*/n8n/
+*/*/design/
+*/*/.claude/
+*/*/.impeccable/
+*/*/CLAUDE.md
+*/*/PRODUCT.md
+__pycache__/
+.venv/
+.pytest_cache/
+.env
