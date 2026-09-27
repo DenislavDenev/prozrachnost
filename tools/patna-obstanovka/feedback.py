@@ -178,7 +178,7 @@ BUTTON = """<button type="button" class="fb-open" popovertarget="fb-pop" aria-la
 .fb-pop{width:min(460px,calc(100vw - 32px));border:1px solid var(--line,#dbe4de);border-radius:8px;padding:22px 24px;background:#fff;color:var(--ink,#1a3029);font-family:inherit;text-align:left}
 .fb-pop::backdrop{background:rgba(18,20,23,.28)}
 .fb-pop h2{margin:0 0 6px;font-size:21px;letter-spacing:-.01em}.fb-pop p{margin:0 0 14px;font-size:15px;line-height:1.45;color:var(--ink-2,var(--muted,#52675d))}
-.fb-pop fieldset{border:0;padding:0;margin:0 0 14px;display:flex;gap:18px}.fb-pop legend{font-weight:600;font-size:14px;margin-bottom:6px;float:left;width:100%}
+.fb-pop fieldset{border:0;padding:0;margin:0 0 14px;min-width:0}.fb-pop legend{padding:0;font-weight:600;font-size:14px;margin-bottom:6px}.fb-pop fieldset label{display:inline-flex;align-items:center;gap:6px;margin-right:20px}
 .fb-pop label{font-size:15px}.fb-pop label[for]{display:block;font-weight:600;font-size:14px;margin-bottom:6px}
 .fb-pop input[type=radio]{accent-color:var(--accent,var(--green,#0b7a5e))}
 .fb-pop textarea{display:block;width:100%;box-sizing:border-box;font:inherit;font-size:15px;padding:10px 12px;border:1px solid var(--line,#dbe4de);border-radius:6px;resize:vertical}
