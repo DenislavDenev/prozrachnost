@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Търсене · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Търсене</h1>
+<form class="bigfind" action="/search" role="search" style="margin:18px 0 8px;max-width:720px">
+  <input name="q" value="{{ q }}" placeholder="Фирма, лице, възложител, ЕИК или УНП" aria-label="Търсене" autofocus data-combo="buyer,company,person,tender" data-pick="go">
+  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}<button class="btn go">Търси</button>
+</form>
+<div class="tabs" style="margin:8px 0 20px">
+  {% for k, l in [(None, "Всичко"), ("company", "Фирми"), ("person", "Лица"), ("buyer", "Възложители"), ("tender", "Поръчки")] %}
+  <a class="tab" href="/search?q={{ q | urlencode }}{% if k %}&kind={{ k }}{% endif %}" aria-current="{{ 'page' if kind == k else 'false' }}">{{ l }}</a>{% endfor %}
+</div>
+{% include "search_results.html" %}
+{% endblock %}

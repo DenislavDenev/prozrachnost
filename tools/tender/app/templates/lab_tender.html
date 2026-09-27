@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_record.html" import record, history %}
+{% from "_flags.html" import flags %}
+{% from "_offers.html" import offers_table %}
+{# Three ways to show one procedure (lab): A comparison of offers, B timeline, C participants x lots table.
+   Shared: key facts as tiles, "more information" folded, offers from the ЦАИС ЕОП procedure page. #}
+{% set header = t.records | rejectattr('rec.isLot', 'equalto', 'Да') | list %}
+{% set rec = header[-1].rec if header else {} %}
+{% set method = rec.awardMethod or (t.contracts[0].award_method if t.contracts and t.contracts[0].award_method else none) %}
+{% set price_only = method and 'цена' in method | lower and 'качество' not in method | lower %}
+{% set n_offers = lots | map(attribute='offers') | map('length') | sum %}
+{% block title %}Поръчка {{ t.unp }} · вариант {{ v | upper }} · Лаборатория{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/lab/links">Лаборатория</a> / поръчка · <a href="/tenders/{{ t.unp | q }}">текущата страница</a></div>
+<div class="tabs lab-v" role="group" aria-label="Вариант">{% for k, l in [('a', 'A · Сравнение'), ('b', 'B · Хронология'), ('c', 'C · Таблица')] %}<a class="btn sm" aria-pressed="{{ 'true' if v == k else 'false' }}" href="?v={{ k }}">{{ l }}</a>{% endfor %}</div>
+
+<div class="head"><div><h1 class="h1s">{{ t.subject or 'Поръчка ' ~ t.unp }}</h1>
+  <div class="meta"><span>УНП <b>{{ t.unp }}</b></span><span class="st {{ t.state }}">{{ STATE.get(t.state, '') }}</span>{% if t.published_at %}<span>публикувана {{ t.published_at | date }}</span>{% endif %}</div></div>
+  {% if t.tender_id %}<div class="acts"><a class="btn go" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">Документи и оферти в ЦАИС ЕОП</a></div>{% endif %}</div>
+
+{% macro tiles(col=false) %}
+<div class="tiles {{ 'col' if col }}">
+  <div class="tile"><span>Възложител</span><a class="u" href="/buyers/{{ t.buyer_eik }}">{{ t.buyer_name | tc }}</a></div>
+  <div class="tile"><span>Прогнозна стойност</span><b>{{ t.estimated_eur | big if t.estimated_eur else 'няма данни' }}</b></div>
+  <div class="tile"><span>Договорено</span><b>{{ t.stats.eur | big if t.stats.n else 'няма данни' }}</b>{% if t.estimated_eur and t.stats.eur %}<small>{{ (100 * t.stats.eur / t.estimated_eur) | num }}% от прогнозната</small>{% endif %}</div>
+  <div class="tile"><span>Оферти</span><b>{{ n_offers if n_offers else 'няма данни' }}</b>{% if lots | length > 1 %}<small>за {{ lots | length }} позиции</small>{% endif %}</div>
+  <div class="tile"><span>Процедура</span><b>{{ t.procedure_type or 'няма данни' }}</b></div>
+  <div class="tile"><span>Критерий</span><b>{{ method or 'няма данни' }}</b></div>
+  <div class="tile"><span>Вид</span><b>{{ t.contract_type or 'няма данни' }}</b></div>
+  <div class="tile"><span>Срок за оферти</span><b>{{ t.submission_deadline | date if t.submission_deadline else 'няма данни' }}</b></div>
+  {% if t.is_eu_funded %}<div class="tile"><span>Финансиране</span><b>ЕС</b>{% if t.european_program %}<small>{{ t.european_program }}</small>{% endif %}</div>{% endif %}
+</div>{% endmacro %}
+
+
+
+{% macro contracts_of(l) %}{% for k in l.contracts %}<div class="kline"><a class="u strong" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a> · {{ k.effective_date | date }} · <b>{{ k.eur | eur }}</b>{{ flags(k) }}</div>{% endfor %}{% endmacro %}
+
+{% macro lot_title(l) %}{% if lots | length > 1 or l.lot_no %}Позиция {{ l.lot_no }}{% if l.title %}: {{ l.title }}{% endif %}{% else %}Офертите{% endif %}{% endmacro %}
+
+{% if v == 'a' %}
+{{ tiles() }}
+{% if lots | length > 1 %}<div class="tabs lottabs" role="tablist" aria-label="Позиции">{% for l in lots %}<button type="button" role="tab" data-lot="{{ l.lot_no }}" aria-selected="{{ 'true' if loop.first else 'false' }}">{{ l.lot_no }}<small>{{ l.offers | length }} оф.</small></button>{% endfor %}</div>{% endif %}
+{% for l in lots %}
+<section class="p lot" data-lot="{{ l.lot_no }}" {% if not loop.first %}hidden{% endif %}>
+  <div class="ph"><div><h2>{{ lot_title(l) }}</h2><div class="sub">{{ l.offers | length }} оферти{% if l.estimated_eur %} · прогнозна {{ l.estimated_eur | eur }}{% endif %} · <span class="st {{ l.status }}">{{ STATE.get(l.status, '') }}</span></div></div></div>
+  {% if l.not_lowest and price_only %}<p class="warn strong">Спечели оферта, която не е най-ниската, при критерий „{{ method }}“.</p>{% elif l.not_lowest %}<p class="mut">Спечели оферта, която не е най-ниската: при критерий „{{ method or 'неизвестен' }}“ цената не е единственото мерило.</p>{% endif %}
+  {% if l.low is not none %}<svg class="strip" data-est="{{ l.estimated_eur or '' }}" data-offers='{{ l.offers | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-won='{{ l.offers | selectattr("won") | selectattr("price_eur") | map(attribute="price_eur") | list | json }}' data-names='{{ l.offers | selectattr("price_eur") | map(attribute="bidder_name") | map("tc") | list | json }}' viewBox="0 0 900 96" role="img" aria-label="Цените на офертите спрямо прогнозната стойност"></svg>{% endif %}
+  {{ offers_table(l) }}
+  {% if l.contracts %}<h3 class="h3s">Договор</h3>{{ contracts_of(l) }}{% endif %}
+</section>
+{% endfor %}
+
+{% elif v == 'b' %}
+{{ tiles() }}
+<section class="p"><h2>Как протече</h2>
+<ol class="flow">
+  <li><b>Обявена</b><span class="mut">{{ t.published_at | date if t.published_at else 'няма данни' }}</span><div>Прогнозна стойност {{ t.estimated_eur | big if t.estimated_eur else 'не е посочена' }}. {{ t.procedure_type or '' }}.</div></li>
+  <li><b>Срок за оферти</b><span class="mut">{{ t.submission_deadline | date if t.submission_deadline else 'няма данни' }}</span></li>
+  {% for l in lots %}
+  <li><b>{{ 'Оферти' if lots | length == 1 else 'Оферти · позиция ' ~ l.lot_no }}</b><span class="mut">{{ l.offers | length }}</span>
+    {% if l.title and lots | length > 1 %}<div class="mut">{{ l.title }}</div>{% endif %}
+    <ol class="rank">{% for o in l.offers %}<li class="{{ 'win' if o.won }}"><span>{{ o.bidder_name | tc }}</span><b>{{ o.price_eur | eur if o.price_eur is not none else 'цената не е отворена' }}</b>{% if o.won %}<em>спечелила</em>{% endif %}</li>{% else %}<li class="mut">Офертите още не са прочетени.</li>{% endfor %}</ol>
+    {% if l.contracts %}<div class="sub" style="margin-top:8px">Договор:</div>{{ contracts_of(l) }}{% elif l.status %}<div class="st {{ l.status }}">{{ STATE.get(l.status) }}</div>{% endif %}</li>
+  {% endfor %}
+  {% set annexed = t.contracts | selectattr('annex_count') | list %}
+  {% if annexed %}<li><b>Анекси</b><span class="mut">{{ annexed | sum(attribute='annex_count') }}</span><div>{% for k in annexed %}<a class="u" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a>: {{ k.annex_count }}{% if not loop.last %}, {% endif %}{% endfor %}</div></li>{% endif %}
+</ol></section>
+
+{% else %}
+{% set bidders = {} %}
+{% for l in lots %}{% for o in l.offers %}{% set k = o.bidder_eik or o.bidder_name %}{% if k not in bidders %}{% set _ = bidders.update({k: {'name': o.bidder_name, 'key': o.company_key, 'cells': {}}}) %}{% endif %}{% set _ = bidders[k]['cells'].update({l.lot_no: o}) %}{% endfor %}{% endfor %}
+<div class="grid">
+  <section class="p s8 mx-wrap"><h2>Участници и цени по позиции</h2><div class="sub">Зелено: спечелила оферта. Сумите са в евро.</div>
+    <div class="scrollx"><table class="sortable mxt"><thead><tr><th>Участник</th>{% for l in lots %}<th class="n" title="{{ l.title or '' }}">{{ 'Цена' if lots | length == 1 else 'Поз. ' ~ l.lot_no }}</th>{% endfor %}<th class="n">Спечелени</th></tr></thead><tbody>
+    {% for k, b in bidders.items() %}<tr><td>{% if b.key %}<a class="u strong" href="/companies/{{ b.key | q }}">{{ b.name | tc }}</a>{% else %}<b>{{ b.name | tc }}</b>{% endif %}</td>
+      {% for l in lots %}{% set o = b.cells.get(l.lot_no) %}<td class="n {{ 'won' if o and o.won }}" data-v="{{ o.price_eur if o and o.price_eur is not none else '' }}">{% if o %}{{ o.price_eur | eur if o.price_eur is not none else '•' }}{% if o.price_eur and l.estimated_eur %}<small>{{ (100 * o.price_eur / l.estimated_eur) | num }}%</small>{% endif %}{% endif %}</td>{% endfor %}
+      <td class="n">{{ b.cells.values() | selectattr('won') | list | length }}</td></tr>
+    {% else %}<tr><td colspan="{{ lots | length + 2 }}" class="mut">Офертите още не са прочетени от ЦАИС ЕОП.</td></tr>{% endfor %}
+    <tr class="est"><td class="mut">Прогнозна стойност</td>{% for l in lots %}<td class="n mut">{{ l.estimated_eur | eur if l.estimated_eur else 'няма данни' }}</td>{% endfor %}<td></td></tr>
+    </tbody></table></div>
+    <p class="mut">• оферта без отворена цена (отстранена преди отварянето на цените). Процентът е спрямо прогнозната стойност на позицията.</p></section>
+  <aside class="p s4">{{ tiles(true) }}</aside>
+</div>
+{% endif %}
+
+<section class="p"><details class="more"><summary><h2>Допълнителна информация</h2><span class="sub">Всички публикувани полета на обявлението и историята на публикациите</span></summary>
+  {% if header %}<dl class="dl rec">{% for label, key, val, cur in fields(rec) %}<dt>{{ label }}</dt><dd>{% if cur is not none or key in ('estimatedValue', 'contractValue') %}{{ val | eurc(cur) }}{% else %}{{ val }}{% endif %}</dd>{% endfor %}</dl>{% endif %}
+</details></section>
+{% endblock %}
+{% block scripts %}
+<script>
+// offers on a € axis: the estimate as a dashed line, the winning offer filled
+document.querySelectorAll('svg.strip').forEach((svg) => {
+  const P = JSON.parse(svg.dataset.offers), W = JSON.parse(svg.dataset.won), N = JSON.parse(svg.dataset.names), est = +svg.dataset.est || null;
+  const all = [...P, ...(est ? [est] : [])], lo = Math.min(...all) * 0.97, hi = Math.max(...all) * 1.03, X = (v) => 30 + ((v - lo) / (hi - lo || 1)) * 840;
+  let s = `<line class="ax" x1="30" x2="870" y1="56" y2="56"/>`;
+  if (est) s += `<line class="est" x1="${X(est)}" x2="${X(est)}" y1="14" y2="70"/><text class="lbl" x="${X(est)}" y="10" text-anchor="middle">прогнозна ${short(est)} €</text>`;
+  P.forEach((p, i) => { const won = W.includes(p); s += `<circle class="${won ? 'won' : 'of'}" cx="${X(p)}" cy="56" r="${won ? 8 : 6}"><title>${esc(N[i])}: ${eur(p)}</title></circle>`; });
+  s += `<text class="lbl" x="30" y="88">${short(lo / 0.97)} €</text><text class="lbl" x="870" y="88" text-anchor="end">${short(hi / 1.03)} €</text>`;
+  svg.innerHTML = s;
+});
+// lot tabs
+document.querySelector('.lottabs')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-lot]'); if (!b) return;
+  document.querySelectorAll('.lottabs [role=tab]').forEach((x) => x.setAttribute('aria-selected', x === b));
+  document.querySelectorAll('section.lot').forEach((s) => { s.hidden = s.dataset.lot !== b.dataset.lot; });
+});
+</script>
+{% endblock %}

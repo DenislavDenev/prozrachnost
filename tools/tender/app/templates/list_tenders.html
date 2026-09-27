@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, period, count, pager %}
+{% block title %}Поръчки · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Поръчки</h1>
+<p class="sub">Процедурите в ЦАИС ЕОП по УНП. Датата е на обявлението, а ако то липсва в отворените данни, на първия договор.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
+<form class="filters" action="/tenders">
+  <label class="fld grow"><span>Предмет или УНП</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. ремонт на училище" data-combo="tender" data-pick="go"></label>
+  <label class="fld grow"><span>Възложител</span><input name="who" value="{{ L.get('who') }}" placeholder="име или ЕИК" data-combo="buyer" data-pick="filter"></label>
+  <label class="fld"><span>Процедура</span><select name="procedure"><option value="">Всички</option>
+    {% for p in procedures %}<option {{ 'selected' if L.get('procedure') == p }}>{{ p }}</option>{% endfor %}</select></label>
+  <label class="fld"><span>Сектор</span><select name="sector"><option value="">Всички</option>
+    {% for s in sectors %}<option value="{{ s.d }}" {{ 'selected' if L.get('sector') == s.d }}>{{ s.d }} · {{ s.name }}</option>{% endfor %}</select></label>
+  <label class="fld"><span>Състояние</span><select name="state"><option value="">Всички</option>
+    {% for v, l in STATE.items() %}<option value="{{ v }}" {{ 'selected' if L.get('state') == v }}>{{ l }}</option>{% endfor %}</select></label>
+  {{ period(L) }}
+  {{ keep(L, ['sort', 'dir', 'buyer']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/tenders">Изчисти</a>{% endif %}</div>
+</form></details>
+{{ count(L, 'поръчки') }}
+<section class="p">
+{% include "_tenders_table.html" %}
+</section>
+{% endblock %}

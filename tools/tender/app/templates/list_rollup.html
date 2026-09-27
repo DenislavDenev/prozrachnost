@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, period, count %}
+{% block title %}{{ title }} · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">{{ title }}</h1>
+<p class="sub">Договорите по {{ 'вид процедура' if kind == 'procedure' else 'сектор (първите две цифри на CPV кода)' }} за избрания период. Стойността е без таваните на рамкови споразумения. Делът с една оферта е от договорите с известен брой оферти.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
+<form class="filters" action="/{{ 'procedures' if kind == 'procedure' else 'sectors' }}">
+  {{ period(L) }}{{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Покажи</button></div>
+</form></details>
+{{ count(L, 'реда') }}
+<section class="p">
+<table><thead><tr>{{ th(L, 'name', 'Процедура' if kind == 'procedure' else 'Сектор') }}{{ th(L, 'n', 'Договори', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}{{ th(L, 'single', 'С една оферта', 'n') }}</tr></thead><tbody>
+{% for r in rows %}{% set href = '/contracts?' ~ ('procedure=' ~ (r.k | urlencode) if kind == 'procedure' else 'sector=' ~ r.k) ~ ('&from=' ~ L.get('from') if L.get('from') else '') ~ ('&to=' ~ L.get('to') if L.get('to') else '') %}
+<tr><td><a class="u strong" href="{{ href }}">{{ r.name }}</a>{% if kind == 'sector' %}<div class="mut">CPV {{ r.k }}</div>{% endif %}</td>
+  <td class="n">{{ r.n | num }}</td><td class="n strong">{{ r.eur | big }}</td>
+  <td class="n">{{ (r.single_pct | num(1)) ~ '%' if r.single_pct is not none else 'няма данни' }}</td></tr>
+{% else %}<tr><td colspan="4" class="mut">Няма договори за периода.</td></tr>{% endfor %}
+</tbody></table>
+</section>
+{% endblock %}

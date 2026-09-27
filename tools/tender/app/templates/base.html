@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Тендер{% endblock %}</title>
+<meta name="description" content="Обществените поръчки в България: възложители, фирми, лица и връзките между тях, с източник за всяко твърдение.">
+<link rel="stylesheet" href="/static/fonts.css?v={{ v }}">
+<link rel="stylesheet" href="/static/app.css?v={{ v }}">
+<link rel="icon" type="image/svg+xml" sizes="any" href="/static/brand-mark.svg">
+<script src="/static/htmx.min.js?v={{ v }}" defer></script>
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#main">Към съдържанието</a>
+<header class="bar"><div class="bar-in">
+  <a class="word" href="/"><img class="word-mark" src="/static/brand-mark.svg" alt=""><span>Тендер<span class="brand-dot">.</span></span></a>
+  <nav class="menu" aria-label="Основна навигация">
+    {% for t, h in [("Табло", "/"), ("Карта", "/map"), ("Възложители", "/buyers"), ("Фирми", "/companies"), ("Лица", "/persons"), ("Поръчки", "/tenders"), ("Договори", "/contracts"), ("Потоци", "/flows"), ("Свързаности", "/svarzanosti")] %}
+    <a href="{{ h }}" class="{{ 'on' if nav == t }}" {% if nav == t %}aria-current="page"{% endif %}>{{ t }}</a>
+    {% endfor %}
+  </nav>
+  <form class="find" action="/search" role="search">
+    <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input name="q" placeholder="Фирма, лице, ЕИК, УНП" aria-label="Търсене" data-combo="buyer,company,person,tender" data-pick="go">
+  </form>
+  {{ feedback_button }}
+</div></header>
+<main id="main" class="wrap">
+{% block main %}{% endblock %}
+</main>
+<footer class="foot"><div class="wrap-f">
+  <span><b>Тендер</b> · независим портал за обществените поръчки</span>
+  <span>ЦАИС ЕОП към {{ fresh.eop_last_day | date }}{% if fresh.tr_last_read %} · Търговски регистър към {{ fresh.tr_last_read | date }}{% endif %}</span>
+  <a class="l" href="/kak-raboti">Как работи</a><a class="l" href="/sources">Източници и покритие</a><a class="l" href="/legal">Лични данни</a>
+  {{ support_link }}
+</div></footer>
+<script src="/static/app.js?v={{ v }}"></script>
+<script src="/static/combo.js?v={{ v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

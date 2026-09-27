@@ -1,0 +1,20 @@
+{# Shared pieces of the list pages: sortable header cell, period fields, pager. L is app.main.Listing. #}
+{# in an embedded table (embed=1) header and pager links reload the table in place #}
+{% macro go(L, h) %}href="{{ h | noembed }}"{% if L.embed %} hx-get="{{ h }}" hx-target="closest .embed"{% endif %}{% endmacro %}
+{% macro th(L, key, label, cls='') %}<th class="{{ cls }}" aria-sort="{{ L.aria(key) }}"><a class="sort" {{ go(L, L.sort_href(key)) }}>{{ label }}</a></th>{% endmacro %}
+
+{% macro keep(L, names) %}{% for k in names %}{% if L.get(k) %}<input type="hidden" name="{{ k }}" value="{{ L.get(k) }}">{% endif %}{% endfor %}{% endmacro %}
+
+{% macro period(L) %}
+<label class="fld"><span>От</span><input type="date" name="from" value="{{ L.get('from') }}" min="2020-01-01"></label>
+<label class="fld"><span>До</span><input type="date" name="to" value="{{ L.get('to') }}" min="2020-01-01"></label>
+<div class="fld presets"><span>Бързо</span><div>
+  {% for d, l in [(30, '30 дни'), (60, '60 дни'), (365, '12 месеца')] %}<a class="l" href="{{ L.href(days=d, **{'from': None, 'to': None, 'offset': None}) }}">{{ l }}</a>{% endfor %}
+  <a class="l" href="{{ L.href(**{'from': None, 'to': None, 'offset': None}) }}">всички</a></div></div>
+{% endmacro %}
+
+{% macro count(L, noun) %}<p class="sub count">{{ L.total | num }} {{ noun }}{% if L.total > L.PER %} · {{ L.offset + 1 }}–{{ [L.offset + L.PER, L.total] | min }}{% endif %}{% if L.total %} · <a class="l" href="{{ L.href(format='csv', offset=None, embed=None, per=None) }}" download>CSV</a>{% endif %}</p>{% endmacro %}
+
+{% macro pager(L) %}{% set prev, nxt = L.pages() %}
+<div class="pager">{% if prev %}<a class="btn" {{ go(L, prev) }}>← Предишни</a>{% endif %}{% if nxt %}<a class="btn" {{ go(L, nxt) }}>Следващи →</a>{% endif %}</div>
+{% endmacro %}

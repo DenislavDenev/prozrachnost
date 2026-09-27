@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block title %}Връзки: изследване · Тендер{% endblock %}
+{% block head %}
+<script src="/static/vendor/cytoscape.min.js?v={{ v }}" defer></script>
+<style>
+.ex-top { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 14px 0 12px; }
+.ex-top .grow { flex: 1; }
+.ex-step { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.ex-step b { min-width: 72px; text-align: center; }
+.ex-add { position: relative; } .ex-add input { height: 36px; width: 280px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: 400 14.5px var(--font-body); }
+.ex-add .results { position: absolute; top: 40px; left: 0; width: 420px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.1); z-index: 20; max-height: 380px; overflow: auto; }
+.ex-add .results:empty { display: none; }
+.ex-add .results li a { padding: 8px 10px; cursor: pointer; }
+.ex { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; }
+.ex-cy { height: 74vh; min-height: 520px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.ex-side { border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; font-size: 14px; max-height: 74vh; overflow: auto; }
+.ex-side h3 { font-size: 17px; margin-bottom: 4px; }
+.ex-side .tabs { display: flex; margin-bottom: 14px; } .ex-side .tabs button { flex: 1; text-align: center; }
+.ex-side ul.roles { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
+.ex-side ul.roles li { color: var(--ink-2); } .ex-side ul.roles li small { color: var(--ink-3); }
+.ex-side .acts2 { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.ex-key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); margin: 10px 0 0; align-items: center; }
+.ex-key i { display: inline-block; vertical-align: -2px; margin-right: 6px; }
+.ex-key .sw { width: 22px; height: 14px; border-radius: 3px; border: 1px solid var(--line); }
+.chain { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid var(--line-2); font-size: 13.5px; }
+.chain .nd { font-weight: 600; } .chain .ln { color: var(--ink-3); padding-left: 12px; } .chain .ln.own { color: var(--accent-ink); }
+.ex-twin td { font-size: 13.5px; } .ex-twin .ctl { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.ex-twin input[type=search] { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; min-width: 260px; }
+.hubtable td { font-size: 13px; padding: 6px 8px 6px 0; }
+@media (max-width: 1000px) { .ex { grid-template-columns: minmax(0, 1fr); } .ex-side { max-height: none; } }
+</style>
+{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/lab/links">Лаборатория</a> / изследване на връзките</div>
+<h1 class="h1s">{{ (info.name or node) | tc }}</h1>
+<p class="sub" style="max-width:100ch">Започва с обекта и преките му връзки. Добавяй по една стъпка, разгъвай отделни фирми и лица, скривай излишното. Големите бордове и холдинги са свити: техните връзки се отварят като списък. „Собственост“ подрежда кой притежава кого отгоре надолу. „Свържи“ намира пътя между няколко избрани. На всяка линия пише ролята и периодът.</p>
+
+<div class="ex-top">
+  <div class="ex-step"><button class="btn sm" id="sminus" aria-label="Една стъпка по-малко">−</button><b id="steps">1 стъпка</b><button class="btn sm" id="splus" aria-label="Една стъпка повече">+</button></div>
+  <div class="tabs" id="view" role="group" aria-label="Подредба"><button data-v="rings" aria-pressed="true">Кръгове</button><button data-v="own" aria-pressed="false">Собственост</button><button data-v="free" aria-pressed="false">Свободно</button></div>
+  <label class="chk"><input type="checkbox" id="active"> Само действащи</label>
+  <button class="btn sm" id="undo" disabled>Назад</button><button class="btn sm" id="fit">Побери</button>
+  <span class="grow"></span>
+  <div class="ex-add"><input id="addq" placeholder="Добави лице или фирма…" autocomplete="off" aria-label="Добави лице или фирма"><ul class="results" id="addres"></ul></div>
+</div>
+
+<div class="ex">
+  <div><div class="ex-cy" id="cy" aria-label="Граф на връзките"></div>
+    <div class="ex-key"><span><i class="sw" style="background:#fff"></i>фирма без договори</span><span><i class="sw" style="background:var(--accent-soft);border-color:var(--accent)"></i>фирма с договори</span>
+      <span><i class="sw" style="background:var(--slate-soft);border-radius:8px"></i>лице</span><span><i class="sw" style="border:2px dashed var(--ink-4)"></i>голям възел (свит)</span>
+      <span><i style="width:24px;height:2px;background:var(--accent)"></i>собственост</span><span><i style="width:24px;height:2px;background:var(--slate)"></i>управление</span>
+      <span><i style="width:24px;border-top:2px dashed var(--slate)"></i>прекратена</span><span id="count" class="mut"></span></div></div>
+  <aside class="ex-side" aria-live="polite">
+    <div class="tabs" role="group"><button data-p="info" aria-pressed="true">Подробно</button><button data-p="connect" aria-pressed="false">Свържи</button></div>
+    <div id="p-info"><p class="mut">Кликни лице или фирма. Двоен клик разгъва връзките му.</p></div>
+    <div id="p-connect" hidden>
+      <p class="mut" style="margin-top:0">Избери 2 до 6 лица или фирми: от графа с „Добави към Свържи“ или от търсачката горе.</p>
+      <div id="cchips" class="cn-chips" style="margin:10px 0"></div>
+      <label class="chk"><input type="checkbox" id="chubs"> Без пътища през големи бордове</label>
+      <div class="acts2"><button class="btn sm go" id="cgo">Намери връзките</button><button class="btn sm" id="cclear">Изчисти</button></div>
+      <div id="cres"></div>
+    </div>
+  </aside>
+</div>
+
+<section class="p ex-twin" style="margin-top:18px"><div class="ph"><div><h2>Същото като текст</h2><div class="sub">Всяка показана връзка като изречение, за четене, търсене и копиране</div></div></div>
+  <div class="ctl"><input type="search" id="tq" placeholder="Филтър по име"><span class="mut" id="tcount"></span></div>
+  <table><thead><tr><th>Кой</th><th>Роля</th><th>Къде</th><th>Период</th></tr></thead><tbody id="twin"></tbody></table></section>
+{% endblock %}
+{% block scripts %}
+<script>
+const FOCUS = {{ node | tojson }}, HUB = 100;
+addEventListener('load', async () => {
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  // ---------- model: everything loaded so far; what is shown is derived from the state ----------
+  const N = new Map(), E = new Map(), ADJ = new Map();
+  const node = (id, o) => { const n = N.get(id) || { id, kind: id.startsWith('p:') || id.startsWith('l:') ? 'p' : 'c' }; for (const [k, v] of Object.entries(o)) if (v != null && n[k] == null) n[k] = v; N.set(id, n); if (!ADJ.has(id)) ADJ.set(id, new Set()); return n; };
+  const ingest = (edges) => { for (const e of edges) {
+    node(e.holder, { name: tc(e.holder_name), ref: e.holder_ref, n: e.holder_contracts, eur: e.holder_eur, links: e.holder_links });
+    node(e.company, { name: tc(e.company_name || 'ЕИК ' + e.company.slice(2)), ref: e.company_ref, n: e.company_contracts, eur: e.company_eur, links: e.company_links });
+    const k = [e.holder, e.company, e.role, e.valid_from].join('|');
+    E.set(k, { id: k, holder: e.holder, company: e.company, role: e.role, share: e.share, from: e.valid_from, to: e.valid_to, unsure: !!e.uncertain_after });
+    ADJ.get(e.holder).add(e.company); ADJ.get(e.company).add(e.holder); } };
+  const loaded = new Set();  // nodes whose own neighbours are loaded
+  async function load(focus, depth) {
+    const d = await (await fetch('/network.json?' + new URLSearchParams({ focus, view: 'all', depth }))).json();
+    ingest(d.edges); return d;
+  }
+  const S = { steps: 1, view: 'rings', active: false, expanded: new Set(), hidden: new Set(), added: new Set(), paths: new Set(), sel: null, conn: [FOCUS] };
+  const hist = [];
+  const snap = () => { hist.push(JSON.stringify({ ...S, expanded: [...S.expanded], hidden: [...S.hidden], added: [...S.added], paths: [...S.paths] })); $('undo').disabled = false; };
+  const restore = (j) => { const o = JSON.parse(j); Object.assign(S, o, { expanded: new Set(o.expanded), hidden: new Set(o.hidden), added: new Set(o.added), paths: new Set(o.paths) }); };
+  const live = (e) => !e.to && !e.unsure;
+  const edgesOf = (a) => [...E.values()].filter((e) => (e.holder === a || e.company === a) && (!S.active || live(e)));
+  const isHub = (id) => (N.get(id)?.links || 0) > HUB;
+  function visibleSet() {
+    // the object, the steps around it (not through large hubs), anything expanded, added or on a found path
+    const dist = new Map([[FOCUS, 0]]), q = [FOCUS];
+    while (q.length) { const x = q.shift(); if (dist.get(x) >= S.steps || (x !== FOCUS && isHub(x)) || S.hidden.has(x)) continue;
+      for (const e of edgesOf(x)) { const y = e.holder === x ? e.company : e.holder; if (!dist.has(y) && !S.hidden.has(y)) { dist.set(y, dist.get(x) + 1); q.push(y); } } }
+    const vis = new Set(dist.keys());
+    for (const x of S.expanded) if (vis.has(x) || S.added.has(x)) for (const e of edgesOf(x)) { const y = e.holder === x ? e.company : e.holder; if (!S.hidden.has(y)) vis.add(y); }
+    for (const x of [...S.added, ...S.paths]) if (!S.hidden.has(x)) vis.add(x);
+    return { vis, dist };
+  }
+  const roleTxt = (e) => (ROLE[e.role] || e.role) + (e.share ? ' ' + e.share : '');
+  const when = (e) => span({ valid_from: e.from, valid_to: e.to, uncertain_after: e.unsure ? 1 : null });
+  const money = (n) => n.kind === 'c' ? (n.n ? `${nf.format(n.n)} дог. · ${big(+n.eur || 0)}` : 'без договори') : 'лице';
+  const href = (n) => n.ref ? (n.kind === 'p' ? '/persons/' + n.ref : '/companies/' + n.ref) : null;
+
+  // ---------- drawing (Cytoscape.js: horizontal labels, words on every edge) ----------
+  const cy = cytoscape({ container: $('cy'), wheelSensitivity: 0.25, minZoom: 0.05, maxZoom: 3, style: [
+    { selector: 'node', style: { shape: 'round-rectangle', width: 'data(w)', height: 38, 'background-color': '#fff', 'border-width': 1, 'border-color': css('--line'),
+      label: 'data(label)', 'text-wrap': 'wrap', 'text-max-width': 'data(tw)', 'font-size': 12, 'font-family': 'Sofia Sans, sans-serif', 'font-weight': 600, color: css('--ink'), 'text-valign': 'center', 'text-halign': 'center' } },
+    { selector: 'node.p', style: { 'background-color': css('--slate-soft'), 'border-color': css('--slate-soft') } },
+    { selector: 'node.won', style: { 'background-color': css('--accent-soft'), 'border-color': css('--accent') } },
+    { selector: 'node.hub', style: { 'border-style': 'dashed', 'border-width': 2, 'border-color': css('--ink-4') } },
+    { selector: 'node.focus', style: { 'border-width': 3, 'border-color': css('--accent'), 'font-size': 13 } },
+    { selector: 'node.pick', style: { 'underlay-color': css('--amber'), 'underlay-opacity': .35, 'underlay-padding': 6 } },
+    { selector: 'node:selected', style: { 'border-width': 3, 'border-color': css('--ink') } },
+    { selector: 'edge', style: { width: 1.5, 'line-color': css('--slate'), 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': css('--slate'), 'arrow-scale': .8, opacity: .8,
+      label: 'data(label)', 'font-size': 10, 'font-family': 'Sofia Sans, sans-serif', color: css('--ink-2'), 'text-background-color': '#fff', 'text-background-opacity': 1, 'text-background-padding': '2px' } },
+    { selector: 'edge.own', style: { width: 2.4, 'line-color': css('--accent'), 'target-arrow-color': css('--accent'), color: css('--accent-ink') } },
+    { selector: 'edge.end', style: { 'line-style': 'dashed', opacity: .55 } },
+    { selector: 'edge.path', style: { width: 4, 'line-color': css('--amber'), 'target-arrow-color': css('--amber'), opacity: 1, 'z-index': 9 } },
+    { selector: 'edge.quiet', style: { label: '' } },
+    { selector: '.faded', style: { opacity: .12 } },
+  ] });
+
+  function draw(relayout = true) {
+    const { vis } = visibleSet();
+    // rings follow the real distance inside what is shown, so nodes added by a path or a search sit
+    // at their own step, not piled on the outermost ring
+    const dist = new Map([[FOCUS, 0]]), bq = [FOCUS];
+    while (bq.length) { const x = bq.shift(); for (const y of ADJ.get(x) || []) if (vis.has(y) && !dist.has(y)) { dist.set(y, dist.get(x) + 1); bq.push(y); } }
+    const els = [];
+    for (const id of vis) { const n = N.get(id); if (!n) continue;
+      const hub = isHub(id) && id !== FOCUS, label = n.name + (hub ? `\n${nf.format(n.links)} връзки` : n.kind === 'c' && n.n ? `\n${big(+n.eur || 0)}` : '');
+      const w = Math.min(190, Math.max(96, Math.max(...label.split('\n').map((l) => l.length)) * 6.8 + 22));
+      els.push({ group: 'nodes', data: { id, label, w, tw: w - 14, lvl: id === FOCUS ? 99 : 98 - (dist.get(id) ?? S.steps + 1) },
+        classes: [n.kind, n.kind === 'c' && n.n ? 'won' : '', hub ? 'hub' : '', id === FOCUS ? 'focus' : '', S.conn.includes(id) ? 'pick' : ''].join(' ') }); }
+    // one edge per (holder, company): the roles are joined into one label
+    const pairs = new Map();
+    for (const e of E.values()) { if (!vis.has(e.holder) || !vis.has(e.company) || (S.active && !live(e))) continue;
+      const k = e.holder + '>' + e.company; if (!pairs.has(k)) pairs.set(k, []); pairs.get(k).push(e); }
+    // words on the lines around the object; elsewhere they appear when a node is pointed at or chosen
+    const nearFocus = [...pairs.keys()].filter((k) => k.split('>').includes(FOCUS)).length, many = pairs.size > 45;
+    for (const [k, rs] of pairs) { const [h, c] = k.split('>'), own = rs.some((r) => OWN.has(r.role)), on = rs.some(live);
+      const onPath = S.paths.has(h) && S.paths.has(c) && S.pathEdges?.includes([h, c].sort().join('|'));
+      els.push({ group: 'edges', data: { id: 'e:' + k, source: h, target: c, near: [h, c].includes(FOCUS) && nearFocus <= 20, label: rs.map((r) => roleTxt(r) + ' ' + when(r)).join('\n') },
+        classes: [own ? 'own' : '', on ? '' : 'end', onPath ? 'path' : '', !onPath && (![h, c].includes(FOCUS) || nearFocus > 20) ? 'quiet' : ''].join(' ') }); }
+    const pos = new Map(cy.nodes().map((n) => [n.id(), { ...n.position() }]));
+    cy.batch(() => { cy.elements().remove(); cy.add(els); });
+    $('count').textContent = `${nf.format(vis.size)} възела · ${nf.format(pairs.size)} връзки · надписите на по-далечните линии се виждат при посочване`;
+    if (relayout) layout(); else cy.nodes().forEach((n) => { if (pos.has(n.id())) n.position(pos.get(n.id())); });
+    twin(pairs);
+    if (S.sel && cy.getElementById(S.sel).length) cy.getElementById(S.sel).select();
+  }
+  // the container can change size (or be laid out after the script ran): keep Cytoscape's idea of it current
+  new ResizeObserver(() => cy.resize()).observe($('cy'));
+  function layout() {
+    cy.resize();
+    const opts = {
+      rings: { name: 'concentric', concentric: (n) => n.data('lvl'), levelWidth: () => 1, minNodeSpacing: 18, avoidOverlap: true, animate: false },
+      // top-down: who holds a role above where they hold it, owners above what they own (Open Ownership diagrams)
+      own: { name: 'breadthfirst', directed: true, spacingFactor: 1.15, avoidOverlap: true, animate: false },
+      free: { name: 'cose', animate: false, idealEdgeLength: () => 140, nodeRepulsion: () => 12000, nodeDimensionsIncludeLabels: true },
+    }[S.view];
+    cy.layout({ ...opts, fit: true, padding: 30 }).run();
+    cy.fit(undefined, 30);
+  }
+  // hover: the node and its neighbours stay, the rest fades (Kumu focus, Bloom "select related")
+  cy.on('mouseover', 'node', (e) => { const nb = e.target.closedNeighborhood(); cy.elements().not(nb).addClass('faded'); nb.edges().removeClass('quiet').addClass('hl'); });
+  cy.on('mouseout', 'node', () => { cy.elements().removeClass('faded'); cy.edges('.hl').removeClass('hl').filter((e) => !e.hasClass('path') && !(S.sel && e.connectedNodes().some((n) => n.id() === S.sel)) && !e.data('near')).addClass('quiet'); });
+  cy.on('mouseover', 'edge', (e) => e.target.removeClass('quiet'));
+  cy.on('tap', 'node', (e) => { S.sel = e.target.id(); e.target.connectedEdges().removeClass('quiet'); info(S.sel); });
+  cy.on('dbltap', 'node', (e) => expand(e.target.id()));
+  cy.on('tap', (e) => { if (e.target === cy) { S.sel = null; $('p-info').innerHTML = '<p class="mut">Кликни лице или фирма. Двоен клик разгъва връзките му.</p>'; } });
+
+  // ---------- side panel ----------
+  function info(id) {
+    const n = N.get(id); if (!n) return; showPanel('info');
+    const es = edgesOf(id), h = href(n), hub = isHub(id);
+    $('p-info').innerHTML = `<h3>${esc(n.name)}</h3><div class="mut">${esc(money(n))}${n.links ? ` · ${nf.format(n.links)} връзки в регистъра` : ''}</div>
+      <div class="acts2">${h ? `<a class="btn sm" href="${h}">Профил</a>` : ''}<button class="btn sm go" data-a="expand">${hub ? 'Покажи всички като списък' : 'Разгъни връзките'}</button>
+        <button class="btn sm" data-a="conn">Добави към Свържи</button>${id !== FOCUS ? `<button class="btn sm" data-a="hide">Скрий</button><a class="btn sm" href="?node=${encodeURIComponent(id)}">В центъра</a>` : ''}</div>
+      ${hub ? `<p class="mut">Голям възел: връзките му не се разгръщат в графа, за да не се превърне в кълбо. Отвори ги като списък и добави само нужните.</p><div id="hubt"></div>` : ''}
+      <ul class="roles">${es.slice(0, 60).map((e) => { const o = N.get(e.holder === id ? e.company : e.holder);
+        return `<li>${e.holder === id ? `${esc(roleTxt(e))} в <b>${esc(o?.name || '')}</b>` : `<b>${esc(o?.name || '')}</b> е ${esc(roleTxt(e))}`} <small>${when(e)}</small></li>`; }).join('')}
+        ${loaded.has(id) || es.length ? '' : '<li class="mut">Връзките му още не са заредени: „Разгъни връзките“.</li>'}</ul>`;
+    $('p-info').querySelector('[data-a="expand"]').onclick = () => hub ? hubList(id) : expand(id);
+    $('p-info').querySelector('[data-a="conn"]').onclick = () => { if (!S.conn.includes(id) && S.conn.length < 6) S.conn.push(id); chips(); showPanel('connect'); draw(false); };
+    $('p-info').querySelector('[data-a="hide"]')?.addEventListener('click', () => { snap(); S.hidden.add(id); S.sel = null; draw(); });
+  }
+  async function hubList(id) {  // ICIJ: a node with too many links opens as a table, not as a hairball
+    if (!loaded.has(id)) { await load(id, 1); loaded.add(id); }
+    const rows = edgesOf(id).map((e) => ({ e, o: N.get(e.holder === id ? e.company : e.holder) }));
+    $('hubt').innerHTML = `<table class="hubtable"><tbody>${rows.map(({ e, o }) => `<tr><td>${esc(o.name)}<br><small class="mut">${esc(roleTxt(e))} ${when(e)}</small></td><td><button class="btn sm" data-add="${esc(o.id)}">+</button></td></tr>`).join('')}</tbody></table>`;
+    $('hubt').onclick = (ev) => { const b = ev.target.closest('[data-add]'); if (!b) return; snap(); S.added.add(b.dataset.add); b.disabled = true; draw(); };
+  }
+  async function expand(id) {
+    if (isHub(id)) { info(id); return hubList(id); }
+    snap();
+    if (!loaded.has(id)) { await load(id, 1); loaded.add(id); }
+    S.expanded.add(id); draw(); info(id);
+  }
+  function showPanel(p) { document.querySelectorAll('.ex-side [data-p]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.p === p)); $('p-info').hidden = p !== 'info'; $('p-connect').hidden = p !== 'connect'; }
+  document.querySelectorAll('.ex-side [data-p]').forEach((b) => b.onclick = () => showPanel(b.dataset.p));
+
+  // ---------- Свържи (Bloom "shortest path", YouControl "connections between counterparties") ----------
+  function chips() {
+    $('cchips').innerHTML = S.conn.map((id) => `<span class="chip ${id.startsWith('p:') ? 'pe' : 'co'}"><i></i>${esc(N.get(id)?.name || id)}<a href="#" data-x="${esc(id)}" aria-label="Махни">×</a></span>`).join('') || '<span class="mut">Няма избрани.</span>';
+    $('cchips').onclick = (e) => { const a = e.target.closest('[data-x]'); if (!a) return; e.preventDefault(); S.conn = S.conn.filter((x) => x !== a.dataset.x); chips(); draw(false); };
+  }
+  $('cgo').onclick = async () => {
+    if (S.conn.length < 2) { $('cres').innerHTML = '<p class="mut">Избери поне две.</p>'; return; }
+    $('cgo').disabled = true; $('cres').innerHTML = '<p class="mut">Търся…</p>';
+    const q = new URLSearchParams(); S.conn.forEach((x) => q.append('n', x)); if (S.active) q.set('active', 1); if ($('chubs').checked) q.set('hubs', 1);
+    const d = await (await fetch('/connect.json?' + q)).json(); $('cgo').disabled = false;
+    // the paths' roles become ordinary edges of the model
+    const edges = []; for (const [k, rs] of Object.entries(d.roles)) for (const r of rs) { const H = d.nodes[r.holder] || {}, C = d.nodes[r.company] || {};
+      edges.push({ ...r, holder_name: H.name, company_name: C.name, holder_ref: H.ref, company_ref: C.ref, holder_contracts: H.contracts, company_contracts: C.contracts, holder_eur: H.eur, company_eur: C.eur, holder_links: H.links, company_links: C.links }); }
+    for (const [id, n] of Object.entries(d.nodes)) node(id, { name: tc(n.name || id), ref: n.ref, n: n.contracts, eur: n.eur, links: n.links });
+    ingest(edges); snap();
+    S.paths = new Set(d.pairs.flatMap((p) => p.paths.flat())); S.pathEdges = d.pairs.flatMap((p) => p.paths.flatMap((path) => path.slice(1).map((y, i) => [path[i], y].sort().join('|'))));
+    draw();
+    $('cres').innerHTML = d.pairs.map((p) => `<div class="chain"><b>${esc(N.get(p.a)?.name)} и ${esc(N.get(p.b)?.name)}</b>
+      ${p.paths.length ? `<span class="mut">${p.paths[0].length - 1} стъпки · ${p.paths.length} ${p.paths.length === 1 ? 'път' : 'пътя'}</span>` + p.paths.slice(0, 3).map((path, pi) => `<div style="margin-top:6px">${path.map((id, i) => {
+        if (!i) return `<div class="nd">${esc(N.get(id)?.name || id)}</div>`;
+        const a = path[i - 1], rs = [...E.values()].filter((e) => (e.holder === a && e.company === id) || (e.holder === id && e.company === a));
+        return rs.map((e) => `<div class="ln ${OWN.has(e.role) ? 'own' : ''}">${e.holder === a ? '↓' : '↑'} ${esc(roleTxt(e))} ${when(e)}</div>`).join('') + `<div class="nd">${esc(N.get(id)?.name || id)}</div>`; }).join('')}</div>`).join('') : '<span class="mut">Няма връзка до 8 стъпки.</span>'}</div>`).join('');
+  };
+  $('cclear').onclick = () => { snap(); S.paths = new Set(); S.pathEdges = []; S.conn = [FOCUS]; chips(); $('cres').innerHTML = ''; draw(); };
+
+  // ---------- linear twin (SIGMA: the same links as a table) ----------
+  let TW = [];
+  function twin(pairs) {
+    TW = [...pairs.values()].flat().map((e) => ({ who: N.get(e.holder)?.name || '', role: roleTxt(e), where: N.get(e.company)?.name || '', when: when(e), live: live(e) }))
+      .sort((a, b) => a.who.localeCompare(b.who) || a.where.localeCompare(b.where));
+    drawTwin();
+  }
+  function drawTwin() {
+    const q = $('tq').value.toLowerCase(), v = TW.filter((r) => !q || (r.who + ' ' + r.where).toLowerCase().includes(q));
+    $('tcount').textContent = `${nf.format(v.length)} връзки`;
+    $('twin').innerHTML = v.slice(0, 500).map((r) => `<tr class="${r.live ? '' : 'mut'}"><td class="strong">${esc(r.who)}</td><td>${esc(r.role)}</td><td>${esc(r.where)}</td><td class="nw">${r.when}</td></tr>`).join('');
+  }
+  $('tq').oninput = drawTwin;
+
+  // ---------- controls ----------
+  const setSteps = async (k) => { snap(); S.steps = Math.max(1, Math.min(6, k)); $('steps').textContent = S.steps + (S.steps === 1 ? ' стъпка' : ' стъпки');
+    await load(FOCUS, S.steps); draw(); };
+  $('splus').onclick = () => setSteps(S.steps + 1); $('sminus').onclick = () => setSteps(S.steps - 1);
+  $('view').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $('view').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); S.view = b.dataset.v; layout(); };
+  $('active').onchange = () => { snap(); S.active = $('active').checked; draw(); };
+  $('fit').onclick = () => cy.fit(undefined, 30);
+  $('undo').onclick = () => { if (!hist.length) return; restore(hist.pop()); $('undo').disabled = !hist.length;
+    $('steps').textContent = S.steps + (S.steps === 1 ? ' стъпка' : ' стъпки'); $('active').checked = S.active; chips(); draw(); };
+  let tmr; $('addq').oninput = () => { clearTimeout(tmr); tmr = setTimeout(async () => { const q = $('addq').value.trim(); if (!q) { $('addres').innerHTML = ''; return; }
+    const r = await (await fetch('/find.json?q=' + encodeURIComponent(q))).json();
+    $('addres').innerHTML = r.map((x) => `<li><a data-n="${esc(x.node)}"><span class="k">${x.kind === 'person' ? 'Лице' : 'Фирма'}</span><span class="t">${esc(x.label)}</span><span class="s">${esc(x.sub)}</span></a></li>`).join('') || '<li class="empty">Няма резултат с партида.</li>'; }, 250); };
+  $('addres').onclick = async (e) => { const a = e.target.closest('[data-n]'); if (!a) return; const id = a.dataset.n; $('addres').innerHTML = ''; $('addq').value = '';
+    snap(); await load(id, 1); loaded.add(id); S.added.add(id); if (!S.conn.includes(id) && S.conn.length < 6) S.conn.push(id); chips(); draw(); S.sel = id; info(id); };
+
+  await load(FOCUS, 1); loaded.add(FOCUS); chips(); draw();
+});
+</script>
+{% endblock %}

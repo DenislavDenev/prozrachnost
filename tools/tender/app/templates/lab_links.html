@@ -1,0 +1,456 @@
+{% extends "base.html" %}
+{% block title %}Връзки: варианти · Тендер{% endblock %}
+{% block head %}
+<style>
+.lab-head { display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; margin: 6px 0 18px; font-size: 14px; color: var(--ink-3); }
+.lab-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.lab-tabs button { all: unset; cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.lab-tabs button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.lab-tabs small { font-weight: 400; color: var(--ink-4); margin-left: 6px; }
+.lab-note { font-size: 14px; color: var(--ink-2); max-width: 90ch; margin: 0 0 16px; }
+/* layers */
+.lab-head .grow { flex: 1; }
+.ltools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 10px; font-size: 13.5px; }
+.ltools #lzoom { min-width: 44px; text-align: center; }
+.vp { position: relative; height: 72vh; min-height: 480px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); cursor: grab; touch-action: none; background: var(--surface); }
+.vp.grab { cursor: grabbing; } .vp:focus-visible { outline: 2px solid var(--accent); }
+.vp svg { position: absolute; left: 0; width: 100%; font-family: var(--font-body); }
+.vp .lhead { top: 0; height: 30px; background: var(--surface); border-bottom: 1px solid var(--line-2); z-index: 1; }
+.vp .lbody, .vp .rbody { top: 0; height: 100%; }
+.rings .ring { fill: none; stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rings .rl { font: 600 13px var(--font-body); fill: var(--ink-4); }
+.rings .ln { fill: none; stroke-width: 1.2; opacity: .35; vector-effect: non-scaling-stroke; }
+.rings .ln.own { stroke: var(--accent); } .rings .ln.mg { stroke: var(--slate); } .rings .ln.end { stroke-dasharray: 3 4; }
+.rings .ln.x { stroke-width: 1.6; opacity: .8; }
+.rings .nd { cursor: pointer; } .rings .nd .lb { font-size: 12px; fill: var(--ink); }
+.rings .nd .k { fill: var(--slate); } .rings .nd .k.co { fill: var(--ink-4); } .rings .nd .k.co.on { fill: var(--accent); }
+.rings .nd.share .k { stroke: var(--amber); stroke-width: 2.5; }
+.rings .nd.share .lb { font-weight: 600; }
+.rings .root rect { fill: var(--surface); stroke: var(--accent); stroke-width: 2; }
+.rings .root .t { font: 700 14px var(--font-body); fill: var(--ink); } .rings .root .m { font-size: 12px; fill: var(--ink-3); }
+.rings .hot .ln { opacity: .05; } .rings .hot .ln.on { opacity: .95; stroke-width: 2.2; } .rings .hot .nd { opacity: .25; } .rings .hot .nd.on, .rings .hot .nd.root { opacity: 1; }
+.vp .pin { position: absolute; right: 12px; top: 42px; width: 320px; max-height: calc(100% - 60px); overflow: auto; background: var(--surface); margin: 0; box-shadow: 0 8px 24px rgba(0,0,0,.08); z-index: 2; cursor: auto; }
+.layers .lh { font: 600 12.5px var(--font-body); fill: var(--ink-3); text-transform: none; }
+.layers .ln { fill: none; stroke-width: 1.3; opacity: .28; }
+.layers .ln.own { stroke: var(--accent); } .layers .ln.mg { stroke: var(--slate); } .layers .ln.end { stroke-dasharray: 3 4; }
+.layers .nd rect { fill: var(--surface); stroke: var(--line); } .layers .nd { cursor: pointer; }
+.layers .nd.share rect { stroke: var(--amber); stroke-width: 1.5; }
+.layers .nd .t { font-size: 13px; font-weight: 600; fill: var(--ink); } .layers .nd .m { font-size: 11.5px; fill: var(--ink-3); }
+.layers .nd .k { fill: var(--slate); } .layers .nd .k.co { fill: var(--ink-4); } .layers .nd .k.co.on { fill: var(--accent); }
+.layers .hot .ln { opacity: .05; } .layers .hot .ln.on { opacity: .9; stroke-width: 2; } .layers .hot .nd { opacity: .3; } .layers .hot .nd.on { opacity: 1; }
+.layers .more { font-size: 12.5px; fill: var(--ink-3); }
+.pin { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); font-size: 14px; display: none; }
+.pin.on { display: block; } .pin h3 { font-size: 16px; margin-bottom: 6px; } .pin li { color: var(--ink-2); }
+/* matrix */
+.mx { overflow: auto; max-height: 780px; border: 1px solid var(--line-2); border-radius: var(--radius); }
+.mx table { border-collapse: separate; border-spacing: 0; font-size: 13.5px; width: auto; }
+.mx th, .mx td { padding: 0; border-bottom: 1px solid var(--line-2); }
+.mx thead th { position: sticky; top: 0; background: var(--surface); z-index: 2; vertical-align: bottom; }
+.mx thead th.col { height: 170px; width: 30px; min-width: 30px; }
+.mx thead th.col div { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; padding: 8px 0; margin: 0 auto; font-weight: 500; color: var(--ink-2); max-height: 160px; overflow: hidden; text-overflow: ellipsis; }
+.mx thead th.col.share div { color: var(--amber); font-weight: 700; }
+.mx thead th.col a:hover div { color: var(--ink); }
+.mx th.rowh { position: sticky; left: 0; background: var(--surface); z-index: 1; text-align: left; min-width: 280px; max-width: 320px; padding: 7px 12px 7px 4px; font-weight: 500; }
+.mx thead th.rowh { z-index: 3; }
+.mx th.rowh small { display: block; color: var(--ink-3); font-weight: 400; font-size: 12px; }
+.mx td.c { text-align: center; width: 30px; border-left: 1px solid var(--line-2); }
+.mx td.c i { display: inline-block; width: 11px; height: 11px; vertical-align: middle; }
+.mx i.own { background: var(--accent); border-radius: 2px; } .mx i.mg { background: var(--slate); border-radius: 50%; }
+.mx i.end { opacity: .35; }
+.mx tr:hover th.rowh, .mx tr:hover td { background: var(--surface-2); }
+.mx td.v { padding: 7px 10px; text-align: right; white-space: nowrap; font-weight: 600; border-left: 1px solid var(--line); }
+.mxkey { display: flex; gap: 20px; font-size: 13px; color: var(--ink-2); margin: 10px 0 0; flex-wrap: wrap; }
+.mxkey i { display: inline-block; width: 11px; height: 11px; margin-right: 6px; vertical-align: -1px; }
+/* reach table */
+.reach td.path { font-size: 13px; color: var(--ink-2); max-width: 520px; }
+.reach td.path b { font-weight: 600; color: var(--ink); } .reach td.path em { font-style: normal; color: var(--ink-3); }
+.reach .ctl { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin-bottom: 12px; font-size: 14px; }
+.reach .ctl input[type=search] { height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; min-width: 240px; }
+.reach .ctl select { height: 34px; border: 1px solid var(--line); border-radius: 8px; font: inherit; padding: 0 8px; background: var(--surface); }
+/* cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; font-size: 14px; }
+.card h3 { font-size: 16px; } .card .sub2 { color: var(--ink-3); font-size: 13px; margin: 2px 0 10px; }
+.card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.card li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 10px; }
+.card li .r { color: var(--ink-3); font-size: 12.5px; grid-column: 1 / -1; }
+.card li .also { color: var(--amber); font-size: 12.5px; grid-column: 1 / -1; }
+.card li.end { opacity: .6; }
+.card .n { font-weight: 600; white-space: nowrap; }
+</style>
+{% endblock %}
+{% block main %}
+<div class="crumbs">Лаборатория / варианти на секцията „Свързани лица и дружества“</div>
+<p class="lab-note" style="margin-top:6px"><b>Най-ново:</b> <a class="l" href="/lab/vazby?node={{ node | urlencode }}">Визуален регистър</a> (по rejstrik.penize.cz) · <a class="l" href="/lab/explore?node={{ node | urlencode }}">Изследване на връзките</a>: изгледът по проучването (стъпки, разгъване, свити големи възли, собственост отгоре надолу, вградено „Свържи“, текстова таблица).</p>
+<h1 class="h1s">{{ (info.name or node) | tc }}</h1>
+<div class="lab-head"><span>Опитай с:</span>
+  <a class="l" href="?node=p:01M3D2GEZYEKNZ4B6HSXW20CPK">Калин Пешов</a>
+  <a class="l" href="?node=c:201090465">Интермедика Груп</a>
+  <a class="l" href="?node=c:175026992">Корект Финанс</a>
+  <a class="l" href="?node=c:831642181">Софарма Трейдинг</a>
+  <span>или добави <code>?node=c:ЕИК</code> / <code>?node=p:id</code> от адреса на профил</span>
+  <span class="grow"></span><span>Стъпки:</span><div class="tabs" id="depth" role="group" aria-label="Брой стъпки">{% for d in [2, 3, 4, 5] %}<button data-d="{{ d }}" aria-pressed="{{ 'true' if d == 3 else 'false' }}">{{ d }}</button>{% endfor %}</div></div>
+<div class="lab-tabs" role="group">
+  <button data-v="rings" aria-pressed="true">Кръгове<small>обектът в средата</small></button>
+  <button data-v="layers" aria-pressed="false">1. Слоеве<small>вместо графа</small></button>
+  <button data-v="matrix" aria-pressed="false">2. Матрица<small>вместо графа</small></button>
+  <button data-v="table" aria-pressed="false">3. Таблица на обхвата<small>вместо дървото</small></button>
+  <button data-v="cards" aria-pressed="false">4. Карти<small>вместо дървото</small></button>
+</div>
+<section class="p" id="v-rings"><p class="lab-note">Обектът е в средата. Първият кръг са пряко свързаните с него фирми и лица, всеки следващ кръг са свързаните с тях, до последната връзка. Всеки клон заема своя сектор, затова хората на една фирма са до нея. Посочи възел, за да видиш пътя му до центъра и всичките му връзки (и тези към други клони); кликни, за да го закачиш и да го разгънеш по-нататък.</p>
+  <div class="ltools"><button class="btn sm" id="rzout" aria-label="Намали">−</button><span id="rzoom" class="mut">100%</span><button class="btn sm" id="rzin" aria-label="Увеличи">+</button>
+    <button class="btn sm" id="rcenter">Центрирай</button><button class="btn sm" id="rall">Цялата мрежа</button><button class="btn sm go" id="rmore">+1 стъпка</button>
+    <span class="mut">Колелце и влачене: местене · Ctrl + колелце: мащаб</span></div>
+  <div class="vp rings" id="rvp" tabindex="0" aria-label="Кръгове на връзките"></div><p class="mut" id="rcap" style="margin-top:8px"></p></section>
+<section class="p" id="v-layers" hidden><p class="lab-note">Колони по разстояние от обекта, до последната стъпка. Хората и фирмите, които свързват две или повече от предишната колона, са най-горе с жълта рамка. Посочи възел, за да видиш само неговите връзки; кликни, за да го закачиш.</p>
+  <div class="ltools"><button class="btn sm" id="lzout" aria-label="Намали">−</button><span id="lzoom" class="mut">100%</span><button class="btn sm" id="lzin" aria-label="Увеличи">+</button>
+    <button class="btn sm" id="lfitw">По ширина</button><button class="btn sm" id="lfita">Цялата мрежа</button>
+    <label class="chk"><input type="checkbox" id="lall"> Всички възли</label>
+    <span class="mut">Колелце: нагоре-надолу · Shift + колелце: наляво-надясно · Ctrl + колелце: мащаб · влачене с мишката</span></div>
+  <div class="layers vp" id="lvp" tabindex="0" aria-label="Слоеве на връзките"></div><p class="mut" id="lcap" style="margin-top:8px"></p></section>
+<section class="p" id="v-matrix" hidden><p class="lab-note">Редове: дружествата до две стъпки. Колони: лицата и фирмите, които имат роля в повече от едно от тях (жълто), после останалите. Клетката е ролята: квадрат за собственост, кръг за управление, бледо за прекратена.</p><div class="mx" id="matrix"></div>
+  <div class="mxkey"><span><i class="own" style="background:var(--accent);border-radius:2px"></i>собственост</span><span><i style="background:var(--slate);border-radius:50%"></i>управление</span><span><i style="background:var(--accent);border-radius:2px;opacity:.35"></i>прекратена</span></div></section>
+<section class="p reach" id="v-table" hidden><p class="lab-note">Всяко дружество до три стъпки, с пътя, по който е свързано. Подреждане с клик на колона, филтри и CSV.</p><div id="table"></div></section>
+<section class="p" id="v-cards" hidden><p class="lab-note">По една карта за всяко пряко свързано лице или дружество, с хората и фирмите в него. „Също в“ показва кой се среща в повече от една карта.</p><div class="cards" id="cards"></div></section>
+{% endblock %}
+{% block scripts %}
+<script>
+const FOCUS = {{ node | tojson }};
+(async () => {
+  // ---------- graph (shared by the four variants; reloaded when the depth changes) ----------
+  let N, A, dist, par, meta;
+  const kindOf = (id) => id.startsWith('c:') || id.startsWith('f:') ? 'c' : 'p';
+  async function build(depth) {
+    const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: FOCUS, view: 'all', depth }))).json();
+    N = new Map(); A = new Map(); meta = d;
+    ingest(d.edges);
+    if (!N.has(FOCUS)) return false;
+    bfs();
+    return true;
+  }
+  function ingest(edges) {
+    const add = (id, o) => { if (!N.has(id)) N.set(id, { id, kind: kindOf(id), ...o }); else Object.entries(o).forEach(([k, v]) => { if (v != null && N.get(id)[k] == null) N.get(id)[k] = v; }); if (!A.has(id)) A.set(id, new Map()); };
+    for (const e of edges) {
+      add(e.holder, { name: tc(e.holder_name), ref: e.holder_ref, n: e.holder_contracts, eur: e.holder_eur });
+      add(e.company, { name: tc(e.company_name || 'ЕИК ' + e.company.slice(2)), ref: e.company_ref, n: e.company_contracts, eur: e.company_eur });
+      const r = { role: e.role, share: e.share, from: e.valid_from, to: e.valid_to, open: !e.uncertain_after, holder: e.holder, company: e.company, active: !e.valid_to && !e.uncertain_after };
+      for (const [a, b] of [[e.holder, e.company], [e.company, e.holder]]) { if (!A.get(a).has(b)) A.get(a).set(b, []); A.get(a).get(b).push(r); }
+    }
+  }
+  function bfs() {
+    dist = new Map([[FOCUS, 0]]); par = new Map();
+    const q = [FOCUS];
+    while (q.length) { const x = q.shift(); for (const y of A.get(x).keys()) if (!dist.has(y)) { dist.set(y, dist.get(x) + 1); par.set(y, x); q.push(y); } }
+  }
+  const href = (n) => n.ref ? (n.kind === 'p' ? '/persons/' + n.ref : '/companies/' + n.ref) : null;
+  const roleTxt = (r) => (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '') + ' ' + span({ valid_from: r.from, valid_to: r.to, uncertain_after: r.open ? null : 1 });
+  const own = (rs) => rs.some((r) => OWN.has(r.role)), live = (rs) => rs.some((r) => r.active);
+  const money = (n) => n.kind === 'c' ? (n.n ? `${nf.format(n.n)} дог. · ${big(+n.eur || 0)}` : 'без договори') : `в ${[...A.get(n.id).keys()].filter((k) => N.get(k).kind === 'c').length} дружества`;
+  const byVal = (a, b) => (live(A.get(FOCUS).get(b.id) || []) - live(A.get(FOCUS).get(a.id) || [])) || ((+b.eur || 0) - (+a.eur || 0)) || a.name.localeCompare(b.name);
+  const depthOf = () => +document.querySelector('#depth [aria-pressed="true"]').dataset.d;
+
+
+  // ---------- 0. rings: the object in the middle, every further step one ring out, to the end ----------
+  // Layout: a radial tree over the breadth-first tree from the object. Each branch owns a slice of the
+  // circle proportional to how much hangs from it, so a company's people sit next to it; links that
+  // are not on the tree (the shared people) are drawn when a node is pointed at.
+  const RZ = { k: 1, x: 0, y: 0, R: 1, min: 0.02 };
+  function rings(keepView) {
+    const kids = new Map([...dist.keys()].map((id) => [id, []]));
+    for (const [c, p] of par) kids.get(p)?.push(c);
+    const val = (id) => +(N.get(id).eur || 0);
+    for (const ks of kids.values()) ks.sort((a, b) => val(b) - val(a) || N.get(a).name.localeCompare(N.get(b).name));
+    const leaves = new Map();
+    const count = (id) => { const ks = kids.get(id); const v = ks.length ? ks.reduce((s, c) => s + count(c), 0) : 1; leaves.set(id, v); return v; };
+    count(FOCUS);
+    const ang = new Map([[FOCUS, 0]]);
+    const place = (id, a0, a1) => { let a = a0; for (const c of kids.get(id)) { const w = ((a1 - a0) * leaves.get(c)) / leaves.get(id); ang.set(c, a + w / 2); place(c, a, a + w); a += w; } };
+    place(FOCUS, -Math.PI / 2, (3 * Math.PI) / 2);
+    const depth = Math.max(...dist.values()), R = [0], SP = 17, RING = 250;
+    for (let k = 1; k <= depth; k++) {
+      const a = [...dist].filter(([, d]) => d === k).map(([id]) => ang.get(id)).sort((x, y) => x - y);
+      let gap = 2 * Math.PI;
+      for (let i = 1; i < a.length; i++) gap = Math.min(gap, a[i] - a[i - 1]);
+      if (a.length > 1) gap = Math.min(gap, a[0] + 2 * Math.PI - a[a.length - 1]);
+      R[k] = Math.max(R[k - 1] + RING, a.length > 1 ? SP / gap : 0, k === 1 ? 190 : 0);
+    }
+    const xy = (id) => { const r = R[dist.get(id)], t = ang.get(id); return [r * Math.cos(t), r * Math.sin(t)]; };
+    const shared = (id) => dist.get(id) > 1 && [...A.get(id).keys()].filter((x) => dist.get(x) === dist.get(id) - 1).length > 1;
+    let gs = '', es = '', ns = '';
+    R.forEach((r, k) => { if (k) gs += `<circle class="ring" r="${r}"/><text class="rl" x="0" y="${-r - 8}" text-anchor="middle">${k} ${k === 1 ? 'стъпка' : 'стъпки'} · ${nf.format([...dist.values()].filter((d) => d === k).length)}</text>`; });
+    for (const [c, p] of par) {
+      const [x1, y1] = xy(p), [x2, y2] = xy(c), rm = (R[dist.get(p)] + R[dist.get(c)]) / 2, ap = ang.get(p), ac = ang.get(c), rs = A.get(p).get(c);
+      const c1 = p === FOCUS ? [0, 0] : [rm * Math.cos(ap), rm * Math.sin(ap)];
+      es += `<path class="ln tree ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" data-a="${p}" data-b="${c}" d="M${x1},${y1} C${c1[0]},${c1[1]} ${rm * Math.cos(ac)},${rm * Math.sin(ac)} ${x2},${y2}"/>`;
+    }
+    for (const [id, d] of dist) {
+      const n = N.get(id);
+      if (id === FOCUS) { ns += `<g class="nd root" data-id="${id}"><rect x="-110" y="-26" width="220" height="52" rx="6"/><text class="t" y="-3" text-anchor="middle">${esc(n.name.length > 30 ? n.name.slice(0, 29) + '…' : n.name)}</text><text class="m" y="15" text-anchor="middle">${esc(money(n))}</text></g>`; continue; }
+      const deg = (ang.get(id) * 180) / Math.PI, left = Math.cos(ang.get(id)) < 0, r = R[d], lx = r + 9;
+      const label = (n.name.length > 34 ? n.name.slice(0, 33) + '…' : n.name) + (n.kind === 'c' && n.n ? ' · ' + short(+n.eur || 0) + ' €' : '');
+      ns += `<g class="nd ${shared(id) ? 'share' : ''} ${n.more ? 'open' : ''}" data-id="${id}" transform="rotate(${deg.toFixed(2)})">
+        ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${r - 5}" y="-5" width="10" height="10" rx="2"/>` : `<circle class="k" cx="${r}" cy="0" r="5"/>`}
+        <text class="lb" x="${lx}" y="4" ${left ? `transform="rotate(180 ${lx} 0)" text-anchor="end"` : ''}>${esc(label)}</text></g>`;
+    }
+    const vp = $('rvp');
+    vp.innerHTML = `<svg class="rbody"><g>${gs}<g class="edges">${es}</g><g class="xl"></g>${ns}</g></svg><div class="pin" id="rpin"></div>`;
+    RZ.R = R[depth] + 260;
+    if (!keepView) rfit(Math.min(2, depth));
+    else rapply();
+    $('rcap').textContent = `${nf.format(dist.size)} възела на ${depth} ${depth === 1 ? 'стъпка' : 'стъпки'}. ` +
+      (meta.capped ? 'Мрежата продължава: за да стигнеш по-далеч в клон, кликни външен възел и „Разгъни оттук“.' : meta.beyond ? 'Има още: „+1 стъпка“ или „Разгъни оттук“ на външен възел.' : 'Това са всички връзки.');
+    const body = vp.querySelector('.rbody'), xl = body.querySelector('.xl');
+    let pinned = null;
+    const hl = (id) => {
+      body.classList.toggle('hot', !!id); body.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); xl.innerHTML = ''; if (!id) return;
+      // the node, its way back to the object, and every link it has (tree or not)
+      for (let x = id; x; x = par.get(x)) { body.querySelector(`.nd[data-id="${x}"]`)?.classList.add('on'); if (par.has(x)) body.querySelector(`.ln[data-a="${par.get(x)}"][data-b="${x}"]`)?.classList.add('on'); }
+      let extra = '';
+      for (const [b, rs] of A.get(id)) { if (!dist.has(b)) continue; body.querySelector(`.nd[data-id="${b}"]`)?.classList.add('on');
+        if (par.get(b) === id) { body.querySelector(`.ln[data-a="${id}"][data-b="${b}"]`)?.classList.add('on'); continue; }
+        if (par.get(id) === b) continue;
+        const [x1, y1] = xy(id), [x2, y2] = xy(b);
+        extra += `<path class="ln on x ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" d="M${x1},${y1} Q0,0 ${x2},${y2}"><title>${esc(rs.map(roleTxt).join(', '))}</title></path>`; }
+      xl.innerHTML = extra;
+    };
+    body.onmouseover = (e) => { if (!RZ.drag) { const g = e.target.closest('.nd'); if (!pinned) hl(g?.dataset.id); } };
+    body.onmouseleave = () => { if (!pinned) hl(null); };
+    body.onclick = (e) => { if (RZ.moved) return; const g = e.target.closest('.nd'); pinned = g && pinned !== g.dataset.id ? g.dataset.id : null; hl(pinned); rpin(pinned); };
+  }
+  function rpin(id) {
+    const el = $('rpin'); if (!id) { el.classList.remove('on'); return; }
+    const n = N.get(id), h = href(n), path = []; for (let x = id; x; x = par.get(x)) path.unshift(N.get(x).name);
+    el.innerHTML = `<h3>${esc(n.name)}</h3><div class="mut">${esc(money(n))} · ${dist.get(id)} ${dist.get(id) === 1 ? 'стъпка' : 'стъпки'}</div>
+      <div class="mut" style="margin:6px 0">${esc(path.join(' → '))}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${h ? `<a class="btn sm" href="${h}">Профил</a>` : ''}<a class="btn sm" href="?node=${id}#rings">В центъра</a>
+        ${id !== FOCUS ? `<button class="btn sm go" id="rexp">Разгъни оттук</button>` : ''}</div>
+      <ul>${[...A.get(id)].map(([b, rs]) => `<li>${esc(N.get(b).name)}: ${esc(rs.map(roleTxt).join(', '))}</li>`).join('')}</ul>`;
+    el.classList.add('on');
+    const b = $('rexp'); if (b) b.onclick = async () => { b.disabled = true; b.textContent = 'Зареждам…';
+      const d = await (await fetch('/network.json?' + new URLSearchParams({ focus: id, view: 'all', depth: 1 }))).json();
+      const before = dist.size; ingest(d.edges); bfs(); b.textContent = `+${nf.format(dist.size - before)} възела`; rings(true); };
+  }
+  function rapply() {
+    const vp = $('rvp');
+    vp.querySelector('.rbody g')?.setAttribute('transform', `translate(${RZ.x},${RZ.y}) scale(${RZ.k})`);
+    $('rzoom').textContent = (RZ.k < 0.1 ? (RZ.k * 100).toFixed(1) : Math.round(RZ.k * 100)) + '%';
+  }
+  function rfit(ring) {
+    const vp = $('rvp'), s = Math.min(vp.clientWidth, vp.clientHeight) / 2 - 10;
+    const r = ring == null ? RZ.R : (() => { const g = vp.querySelectorAll('.ring')[ring - 1]; return (g ? +g.getAttribute('r') : RZ.R) + 240; })();
+    RZ.min = Math.min(0.05, s / RZ.R); RZ.k = Math.min(1.2, s / r); RZ.x = vp.clientWidth / 2; RZ.y = vp.clientHeight / 2; rapply();
+  }
+  function rzoom(f, cx, cy) {
+    const vp = $('rvp'), k = Math.min(3, Math.max(RZ.min, RZ.k * f));
+    cx ??= vp.clientWidth / 2; cy ??= vp.clientHeight / 2;
+    RZ.x = cx - (cx - RZ.x) * (k / RZ.k); RZ.y = cy - (cy - RZ.y) * (k / RZ.k); RZ.k = k; rapply();
+  }
+  function rpan() {
+    const vp = $('rvp');
+    vp.addEventListener('wheel', (e) => { e.preventDefault();
+      if (e.ctrlKey || e.metaKey) { const r = vp.getBoundingClientRect(); rzoom(Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top); return; }
+      RZ.x -= e.shiftKey ? e.deltaY : e.deltaX; RZ.y -= e.shiftKey ? 0 : e.deltaY; rapply(); }, { passive: false });
+    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; RZ.drag = { x: e.clientX - RZ.x, y: e.clientY - RZ.y, sx: e.clientX, sy: e.clientY }; RZ.moved = false; RZ.pid = e.pointerId; });
+    vp.addEventListener('pointermove', (e) => { if (!RZ.drag) return; if (!RZ.moved && Math.abs(e.clientX - RZ.drag.sx) + Math.abs(e.clientY - RZ.drag.sy) > 4) { RZ.moved = true; vp.setPointerCapture(RZ.pid); vp.classList.add('grab'); } if (!RZ.moved) return; RZ.x = e.clientX - RZ.drag.x; RZ.y = e.clientY - RZ.drag.y; rapply(); });
+    vp.addEventListener('pointerup', () => { RZ.drag = null; vp.classList.remove('grab'); setTimeout(() => { RZ.moved = false; }, 0); });
+    vp.addEventListener('keydown', (e) => { const s = 80; if (e.key === '+' || e.key === '=') rzoom(1.25); else if (e.key === '-') rzoom(0.8);
+      else if (e.key === 'ArrowDown') { RZ.y -= s; rapply(); } else if (e.key === 'ArrowUp') { RZ.y += s; rapply(); }
+      else if (e.key === 'ArrowRight') { RZ.x -= s; rapply(); } else if (e.key === 'ArrowLeft') { RZ.x += s; rapply(); } else return; e.preventDefault(); });
+    $('rzin').onclick = () => rzoom(1.25); $('rzout').onclick = () => rzoom(0.8);
+    $('rcenter').onclick = () => rfit(Math.min(2, Math.max(...dist.values()))); $('rall').onclick = () => rfit(null);
+    $('rmore').onclick = async () => { const b = $('rmore'), D = Math.max(...dist.values()) + 1; b.disabled = true;
+      await build(Math.min(12, D)); b.disabled = false; rings(true); };
+  }
+
+  // ---------- 1. layers: one column per step, zoom and pan in both directions ----------
+  const LZ = { k: 1, x: 0, y: 0, W: 0, H: 0 };
+  function layers() {
+    const depth = Math.max(...dist.values()), all = $('lall').checked;
+    const cols = Array.from({ length: depth + 1 }, () => []);
+    for (const [id, k] of dist) cols[k].push(N.get(id));
+    cols[1]?.sort(byVal);
+    const shown = [cols[0].map((n) => ({ ...n }))];
+    shown[0].hidden = 0;
+    for (let k = 1; k <= depth; k++) {
+      // a node that links two or more of the previous column is a shared link: it goes first;
+      // the rest follow the order of what they hang from, so lines cross as little as possible
+      const idx = new Map(shown[k - 1].map((n, i) => [n.id, i]));
+      const c = cols[k].map((n) => { const ls = [...A.get(n.id).keys()].filter((x) => idx.has(x));
+        return { n, l: ls.length, bc: ls.reduce((s, x) => s + idx.get(x), 0) / Math.max(1, ls.length) }; }).filter((x) => x.l > 0);
+      c.sort((a, b) => (b.l >= 2) - (a.l >= 2) || (a.l >= 2 && b.l >= 2 ? b.l - a.l : a.bc - b.bc) || ((+b.n.eur || 0) - (+a.n.eur || 0)));
+      const keep = all ? c : c.filter((x, i) => k === 1 || x.l >= 2 || (x.n.kind === 'c' && x.n.n) || i < 25).slice(0, 80);
+      shown[k] = keep.map((x) => ({ ...x.n, share: k > 1 && x.l >= 2, links: x.l }));
+      shown[k].hidden = cols[k].length - shown[k].length;
+    }
+    const heads = ['Обект', 'Пряко свързани', ...Array.from({ length: Math.max(0, depth - 1) }, (_, i) => `${i + 2}-ра стъпка`)];
+    const CW = 250, GAP = 70, RH = 48, NH = 40, TOP = 8;
+    const W = shown.length * CW + (shown.length - 1) * GAP, H = TOP + Math.max(...shown.map((c) => c.length + (c.hidden ? 1 : 0))) * RH + 20;
+    const pos = new Map();
+    shown.forEach((c, k) => c.forEach((n, i) => pos.set(n.id, { x: k * (CW + GAP), y: TOP + i * RH })));
+    let es = '', ns = '', hs = '';
+    const seen = new Set();
+    for (const [a, p] of pos) for (const [b, rs] of A.get(a)) {
+      const pb = pos.get(b); if (!pb || pb.x <= p.x || seen.has(a + b)) continue; seen.add(a + b);
+      const x1 = p.x + CW, y1 = p.y + NH / 2, x2 = pb.x, y2 = pb.y + NH / 2, mx = (x1 + x2) / 2;
+      es += `<path class="ln ${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}" data-a="${a}" data-b="${b}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"><title>${esc(rs.map(roleTxt).join(', '))}</title></path>`;
+    }
+    shown.forEach((c, k) => {
+      hs += `<text class="lh" data-x="${k * (CW + GAP)}" y="19">${heads[k]} · ${nf.format(c.length + (c.hidden || 0))}</text>`;
+      c.forEach((n) => { const p = pos.get(n.id), nm = n.name.length > 31 ? n.name.slice(0, 30) + '…' : n.name;
+        ns += `<g class="nd ${n.share ? 'share' : ''}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${CW}" height="${NH}" rx="4"/>
+          ${n.kind === 'c' ? `<rect class="k co ${n.n ? 'on' : ''}" x="${p.x + 10}" y="${p.y + 10}" width="9" height="9" rx="2"/>` : `<circle class="k" cx="${p.x + 14.5}" cy="${p.y + 14.5}" r="4.5"/>`}
+          <text class="t" x="${p.x + 26}" y="${p.y + 18}">${esc(nm)}</text><text class="m" x="${p.x + 26}" y="${p.y + 33}">${esc(money(n))}${n.share ? ' · свързва ' + n.links : ''}</text></g>`; });
+      if (c.hidden) ns += `<text class="more" x="${k * (CW + GAP) + 8}" y="${TOP + c.length * RH + 18}">+ ${nf.format(c.hidden)} още (включи „Всички възли“)</text>`;
+    });
+    const vp = $('lvp');
+    vp.innerHTML = `<svg class="lhead"><g>${hs}</g></svg><svg class="lbody"><g>${es}${ns}</g></svg><div class="pin" id="pin"></div>`;
+    Object.assign(LZ, { W, H });
+    fit('width');
+    $('lcap').textContent = meta.capped ? `Мрежата е по-голяма: показани са най-близките ${nf.format(meta.nodes)} възела.` : meta.beyond ? 'Има още връзки след последната колона: увеличи броя стъпки.' : 'Показани са всички връзки до последната.';
+    let pinned = null;
+    const body = vp.querySelector('.lbody');
+    const hl = (id) => { body.classList.toggle('hot', !!id); body.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); if (!id) return;
+      body.querySelector(`.nd[data-id="${id}"]`)?.classList.add('on');
+      body.querySelectorAll(`.ln[data-a="${id}"], .ln[data-b="${id}"]`).forEach((l) => { l.classList.add('on'); body.querySelector(`.nd[data-id="${l.dataset.a === id ? l.dataset.b : l.dataset.a}"]`)?.classList.add('on'); }); };
+    body.onmouseover = (e) => { if (!LZ.drag) { const g = e.target.closest('.nd'); if (!pinned) hl(g?.dataset.id); } };
+    body.onmouseleave = () => { if (!pinned) hl(null); };
+    body.onclick = (e) => { if (LZ.moved) return; const g = e.target.closest('.nd'); pinned = g && pinned !== g.dataset.id ? g.dataset.id : null; hl(pinned); pin(pinned); };
+  }
+  function apply() {
+    const vp = $('lvp'), w = vp.clientWidth, h = vp.clientHeight - 30;
+    // keep the drawing on screen: at most a quarter of the viewport of empty space on each side
+    LZ.x = Math.min(w / 4, Math.max(w * 3 / 4 - LZ.W * LZ.k, LZ.x));
+    LZ.y = Math.min(h / 4, Math.max(h * 3 / 4 - LZ.H * LZ.k, LZ.y));
+    vp.querySelector('.lbody g')?.setAttribute('transform', `translate(${LZ.x},${LZ.y + 30}) scale(${LZ.k})`);
+    vp.querySelectorAll('.lhead .lh').forEach((t) => t.setAttribute('x', LZ.x + (+t.dataset.x) * LZ.k));
+    $('lzoom').textContent = Math.round(LZ.k * 100) + '%';
+  }
+  function zoom(f, cx, cy) {
+    const vp = $('lvp'), k = Math.min(2.5, Math.max(Math.min(0.08, LZ.min || 0.08), LZ.k * f));
+    cx ??= vp.clientWidth / 2; cy ??= vp.clientHeight / 2;
+    LZ.x = cx - (cx - LZ.x) * (k / LZ.k); LZ.y = (cy - 30) - ((cy - 30) - LZ.y) * (k / LZ.k); LZ.k = k; apply();
+  }
+  function fit(how) {
+    const vp = $('lvp'), w = vp.clientWidth - 24, h = vp.clientHeight - 54;
+    LZ.min = Math.min(w / LZ.W, h / LZ.H);
+    LZ.k = Math.min(1, how === 'all' ? LZ.min : w / LZ.W); LZ.x = 12; LZ.y = 8; apply();
+  }
+  function pan() {
+    const vp = $('lvp');
+    vp.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) { const r = vp.getBoundingClientRect(); zoom(Math.exp(-e.deltaY / 300), e.clientX - r.left, e.clientY - r.top); return; }
+      LZ.x -= e.shiftKey ? e.deltaY : e.deltaX; LZ.y -= e.shiftKey ? 0 : e.deltaY; apply();
+    }, { passive: false });
+    vp.addEventListener('pointerdown', (e) => { if (e.target.closest('.pin')) return; LZ.drag = { x: e.clientX - LZ.x, y: e.clientY - LZ.y, sx: e.clientX, sy: e.clientY }; LZ.moved = false; LZ.pid = e.pointerId; });
+    vp.addEventListener('pointermove', (e) => { if (!LZ.drag) return; if (!LZ.moved && Math.abs(e.clientX - LZ.drag.sx) + Math.abs(e.clientY - LZ.drag.sy) > 4) { LZ.moved = true; vp.setPointerCapture(LZ.pid); vp.classList.add('grab'); } if (!LZ.moved) return; LZ.x = e.clientX - LZ.drag.x; LZ.y = e.clientY - LZ.drag.y; apply(); });
+    vp.addEventListener('pointerup', () => { LZ.drag = null; vp.classList.remove('grab'); setTimeout(() => { LZ.moved = false; }, 0); });
+    vp.addEventListener('keydown', (e) => { const s = 60; if (e.key === '+' || e.key === '=') zoom(1.25); else if (e.key === '-') zoom(0.8);
+      else if (e.key === 'ArrowDown') { LZ.y -= s; apply(); } else if (e.key === 'ArrowUp') { LZ.y += s; apply(); }
+      else if (e.key === 'ArrowRight') { LZ.x -= s; apply(); } else if (e.key === 'ArrowLeft') { LZ.x += s; apply(); } else return; e.preventDefault(); });
+    $('lzin').onclick = () => zoom(1.25); $('lzout').onclick = () => zoom(0.8);
+    $('lfitw').onclick = () => fit('width'); $('lfita').onclick = () => fit('all');
+    $('lall').onchange = layers;
+    addEventListener('resize', apply);
+  }
+
+  function pin(id) {
+    const el = $('pin'); if (!id) { el.classList.remove('on'); return; }
+    const n = N.get(id), h = href(n);
+    el.innerHTML = `<h3>${esc(n.name)}</h3><div class="mut">${esc(money(n))}${h ? ` · <a class="l" href="${h}">профил</a> · <a class="l" href="?node=${id}">сложи в центъра</a>` : ''}</div>
+      <ul>${[...A.get(id)].map(([b, rs]) => `<li>${esc(N.get(b).name)}: ${esc(rs.map(roleTxt).join(', '))}</li>`).join('')}</ul>`;
+    el.classList.add('on');
+  }
+
+  // ---------- 2. matrix ----------
+  function matrix() {
+    const rows = [...dist].filter(([id, k]) => k <= 2 && N.get(id).kind === 'c').map(([id]) => N.get(id))
+      .sort((a, b) => (a.id !== FOCUS) - (b.id !== FOCUS) || dist.get(a.id) - dist.get(b.id) || ((+b.eur || 0) - (+a.eur || 0))).slice(0, 60);
+    const R = new Set(rows.map((r) => r.id));
+    const colsAll = [...N.values()].filter((n) => dist.has(n.id) && dist.get(n.id) <= 3)
+      .map((n) => ({ n, rs: [...A.get(n.id)].filter(([b, rs]) => R.has(b) && rs.some((r) => r.holder === n.id)) }))
+      .filter((x) => x.rs.length);
+    colsAll.sort((a, b) => (b.n.id === FOCUS) - (a.n.id === FOCUS) || b.rs.length - a.rs.length || a.n.name.localeCompare(b.n.name));
+    const cols = colsAll.slice(0, 90);
+    const cell = (n, rowId) => { const rs = A.get(n.id).get(rowId)?.filter((r) => r.holder === n.id); if (!rs || !rs.length) return '<td class="c"></td>';
+      return `<td class="c" title="${esc(n.name + ' в ' + N.get(rowId).name + ': ' + rs.map(roleTxt).join(', '))}"><i class="${own(rs) ? 'own' : 'mg'} ${live(rs) ? '' : 'end'}"></i></td>`; };
+    let h = `<table><thead><tr><th class="rowh">Дружество<small>${nf.format(rows.length)} дружества · ${nf.format(colsAll.length)} лица и фирми с роля в тях</small></th>
+      ${cols.map((c) => { const u = href(c.n); return `<th class="col ${c.rs.length > 1 ? 'share' : ''}" title="${esc(c.n.name)}: в ${c.rs.length} от дружествата">${u ? `<a href="${u}">` : ''}<div>${esc(c.n.name)}</div>${u ? '</a>' : ''}</th>`; }).join('')}
+      <th class="rowh" style="min-width:130px;text-align:right">Договори</th></tr></thead><tbody>`;
+    for (const r of rows) { const u = href(r);
+      h += `<tr><th class="rowh">${u ? `<a class="u" href="${u}">${esc(r.name)}</a>` : esc(r.name)}<small>${dist.get(r.id) === 0 ? 'обектът' : dist.get(r.id) === 1 ? 'пряко свързано' : 'през едно звено'}</small></th>${cols.map((c) => cell(c.n, r.id)).join('')}<td class="v">${r.n ? big(+r.eur || 0) : 'няма данни'}</td></tr>`; }
+    $('matrix').innerHTML = h + '</tbody></table>' + (colsAll.length > cols.length ? `<p class="mut" style="padding:8px">Показани са първите ${cols.length} от ${colsAll.length} колони.</p>` : '');
+  }
+
+  // ---------- 3. reach table ----------
+  async function table() {
+    const cos = [...dist].filter(([id, k]) => k > 0 && N.get(id).kind === 'c').map(([id]) => N.get(id));
+    const tb = await (await fetch('/lab/top-buyers.json?nodes=' + cos.filter((c) => c.n && c.id.startsWith('c:')).map((c) => c.id).join(','))).json();
+    const path = (id) => { const p = [id]; while (par.has(p[0])) p.unshift(par.get(p[0])); return p; };
+    const rows = cos.map((c) => { const p = path(c.id), steps = [];
+      let active = true;
+      for (let i = 1; i < p.length; i++) { const rs = A.get(p[i - 1]).get(p[i]); active = active && live(rs);
+        steps.push({ name: N.get(p[i]).name, role: rs.map((r) => (ROLE[r.role] || r.role) + (r.share ? ' ' + r.share : '')).join(', '), who: rs[0].holder === p[i] ? 'up' : 'down' }); }
+      const b = tb[c.id] || {};
+      return { c, k: dist.get(c.id), steps, active, n: c.n || 0, eur: +c.eur || 0, buyer: b.name ? tc(b.name) : '', beik: b.eik }; });
+    const st = { sort: 'eur', dir: -1, k: Math.max(...dist.values()), act: false, con: false, q: '' };
+    const cols = [['name', 'Дружество'], ['k', 'Стъпки'], ['path', 'Как е свързано'], ['active', 'Сега'], ['n', 'Договори'], ['eur', 'Стойност'], ['buyer', 'Основен възложител']];
+    const pathHtml = (r) => [N.get(FOCUS).name, ...r.steps.map((s) => s.name)].map((nm, i) => i === 0 ? `<b>${esc(nm)}</b>` : `<em> → ${esc(r.steps[i - 1].role)} → </em><b>${esc(nm)}</b>`).join('');
+    const val = (r, k) => k === 'name' ? r.c.name : k === 'path' ? r.steps.length : k === 'active' ? +r.active : r[k];
+    function draw() {
+      let v = rows.filter((r) => r.k <= st.k && (!st.act || r.active) && (!st.con || r.n) && (!st.q || (r.c.name + ' ' + r.steps.map((s) => s.name).join(' ')).toLowerCase().includes(st.q)));
+      v.sort((a, b) => { const x = val(a, st.sort), y = val(b, st.sort); return (typeof x === 'string' ? x.localeCompare(y) : x - y) * st.dir; });
+      $('table').innerHTML = `<div class="ctl"><input type="search" placeholder="Търси дружество или лице" value="${esc(st.q)}" id="rq">
+        <label>До <select id="rk">${Array.from({ length: Math.max(...dist.values()) }, (_, i) => i + 1).map((k) => `<option ${k === st.k ? 'selected' : ''}>${k}</option>`).join('')}</select> стъпки</label>
+        <label class="chk"><input type="checkbox" id="ra" ${st.act ? 'checked' : ''}> само действащи връзки</label>
+        <label class="chk"><input type="checkbox" id="rc" ${st.con ? 'checked' : ''}> само с договори</label>
+        <span class="mut">${nf.format(v.length)} дружества · ${big(v.reduce((s, r) => s + r.eur, 0))}</span><span style="flex:1"></span><button class="btn sm" id="rcsv">CSV</button></div>
+        <table><thead><tr>${cols.map(([k, l]) => `<th class="${['n', 'eur', 'k'].includes(k) ? 'n' : ''}" aria-sort="${st.sort === k ? (st.dir > 0 ? 'ascending' : 'descending') : 'none'}"><a class="sort" href="#" data-k="${k}">${l}</a></th>`).join('')}</tr></thead><tbody>
+        ${v.slice(0, 400).map((r) => { const u = href(r.c); return `<tr><td>${u ? `<a class="u strong" href="${u}">${esc(r.c.name)}</a>` : esc(r.c.name)}</td><td class="n">${r.k}</td><td class="path">${pathHtml(r)}</td>
+          <td class="${r.active ? '' : 'mut'}">${r.active ? 'действаща' : 'минала'}</td><td class="n">${r.n ? nf.format(r.n) : 'няма данни'}</td><td class="n strong">${r.n ? big(r.eur) : 'няма данни'}</td>
+          <td class="mut">${r.beik ? `<a class="u" href="/buyers/${r.beik}">${esc(r.buyer)}</a>` : ''}</td></tr>`; }).join('')}</tbody></table>`;
+      $('rq').oninput = (e) => { st.q = e.target.value.toLowerCase(); const p = e.target.selectionStart; draw(); $('rq').focus(); $('rq').setSelectionRange(p, p); };
+      $('rk').onchange = (e) => { st.k = +e.target.value; draw(); };
+      $('ra').onchange = (e) => { st.act = e.target.checked; draw(); }; $('rc').onchange = (e) => { st.con = e.target.checked; draw(); };
+      $('table').querySelectorAll('a.sort').forEach((a) => a.onclick = (e) => { e.preventDefault(); const k = a.dataset.k; st.dir = st.sort === k ? -st.dir : (['name', 'buyer', 'path'].includes(k) ? 1 : -1); st.sort = k; draw(); });
+      $('rcsv').onclick = () => { const lines = [['Дружество', 'ЕИК', 'Стъпки', 'Път', 'Действаща', 'Договори', 'Стойност EUR', 'Основен възложител']]
+        .concat(v.map((r) => [r.c.name, r.c.id.slice(2), r.k, [N.get(FOCUS).name, ...r.steps.map((s) => `${s.role} > ${s.name}`)].join(' > '), r.active ? 'да' : 'не', r.n, Math.round(r.eur), r.buyer]));
+        const csv = '﻿' + lines.map((l) => l.map((x) => `"${String(x ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'vruzki.csv'; a.click(); };
+    }
+    draw();
+  }
+
+  // ---------- 4. cards ----------
+  function cards() {
+    const first = [...A.get(FOCUS).keys()].map((id) => N.get(id)).sort(byVal);
+    const where = new Map();  // node -> first-level nodes it appears under
+    for (const f of first) for (const b of A.get(f.id).keys()) if (b !== FOCUS) { if (!where.has(b)) where.set(b, []); where.get(b).push(f.id); }
+    $('cards').innerHTML = first.map((f) => { const rs = A.get(FOCUS).get(f.id), u = href(f), kids = [...A.get(f.id)].filter(([b]) => b !== FOCUS)
+        .sort(([a, ra], [b, rb]) => live(rb) - live(ra) || (where.get(b).length - where.get(a).length));
+      return `<div class="card"><h3>${u ? `<a class="u" href="${u}">${esc(f.name)}</a>` : esc(f.name)}</h3>
+        <div class="sub2">${esc(N.get(FOCUS).name)}: ${esc(rs.map(roleTxt).join(', '))} · <b>${esc(money(f))}</b></div>
+        <ul>${kids.slice(0, 14).map(([b, brs]) => { const n = N.get(b), also = where.get(b).filter((x) => x !== f.id), hu = href(n);
+          return `<li class="${live(brs) ? '' : 'end'}"><span>${n.kind === 'c' ? '▪ ' : ''}${hu ? `<a class="u" href="${hu}">${esc(n.name)}</a>` : esc(n.name)}</span><span class="n">${n.kind === 'c' && n.n ? big(+n.eur || 0) : ''}</span>
+            <span class="r">${esc(brs.map(roleTxt).join(', '))}</span>${also.length ? `<span class="also">също в ${also.length === 1 ? esc(N.get(also[0]).name) : `${also.length} други: ` + esc(also.slice(0, 3).map((x) => N.get(x).name).join(', ')) + (also.length > 3 ? '…' : '')}</span>` : ''}</li>`; }).join('')}
+          ${kids.length > 14 ? `<li class="mut">и още ${kids.length - 14}</li>` : ''}${kids.length ? '' : '<li class="mut">няма други прочетени връзки</li>'}</ul></div>`; }).join('');
+  }
+
+  let done = {};
+  // ?depth=2..5 and ?all=1 in the address, so a view can be shared
+  const U = new URLSearchParams(location.search), D0 = [2, 3, 4, 5].includes(+U.get('depth')) ? +U.get('depth') : 3;
+  $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', +x.dataset.d === D0));
+  if (U.get('all') === '1') $('lall').checked = true;
+  if (!(await build(D0))) { document.querySelectorAll('section.p').forEach((s) => s.innerHTML = '<p class="mut">Няма прочетени връзки за този обект.</p>'); return; }
+  pan(); rpan();
+  $('depth').onclick = async (e) => { const b = e.target.closest('button'); if (!b) return;
+    $('depth').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    await build(+b.dataset.d); done = {}; show(document.querySelector('.lab-tabs [aria-pressed="true"]').dataset.v); };
+  const show = (v) => { document.querySelectorAll('.lab-tabs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.v === v));
+    ['rings', 'layers', 'matrix', 'table', 'cards'].forEach((x) => $('v-' + x).hidden = x !== v);
+    if (!done[v]) { done[v] = 1; ({ rings, layers, matrix, table, cards })[v](); } };
+  document.querySelector('.lab-tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { history.replaceState(null, '', '#' + b.dataset.v); show(b.dataset.v); } };
+  show(['rings', 'layers', 'matrix', 'table', 'cards'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'rings');
+})();
+</script>
+{% endblock %}

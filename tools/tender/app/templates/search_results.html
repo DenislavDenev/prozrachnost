@@ -1,0 +1,10 @@
+{% set label = {"company": "Фирма", "person": "Лице", "buyer": "Възложител", "tender": "Поръчка"} %}
+{% if q %}
+<ul class="results">
+{% for r in res %}
+  <li><a href="{{ link(r.kind, r.ref) }}"><span class="k">{{ label[r.kind] }}</span><span class="t">{{ r.label | tc if r.kind != 'tender' else r.label }}</span><span class="s">{{ r.sub }}</span></a></li>
+{% else %}
+  <li class="empty">Няма резултати за „{{ q }}“. Опитай с ЕИК, част от името или на латиница.</li>
+{% endfor %}
+</ul>
+{% endif %}

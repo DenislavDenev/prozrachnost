@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Преглед · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Преглед на кандидатите</h1>
+<p class="lede">Нищо от тук не се показва публично, преди да е потвърдено. Съвпадението по име е само кандидат: потвърждавай само когато ролите, длъжността и снимката явно са на същия човек.</p>
+<div class="grid">
+<section class="p s12"><h2>Публични фигури ({{ figures | length }})</h2>
+<table><thead><tr><th>Лице в регистъра</th><th>Wikidata</th><th class="hide-s">Снимка</th><th class="n">Решение</th></tr></thead><tbody>
+{% for f in figures %}<tr><td><a class="l" href="/persons/{{ f.person_id }}">{{ f.person_name | tc }}</a><div class="mut">{{ f.companies }} дружества</div></td>
+  <td><a class="l" href="https://www.wikidata.org/wiki/{{ f.wikidata_qid }}" target="_blank" rel="noopener">{{ f.label }}</a><div class="mut">{{ f.description or '' }}</div></td>
+  <td class="hide-s">{% if f.photo_file %}<img src="https://commons.wikimedia.org/wiki/Special:FilePath/{{ f.photo_file | urlencode }}?width=80" width="56" alt="" loading="lazy">{% endif %}</td>
+  <td class="n nw" id="f{{ loop.index }}">
+    <button class="btn go" hx-post="/admin/review/figure" hx-vals='{"key": "{{ f.person_id }}|{{ f.wikidata_qid }}", "decision": "confirmed"}' hx-target="#f{{ loop.index }}">Същият човек</button>
+    <button class="btn" hx-post="/admin/review/figure" hx-vals='{"key": "{{ f.person_id }}|{{ f.wikidata_qid }}", "decision": "rejected"}' hx-target="#f{{ loop.index }}">Друг</button></td></tr>
+{% else %}<tr><td colspan="4" class="mut">Няма кандидати.</td></tr>{% endfor %}</tbody></table></section>
+<section class="p s12"><h2>Статии ({{ arts | length }})</h2>
+<table><thead><tr><th>За</th><th>Статия</th><th class="n">Решение</th></tr></thead><tbody>
+{% for a in arts %}<tr><td class="mut">{{ a.entity_name | tc }}</td><td><a class="l" href="{{ a.url }}" target="_blank" rel="noopener nofollow">{{ a.title }}</a><div class="mut">{{ a.source or '' }} · {{ a.published_at | date }}</div></td>
+  <td class="n nw" id="a{{ a.id }}">
+    <button class="btn go" hx-post="/admin/review/article" hx-vals='{"key": "{{ a.id }}", "decision": "confirmed"}' hx-target="#a{{ a.id }}">Отнася се</button>
+    <button class="btn" hx-post="/admin/review/article" hx-vals='{"key": "{{ a.id }}", "decision": "rejected"}' hx-target="#a{{ a.id }}">Не</button></td></tr>
+{% else %}<tr><td colspan="3" class="mut">Няма кандидати.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endblock %}

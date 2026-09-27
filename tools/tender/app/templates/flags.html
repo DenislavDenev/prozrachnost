@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Отбелязвания · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Отбелязвания</h1>
+<p class="sub">Автоматичните отбелязвания на фирмите: какво мерят, върху какво, от колко случая нагоре. Всяко е сигнал за проверка, не обвинение. Всяка фирма показва причината с числата.</p>
+<section class="p"><table class="sortable"><thead><tr><th>Отбелязване</th><th class="hide-s">Как се смята</th><th class="n">Прозорец</th><th class="n">Мин. случаи</th><th class="n">Фирми</th></tr></thead><tbody>
+{% for d in defs %}<tr><td><a class="u strong" href="/companies?tag={{ d.code }}&amp;sort=eur&amp;dir=desc">{{ d.label }}</a><div class="mut">{{ 'изчислен индикатор' if d.kind == 'statistical' else 'факт от регистъра' }}</div></td>
+  <td class="hide-s">{{ d.formula }}{% if d.threshold %}<div class="mut">праг {{ d.threshold }}</div>{% endif %}</td>
+  <td class="n">{{ (d.window_years ~ ' г.') if d.window_years else 'целия период' }}</td><td class="n">{{ d.min_n or 'няма данни' }}</td><td class="n strong">{{ d.n | num }}</td></tr>{% endfor %}
+</tbody></table></section>
+{% endblock %}

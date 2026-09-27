@@ -1,0 +1,788 @@
+{
+ "participation": {
+  "AuctionQuotationMethod": false,
+  "AuctionStartDate": null,
+  "IsMainTender": false,
+  "Lots": null,
+  "Rounds": [
+   {
+    "HasSeparatePriceOpening": true,
+    "Offers": [
+     {
+      "ConsortiumMembers": [
+       {
+        "ActivityStatus": 0,
+        "CreatedById": 112567,
+        "CreatedDate": "/Date(1779968120167)/",
+        "EntityId": 325,
+        "EntityMnemonic": "ConsortiumMember",
+        "Guid": "c88c5d68-534a-40b1-a2b2-73f6b5d54a4a",
+        "Id": 38536,
+        "ModifiedById": 112567,
+        "ModifiedDate": "/Date(1779968120167)/",
+        "Version": {
+         "list": [
+          0,
+          0,
+          0,
+          0,
+          158,
+          150,
+          119,
+          78
+         ]
+        },
+        "IsValid": true,
+        "OrganizationName": "АТЛАС ТЕМИЗЛИК ТУРИЗМ ИНШААТ ПЕЙЗАЖ ФИДАНДЖЪЛЪК САНАЙИ ВЕ ТИДЖАРЕТ ЛИМИТЕД ШИРКЕТИ - КЛОН БЪЛГАРИЯ КЧТ",
+        "RegistryNumber": "208392391",
+        "TenderParticipantId": 3398174
+       }
+      ],
+      "FirstRoundOfferId": 2814774,
+      "Hash": "FEEC80231189F151D520A7339BBC715C",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2814774,
+      "OfferName": "АТЛАС ТЕМИЗЛИК ТУРИЗМ ИНШААТ ПЕЙЗАЖ ФИДАНДЖЪЛЪК САНАЙИ ВЕ ТИДЖАРЕТ ЛИМИТЕД ШИРКЕТИ - КЛОН БЪЛГАРИЯ КЧТ",
+      "OrganizationName": "IVAN PETROV TESTOV",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": null,
+      "SubmissionDate": "/Date(1779970990067)/"
+     },
+     {
+      "ConsortiumMembers": [
+       {
+        "ActivityStatus": 0,
+        "CreatedById": 44421,
+        "CreatedDate": "/Date(1780046626947)/",
+        "EntityId": 325,
+        "EntityMnemonic": "ConsortiumMember",
+        "Guid": "e3acab74-1aad-4910-bff6-1afe3fe6c393",
+        "Id": 38560,
+        "ModifiedById": 44421,
+        "ModifiedDate": "/Date(1780046626947)/",
+        "Version": {
+         "list": [
+          0,
+          0,
+          0,
+          0,
+          158,
+          165,
+          216,
+          142
+         ]
+        },
+        "IsValid": true,
+        "OrganizationName": "ЕКО РЕСУРС-Р ООД",
+        "RegistryNumber": "131306107",
+        "TenderParticipantId": 3376922
+       },
+       {
+        "ActivityStatus": 0,
+        "CreatedById": 44421,
+        "CreatedDate": "/Date(1780046626947)/",
+        "EntityId": 325,
+        "EntityMnemonic": "ConsortiumMember",
+        "Guid": "eceb5fdd-8e24-4b15-9089-63cfc7d1d5e1",
+        "Id": 38561,
+        "ModifiedById": 44421,
+        "ModifiedDate": "/Date(1780046626947)/",
+        "Version": {
+         "list": [
+          0,
+          0,
+          0,
+          0,
+          158,
+          165,
+          216,
+          143
+         ]
+        },
+        "IsValid": true,
+        "OrganizationName": "Еко Тийм София ЕООД",
+        "RegistryNumber": "202239595",
+        "TenderParticipantId": 3376922
+       },
+       {
+        "ActivityStatus": 0,
+        "CreatedById": 44421,
+        "CreatedDate": "/Date(1780046626947)/",
+        "EntityId": 325,
+        "EntityMnemonic": "ConsortiumMember",
+        "Guid": "bcc78ea7-8c48-4e46-8d1f-0d5e331af88f",
+        "Id": 38562,
+        "ModifiedById": 44421,
+        "ModifiedDate": "/Date(1780046626947)/",
+        "Version": {
+         "list": [
+          0,
+          0,
+          0,
+          0,
+          158,
+          165,
+          216,
+          144
+         ]
+        },
+        "IsValid": true,
+        "OrganizationName": "ЗЕБРА ООД",
+        "RegistryNumber": "103801869",
+        "TenderParticipantId": 3376922
+       }
+      ],
+      "FirstRoundOfferId": 2796999,
+      "Hash": "99713224B3E191E30622BA7AE1BC196D",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2796999,
+      "OfferName": "\"ЗА ЧИСТА ВАРНА\" ДЗЗД",
+      "OrganizationName": "ЕКО РЕСУРС-Р ООД",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": "131306107",
+      "SubmissionDate": "/Date(1780047366057)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2816128,
+      "Hash": "5DD0A9333DD74A51087AD1FD6D673A88",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2816128,
+      "OfferName": "Изи Еко Клийн ЕООД",
+      "OrganizationName": "Изи Еко Клийн ЕООД",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": "208242114",
+      "SubmissionDate": "/Date(1780084626590)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2820527,
+      "Hash": "1F447A98C0A785B977E5930A14138635",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2820527,
+      "OfferName": "БКС Чистота ЕООД",
+      "OrganizationName": "БКС Чистота ЕООД",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": "127016841",
+      "SubmissionDate": "/Date(1780086763883)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2797494,
+      "Hash": "AFE1F8E77CB7BF697E81F8B4C696D857",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2797494,
+      "OfferName": "ЗМБГ ЕАД",
+      "OrganizationName": "ЗМБГ ЕАД",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": "200706452",
+      "SubmissionDate": "/Date(1780087186640)/"
+     },
+     {
+      "ConsortiumMembers": [],
+      "FirstRoundOfferId": 2819402,
+      "Hash": "8B46C6D3DD97C61F1BB59D6514DC87A0",
+      "IsPriceOpened": false,
+      "OfferEntityId": 48,
+      "OfferId": 2819402,
+      "OfferName": "Янев Транс Груп ЕООД",
+      "OrganizationName": "Янев Транс Груп ЕООД",
+      "Price": null,
+      "PriceExportDocumentId": null,
+      "RegistryNumber": "208816018",
+      "SubmissionDate": "/Date(1780087776457)/"
+     }
+    ],
+    "OpeningOfOffersDate": "/Date(1780311600000)/",
+    "OpeningOfPriceOffersDate": null,
+    "OrderNumber": 1,
+    "RoundDisplayName": "Подаване на оферти",
+    "ShowSuppliersOnToday": true
+   }
+  ],
+  "TenderName": "„Събиране и транспортиране на отпадъци, почистване и поддържане на чистотата на места за обществено ползване на територията на Община Варна“"
+ },
+ "lots": [],
+ "announcements": [
+  {
+   "CreatedDate": "/Date(1786452200297)/",
+   "Id": 457414,
+   "ReceiptDocumentHash": null,
+   "Text": "Решение за прекратяване",
+   "Title": "Решение за прекратяване"
+  },
+  {
+   "CreatedDate": "/Date(1779114013910)/",
+   "Id": 441020,
+   "ReceiptDocumentHash": null,
+   "Text": "Разяснение №3",
+   "Title": "Разяснение №3"
+  },
+  {
+   "CreatedDate": "/Date(1778851620307)/",
+   "Id": 440669,
+   "ReceiptDocumentHash": null,
+   "Text": "Разяснение №2",
+   "Title": "Разяснение №2"
+  },
+  {
+   "CreatedDate": "/Date(1778510862940)/",
+   "Id": 439446,
+   "ReceiptDocumentHash": null,
+   "Text": "Разяснение №1",
+   "Title": "Разяснение №1"
+  },
+  {
+   "CreatedDate": "/Date(1778509089227)/",
+   "Id": 439434,
+   "ReceiptDocumentHash": null,
+   "Text": "Становище за осъществен контрол",
+   "Title": "Становище за осъществен контрол"
+  }
+ ],
+ "details": {
+  "CanDownloadRequirements": true,
+  "ChildTenders": [],
+  "CpcProcurementDossier": [
+   {
+    "ActivityStatus": 0,
+    "CreatedById": 2,
+    "CreatedDate": "/Date(1779242353710)/",
+    "EntityId": 1050,
+    "EntityMnemonic": "CpcProcurementDossier",
+    "Guid": "869913e7-03d5-444d-9841-cc12cc90ca5f",
+    "Id": null,
+    "ModifiedById": 2,
+    "ModifiedDate": "/Date(1779242353710)/",
+    "Version": {
+     "list": [
+      0,
+      0,
+      0,
+      0,
+      167,
+      47,
+      79,
+      11
+     ]
+    },
+    "CurrentStatus": "приключено производство",
+    "Defendants": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 2,
+      "CreatedDate": "/Date(1779242353710)/",
+      "EntityId": 1051,
+      "EntityMnemonic": "CpcProcurementDossierCollectionPropertyEntry",
+      "Guid": "c3bab37c-5726-47a9-9257-a5d85842c1f2",
+      "Id": null,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1779242353710)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        157,
+        253,
+        239,
+        241
+       ]
+      },
+      "CollectionName": "Defendants",
+      "CpcProcurementDossierId": 2121295,
+      "Value": "ОБЩИНА ВАРНА"
+     }
+    ],
+    "DossierLink": "http://reg.cpc.bg/Dossier.aspx?DossID=300063763",
+    "DossierPublishDate": "/Date(1779148800000)/",
+    "DossierPublishDateSpecified": true,
+    "ImposedInterimMeasures": [],
+    "ImposedPenalties": [],
+    "Initiators": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 2,
+      "CreatedDate": "/Date(1779242353710)/",
+      "EntityId": 1051,
+      "EntityMnemonic": "CpcProcurementDossierCollectionPropertyEntry",
+      "Guid": "efbd9ae6-f0ad-4d80-a653-b5ed89f55e3b",
+      "Id": null,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1779242353710)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        157,
+        253,
+        239,
+        240
+       ]
+      },
+      "CollectionName": "Initiators",
+      "CpcProcurementDossierId": 2121295,
+      "Value": "\"ЗМБГ\" ЕАД"
+     }
+    ],
+    "InterimMeasures": true,
+    "InterimMeasuresSpecified": true,
+    "LastDecisionPublishDate": "/Date(1785110400000)/",
+    "LastDecisionPublishDateSpecified": true,
+    "LegalBase": null,
+    "ProceedingsCloseDate": null,
+    "ProceedingsCloseDateSpecified": true,
+    "ProceedingsNumber": "КЗК/522/2026",
+    "ProceedingsStartDate": "/Date(1780963200000)/",
+    "ProceedingsStartDateSpecified": true,
+    "ProceedingsSubsections": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 2,
+      "CreatedDate": "/Date(1781055745477)/",
+      "EntityId": 1051,
+      "EntityMnemonic": "CpcProcurementDossierCollectionPropertyEntry",
+      "Guid": "3bcc3d3d-2487-471e-afa1-e80338eae3d8",
+      "Id": null,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1781055745477)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        159,
+        100,
+        215,
+        184
+       ]
+      },
+      "CollectionName": "ProceedingsSubsections",
+      "CpcProcurementDossierId": 2121295,
+      "Value": "ЗОП - чл 45"
+     }
+    ],
+    "ProceedingsType": "ЗОП/НВМОП",
+    "ProcurementNumber": "00081-2026-0089",
+    "RegisterId": "ВХР-1614-19.05.2026",
+    "TenderId": 563386,
+    "UnitedProceedings": []
+   }
+  ],
+  "CurrencyType": 1,
+  "DecimalDigits": 2,
+  "EstimatedValue": 78099835,
+  "EstimatedValueMax": null,
+  "EstimatedValueMin": null,
+  "EstimatedValueType": 1,
+  "ExplicitTenderStatus": 0,
+  "HasContinuousEvaluation": false,
+  "HasSeparatePriceOpening": true,
+  "IsFrameworkAgreement": false,
+  "IsPbpEnabled": true,
+  "LastExplicitTenderStatusChangeDate": null,
+  "LinkedTenders": [],
+  "OfferPhaseEndDate": "/Date(1780088399000)/",
+  "OfferPhaseStartDate": "/Date(1777384077480)/",
+  "OpeningOfOffersDate": "/Date(1780311600000)/",
+  "OpeningOfPricesDate": null,
+  "OrganizationId": 21637,
+  "OrganizationName": "ОБЩИНА ВАРНА",
+  "ParentTender": null,
+  "ProcedureType": 2,
+  "PublicationAuthorities": [
+   {
+    "ActivityStatus": 0,
+    "CreatedById": 1,
+    "CreatedDate": "/Date(1533542736990)/",
+    "EntityId": 277,
+    "EntityMnemonic": "PublicationAuthority",
+    "Guid": "ac379463-f11e-4919-8a1d-58c9dba805a4",
+    "Id": 2,
+    "ModifiedById": 1,
+    "ModifiedDate": "/Date(1533542736990)/",
+    "Version": {
+     "list": [
+      0,
+      0,
+      0,
+      0,
+      2,
+      127,
+      32,
+      124
+     ]
+    },
+    "ClassName": "NX1.BusinessEntities.TedAuthority",
+    "Mnemonic": "TedAuthority",
+    "Properties": "",
+    "TenderPropertyName": "TedAuthority"
+   },
+   {
+    "ActivityStatus": 0,
+    "CreatedById": 1,
+    "CreatedDate": "/Date(1746880052393)/",
+    "EntityId": 277,
+    "EntityMnemonic": "PublicationAuthority",
+    "Guid": "7f44cb08-b886-48bb-91f0-64adc2353fc5",
+    "Id": 4,
+    "ModifiedById": 1,
+    "ModifiedDate": "/Date(1746880052393)/",
+    "Version": {
+     "list": [
+      0,
+      0,
+      0,
+      0,
+      135,
+      118,
+      2,
+      116
+     ]
+    },
+    "ClassName": "NX1.BusinessEntities.RopAuthority",
+    "Mnemonic": "RopAuthority",
+    "Properties": "",
+    "TenderPropertyName": "RopAuthority"
+   },
+   {
+    "ActivityStatus": 0,
+    "CreatedById": 1,
+    "CreatedDate": "/Date(1746880052393)/",
+    "EntityId": 277,
+    "EntityMnemonic": "PublicationAuthority",
+    "Guid": "7e9bf0e1-e139-4c98-b025-2a0a99d80d71",
+    "Id": 5,
+    "ModifiedById": 1,
+    "ModifiedDate": "/Date(1746880052393)/",
+    "Version": {
+     "list": [
+      0,
+      0,
+      0,
+      0,
+      135,
+      118,
+      4,
+      193
+     ]
+    },
+    "ClassName": "NX1.BusinessEntities.EFormsAuthority",
+    "Mnemonic": "EFormsAuthority",
+    "Properties": "",
+    "TenderPropertyName": "EFormsAuthority"
+   }
+  ],
+  "PublicationDate": "/Date(1777514801933)/",
+  "PublicationOnlyTenderType": null,
+  "PublishedTenderParticipationStatus": 2,
+  "PublishedTenderStatus": 1,
+  "RequirementBoxId": 2470794,
+  "RequirementsType": 2,
+  "ShowContracts": true,
+  "ShowTenderAnnouncements": true,
+  "SpecialNumber": "00081-2026-0089",
+  "TenderDescription": "<!-- trimmed -->",
+  "TenderDescriptionDocuments": [
+   {
+    "CreatedDate": "/Date(1777377297470)/",
+    "Id": 54827674,
+    "Extension": ".pdf",
+    "MimeType": "application/pdf",
+    "Name": "Техническа спецификация.pdf",
+    "Size": 1395146
+   },
+   {
+    "CreatedDate": "/Date(1777377312063)/",
+    "Id": 54827712,
+    "Extension": ".zip",
+    "MimeType": "application/zip",
+    "Name": "Приложения към Техническа спецификация.zip",
+    "Size": 10402713
+   },
+   {
+    "CreatedDate": "/Date(1777377319593)/",
+    "Id": 54827716,
+    "Extension": ".pdf",
+    "MimeType": "application/pdf",
+    "Name": "Методика за оценка.pdf",
+    "Size": 570224
+   },
+   {
+    "CreatedDate": "/Date(1777377327940)/",
+    "Id": 54827720,
+    "Extension": ".docx",
+    "MimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "Name": "Указания.docx",
+    "Size": 111142
+   },
+   {
+    "CreatedDate": "/Date(1777377339360)/",
+    "Id": 54827727,
+    "Extension": ".pdf",
+    "MimeType": "application/pdf",
+    "Name": "Приложение пределни цени.pdf",
+    "Size": 97025
+   },
+   {
+    "CreatedDate": "/Date(1777377349453)/",
+    "Id": 54827734,
+    "Extension": ".pdf",
+    "MimeType": "application/pdf",
+    "Name": "Приложение по чл.72 ЗОП.pdf",
+    "Size": 102483
+   },
+   {
+    "CreatedDate": "/Date(1777377360923)/",
+    "Id": 54827749,
+    "Extension": ".docx",
+    "MimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "Name": "договор-проект.docx",
+    "Size": 51186
+   }
+  ],
+  "TenderEntityId": 8,
+  "TenderGuid": "43ca419d-fb5e-46e5-b20f-b550f702c8fd",
+  "TenderId": 563386,
+  "TenderName": "„Събиране и транспортиране на отпадъци, почистване и поддържане на чистотата на места за обществено ползване на територията на Община Варна“",
+  "TenderPublicationDetails": [
+   {
+    "BulgarianNumber": "",
+    "ChildTenderDisplayName": "",
+    "DocumentId": 54881944,
+    "HtmlPreview": "<!-- trimmed -->",
+    "IsSignable": false,
+    "OrganizationName": "",
+    "ParentLotDisplayName": "",
+    "ParentTenderPublicationId": null,
+    "PublicationFormType": 54,
+    "TenderId": 563386,
+    "TenderPublicationAuthorityNumber": "298042-2026",
+    "TenderPublicationAuthorityResultCollection": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 15437,
+      "CreatedDate": "/Date(1777028101220)/",
+      "EntityId": 280,
+      "EntityMnemonic": null,
+      "Guid": "d5862edd-99f1-44c7-a52e-ad9d92bdeb8b",
+      "Id": 848264,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1777514806480)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        156,
+        162,
+        17,
+        189
+       ]
+      },
+      "CorrelationId": "",
+      "PublicationAuthorityId": 5,
+      "Status": 6,
+      "StatusChangedDate": "/Date(1777514523000)/",
+      "TenderPublicationAuthorityNumber": "298042-2026",
+      "TenderPublicationId": 848280,
+      "Timestamp": {
+       "ActivityStatus": 0,
+       "CreatedById": 102857,
+       "CreatedDate": "/Date(1777384079293)/",
+       "EntityId": 290,
+       "EntityMnemonic": "Timestamp",
+       "Guid": "48fb2fbc-09b9-4a94-9e34-aa41a464dd6f",
+       "Id": 8763497,
+       "ModifiedById": 102857,
+       "ModifiedDate": "/Date(1777384079293)/",
+       "Version": {
+        "list": [
+         0,
+         0,
+         0,
+         0,
+         156,
+         134,
+         24,
+         123
+        ]
+       },
+       "DocumentId": 54837231,
+       "RequestDocumentId": 54837232,
+       "ResponseDocumentId": 54837233,
+       "TimestampDate": "/Date(1777384077480)/"
+      },
+      "TimestampId": 8763497
+     }
+    ],
+    "TenderPublicationEntityId": 275,
+    "TenderPublicationId": 848280
+   },
+   {
+    "BulgarianNumber": "",
+    "ChildTenderDisplayName": "",
+    "DocumentId": 54881945,
+    "HtmlPreview": "<!-- trimmed -->",
+    "IsSignable": true,
+    "OrganizationName": "",
+    "ParentLotDisplayName": "",
+    "ParentTenderPublicationId": null,
+    "PublicationFormType": 32,
+    "TenderId": 563386,
+    "TenderPublicationAuthorityNumber": "",
+    "TenderPublicationAuthorityResultCollection": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 15437,
+      "CreatedDate": "/Date(1777375938000)/",
+      "EntityId": 280,
+      "EntityMnemonic": null,
+      "Guid": "3a51af68-5476-4268-b51f-39ff3dcb370e",
+      "Id": 849591,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1777514829030)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        156,
+        162,
+        18,
+        4
+       ]
+      },
+      "CorrelationId": "",
+      "PublicationAuthorityId": 4,
+      "Status": 6,
+      "StatusChangedDate": "/Date(1777514523000)/",
+      "TenderPublicationAuthorityNumber": "",
+      "TenderPublicationId": 849607,
+      "Timestamp": {
+       "ActivityStatus": 0,
+       "CreatedById": 102857,
+       "CreatedDate": "/Date(1777384079293)/",
+       "EntityId": 290,
+       "EntityMnemonic": "Timestamp",
+       "Guid": "7f4ce351-43ba-4f26-9a90-52f44f47bc60",
+       "Id": 8763498,
+       "ModifiedById": 102857,
+       "ModifiedDate": "/Date(1777384079293)/",
+       "Version": {
+        "list": [
+         0,
+         0,
+         0,
+         0,
+         156,
+         134,
+         24,
+         132
+        ]
+       },
+       "DocumentId": 54837234,
+       "RequestDocumentId": 54837235,
+       "ResponseDocumentId": 54837236,
+       "TimestampDate": "/Date(1777384077833)/"
+      },
+      "TimestampId": 8763498
+     }
+    ],
+    "TenderPublicationEntityId": 275,
+    "TenderPublicationId": 849607
+   },
+   {
+    "BulgarianNumber": "",
+    "ChildTenderDisplayName": "",
+    "DocumentId": 58033225,
+    "HtmlPreview": "<!-- trimmed -->",
+    "IsSignable": false,
+    "OrganizationName": "",
+    "ParentLotDisplayName": "",
+    "ParentTenderPublicationId": null,
+    "PublicationFormType": 65,
+    "TenderId": 563386,
+    "TenderPublicationAuthorityNumber": "593377-2026",
+    "TenderPublicationAuthorityResultCollection": [
+     {
+      "ActivityStatus": 0,
+      "CreatedById": 15437,
+      "CreatedDate": "/Date(1787735340250)/",
+      "EntityId": 280,
+      "EntityMnemonic": null,
+      "Guid": "fbea865e-6280-4365-a427-ffed9cceebad",
+      "Id": 895864,
+      "ModifiedById": 2,
+      "ModifiedDate": "/Date(1787797326267)/",
+      "Version": {
+       "list": [
+        0,
+        0,
+        0,
+        0,
+        165,
+        43,
+        130,
+        203
+       ]
+      },
+      "CorrelationId": "",
+      "PublicationAuthorityId": 5,
+      "Status": 6,
+      "StatusChangedDate": "/Date(1787796327000)/",
+      "TenderPublicationAuthorityNumber": "593377-2026",
+      "TenderPublicationId": 895881,
+      "Timestamp": {
+       "ActivityStatus": 0,
+       "CreatedById": 43708,
+       "CreatedDate": "/Date(1787745026007)/",
+       "EntityId": 290,
+       "EntityMnemonic": "Timestamp",
+       "Guid": "e3bfa6e6-2662-45af-b784-c80ea8cf5097",
+       "Id": 9275028,
+       "ModifiedById": 43708,
+       "ModifiedDate": "/Date(1787745026007)/",
+       "Version": {
+        "list": [
+         0,
+         0,
+         0,
+         0,
+         165,
+         33,
+         28,
+         118
+        ]
+       },
+       "DocumentId": 58021451,
+       "RequestDocumentId": 58021452,
+       "ResponseDocumentId": 58021453,
+       "TimestampDate": "/Date(1787745025090)/"
+      },
+      "TimestampId": 9275028
+     }
+    ],
+    "TenderPublicationEntityId": 275,
+    "TenderPublicationId": 895881
+   }
+  ],
+  "TypeOfContract": 1
+ }
+}

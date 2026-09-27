@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_list.html" import th, keep, count, pager %}
+{% block title %}Лица · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Лица</h1>
+<p class="sub">Лица с роля в дружества от Търговския регистър. Договорите са на техните дружества, сключени докато лицето има роля там; всеки договор се брои веднъж.</p>
+<details class="filt" open><summary class="btn">Филтри</summary>
+<form class="filters" action="/persons">
+  <label class="fld grow"><span>Име</span><input name="q" value="{{ L.get('q') }}" placeholder="напр. Иван Петров или Ivanov" data-combo="person" data-pick="go"></label>
+  <label class="fld"><span>Договори</span><select name="with"><option value="">Всички лица</option>
+    <option value="contracts" {{ 'selected' if L.get('with') == 'contracts' }}>Само с договори</option></select></label>
+  {{ keep(L, ['sort', 'dir']) }}<div class="fbtn"><button class="btn go">Филтрирай</button>{% if L.where %}<a class="l reset" href="/persons">Изчисти</a>{% endif %}</div>
+</form></details>
+{{ count(L, 'лица') }}
+<section class="p">
+<table><thead><tr>{{ th(L, 'name', 'Лице') }}{{ th(L, 'companies', 'Дружества', 'n') }}{{ th(L, 'active', 'Действащи роли', 'n hide-s') }}
+  {{ th(L, 'since', 'В регистъра от', 'n hide-s') }}{{ th(L, 'contracts', 'Договори', 'n') }}{{ th(L, 'eur', 'Стойност', 'n') }}</tr></thead><tbody>
+{% for r in rows %}<tr><td><a class="u strong" href="/persons/{{ r.id }}">{{ r.name | tc }}</a></td>
+  <td class="n">{{ r.companies | num }}</td><td class="n hide-s">{{ r.active | num }}</td>
+  <td class="n hide-s mut">{{ r.first_role.year if r.first_role else 'няма данни' }}</td>
+  <td class="n">{{ r.contracts | num }}</td><td class="n strong">{{ r.amount_eur | big }}</td></tr>
+{% else %}<tr><td colspan="6" class="mut">Няма лица по тези филтри.</td></tr>{% endfor %}
+</tbody></table>
+{{ pager(L) }}
+</section>
+{% endblock %}

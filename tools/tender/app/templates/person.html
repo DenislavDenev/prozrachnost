@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ p.name | tc }} · Тендер{% endblock %}
+{% block head %}
+<script src="/static/vendor/cytoscape.min.js?v={{ v }}" defer></script>
+<script src="/static/vazby.js?v={{ v }}" defer></script>
+{% endblock %}
+{% block main %}
+{% set comps = p.roles | map(attribute='company') | unique | list %}
+{% set active = p.roles | selectattr('valid_to', 'none') | map(attribute='company') | unique | list %}
+{% set m = p.modes %}
+<div class="crumbs"><a href="/persons">Лица</a> / {{ p.name | tc }}</div>
+<div class="head">
+  {% if p.figure and p.figure.photo_file %}<figure class="photo"><img src="https://commons.wikimedia.org/wiki/Special:FilePath/{{ p.figure.photo_file | urlencode }}?width=240" alt="{{ p.name | tc }}" width="96" height="120">
+    <figcaption>{{ p.figure.photo_license or 'Wikimedia Commons' }}</figcaption></figure>{% endif %}
+  <div class="grow"><h1>{{ p.name | tc }}</h1>
+    <div class="meta"><span>Лице</span>{% if p.figure %}<span><a class="l" href="https://www.wikidata.org/wiki/{{ p.figure.wikidata_qid }}" rel="noopener">{{ p.figure.description or 'публична фигура' }}</a></span>{% endif %}<span><b>{{ comps | length }}</b> дружества</span><span>{{ active | length }} с действащи роли</span>
+      {% if p.roles %}<span>в регистъра от {{ p.roles[0].valid_from.year }}</span>{% endif %}</div></div>
+  <div class="acts"><a class="btn" href="/svarzanosti?n=p:{{ p.id }}">Свързаности с…</a><a class="btn" href="/legal#корекции-и-възражения">Сигнал за неточност</a></div>
+</div>
+<p class="lede">Вписан в <b>{{ comps | length }} дружества</b> в Търговския регистър.
+  {% if m.all_history.n %}Свързаните с него дружества имат <b>{{ m.all_history.n | num }} договора</b> за <b>{{ m.all_history.eur | big }}</b>;
+  <b>{{ m.at_contract_date.n | num }}</b> от тях са сключени, докато той има роля в съответното дружество.{% else %}Нито едно от тях няма договори в ЦАИС ЕОП от 2020 г. насам.{% endif %}</p>
+<div class="asof">Търговски регистър · ЕГН, адреси и дати на раждане не се показват · регистърни факти, не оценка</div>
+
+<div class="grid">
+  <section class="p s12" id="net"><div class="ph"><div><h2>Свързани лица и дружества</h2>
+    <div class="sub">По вписванията в Търговския регистър. Връзка в регистъра не означава контрол.
+      {% set cv = p.coverage %}{% if not cv %}<span class="warn">Търсенето на други фирми на това лице още не е направено: връзките може да са непълни.</span>{% elif cv.status == 'ambiguous' %}<span class="warn">Търсенето по име дава над 100 съвпадения ({{ cv.total | num }}): другите фирми на лицето може да са непълни.</span>{% elif cv.status == 'failed' %}<span class="warn">Търсенето на други фирми на лицето не успя; ще се опита отново.</span>{% else %}Търсенето на други фирми е завършено на {{ cv.searched_at | date }}.{% endif %}</div></div></div>
+    {% include "_vazby.html" %}</section>
+
+  <section class="p s7"><div class="ph"><div><h2>Роли във времето</h2><div class="sub">По дружества, по вписванията в Търговския регистър</div></div></div><div class="tl" id="tl"></div></section>
+  <section class="p s5"><div class="ph"><div><h2>Договори на свързаните дружества</h2><div class="sub">Един договор се брои веднъж</div></div></div>
+    <div class="modes">
+      <div class="mode"><div><b>Към датата на договора</b> <span class="cnt" style="font-weight:500">основен</span></div><div class="n">{{ m.at_contract_date.n | num }}</div>
+        <div class="why">Само договори, сключени докато лицето има роля в дружеството. Стойност {{ m.at_contract_date.eur | big }}.</div></div>
+      <div class="mode"><div><b>Всички исторически връзки</b></div><div class="n">{{ m.all_history.n | num }}</div>
+        <div class="why">Всички договори на дружества, в които някога е имал роля. Включва периоди без негово участие. Стойност {{ m.all_history.eur | big }}.</div></div>
+      <div class="mode"><div><b>Само действащи роли днес</b></div><div class="n">{{ m.current.n | num }}</div>
+        <div class="why">Дружества с действаща роля към днес, с всичките им договори. Стойност {{ m.current.eur | big }}.</div></div>
+    </div></section>
+
+  {% if p.articles %}<section class="p s12"><div class="ph"><div><h2>Статии</h2><div class="sub">Потвърдени ръчно · заглавие и връзка към източника</div></div></div>
+    <ul class="results">{% for a in p.articles %}<li><a href="{{ a.url }}" rel="noopener nofollow"><span class="k">{{ a.published_at | date }}</span><span class="t">{{ a.title }}</span><span class="s">{{ a.source or '' }}</span></a></li>{% endfor %}</ul></section>{% endif %}
+  <section class="p s12"><div class="ph"><div><h2>Договори по време на ролите му</h2><div class="sub">Само дружества, в които лицето има роля към датата на договора. Кликни заглавие на колона, за да подредиш.</div></div>
+    <div class="acts"><a class="btn" href="/contracts?person={{ p.id }}">Всички</a></div></div>
+    <div class="embed" hx-get="/contracts?person={{ p.id }}&amp;embed=1&amp;per=12" hx-trigger="load"><p class="mut">Зареждане…</p></div></section>
+</div>
+<script type="application/json" id="data">{{ {"roles": p.roles, "node": "p:" ~ p.id} | json | safe }}</script>
+{% endblock %}
+{% block scripts %}
+<script>
+const D = DATA, by = new Map();
+for (const r of D.roles) { if (!by.has(r.company)) by.set(r.company, []); by.get(r.company).push(r); }
+timeline($('tl'), [...by.values()].map((rs) => ({ label: tc(rs[0].company_name || 'ЕИК ' + rs[0].eik), href: rs[0].company_key ? '/companies/' + rs[0].company_key : '#',
+  sub: rs[0].contracts ? `${nf.format(rs[0].contracts)} договора` : 'без договори', roles: rs })));
+addEventListener('load', () => vazby(D.node));
+</script>
+{% endblock %}

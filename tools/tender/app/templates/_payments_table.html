@@ -1,0 +1,11 @@
+{# Budget payments (СЕБРА): /payments, and embedded (embed=1) under the flows chart. #}
+{% from "_list.html" import th, pager, count %}
+{% if L.embed %}{{ count(L, 'плащания') }}{% endif %}<table><thead><tr>{{ th(L, 'date', 'Дата') }}{{ th(L, 'receiver', 'Получател') }}{{ th(L, 'org', 'Платец', 'hide-s') }}{{ th(L, 'eur', 'Сума', 'n') }}</tr></thead><tbody>
+{% for p in rows %}<tr><td class="mut nw">{{ p.settlement_date | date }}</td>
+  <td>{% if p.company_key %}<a class="u strong" href="/companies/{{ p.company_key | q }}">{{ p.receiver_name | tc }}</a>{% else %}<b>{{ p.receiver_name | tc }}</b>{% endif %}
+    <div class="mut">{{ p.reason or '' }}{% if p.pay_code %} · код {{ p.pay_code }}{% endif %}</div></td>
+  <td class="hide-s mut side">{% if p.buyer_eik %}<a class="u" href="/buyers/{{ p.buyer_eik }}">{{ p.organization | tc }}</a>{% else %}{{ p.organization | tc }}{% endif %}</td>
+  <td class="n strong">{{ p.amount_eur | eur }}</td></tr>
+{% else %}<tr><td colspan="4" class="mut">Няма плащания по тези филтри.</td></tr>{% endfor %}
+</tbody></table>
+{{ pager(L) }}

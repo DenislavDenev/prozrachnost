@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Свързаности · Тендер{% endblock %}
+{% block head %}
+<script src="/static/vendor/cytoscape.min.js?v={{ v }}" defer></script>
+<script src="/static/vazby.js?v={{ v }}" defer></script>
+{% endblock %}
+{% macro keep(skip=None) %}{% for x in ids if x != skip %}n={{ x | urlencode }}&amp;{% endfor %}{% if active %}active=1&amp;{% endif %}{% if hubs %}hubs=1&amp;{% endif %}{% endmacro %}
+{% macro opts() %}{% for x in ids %}<input type="hidden" name="n" value="{{ x }}">{% endfor %}{% endmacro %}
+{% macro box(id) %}{% set n = res.nodes.get(id) if res else none %}{% set nm = ((n.name if n else id) or id) | tc %}
+<div class="cn-box {{ 'sel' if id in ids }} {{ 'co' if id.startswith('c:') or id.startswith('f:') else 'pe' }}">
+  <i></i><div>{% if n and n.ref %}<a class="u strong" href="{{ ('/persons/' ~ n.ref) if id.startswith('p:') else ('/companies/' ~ n.ref) }}">{{ nm }}</a>{% else %}<b>{{ nm }}</b>{% endif %}
+  <small>{% if id.startswith('p:') or id.startswith('l:') %}лице{% elif n and n.contracts %}{{ n.contracts | num }} дог. · {{ n.eur | big }}{% else %}без договори{% endif %}{% if n and n.links > 100 %} · {{ n.links | num }} връзки{% endif %}</small></div></div>
+{% endmacro %}
+{% block main %}
+<h1 class="h1s">Свързаности</h1>
+<p class="sub">Добави две или повече лица или фирми. Показваме всички най-кратки пътища между всяка двойка по вписванията в Търговския регистър: кой в коя фирма каква роля има и кога. Връзка в регистъра не означава нарушение или контрол.</p>
+
+<div class="cn-pick">
+  <div class="cn-chips">{% for c in chosen %}<span class="chip {{ 'co' if c.id.startswith('c:') else 'pe' }}"><i></i>{{ (c.name or c.id) | tc }}<a href="/svarzanosti?{{ keep(c.id) }}" aria-label="Махни {{ c.name | tc }}">×</a></span>{% endfor %}
+    {% if not chosen %}<span class="mut">Още няма избрани.</span>{% endif %}</div>
+  <form class="cn-find" action="/svarzanosti">
+    {{ opts() }}{% if active %}<input type="hidden" name="active" value="1">{% endif %}{% if hubs %}<input type="hidden" name="hubs" value="1">{% endif %}
+    <input name="q" id="cnq" value="{{ q }}" placeholder="Добави лице или фирма: име или ЕИК" aria-label="Добави лице или фирма" data-combo="person,company" data-net data-pick="event"><button class="btn go">Търси</button>
+  </form>
+  <div id="cands">{% include "connect_cands.html" %}</div>
+  <form class="cn-opts" action="/svarzanosti">{{ opts() }}
+    <label class="chk"><input type="checkbox" name="active" value="1" {{ 'checked' if active }} onchange="this.form.submit()"> Само действащи връзки</label>
+    <label class="chk"><input type="checkbox" name="hubs" value="1" {{ 'checked' if hubs }} onchange="this.form.submit()"> Без пътища през възли с над 100 връзки (големи бордове и холдинги)</label>
+  </form>
+</div>
+
+{% if res %}
+{% set any_path = res.pairs | selectattr('paths') | list %}
+{% if any_path %}<section class="p"><div class="ph"><div><h2>Всички пътища в графиката</h2><div class="sub">Същата графика като в профилите: годините, „само действащи“, разгъване с „+“ и цял екран. Пътищата са отпред, останалите връзки на избраните са бледи.</div></div></div>
+  {% include "_vazby.html" %}</section>{% endif %}
+{% for p in res.pairs %}
+<section class="p cn-pair">
+  <div class="ph"><div><h2>{{ (res.nodes.get(p.a).name if res.nodes.get(p.a) else p.a) | tc }} и {{ (res.nodes.get(p.b).name if res.nodes.get(p.b) else p.b) | tc }}</h2>
+    <div class="sub">{% if p.paths %}{{ p.paths[0] | length - 1 }} {{ 'стъпка' if p.paths[0] | length == 2 else 'стъпки' }} · {{ p.total | num }} {{ 'път' if p.total == 1 else 'най-кратки пътя' }}{% if p.total > p.paths | length %}, показани първите {{ p.paths | length | num }}{% endif %}{% elif p.timed_out %}Търсенето спря след {{ 60 if budget == 'long' else 10 }} секунди без връзка. <a class="l" href="/svarzanosti?{{ keep() }}budget=long">Търси по-дълго</a>{% else %}Няма връзка в регистъра{% if active %} само с действащи роли{% endif %}{% endif %}
+      {% if p.skipped %} · пропуснати {{ p.skipped | length }} големи възела{% endif %}</div></div></div>
+  {% for path in p.paths %}<div class="cn-chain">
+    {% for id in path %}{{ box(id) }}{% if not loop.last %}{% set nxt = path[loop.index] %}{% set key = [id, nxt] | sort | join('|') %}
+      <div class="cn-link">{% for r in res.roles.get(key, []) %}<span class="{{ 'own' if r.role in ('partner', 'sole_owner', 'trader') else 'mg' }} {{ 'end' if r.valid_to or r.uncertain_after }}">{{ '→' if r.holder == id else '←' }} {{ r.role | role }}{% if r.share %} {{ r.share }}{% endif %} <small>{{ r | period }}</small></span>{% endfor %}</div>
+    {% endif %}{% endfor %}</div>{% endfor %}
+  {% if p.total > p.paths | length %}<a class="btn" href="/svarzanosti?{{ keep() }}lim={{ lim + 50 }}">Покажи още {{ [50, p.total - p.paths | length] | min }}</a>{% endif %}
+</section>
+{% endfor %}
+<script type="application/json" id="data">{{ {"ids": ids, "pairs": res.pairs, "nodes": res.nodes, "roles": res.roles} | json | safe }}</script>
+{% elif ids | length == 1 %}<p class="lede" style="font-size:18px">Добави още едно лице или фирма, за да видиш как са свързани.</p>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+$('cnq')?.addEventListener('combopick', (e) => { const u = new URL(location.href); u.searchParams.append('n', e.detail.node); u.searchParams.delete('q'); location.href = u; });
+// all shortest paths in the graph of the profiles (static/vazby.js), from the first chosen
+if ($('cy')) addEventListener('load', () => vazby(DATA.ids[0], { routes: DATA }));
+</script>
+{% endblock %}

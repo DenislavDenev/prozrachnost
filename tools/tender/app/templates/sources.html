@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Източници и покритие · Тендер{% endblock %}
+{% block main %}
+<h1 class="h1s">Източници и покритие</h1>
+<p class="lede">Докъде стигат данните днес и какво още не е прочетено. „Няма връзки“ на профил означава нещо само когато покритието е пълно.</p>
+<div class="grid">
+  <section class="p s6"><h2>ЦАИС ЕОП</h2><dl class="dl">
+    <dt>Източник</dt><dd><a class="l" href="https://storage.eop.bg" rel="noopener">storage.eop.bg</a>, отворени данни, CC-BY 4.0</dd>
+    <dt>Период</dt><dd>{{ s.eop.first | date }} – {{ s.eop.last | date }}</dd><dt>Публикувани дни</dt><dd>{{ s.eop.days | num }}</dd></dl></section>
+  <section class="p s6"><h2>Търговски регистър</h2><dl class="dl">
+    <dt>Прочетени партиди</dt><dd>{{ s.deeds.ok | num }} ({{ s.deeds.absent | num }} без партида, напр. ДЗЗД)</dd>
+    <dt>Чакат</dt><dd class="{{ 'warn' if s.tr.pending }}">{{ s.tr.pending | num }}</dd><dt>Неуспешни</dt><dd>{{ s.tr.failed | num }}</dd>
+    <dt>Последно прочитане</dt><dd>{{ s.tr.last | date }}</dd>
+    <dt>Търсене по име</dt><dd>{{ s.names.done | num }} от {{ s.names.total | num }} имена; {{ s.names.ambiguous | num }} с над 100 съвпадения (непълно покритие)</dd></dl></section>
+  <section class="p s12"><h2>Последни изпълнения</h2>
+    <table class="sortable"><thead><tr><th>Стъпка</th><th>Състояние</th><th>Начало</th><th>Край</th><th>Грешка</th></tr></thead><tbody>
+    {% for r in s.runs %}<tr><td>{{ r.step }}</td><td class="{{ 'warn' if r.status != 'ok' }}">{{ r.status }}</td><td class="mut nw" data-v="{{ r.started_at.isoformat() }}">{{ r.started_at.strftime('%d.%m %H:%M') }}</td>
+      <td class="mut nw">{{ r.finished_at.strftime('%d.%m %H:%M') if r.finished_at else '' }}</td><td class="mut clamp">{{ r.error or '' }}</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endblock %}
