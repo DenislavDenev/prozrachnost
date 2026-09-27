@@ -421,10 +421,42 @@ def tender(unp, raw=True):
         FROM live.contract c LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0
         WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date""", unp)
     t["stats"] = one(f"""SELECT count(*) n, round({SUM}) eur FROM live.contract c WHERE c.unp = %s""", unp)
+    # lots closed without award (the award notice) and annexes whose contract could not be told apart
+    t["awards"] = rows("SELECT * FROM live.award WHERE unp = %s ORDER BY published_at, lot_no", unp) if has("live.award") else []
+    t["orphans"] = rows("SELECT * FROM live.annex_orphan WHERE unp = %s ORDER BY published_at", unp) if has("live.annex_orphan") else []
+    t["eop"] = eop_extras(t)
     if raw:
         t["records"] = raw_records("tender", unp)
         t["ocds"] = raw_records("ocds", t["tender_id"]) if t["tender_id"] else []
     return t
+
+
+@lru_cache(maxsize=64)
+def _has(rel, minute):
+    return one("SELECT to_regclass(%s) IS NOT NULL ok", rel)["ok"]
+
+
+def has(rel):
+    """Does the table exist (a migration or the first build after it creates it); cached for a minute."""
+    return _has(rel, int(time.time() // 60))
+
+
+def eop_extras(t):
+    """What the ЦАИС ЕОП procedure page adds (eopsvc, read with the offers): dates, every notice and decision with
+    its name, appeals to the КЗК, the attached documents. Empty until the page is read."""
+    tid = str(t.get("tender_id") or "")
+    if not tid.isdigit() or not has("eopsvc.publication"):
+        return {"detail": None, "publications": [], "appeals": [], "documents": []}
+    tid = int(tid)
+    names = "LEFT JOIN live.form_type f ON f.form_type = p.form_type" if has("live.form_type") else ""
+    in_open = "EXISTS (SELECT 1 FROM live.notice n WHERE n.notice_id = p.id::text)" if has("live.notice") else "false"
+    return {
+        "detail": one("SELECT * FROM eopsvc.detail WHERE tender_id = %s", tid),
+        "publications": rows(f"""SELECT p.*, {'f.name' if names else 'NULL'} AS name, {in_open} AS in_open_data
+                                 FROM eopsvc.publication p {names} WHERE p.tender_id = %s ORDER BY coalesce(p.published_at, p.sent_at), p.id""", tid),
+        "appeals": rows("SELECT * FROM eopsvc.appeal WHERE tender_id = %s ORDER BY filed_on NULLS LAST, register_id", tid),
+        "documents": rows("SELECT * FROM eopsvc.document WHERE tender_id = %s ORDER BY created_at, id", tid),
+    }
 
 
 def offers_state(tender_id):
@@ -477,6 +509,32 @@ def tender_events(t, lots):
         for day, titles in days.items():
             ev.append({"when": day, "kind": "msg", "title": titles[0] if len(titles) == 1 else f"{len(titles)} съобщения в ЦАИС ЕОП",
                        "titles": titles if len(titles) > 1 else []})
+    # lots closed without award: the award notice (one event per notice)
+    seen = {}
+    for a in t.get("awards") or []:
+        if a["published_at"]:
+            e = seen.setdefault(a["notice_id"] or a["published_at"], {"when": a["published_at"], "kind": "noaward", "lots": [], "offers": None,
+                                                                      "title": "Обявление за възложена поръчка: без възлагане", "link_oj": a["link_oj"],
+                                                                      "notice_id": a["notice_id"]})
+            e["lots"].append(a["lot_no"])
+            e["offers"] = (e["offers"] or 0) + (a["offers_count"] or 0) if a["offers_count"] is not None else e["offers"]
+    ev += list(seen.values())
+    eop = t.get("eop") or {}
+    d = eop.get("detail")
+    if d and d.get("opening_at"):
+        ev.append({"when": at(d["opening_at"]), "kind": "opening", "title": "Отваряне на офертите"})
+    if d and d.get("prices_opening_at"):
+        ev.append({"when": at(d["prices_opening_at"]), "kind": "opening", "title": "Отваряне на ценовите предложения"})
+    if d and d.get("offers_until") and t.get("submission_deadline") and \
+            abs((at(d["offers_until"]) - at(t["submission_deadline"])).total_seconds()) > 3600:
+        ev.append({"when": at(d["offers_until"]), "kind": "deadline", "title": "Срок за оферти в ЦАИС ЕОП (различен от обявлението)"})
+    # notices and decisions that only the ЦАИС ЕОП page lists (the others are events above already)
+    for p in eop.get("publications") or []:
+        if not p["in_open_data"] and (p["published_at"] or p["sent_at"]):
+            ev.append({"when": at(p["published_at"] or p["sent_at"]), "kind": "notice", "title": p["name"] or "Публикация", "pub": p})
+    for a in eop.get("appeals") or []:
+        if a["filed_on"] or a["started_on"]:
+            ev.append({"when": a["filed_on"] or a["started_on"], "kind": "appeal", "title": "Жалба до КЗК", "appeal": a})
     ids = [c["id"] for c in t["contracts"]]
     for a in rows("""SELECT a.contract_id, a.published_at, a.difference, a.currency, a.reason, c.supplier_display supplier
                      FROM live.amendment a JOIN live.contract c ON c.id = a.contract_id
@@ -490,12 +548,15 @@ def tender_lots(t):
     """Per lot (0 = no lots): title, estimate, status, offers (cheapest first) and contracts, for the
     procedure page. Offers come from the procedure pages of ЦАИС ЕОП (live.offer); empty until read."""
     unp = t["unp"]
-    has = one("SELECT to_regclass('live.offer') IS NOT NULL ok")["ok"]  # the first build after migration 0003 creates it
+    built = has("live.offer")  # the first build after migration 0003 creates it
     offers = rows("""SELECT lot_no, round, bidder_name, bidder_eik, company_key, consortium, submitted_at, price_eur,
-        price_opened, won FROM live.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at""", unp) if has else []
+        price_opened, won FROM live.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at""", unp) if built else []
     # the lots and the contracts' lots as ЦАИС ЕОП numbers them, when the procedure page has been read
-    svc = rows("SELECT lot_no, title, estimated_eur, status FROM live.offer_lot WHERE unp = %s", unp) if has else []
-    clot = {r["contract_id"]: r["lot_no"] for r in rows("SELECT contract_id, lot_no FROM live.contract_lot WHERE unp = %s", unp)} if has else {}
+    svc = rows("SELECT lot_no, title, estimated_eur, status FROM live.offer_lot WHERE unp = %s", unp) if built else []
+    clot = {r["contract_id"]: r["lot_no"] for r in rows("SELECT contract_id, lot_no FROM live.contract_lot WHERE unp = %s", unp)} if built else {}
+    fresh = fresh_offers(t, offers)
+    if fresh is not None:  # read after the last build: shown now, not after the next build
+        offers, svc, clot = fresh
     lots = {l["lot_no"]: dict(l, offers=[], contracts=[]) for l in (svc or t["lots"])}
     for o in offers:
         lots.setdefault(o["lot_no"], {"lot_no": o["lot_no"], "title": None, "estimated_eur": None, "status": None,
@@ -518,6 +579,31 @@ def tender_lots(t):
         # the award went above the lowest opened price (a flag only where the criterion is the price alone)
         l["not_lowest"] = bool(win and l["low"] is not None and win[0]["price_eur"] is not None and win[0]["price_eur"] > l["low"] + 0.01)
     return out
+
+
+def fresh_offers(t, built):
+    """The offers of a procedure read from ЦАИС ЕОП after the last build, computed the way db/derive/60_offers.sql
+    does (EUR, company, won), or None when the built ones are current. Returns (offers, lots, contract lots)."""
+    tid = str(t.get("tender_id") or "")
+    if not tid.isdigit():
+        return None
+    got = one("SELECT max(fetched_at) at, count(*) n FROM eopsvc.offer WHERE tender_id = %s", int(tid))
+    if not got["n"] or (built and one("SELECT max(fetched_at) at FROM live.offer WHERE unp = %s", t["unp"])["at"] >= got["at"]):
+        return None
+    offers = rows("""SELECT o.lot_no, o.round, o.bidder_name, o.bidder_eik, co.key company_key, o.consortium, o.submitted_at,
+          CASE upper(coalesce(t.currency, 'BGN')) WHEN 'EUR' THEN o.price WHEN 'BGN' THEN round(o.price / 1.95583, 2) END price_eur,
+          o.price_opened,
+          EXISTS (SELECT 1 FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id
+                  LEFT JOIN eopsvc.contract_lot k ON k.tender_id = o.tender_id AND k.contract_id = c.contract_number
+                  WHERE c.unp = t.unp AND (o.lot_no = 0 OR coalesce(k.lot_no, c.lot_no, 0) = o.lot_no)
+                    AND (s.eik = o.bidder_eik OR s.eik IN (SELECT m->>'eik' FROM jsonb_array_elements(coalesce(o.consortium, '[]')) m))) won
+        FROM eopsvc.offer o JOIN live.tender t ON t.tender_id = o.tender_id::text
+        LEFT JOIN live.company co ON co.key = 'eik:' || o.bidder_eik
+        WHERE o.tender_id = %s ORDER BY o.lot_no, 8 NULLS LAST, o.submitted_at""", int(tid))
+    lots = rows("SELECT lot_no, title, NULL::numeric estimated_eur, NULL status FROM eopsvc.lot WHERE tender_id = %s", int(tid))
+    clot = {r["id"]: r["lot_no"] for r in rows("""SELECT c.id, k.lot_no FROM eopsvc.contract_lot k
+        JOIN live.contract c ON c.unp = %s AND c.contract_number = k.contract_id WHERE k.tender_id = %s""", t["unp"], int(tid))}
+    return offers, lots, clot
 
 
 @lru_cache(maxsize=8)

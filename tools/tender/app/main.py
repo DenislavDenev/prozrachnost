@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from urllib.parse import quote, urlencode
 import datetime as dt
+from zoneinfo import ZoneInfo
 
 import markdown
 import markdown.extensions.toc
@@ -35,6 +36,9 @@ ROLE = {"manager": "управител", "sole_owner": "едноличен со�
 FORM = {"OOD": "ООД", "EOOD": "ЕООД", "AD": "АД", "EAD": "ЕАД", "ET": "ЕТ", "K": "КД", "KD": "КД", "SD": "СД"}
 FLAG = {"review": "≥ 10× прогнозната стойност", "value_low": "много ниска стойност",
         "value_suspect": "съмнителна стойност", "annex_suspect": "съмнителен анекс"}
+
+
+SOFIA = ZoneInfo("Europe/Sofia")
 
 
 def fnum(v, d=0):
@@ -82,6 +86,10 @@ def feurc(v, currency, d=2):
 
 
 def fdate(v):
+    """dd.mm.yyyy; a time with a zone (the offers, ЦАИС ЕОП dates are UTC) is shown on the Sofia calendar day:
+    an offer submitted at 00:30 local time is not dated the day before."""
+    if isinstance(v, dt.datetime) and v.tzinfo:
+        v = v.astimezone(SOFIA)
     return v.strftime("%d.%m.%Y") if v else "няма данни"
 
 
@@ -204,8 +212,9 @@ def tender(request: Request, unp: str):
         raise HTTPException(404)
     lots = Q.tender_lots(t)
     read = Q.offers_state(t["tender_id"]) if not any(l["offers"] for l in lots) else None
-    # until the offers are read: the counts the contracts report (open data), the largest per lot
-    n_reported = sum(max((c["offers_count"] or 0 for c in l["contracts"]), default=0) for l in lots)
+    # until the offers are read: the counts the contracts and the award notices without award report (open data),
+    # the largest per lot
+    n_reported = sum(max((c["offers_count"] or 0 for c in l["contracts"]), default=0) for l in lots) +         sum(a["offers_count"] or 0 for a in t["awards"])
     return page(request, "tender.html", t=t, lots=lots, events=Q.tender_events(t, lots), read=read, n_reported=n_reported, nav="Поръчки")
 
 

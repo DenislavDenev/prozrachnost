@@ -40,7 +40,9 @@ def enqueue(conn, eik, reason, priority, depth=0):
 
 
 def seed_from_contracts(conn):
-    """Every 9-digit supplier/subcontractor ЕИК from the live tables, not read yet."""
+    """Every 9-digit supplier/subcontractor ЕИК from the live tables, not read yet (priority 1), then every
+    bidder and consortium member of the offers (priority 2): a company that only lost still gets its partida,
+    its page and its tags (before 27.09.2026 it did not)."""
     n = conn.execute("""
         INSERT INTO tr.queue(eik, reason, priority, depth)
         SELECT DISTINCT left(eik, 9), 'contract', 1, 0 FROM (
@@ -49,6 +51,14 @@ def seed_from_contracts(conn):
         WHERE length(eik) IN (9, 13)
         ON CONFLICT (eik) DO UPDATE SET priority = 1, depth = 0
         WHERE tr.queue.priority > 1""").rowcount
+    n += conn.execute("""
+        INSERT INTO tr.queue(eik, reason, priority, depth)
+        SELECT DISTINCT left(eik, 9), 'offer', 2, 0 FROM (
+          SELECT bidder_eik eik FROM eopsvc.offer WHERE bidder_eik IS NOT NULL
+          UNION SELECT m->>'eik' FROM eopsvc.offer o, jsonb_array_elements(coalesce(o.consortium, '[]')) m WHERE m->>'eik' IS NOT NULL) s
+        WHERE eik ~ '^([0-9]{9}|[0-9]{13})$'
+        ON CONFLICT (eik) DO UPDATE SET priority = 2, depth = 0
+        WHERE tr.queue.priority > 2""").rowcount
     return n
 
 

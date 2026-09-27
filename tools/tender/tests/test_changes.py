@@ -280,3 +280,114 @@ def test_daily_waits_runs_once_and_does_not_loop_on_failure(conn, monkeypatch):
     assert "failed 2 times" in daily.run()["skipped"]
     with pytest.raises(RuntimeError, match="normalize broke"):
         daily.run(final=True)
+
+
+# ---------- completeness against ЦАИС ЕОП (audit 27.09.2026) ----------
+
+def details(pubs, appeals=(), docs=()):
+    return {"detail": {"offers_from": None, "offers_until": None, "opening_at": None, "prices_opening_at": None, "parent_tender_id": None,
+                       "linked": None},
+            "publications": [{"id": i, "form_type": 54, "ted_number": None, "sent_at": None, "published_at": None} for i in pubs],
+            "appeals": [{"register_id": r, "proceedings_number": None, "kind": None, "subjects": [], "initiators": ["А ООД"], "defendants": [],
+                         "interim_measures": True, "imposed_measures": 0, "imposed_penalties": 0, "status": s, "filed_on": None,
+                         "started_on": None, "last_decision_on": None, "closed_on": None, "link": None} for r, s in appeals],
+            "documents": [{"id": i, "name": f"d{i}.pdf", "size": 1, "created_at": None} for i in docs]}
+
+
+def test_notices_appeals_documents_and_messages_are_never_dropped_on_one_answer(conn, tmp_path, monkeypatch):
+    from ingest import eop_offers as E
+    monkeypatch.setattr(E, "RAW", tmp_path)
+    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason) VALUES (7, 'backfill')")
+    got = lambda pubs, appeals, ann: dict(answer((1, 1, "А", 100)), details=details(pubs, appeals, [5]), announcements=ann)
+    E.store(conn, 7, got([1, 2], [("ВХР-1", "в производство")], [(10, None, "Разяснение №1"), (11, None, "Решение за прекратяване")]), b"a")
+    assert log(conn) == []                                                           # a first read is not a change
+    gone = lambda t: conn.execute(f"SELECT count(*) FILTER (WHERE gone_at IS NOT NULL), count(*) FROM eopsvc.{t} WHERE tender_id = 7").fetchone()
+    # the page stops listing a notice and a message, the appeal moves on
+    E.store(conn, 7, got([1], [("ВХР-1", "приключено производство")], [(10, None, "Разяснение №1")]), b"b")
+    assert gone("publication") == (1, 2) and gone("announcement") == (1, 2) and gone("appeal") == (0, 1)
+    causes = {(r[0], r[1], r[5]) for r in log(conn)}
+    assert {("eop-publication", "7/2", "gone"), ("eop-announcement", "7/11", "gone"), ("eop-appeal", "7/ВХР-1", "rewritten")} <= causes
+    # it comes back: kept, marked back, logged once
+    E.store(conn, 7, got([1, 2], [("ВХР-1", "приключено производство")], [(10, None, "Разяснение №1"), (11, None, "Решение за прекратяване")]), b"c")
+    assert gone("publication") == (0, 2) and gone("announcement") == (0, 2)
+    assert sum(r[5] == "back" for r in log(conn)) == 2 and sum(r[5] == "gone" for r in log(conn)) == 2
+
+
+def test_reparse_takes_the_participant_from_the_raw_answer_we_hold(conn, tmp_path, monkeypatch):
+    import gzip, hashlib, json
+    from pathlib import Path
+    from ingest import eop_offers as E
+    monkeypatch.setattr(E, "RAW", tmp_path)
+    fx = json.loads((Path(__file__).parent / "fixtures" / "eop_svc" / "563386.json").read_text(encoding="utf-8"))
+    blob = json.dumps({"participation": fx["participation"], "lots": fx["lots"]}, ensure_ascii=False).encode()
+    (tmp_path / "563386").mkdir()
+    (tmp_path / "563386" / "202609271123.json.gz").write_bytes(gzip.compress(blob))
+    (tmp_path / "563386" / "202609271200.json.gz").write_bytes(gzip.compress(b'{"participation": null}'))   # a later, held answer
+    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason, status, sha256) VALUES (563386, 'backfill', 'done', %s)",
+                 (hashlib.sha256(blob).hexdigest(),))
+    old = E.parse(563386, fx["participation"], fx["lots"])
+    for r in old:   # as the reader before 27.09.2026 stored them: the submitting account as the participant
+        o = next(x for rd in fx["participation"]["Rounds"] for x in rd["Offers"] if x["OfferId"] == r["offer_id"])
+        r.update(bidder_name=o["OrganizationName"], bidder_eik=E.eik(o["RegistryNumber"]))
+    E.write_offers(conn, old, dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc))
+    E.reparse(conn, st := {})
+    assert st == {"procedures": 1, "changed": 4, "missing_raw": 0}         # the ДЗЗД and the branch: name and ЕИК each
+    names = {r[0] for r in conn.execute("SELECT bidder_name FROM eopsvc.offer WHERE tender_id = 563386")}
+    assert '"ЗА ЧИСТА ВАРНА" ДЗЗД' in names and not any("IVAN" in n for n in names)
+    assert {r[5] for r in log(conn)} == {"reparsed"}
+    assert conn.execute("SELECT min(fetched_at) FROM eopsvc.offer").fetchone()[0] == dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc)
+
+
+def build_small(conn, res):
+    from ingest import build
+    with conn.transaction():
+        conn.execute((build.DERIVE / "schema.sql").read_text(encoding="utf-8"))
+        conn.execute("SET search_path = public")
+        for t in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract", "source_record",
+                  "award", "notice", "annex_orphan"):
+            build._copy(conn, t, res[t])
+    build.step_derive(conn, {})
+    build.step_publish(conn, {})
+
+
+def test_termination_form_names_and_bidders_without_eik_in_the_build(conn):
+    from ingest import normalize as N
+    T = lambda unp, tid, lot=None, **kw: {"uniqueProcurementNumber": unp, "tenderId": tid, "lotIdentifier": lot, "isLot": "Да" if lot else "Не",
+                                           "publicationDate": "2026-05-01T10:00:00", "subject": unp, "noticeId": f"{tid}0{lot or ''}",
+                                           "noticeType": "Обявление за поръчка – Общата директива, стандартен режим",
+                                           "buyerRegistryNumber": "000093442", "buyerName": "ОБЩИНА", **kw}
+    tenders = [T("W", "1001"), T("P", "1002"), T("P", "1002", "LOT-0001"), T("P", "1002", "LOT-0002"), T("K", "1003")]
+    won = {"noAwarding": "Не", "uniqueProcurementNumber": "K", "tenderId": "1003", "contractNumber": "1", "contractValue": "10",
+           "contractCurrency": "EUR", "supplierName": "Б ЕООД", "supplierRegisterNumber": "831641791", "contractDate": "01.07.2026",
+           "noticeId": "5", "publicationDate": "2026-07-02T10:00:00"}
+    res = N.normalize([("2026-05-01", "tenders", tenders), ("2026-07-02", "contracts", [won])], N.Fx({}))
+    for tid, aid, title in ((1001, 1, "РЕШЕНИЕ ЗА ПРЕКРАТЯВАНЕ на процедурата"), (1002, 2, "Решение за прекратяване на обособена позиция № 2"),
+                            (1003, 3, "Решение за прекратяване"), (1001, 4, "Решение за отмяна на решение за прекратяване")):
+        conn.execute("INSERT INTO eopsvc.announcement (tender_id, id, title) VALUES (%s, %s, %s)", (tid, aid, title))
+    conn.execute("""INSERT INTO eopsvc.publication (tender_id, id, form_type) VALUES (1001, 10010, 54), (1001, 900, 32), (1001, 901, 77)""")
+    conn.execute("""INSERT INTO eopsvc.offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, price_opened, fetched_at) VALUES
+        (1001, 0, 1, 1, 'Б ЕООД', NULL, false, now()), (1001, 0, 1, 2, 'Физическо лице', NULL, false, now())""")
+    build_small(conn, res)
+    q = lambda sql: conn.execute(sql).fetchall()
+    assert dict(q("SELECT unp, state FROM live.tender")) == {"W": "cancelled", "P": "open", "K": "contracted"}  # a contract wins
+    assert dict(q("SELECT lot_no, status FROM live.lot WHERE unp = 'P'")) == {1: "open", 2: "cancelled"}     # only the lot it names
+    assert dict(q("SELECT form_type, name FROM live.form_type")) == {54: "Обявление за поръчка – Общата директива, стандартен режим",
+                                                                     32: "Решение по чл. 22, ал. 1 от ЗОП"}  # 77 unnamed: shown as „Публикация“
+    assert dict(q("SELECT offer_id, company_key FROM live.offer")) == {1: "eik:831641791", 2: None}          # by the only company of the name
+
+
+def test_completeness_names_what_one_source_has_and_the_other_not(conn):
+    from ingest import eop_offers as E
+    from ingest import normalize as N
+    t = {"uniqueProcurementNumber": "W", "tenderId": "1001", "publicationDate": "2026-05-01T10:00:00", "subject": "x", "noticeId": "10010",
+         "noticeType": "Обявление", "buyerRegistryNumber": "000093442", "buyerName": "ОБЩИНА"}
+    award = dict(t, noAwarding="Да", noticeId="10011")
+    build_small(conn, N.normalize([("2026-05-01", "tenders", [t]), ("2026-08-01", "contracts", [award])], N.Fx({})))
+    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason, status, fetched_at) VALUES (1001, 'backfill', 'done', now())")
+    conn.execute("INSERT INTO eopsvc.detail (tender_id, fetched_at) VALUES (1001, now())")
+    conn.execute("INSERT INTO eopsvc.publication (tender_id, id) VALUES (1001, 10010)")            # the award notice is missing on the page
+    conn.execute("INSERT INTO eopsvc.contract_lot VALUES (1001, 0, '77')")                          # a contract only on the page
+    m = E.mismatches(conn)
+    assert (m["notice_not_on_page"], m["contracts_only_on_page"]) == (1, 1) and m["notice_examples"] == [[1001, "10011"]]
+    E.mismatches(conn)
+    assert [r[1] for r in log(conn, "completeness")] == ["1001/notice/10011", "1001/contracts"]   # logged once

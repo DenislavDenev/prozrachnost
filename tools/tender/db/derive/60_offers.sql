@@ -23,11 +23,13 @@ SELECT t.unp, l.lot_no, l.title,
 FROM eopsvc.lot l JOIN tender t ON t.tender_id = l.tender_id::text;
 CREATE INDEX ON offer_lot (unp);
 
+CREATE INDEX ON company (upper(name));
+
 CREATE TABLE offer AS
-SELECT t.unp, o.tender_id, o.lot_no, o.round, o.offer_id, o.bidder_name, o.bidder_eik, o.consortium,
+SELECT t.unp, o.tender_id, o.lot_no, o.round, o.offer_id, o.bidder_name, o.bidder_eik, o.submitter_name, o.submitter_eik, o.consortium,
        o.submitted_at, o.price, o.price_opened, t.currency,
        CASE upper(coalesce(t.currency, 'BGN')) WHEN 'EUR' THEN o.price WHEN 'BGN' THEN round(o.price / 1.95583, 2) END AS price_eur,
-       co.key AS company_key,
+       coalesce(co.key, byname.key) AS company_key,
        EXISTS (SELECT 1 FROM contract c JOIN contract_supplier s ON s.contract_id = c.id
                LEFT JOIN contract_lot k ON k.contract_id = c.id
                WHERE c.unp = t.unp AND (o.lot_no = 0 OR coalesce(k.lot_no, c.lot_no, 0) = o.lot_no)
@@ -35,7 +37,10 @@ SELECT t.unp, o.tender_id, o.lot_no, o.round, o.offer_id, o.bidder_name, o.bidde
        o.fetched_at
 FROM eopsvc.offer o
 JOIN tender t ON t.tender_id = o.tender_id::text
-LEFT JOIN company co ON co.key = 'eik:' || o.bidder_eik;
+LEFT JOIN company co ON co.key = 'eik:' || o.bidder_eik
+-- a participant without an ЕИK (it came from a person's account): the only company of exactly that name
+LEFT JOIN LATERAL (SELECT min(c.key) AS key FROM company c WHERE o.bidder_eik IS NULL AND o.bidder_name <> 'Физическо лице'
+                   AND c.eik IS NOT NULL AND upper(c.name) = upper(o.bidder_name) HAVING count(*) = 1) byname ON true;
 
 CREATE INDEX ON offer (unp, lot_no);
 CREATE INDEX ON offer (company_key);

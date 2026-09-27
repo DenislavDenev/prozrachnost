@@ -67,6 +67,26 @@ CREATE TABLE amendment (
   current_value numeric, difference numeric, currency text, reason text, description text
 );
 
+-- lots closed without award: the award notice (noAwarding = Да), with its offer counts (normalize.py _award_row)
+CREATE TABLE award (
+  unp text, tender_id text, lot_no int, notice_id text, notice_type text, published_at timestamp, source_day date,
+  offers_count int, sme_offers_count int, disqualified_offers_count int, link_oj text
+);
+CREATE INDEX ON award (unp);
+
+-- every notice of the flat files once, by its id (= TenderPublicationId of ЦАИС ЕОП)
+CREATE TABLE notice (
+  notice_id text PRIMARY KEY, unp text, kind text, notice_type text, published_at timestamp, source_day date
+);
+CREATE INDEX ON notice (unp);
+
+-- annexes whose contract could not be told apart (normalize.py assign_annexes): kept and shown, never dropped
+CREATE TABLE annex_orphan (
+  unp text, contract_number text, lot_no int, published_at timestamp, source_day date, last_value numeric,
+  current_value numeric, currency text, reason text
+);
+CREATE INDEX ON annex_orphan (unp);
+
 CREATE TABLE subcontract (
   contract_id text NOT NULL, party_key text NOT NULL, eik text, name text, percent numeric,
   amount numeric

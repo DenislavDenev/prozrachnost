@@ -12,8 +12,11 @@ from collections import defaultdict
 
 from .config import BGN_PER_EUR
 
-RULES_VERSION = "normalize_v4"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status;
-# v4: an annex's value in the annex's own currency (after 01.01.2026 annexes restate лев contracts in euro)
+RULES_VERSION = "normalize_v5"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status;
+# v4: an annex's value in the annex's own currency (after 01.01.2026 annexes restate лев contracts in euro);
+# v5 (audit 27.09.2026): award notices without award kept (award), every notice listed (notice), an annex goes to
+# exactly one contract (number, spelling of the number, starting value) or is kept as an orphan, a corrected
+# republication of a contract replaces it instead of adding a second one; every input row is accounted for
 
 YES = {"Да": True, "Не": False}
 
@@ -162,6 +165,19 @@ def lot_no(v):
     return int(m.group(1)) if m else None
 
 
+# Latin letters that look Cyrillic in contract numbers („TO-105“ typed in Latin, „ТО-105“ in Cyrillic)
+_HOMO = str.maketrans("ABCEHKMOPTXY", "АВСЕНКМОРТХУ")
+
+
+def number_key(v):
+    """A contract number as spelled in different records: „Договор № 49-209“ = „49-209/23.11.20“ = „49209“."""
+    s = (text(v) or "").upper().translate(_HOMO)
+    s = re.sub(r"\s*(/|ОТ\s)\s*\d{1,2}\.\d{1,2}\.\d{2,4}\s*(Г\.?)?\s*$", "", s)   # a date at the end
+    s = re.sub(r"^(ДОГОВОР|ДОГ\.?)\s*", "", s)
+    s = re.sub(r"[^0-9А-Я]", "", s.replace("№", ""))
+    return s.lstrip("0") or None
+
+
 # ---------- money ----------
 
 class Fx:
@@ -228,20 +244,36 @@ def normalize(days_rows, fx):
     src = []
     places = {}  # buyer ЕИК -> address from OCDS parties (the flat files carry none)
     unawarded, unawarded_tid = set(), set()  # (unp | OCDS tender id, lot) closed without a contract
+    awards, notices = {}, {}   # award notices without award, every notice of the flat files by id
+    idents = {}                # (unp, number, lot, signing date) -> contract id: a corrected republication replaces it
+    replaced = {}              # contract id -> the id of the correction that replaced it
+    st = defaultdict(int)      # every input row lands in exactly one of these counts (checked at the end)
     last_day = None
     for day, kind, rows in days_rows:
         last_day = max(last_day or day, day)
         for i, r in enumerate(rows):
+            st[f"in_{kind}"] += 1
+            if kind in ("tenders", "contracts"):
+                _notice(r, day, kind, notices)
             if kind == "tenders":
                 unp = _tender_row(r, day, tenders, buyers)
                 if unp:
                     src.append({"entity": "tender", "ref": unp, "day": day, "kind": kind, "idx": i})
+                    st["tenders_used"] += 1
+                else:
+                    st["tenders_without_unp"] += 1
             elif kind == "contracts":
                 if flag(r.get("noAwarding")):
-                    unawarded.add((text(r.get("uniqueProcurementNumber")), lot_no(r.get("lotIdentifier"))))
-                cid = _contract_row(r, day, contracts, buyers)
-                if cid:
-                    src.append({"entity": "contract", "ref": cid, "day": day, "kind": kind, "idx": i})
+                    unp = text(r.get("uniqueProcurementNumber"))
+                    unawarded.add((unp, lot_no(r.get("lotIdentifier"))))
+                    _award_row(r, day, awards)
+                    if unp:
+                        src.append({"entity": "award", "ref": unp, "day": day, "kind": kind, "idx": i})
+                    st["contracts_no_award"] += 1
+                    continue
+                cid, how = _contract_row(r, day, contracts, buyers, idents, replaced)
+                st[f"contracts_{how}"] += 1
+                src.append({"entity": "contract", "ref": cid, "day": day, "kind": kind, "idx": i})
             elif kind == "annexes":
                 key = (text(r.get("uniqueProcurementNumber")), text(r.get("contractNumber")))
                 annexes[key].append((ts_of(r.get("publicationDate")), day, r))
@@ -274,12 +306,10 @@ def normalize(days_rows, fx):
         contracts.setdefault(c["id"], c)
         ocds_added += 1
 
+    assigned, orphans = assign_annexes(annexes, contracts.values(), st)
     out_contracts, suppliers, amendments, subcontracts = [], [], [], []
     for c in contracts.values():
-        chain = sorted(annexes.get((c["unp"], c["contract_number"]), []),
-                       key=lambda a: (a[0] or dt.datetime.min, a[1]))
-        # several contracts can share (unp, number) across lots: keep annexes of the same lot
-        chain = [a for a in chain if lot_no(a[2].get("lotIdentifier")) in (None, c["lot_no"])]
+        chain = sorted(assigned.get(c["id"], []), key=lambda a: (a[0] or dt.datetime.min, a[1]))
         steps, current, current_ccy = [], None, None
         for ts, aday, a in chain:
             last, cur = num(a.get("lastContractValue")), num(a.get("currentContractValue"))
@@ -385,9 +415,32 @@ def normalize(days_rows, fx):
         b.update(places.get(eik) or {"locality": None, "postal_code": None, "nuts": None})
     for t in tenders.values():
         t.pop("synthetic_header", None)
+    # the pointers of a replaced contract lead to the correction that replaced it
+    for s in src:
+        if s["entity"] == "contract":
+            while s["ref"] in replaced:
+                s["ref"] = replaced[s["ref"]]
+    for a in awards.values():
+        a["tender_id"] = a["tender_id"] or (tenders.get(a["unp"]) or {}).get("tender_id")
+    st["ocds_added"] = ocds_added
+    check_accounting(st)
     return {"buyer": list(buyers.values()), "tender": list(tenders.values()), "lot": lots,
             "contract": out_contracts, "contract_supplier": suppliers, "amendment": amendments,
-            "subcontract": subcontracts, "source_record": src, "_stats": {"ocds_added": ocds_added}}
+            "subcontract": subcontracts, "source_record": src, "award": list(awards.values()),
+            "notice": list(notices.values()), "annex_orphan": orphans, "_stats": dict(st)}
+
+
+def check_accounting(st):
+    """Every input row of the flat files is counted exactly once in one of the outcomes; a row that went
+    nowhere (a code path that forgets a record) stops the build instead of disappearing (audit 27.09.2026)."""
+    parts = {"tenders": ("tenders_used", "tenders_without_unp"),
+             "contracts": ("contracts_no_award", "contracts_new", "contracts_republished", "contracts_older",
+                           "contracts_corrected", "contracts_corrected_older"),
+             "annexes": ("annexes_number", "annexes_number_lot", "annexes_spelling", "annexes_start_value", "annexes_orphan")}
+    bad = {k: (st.get(f"in_{k}", 0), sum(st.get(p, 0) for p in ps)) for k, ps in parts.items()
+           if st.get(f"in_{k}", 0) != sum(st.get(p, 0) for p in ps)}
+    if bad:
+        raise AssertionError(f"input rows not accounted for (in, out): {bad}")
 
 
 def _buyer(r, buyers):
@@ -447,9 +500,98 @@ def _tender_header(r, day, buyer, pub):
     }
 
 
-def _contract_row(r, day, contracts, buyers):
-    if flag(r.get("noAwarding")):  # a lot closed without award: no contract exists
-        return None
+def assign_annexes(annexes, contracts, st):
+    """Each annex record to exactly one contract. The annexes of one (УНП, number, lot of the annex) go together;
+    their contract is, in order:
+      1. the only contract with that УНП and number (the annex's lot is not needed and is often numbered
+         differently: 8 873 annexes were lost to that before v5), or among several the one of the annex's lot;
+      2. the only contract whose number is spelled the same way (number_key: „Договор № 49-209“, „49-209/23.11.20“);
+      3. the only contract of the procedure whose value is the starting value of the first annex (ЦАИС ЕОП
+         writes its own contract id into many 2020-2022 annexes, the contract keeps the buyer's number).
+    Anything else is an orphan: kept (annex_orphan) and shown with the procedure, never silently dropped.
+    Returns ({contract id: [(ts, day, row)]}, [orphan rows])."""
+    by_num, by_key, by_unp = defaultdict(list), defaultdict(list), defaultdict(list)
+    for c in contracts:
+        by_num[(c["unp"], c["contract_number"])].append(c)
+        if number_key(c["contract_number"]):
+            by_key[(c["unp"], number_key(c["contract_number"]))].append(c)
+        by_unp[c["unp"]].append(c)
+    groups = defaultdict(list)
+    for (unp, number), rows in annexes.items():
+        for a in rows:
+            groups[(unp, number, lot_no(a[2].get("lotIdentifier")))].append(a)
+    assigned, orphans = defaultdict(list), []
+    for (unp, number, lot), rows in groups.items():
+        rows.sort(key=lambda a: (a[0] or dt.datetime.min, a[1]))
+        target, how = None, None
+        same = by_num.get((unp, number), [])
+        if len(same) == 1:
+            target, how = same[0], "number"
+        elif same:
+            of_lot = [c for c in same if c["lot_no"] == lot]
+            target, how = (of_lot[0], "number_lot") if len(of_lot) == 1 else (None, None)
+        if not target and number_key(number):
+            spelled = by_key.get((unp, number_key(number)), [])
+            target, how = (spelled[0], "spelling") if len(spelled) == 1 else (None, None)
+        if not target and unp:
+            start = num(rows[0][2].get("lastContractValue"))
+            if start:
+                hits = [c for c in by_unp.get(unp, []) if c["value_initial"] is not None and
+                        (abs(c["value_initial"] - start) < 0.01 or abs(c["value_initial"] / BGN_PER_EUR - start) < 0.01)]
+                target, how = (hits[0], "start_value") if len(hits) == 1 else (None, None)
+        if target:
+            assigned[target["id"]] += rows
+            st[f"annexes_{how}"] += len(rows)
+        else:
+            st["annexes_orphan"] += len(rows)
+            for ts, day, a in rows:
+                orphans.append({"unp": unp, "contract_number": number, "lot_no": lot, "published_at": ts, "source_day": day,
+                                "last_value": num(a.get("lastContractValue")), "current_value": num(a.get("currentContractValue")),
+                                "currency": text(a.get("contractCurrency")), "reason": text(a.get("changeReason"))})
+    return assigned, orphans
+
+
+def _notice(r, day, kind, notices):
+    """Every notice of the flat files once (the latest publication of its id): the procedure page lists them all
+    and the completeness check compares the two (eop_offers.mismatches)."""
+    nid = text(r.get("noticeId"))
+    if not nid:
+        return
+    prev = notices.get(nid)
+    if prev and prev["source_day"] > day:
+        return
+    notices[nid] = {"notice_id": nid, "unp": text(r.get("uniqueProcurementNumber")), "kind": kind,
+                    "notice_type": text(r.get("noticeType")), "published_at": ts_of(r.get("publicationDate")), "source_day": day}
+
+
+def _award_row(r, day, awards):
+    """A lot closed without award (noAwarding): the award notice with its number, date and offer counts."""
+    lot = lot_no(r.get("lotIdentifier"))
+    key = (text(r.get("noticeId")) or f"{day}/{text(r.get('uniqueProcurementNumber'))}", lot)
+    prev = awards.get(key)
+    if prev and prev["source_day"] > day:
+        return
+    awards[key] = {"unp": text(r.get("uniqueProcurementNumber")), "tender_id": text(r.get("tenderId")), "lot_no": lot,
+                   "notice_id": text(r.get("noticeId")), "notice_type": text(r.get("noticeType")),
+                   "published_at": ts_of(r.get("publicationDate")), "source_day": day,
+                   "offers_count": r.get("offersCount"), "sme_offers_count": r.get("smeOffersCount"),
+                   "disqualified_offers_count": r.get("disqualifiedOffersCount"), "link_oj": text(r.get("linkToOjEu"))}
+
+
+def _same_contract(prev, value, keys):
+    """A later record of the same number, lot and signing date is a correction of `prev` when the value or a
+    supplier is the same (a typo in the ЕИК, a value, a name fixed in a new notice)."""
+    if value is not None and prev["value_initial"] is not None and abs(value - prev["value_initial"]) < 0.01:
+        return True
+    return bool((set(keys) & set(prev["supplier_keys"])) - {"unknown"})
+
+
+def _contract_row(r, day, contracts, buyers, idents=None, replaced=None):
+    """One contract record. Returns (contract id, how): new | republished (same id, a later notice) | older (an
+    earlier notice of what we hold) | corrected (a later notice of the same contract with other suppliers or
+    value: it replaces the earlier one) | corrected_older (an earlier version of a corrected contract)."""
+    idents = {} if idents is None else idents
+    replaced = {} if replaced is None else replaced
     unp = text(r.get("uniqueProcurementNumber"))
     number = text(r.get("contractNumber"))
     members = split_members(r.get("supplierName"), r.get("supplierRegisterNumber"))
@@ -459,7 +601,22 @@ def _contract_row(r, day, contracts, buyers):
     pub = ts_of(r.get("publicationDate"))
     prev = contracts.get(cid)
     if prev and prev["published_at"] and pub and pub < prev["published_at"]:
-        return cid  # republished: keep the latest notice
+        return cid, "older"  # republished: keep the latest notice
+    how = "republished" if prev else "new"
+    signed, value, notice = day_of(r.get("contractDate")), num(r.get("contractValue")), text(r.get("noticeId"))
+    ident = (unp, number, lot, signed) if unp and number and signed and not flag(r.get("isFrameworkAgreement")) else None
+    other = idents.get(ident) if ident else None
+    # a different notice (records of one notice are separate contracts), the same contract by value or supplier
+    if other and other != cid and other in contracts and contracts[other]["notice_id"] != notice \
+            and _same_contract(contracts[other], value, keys):
+        if contracts[other]["published_at"] and pub and pub < contracts[other]["published_at"]:
+            replaced[cid] = other
+            return other, "corrected_older"
+        del contracts[other]
+        replaced[other] = cid
+        how = "corrected"
+    if ident:
+        idents[ident] = cid
     subs = []
     if flag(r.get("hasSubcontractors")):
         for e, n in split_members(r.get("subcontractorName"), r.get("subcontractorRegistryNumber")):
@@ -495,7 +652,7 @@ def _contract_row(r, day, contracts, buyers):
         "contract_period_days": r.get("contractPeriod"),
         "_members": members, "_subs": subs,
     }
-    return cid
+    return cid, how
 
 
 def _ocds_contracts(rel, day):

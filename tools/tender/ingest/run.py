@@ -2,7 +2,8 @@
 
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
                tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich) |
-               eop-check (validity check of the offers reader; exit 1 = repair needed), eop-offers (offers) |
+               eop-check (validity check of the offers reader; exit 1 = repair needed), eop-offers,
+               eop-reparse (rebuild the offers from the raw answers after a parsing rule change) (offers) |
                sebra [--verify] (budget payments from data.egov.bg) (sebra) |
                daily [--final] (the D-1 chain, ingest/daily.py) | freshness | eop-audit [--full] (build) |
                eop-enqueue [--periodic] (offers-queue) | tr-rotate (seed)
@@ -77,6 +78,10 @@ def main():
             with db.job(a.step, lane="offers") as (conn, stats):
                 stats["queued"] = eop_offers.enqueue(conn)
                 eop_offers.work(conn, a.budget, stats)
+                out.update(stats)
+        elif a.step == "eop-reparse":
+            with db.job(a.step, lane="offers") as (conn, stats):
+                eop_offers.reparse(conn, stats)
                 out.update(stats)
         elif a.step == "sebra":
             with db.job(a.step, lane="sebra") as (conn, stats):

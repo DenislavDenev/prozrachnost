@@ -26,7 +26,7 @@ LABEL = {
     "tenderStartDate": "Начало на изпълнението", "tenderEndDate": "Край на изпълнението",
     "electronicInvoicing": "Електронно фактуриране", "electronicPayment": "Електронно плащане",
     "electronicOrdering": "Електронни поръчки", "changeNoticeCount": "Брой обявления за промяна",
-    "isCancelled": "Прекратена", "changeNoticeDocuments": "Документи за промени", "linkToOjEu": "Връзка към ОВ на ЕС",
+    "isCancelled": "Прекратена (поле на обявлението; прекратяването с решение е в хронологията)", "changeNoticeDocuments": "Документи за промени", "linkToOjEu": "Връзка към ОВ на ЕС",
     # contract
     "contractNumber": "Номер на договора", "contractDate": "Дата на сключване", "contractValue": "Стойност на договора",
     "contractCurrency": "Валута на договора", "contractSubject": "Предмет на договора",

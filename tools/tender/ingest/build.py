@@ -82,7 +82,7 @@ def step_normalize(conn, stats):
         conn.execute((DERIVE / "schema.sql").read_text(encoding="utf-8"))
         conn.execute("SET search_path = public")
         for table in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract",
-                      "source_record"):
+                      "source_record", "award", "notice", "annex_orphan"):
             stats[table] = _copy(conn, table, res[table])
     stats.update(res["_stats"])
     stats["rules"] = normalize.RULES_VERSION

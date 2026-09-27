@@ -11,6 +11,10 @@ CREATE TABLE company AS
 WITH parties AS (
   SELECT party_key, eik, name FROM contract_supplier
   UNION ALL SELECT party_key, eik, name FROM subcontract
+  -- bidders and consortium members of the offers (ЦАИС ЕОП), also those that never won
+  UNION ALL SELECT 'eik:' || bidder_eik, bidder_eik, clean_name(bidder_name) FROM eopsvc.offer WHERE bidder_eik IS NOT NULL
+  UNION ALL SELECT 'eik:' || (m->>'eik'), m->>'eik', clean_name(m->>'name') FROM eopsvc.offer o, jsonb_array_elements(coalesce(o.consortium, '[]')) m
+            WHERE m->>'eik' ~ '^([0-9]{9}|[0-9]{13})$'
   UNION ALL SELECT 'eik:' || eik, eik, clean_name(name) FROM tr.deed WHERE status = 'ok'
   -- companies that hold roles but whose own partida is not read yet still get a page
   UNION ALL SELECT 'eik:' || holder_id, holder_id, clean_name(holder_name) FROM tr.role
