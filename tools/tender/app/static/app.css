@@ -365,3 +365,5 @@ ol.rank li { display: flex; gap: 12px; align-items: baseline; } ol.rank li span 
 .fl-path span { color: var(--ink-4); }
 .fl-help { margin: 4px 0 0; }
 
+
+.word-mark{width:30px;height:30px;display:inline-block;vertical-align:middle;margin-right:8px}
