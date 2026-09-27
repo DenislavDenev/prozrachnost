@@ -1,12 +1,6 @@
 {% extends "base.html" %}
 {% macro visual(t) -%}
-{% if t.visual == "tender" -%}
-<div class="card-visual tender-visual" aria-hidden="true"><div class="bar-chart"><span style="height:39%"></span><span style="height:64%"></span><span style="height:48%"></span><span style="height:80%"></span><span style="height:56%"></span><span style="height:91%"></span><span style="height:69%"></span></div><svg class="chart-line" viewBox="0 0 420 170" preserveAspectRatio="none"><path class="gridline" d="M0 40H420M0 90H420M0 140H420"/><path class="trend" d="M0 130 C50 120 72 138 110 105 S175 90 210 94 S268 37 311 55 S382 20 420 24"/></svg><div class="chart-tag">ДАННИ С КОНТЕКСТ <span>↗</span></div></div>
-{%- elif t.visual == "road" -%}
-<div class="card-visual road-visual" aria-hidden="true"><img src="/static/bulgaria-roads.svg" alt="" loading="lazy"><div class="map-caption">Реални пътища · оценка 2023 · ДАБДП</div></div>
-{%- else -%}
 <div class="card-visual soon-visual" aria-hidden="true"><img src="/static/illustrations/{{ t.slug }}.webp" alt="" width="1200" height="720" loading="lazy"></div>
-{%- endif %}
 {%- endmacro %}
 {% block main %}<section class="hero"><h1>По-ясна картина<br><em>за България.</em></h1><p>Провери публичните данни за разходите и пътищата. Всяка справка води към източника си.</p><a class="text-link" href="#instrumenti">Разгледай инструментите <span aria-hidden="true">↓</span></a></section>
 <section class="tools" id="instrumenti" aria-labelledby="tools-heading"><div class="section-intro"><div><span class="kicker">ИНСТРУМЕНТИ</span><h2 id="tools-heading">Избери тема.</h2></div><p>{{ live_count }} работят, {{ soon_count }} са в подготовка.</p></div>

@@ -57,7 +57,7 @@ def test_json_and_health():
     assert client.get("/healthz").json()["tools"] == 27
 
 
-@pytest.mark.parametrize("t", [t for t in REG["tools"] if t["status"] == "soon"], ids=lambda t: t["slug"])
+@pytest.mark.parametrize("t", REG["tools"], ids=lambda t: t["slug"])
 def test_illustrations(t):
     from PIL import Image
     p = ROOT / "static" / "illustrations" / f"{t['slug']}.webp"

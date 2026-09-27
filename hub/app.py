@@ -25,9 +25,9 @@ def load_registry(path=ROOT / "tools.json"):
         assert t["group"] in groups, f"unknown group for {t['slug']}"
         assert t["status"] in ("active", "new", "soon"), t["slug"]
         assert t["name"] and t["line"], t["slug"]
+        assert (ROOT / "static" / "illustrations" / f"{t['slug']}.webp").exists(), f"missing illustration for {t['slug']}"
         if t["status"] == "soon":
             assert t["questions"] and t["sources"], f"{t['slug']} needs questions and sources"
-            assert (ROOT / "static" / "illustrations" / f"{t['slug']}.webp").exists(), f"missing illustration for {t['slug']}"
         else:
             t["url"] = os.getenv(t["url_env"], t["url_default"])
         groups[t["group"]]["tools"].append(t)

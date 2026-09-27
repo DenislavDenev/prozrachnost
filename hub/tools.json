@@ -8,7 +8,7 @@
     {"key": "obshti", "name": "Общи"}
   ],
   "tools": [
-    {"slug": "tender", "no": 0, "name": "Обществени поръчки", "group": "pari", "status": "active", "url_env": "TENDER_URL", "url_default": "https://tender.denev.work", "visual": "tender",
+    {"slug": "tender", "no": 0, "name": "Обществени поръчки", "group": "pari", "status": "active", "url_env": "TENDER_URL", "url_default": "https://tender.denev.work", "visual": "illustration",
      "line": "Кой, за какво и на кого плаща с публични средства. Разглеждай договори, възложители и изпълнители.", "cta": "Отвори инструмента"},
     {"slug": "byudzhet", "no": 1, "name": "Бюджет", "group": "pari", "status": "soon", "visual": "bars",
      "line": "Как държавата и всяка община събират и харчат парите си.",
@@ -80,7 +80,7 @@
      "line": "Регистрираните престъпления и пожари по области.",
      "questions": ["Колко престъпления се регистрират и разкриват по видове и области?", "Кои видове растат?", "Колко пожари и произшествия има по области?"],
      "sources": [{"name": "МВР, полицейска статистика", "url": "https://data.egov.bg/data/view/386ae85b-0c5c-4a5e-bd88-a8c7c123b765"}, {"name": "ГДПБЗН, статистика", "url": "https://mvr.bg/gdpbzn/"}]},
-    {"slug": "patna-obstanovka", "no": 0, "name": "Пътна обстановка", "group": "sreda", "status": "new", "url_env": "ROAD_URL", "url_default": "http://localhost:8002", "visual": "road",
+    {"slug": "patna-obstanovka", "no": 0, "name": "Пътна обстановка", "group": "sreda", "status": "new", "url_env": "ROAD_URL", "url_default": "http://localhost:8002", "visual": "illustration",
      "line": "Трафик, ограничения, време и пътен риск върху една карта. Виж какво се случва и откъде идват данните.", "cta": "Отвори картата"},
     {"slug": "sreda", "no": 18, "name": "Околна среда", "group": "sreda", "status": "soon", "visual": "dots",
      "line": "Въздух, води, пожари и земетресения.",
