@@ -367,3 +367,7 @@ ol.rank li { display: flex; gap: 12px; align-items: baseline; } ol.rank li span 
 
 
 .word-mark{width:30px;height:30px;display:inline-block;vertical-align:middle;margin-right:8px}
+
+/* Shared mark, wordmark and terminal dot across the three public tools. */
+.bar-in{height:64px}.word{font-family:'Sofia Sans',sans-serif;font-size:25px;font-weight:700;letter-spacing:-.025em;align-items:center;gap:8px;white-space:nowrap}.word-mark{width:34px;height:34px;margin-right:0;flex:none}.brand-dot{color:var(--accent)}
+@media(max-width:650px){.bar-in{height:58px}.word{font-size:19px;gap:5px}.word-mark{width:29px;height:29px}}

@@ -7,14 +7,14 @@
 <meta name="description" content="Обществените поръчки в България: възложители, фирми, лица и връзките между тях, с източник за всяко твърдение.">
 <link rel="stylesheet" href="/static/fonts.css?v={{ v }}">
 <link rel="stylesheet" href="/static/app.css?v={{ v }}">
-<link rel="icon" href="/static/brand-mark.svg">
+<link rel="icon" type="image/svg+xml" sizes="any" href="/static/brand-mark.svg">
 <script src="/static/htmx.min.js?v={{ v }}" defer></script>
 {% block head %}{% endblock %}
 </head>
 <body>
 <a class="skip" href="#main">Към съдържанието</a>
 <header class="bar"><div class="bar-in">
-  <a class="word" href="/"><img class="word-mark" src="/static/brand-mark.svg" alt="">Тендер</a>
+  <a class="word" href="/"><img class="word-mark" src="/static/brand-mark.svg" alt=""><span>Тендер<span class="brand-dot">.</span></span></a>
   <nav class="menu" aria-label="Основна навигация">
     {% for t, h in [("Табло", "/"), ("Карта", "/map"), ("Възложители", "/buyers"), ("Фирми", "/companies"), ("Лица", "/persons"), ("Поръчки", "/tenders"), ("Договори", "/contracts"), ("Потоци", "/flows"), ("Свързаности", "/svarzanosti")] %}
     <a href="{{ h }}" class="{{ 'on' if nav == t }}" {% if nav == t %}aria-current="page"{% endif %}>{{ t }}</a>
