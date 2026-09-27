@@ -1,0 +1,18 @@
+id,dataset,filters,geo,stale_days,label,unit_label
+hicp_i15,prc_hicp_minr,unit=I15,BG,50,"ХИПЦ, индекс по всички групи","индекс, 2015 = 100"
+hicp_rch_m,prc_hicp_minr,unit=RCH_M,BG,50,"ХИПЦ, месечна промяна по всички групи","% спрямо предходния месец"
+hicp_rch_a,prc_hicp_minr,unit=RCH_A,BG,50,"ХИПЦ, годишна промяна по всички групи","% спрямо същия месец на предходната година"
+hicp_eu,prc_hicp_minr,unit=RCH_A&coicop18=TOTAL&coicop18=CP01&coicop18=NRG&coicop18=SERV&coicop18=TOT_X_NRG_FOOD,EU,50,"ХИПЦ в ЕС, годишна промяна","% спрямо същия месец на предходната година"
+gdp_a,nama_10_gdp,na_item=B1GQ&na_item=P3&na_item=P51G&na_item=P6&na_item=P7&unit=CP_MEUR&unit=CLV_PCH_PRE&unit=PC_GDP,BG,400,"БВП и основните му компоненти, годишно",по мерна единица
+gdp_a_eu,nama_10_gdp,na_item=B1GQ&unit=CLV_PCH_PRE,EU,400,"Реален ръст на БВП в ЕС, годишно",% спрямо предходната година
+gdp_q,namq_10_gdp,na_item=B1GQ&unit=CP_MEUR&unit=CLV_PCH_PRE&unit=CLV_PCH_SM&s_adj=SCA,BGEU,130,"БВП, тримесечно (сезонно изгладено)",по мерна единица
+gdp_pc,nama_10_pc,na_item=B1GQ&unit=CP_EUR_HAB,EU,400,"БВП на човек",€ на човек по текущи цени
+gdp_pps,tec00114,,EU,400,"БВП на човек по паритет на покупателната способност","ЕС = 100"
+gdp_nuts,nama_10r_3gdp,unit=MIO_EUR&unit=EUR_HAB&unit=PPS_EU27_2020_HAB,NUTS,730,"БВП по области",по мерна единица
+pop_nuts,nama_10r_3popgdp,unit=THS,NUTS,730,"Средногодишно население по области (за БВП на човек)",хил. души
+unemp,une_rt_m,sex=T&age=TOTAL&age=Y_LT25&unit=PC_ACT&s_adj=SA,EU,50,"Безработица, месечно (сезонно изгладена)",% от работната сила
+min_wage,earn_mw_cur,currency=EUR,EU,250,"Минимална месечна заплата",€ на месец
+salary,nama_10_fte,unit=EUR,EU,500,"Средна годишна заплата на пълно работно време",€ на година
+lci,lc_lci_r2_q,nace_r2=B-S&lcstruct=D11&unit=PCH_SM&s_adj=NSA,BG,130,"Ръст на заплатите (индекс на разходите за труд, заплати)",% спрямо същото тримесечие на предходната година
+debt,gov_10dd_edpt1,na_item=GD&na_item=B9&sector=S13&unit=PC_GDP&unit=MIO_EUR,EU,500,"Държавен дълг и дефицит (сектор „Държавно управление“)",по мерна единица
+hpi,prc_hpi_q,purchase=TOTAL&purchase=DW_NEW&purchase=DW_EXST&unit=I15_Q&unit=RCH_A,EU,130,"Цени на жилищата",по мерна единица
