@@ -371,6 +371,7 @@ def test_award_notice_without_award_is_kept_with_its_offers():
     assert (aw["notice_id"], aw["offers_count"], aw["lot_no"], aw["tender_id"]) == ("895881", 6, 1, "563386")
     assert {n["notice_id"] for n in res["notice"]} == {"848280", "895881"} and res["contract"] == []
     assert [s["entity"] for s in res["source_record"]] == ["tender", "award"] and res["tender"][0]["state"] == "unawarded"
+    assert res["lot"] == []   # LOT-0001 of a procedure without lots is the procedure itself, not a lot of its own
 
 
 def _contract(num, lot, value, supplier="А ООД", eik="202210490", day="01.02.2024", notice="1", pub="2024-02-02T10:00:00", **kw):

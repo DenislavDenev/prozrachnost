@@ -396,7 +396,8 @@ def normalize(days_rows, fx):
     with_contract = {u for u, _ in contracted}
     ref = dt.date.fromisoformat(str(last_day)) if last_day else dt.date.today()
     for u, n in unawarded:
-        if u in tenders and n is not None and n not in tenders[u]["lots"]:
+        # a procedure without lots gets no lot from its award notice („LOT-0001“ of the whole procedure)
+        if u in tenders and n is not None and n not in tenders[u]["lots"] and (tenders[u]["lots"] or (tenders[u]["lots_count"] or 0) > 1):
             tenders[u]["lots"][n] = {"title": None, "estimated_value": None, "currency": None, "cpv": None}
     for t in tenders.values():
         u = t["unp"]

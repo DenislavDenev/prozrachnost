@@ -2,7 +2,7 @@
 {% macro offers_table(l) %}
 <table class="sortable"><thead><tr><th>Участник</th><th class="hide-s">Подадена</th><th class="n">Цена</th><th class="n hide-s">Спрямо прогнозната</th><th class="n">Спрямо най-ниската</th><th>Резултат</th></tr></thead><tbody>
 {% for o in l.offers %}<tr class="{{ 'win' if o.won }}"><td>{% if o.company_key %}<a class="u strong" href="/companies/{{ o.company_key | q }}">{{ o.bidder_name | tc }}</a>{% else %}<b>{{ o.bidder_name | tc }}</b>{% endif %}
-    {% if o.consortium %}<div class="mut">обединение: {{ o.consortium | map(attribute='name') | map('tc') | join(', ') }}</div>{% endif %}</td>
+    {% if o.consortium and not (o.consortium | length == 1 and o.consortium[0].eik and o.consortium[0].eik == o.bidder_eik) %}<div class="mut">обединение: {{ o.consortium | map(attribute='name') | map('tc') | join(', ') }}</div>{% endif %}</td>
   <td class="mut nw hide-s" data-v="{{ o.submitted_at }}">{{ o.submitted_at | date if o.submitted_at else '' }}</td>
   <td class="n strong" data-v="{{ o.price_eur }}">{{ o.price_eur | eur if o.price_eur is not none else ('цената не е отворена' if not o.price_opened else 'няма данни') }}</td>
   <td class="n hide-s" data-v="{{ o.price_eur / l.estimated_eur if o.price_eur and l.estimated_eur else '' }}">{{ ((100 * o.price_eur / l.estimated_eur) | num ~ '%') if o.price_eur and l.estimated_eur else 'няма данни' }}</td>
