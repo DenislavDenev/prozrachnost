@@ -391,3 +391,11 @@ def test_completeness_names_what_one_source_has_and_the_other_not(conn):
     assert (m["notice_not_on_page"], m["contracts_only_on_page"]) == (1, 1) and m["notice_examples"] == [[1001, "10011"]]
     E.mismatches(conn)
     assert [r[1] for r in log(conn, "completeness")] == ["1001/notice/10011", "1001/contracts"]   # logged once
+
+
+def test_a_procedure_known_only_from_its_contracts_is_queued(conn):
+    from ingest import eop_offers as E
+    live_tables(conn)
+    conn.execute("INSERT INTO live.tender VALUES ('S', '777', NULL, NULL, '2024-03-01')")   # no deadline, no notice date
+    assert E.enqueue(conn)["new"] == 1
+    assert conn.execute("SELECT reason FROM eopsvc.queue WHERE tender_id = 777").fetchone() == ("backfill",)

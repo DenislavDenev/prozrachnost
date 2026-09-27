@@ -474,12 +474,13 @@ def enqueue(conn, periodic=False):
     """Procedures past their deadline that were never read ('new' when the deadline passed in the last
     14 days, else 'backfill'); procedures with a newer record than the read ('update'). periodic (weekly):
     procedures whose prices were still closed at the last read ('prices', deadline within a year) and
-    procedures of the last 90 days not read for 30 days ('refresh')."""
+    procedures of the last 90 days not read for 30 days ('refresh'). A procedure known only from its contracts has
+    no deadline and no notice date: it counts from the day of its contract record (before 27.09.2026 never queued)."""
     new = conn.execute("""INSERT INTO eopsvc.queue (tender_id, reason)
-        SELECT t.tender_id::bigint, CASE WHEN coalesce(t.submission_deadline, t.published_at + interval '30 days') > now() - interval '14 days'
+        SELECT t.tender_id::bigint, CASE WHEN coalesce(t.submission_deadline, t.published_at + interval '30 days', t.source_day + interval '30 days') > now() - interval '14 days'
                                          THEN 'new' ELSE 'backfill' END
         FROM live.tender t
-        WHERE t.tender_id ~ '^[0-9]+$' AND coalesce(t.submission_deadline, t.published_at + interval '30 days') < now()
+        WHERE t.tender_id ~ '^[0-9]+$' AND coalesce(t.submission_deadline, t.published_at + interval '30 days', t.source_day + interval '30 days') < now()
         ON CONFLICT DO NOTHING""").rowcount
     upd = conn.execute("""UPDATE eopsvc.queue q SET status = 'pending', reason = 'update', next_at = now(), attempts = 0
         FROM live.tender t
