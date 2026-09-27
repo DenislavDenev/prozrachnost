@@ -308,6 +308,7 @@ def normalize(days_rows, fx):
 
     assigned, orphans = assign_annexes(annexes, contracts.values(), st)
     out_contracts, suppliers, amendments, subcontracts = [], [], [], []
+    raw_tid = {}  # УНП -> the ЦАИС ЕОП id its contracts carry (tenderId)
     for c in contracts.values():
         chain = sorted(assigned.get(c["id"], []), key=lambda a: (a[0] or dt.datetime.min, a[1]))
         steps, current, current_ccy = [], None, None
@@ -369,6 +370,8 @@ def normalize(days_rows, fx):
         for sub in c.pop("_subs"):
             subcontracts.append({"contract_id": c["id"], **sub})
         c.pop("supplier_keys")
+        if c.get("unp_raw_tender_id"):
+            raw_tid.setdefault(c["unp"], c["unp_raw_tender_id"])
         c.pop("unp_raw_tender_id")
         out_contracts.append(c)
 
@@ -376,7 +379,8 @@ def normalize(days_rows, fx):
     for c in out_contracts:
         if c["unp"] and c["unp"] not in tenders:
             tenders[c["unp"]] = {
-                "unp": c["unp"], "tender_id": None, "buyer_eik": c["buyer_eik"],
+                # the ЦАИС ЕОП id from the contracts: without it the procedure page (offers, messages, appeals) is never read
+                "unp": c["unp"], "tender_id": raw_tid.get(c["unp"]), "buyer_eik": c["buyer_eik"],
                 "subject": c["subject"], "procedure_type": c["procedure_type"] or "неизвестна",
                 "cpv": c["cpv"], "cpv_description": c["cpv_description"],
                 "contract_type": c["contract_type"], "estimated_value": None, "estimated_eur": None, "currency": None,

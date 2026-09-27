@@ -461,3 +461,11 @@ def test_tender_events_show_no_award_opening_decisions_and_appeals():
     kinds = [e["kind"] for e in ev]
     assert kinds == ["notice", "pub", "appeal", "deadline", "opening", "noaward"]   # the deadline in ЦАИС ЕОП is the notice's: once
     assert ev[-1]["offers"] == 6 and ev[0]["title"].startswith("Решение по чл. 22")
+
+
+def test_a_procedure_known_only_from_its_contracts_keeps_its_eop_id():
+    # 12 618 such procedures had no ЦАИС ЕОП id before 27.09.2026: their page (offers, messages, appeals) was never read
+    c = {"noAwarding": "Не", "uniqueProcurementNumber": "U", "tenderId": 123456, "contractNumber": "1", "contractValue": "10",
+         "contractCurrency": "EUR", "supplierName": "А", "supplierRegisterNumber": "202210490", "contractDate": "01.02.2024"}
+    (t,) = N.normalize([("2024-02-02", "contracts", [dict(c, tenderId=None, contractNumber="0"), c])], N.Fx({}))["tender"]
+    assert t["synthetic"] and t["tender_id"] == "123456"
