@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ t.name }} | Прозрачност{% endblock %}
+{% block description %}{{ t.name }}: {{ t.line }} Инструментът е в подготовка.{% endblock %}
+{% block main %}<section class="tool-page">
+<nav class="crumbs" aria-label="Път"><a href="/#instrumenti">Инструменти</a><span aria-hidden="true">/</span><a href="/#{{ group.key }}">{{ group.name }}</a></nav>
+<span class="kicker">В ПОДГОТОВКА</span>
+<h1>{{ t.name }}</h1>
+<p class="tool-line">{{ t.line }}</p>
+<div class="card-visual soon-visual tool-visual" aria-hidden="true"><img src="/static/cards/{{ t.slug }}.svg" alt=""><div class="map-caption">примерна графика, не данни</div></div>
+<div class="tool-cols">
+<section><h2>Ще отговаря на</h2><ul>{% for q in t.questions %}<li>{{ q }}</li>{% endfor %}</ul></section>
+<section><h2>Източници</h2><ul>{% for s in t.sources %}<li><a href="{{ s.url }}"{% if s.url.startswith("http") %} target="_blank" rel="noopener noreferrer"{% endif %}>{{ s.name }}</a></li>{% endfor %}</ul>
+{% if t.unknowns %}<h2>Какво още не знаем</h2><p>{{ t.unknowns }}</p>{% endif %}</section>
+</div>
+<a class="text-link" href="/#{{ group.key }}"><span aria-hidden="true">←</span> Всички инструменти</a>
+</section>{% endblock %}

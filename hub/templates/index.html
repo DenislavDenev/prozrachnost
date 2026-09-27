@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% macro visual(t) -%}
+{% if t.visual == "tender" -%}
+<div class="card-visual tender-visual" aria-hidden="true"><div class="bar-chart"><span style="height:39%"></span><span style="height:64%"></span><span style="height:48%"></span><span style="height:80%"></span><span style="height:56%"></span><span style="height:91%"></span><span style="height:69%"></span></div><svg class="chart-line" viewBox="0 0 420 170" preserveAspectRatio="none"><path class="gridline" d="M0 40H420M0 90H420M0 140H420"/><path class="trend" d="M0 130 C50 120 72 138 110 105 S175 90 210 94 S268 37 311 55 S382 20 420 24"/></svg><div class="chart-tag">ДАННИ С КОНТЕКСТ <span>↗</span></div></div>
+{%- elif t.visual == "road" -%}
+<div class="card-visual road-visual" aria-hidden="true"><img src="/static/bulgaria-roads.svg" alt="" loading="lazy"><div class="map-caption">Реални пътища · оценка 2023 · ДАБДП</div></div>
+{%- else -%}
+<div class="card-visual soon-visual" aria-hidden="true"><img src="/static/cards/{{ t.slug }}.svg" alt="" loading="lazy"><div class="map-caption">примерна графика</div></div>
+{%- endif %}
+{%- endmacro %}
+{% block main %}<section class="hero"><h1>По-ясна картина<br><em>за България.</em></h1><p>Провери публичните данни за разходите и пътищата. Всяка справка води към източника си.</p><a class="text-link" href="#instrumenti">Разгледай инструментите <span aria-hidden="true">↓</span></a></section>
+<section class="tools" id="instrumenti" aria-labelledby="tools-heading"><div class="section-intro"><div><span class="kicker">ИНСТРУМЕНТИ</span><h2 id="tools-heading">Избери тема.</h2></div><p>{{ live_count }} работят, {{ soon_count }} са в подготовка.</p></div>
+<nav class="group-nav" aria-label="Категории">{% for g in groups %}<a href="#{{ g.key }}">{{ g.name }}</a>{% endfor %}</nav>
+{% for g in groups %}<section class="group" id="{{ g.key }}" aria-labelledby="h-{{ g.key }}"><div class="group-head"><h3 id="h-{{ g.key }}">{{ g.name }}</h3><span>{{ g.tools|length }}</span></div>
+<div class="card-grid">{% for t in g.tools %}{% if t.status == "soon" %}<a class="tool-card soon" href="/instrumenti/{{ t.slug }}"><div class="card-top"><span class="card-status">в подготовка</span><span class="arrow" aria-hidden="true">→</span></div>{{ visual(t) }}<div class="card-copy"><h4>{{ t.name }}</h4><p>{{ t.line }}</p><span class="card-cta">Какво ще показва <span aria-hidden="true">→</span></span></div></a>{% else %}<a class="tool-card" href="{{ t.url }}"><div class="card-top"><span class="card-status live">работи</span><span class="arrow" aria-hidden="true">↗</span></div>{{ visual(t) }}<div class="card-copy"><h4>{{ t.name }}</h4><p>{{ t.line }}</p><span class="card-cta">{{ t.cta }} <span aria-hidden="true">→</span></span></div></a>{% endif %}{% endfor %}</div></section>
+{% endfor %}</section>
+<section class="about" id="za-proekta"><div><span class="kicker">ЗА ПРОЕКТА</span></div><div class="about-copy"><p>„Прозрачност“ събира данни от публични източници и ги подрежда в отделни инструменти. Във всеки от тях можеш да провериш откъде идва информацията и кога е публикувана.</p></div></section>{% endblock %}
