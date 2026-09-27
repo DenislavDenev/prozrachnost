@@ -2,12 +2,12 @@
 /private/
 # Internal files that belong in private/, even if someone drops them in a tool folder by mistake.
 docs/plans/
-*/deploy/
-*/*/deploy/
-*/*/n8n/
-*/*/design/
-*/*/.claude/
-*/*/.impeccable/
+*/deploy
+*/*/deploy
+*/*/n8n
+*/*/design
+*/*/.claude
+*/*/.impeccable
 */*/CLAUDE.md
 */*/PRODUCT.md
 __pycache__/
