@@ -490,3 +490,15 @@ def test_the_map_is_interactive_and_has_no_legend():
     html = (Path(__file__).parent.parent / "app/templates/map.html").read_text(encoding="utf-8")
     assert "mkey" not in html and "медиана" not in html
     assert 'data-z="in"' in html and "e.ctrlKey" in html and 'class="selg"' in html
+    assert "EuroGeographics" in html and "geoBoundaries" not in html          # the outlines are GISCO, with its credit
+
+
+def test_every_municipality_has_its_own_outline():
+    # GISCO LAU 2024 has all 265, Сърница included: each municipality is drawn as itself
+    import csv
+    import json
+    from pathlib import Path
+    root = Path(__file__).parent.parent
+    rows = list(csv.DictReader(open(root / "db/ref/municipality.csv", encoding="utf-8")))
+    shapes = json.loads((root / "app/static/bg-municipalities.json").read_text(encoding="utf-8"))["shapes"]
+    assert len(rows) == 265 and all(r["drawn_as"] == r["id"] for r in rows) and set(shapes) == {r["id"] for r in rows}
