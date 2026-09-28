@@ -133,7 +133,7 @@ def ajax_calls(page, eid):
                 v = page_value(page, el.group(1)) or (str(eid) if k.lower() == "electionid" else "")
             params[k] = v.strip("\"'")
         if url:
-            calls.append((m.group(3).upper(), url, params))
+            calls.append((m.group(3).upper(), url, params, m.start()))
     return calls
 
 
@@ -154,7 +154,7 @@ def row_links(page):
                 parts.append(t)
             else:
                 parts.append(("row", t.split(".")[-1]))
-        out.append(parts)
+        out.append((parts, m.start()))
     return out
 
 
@@ -193,7 +193,7 @@ def erik(st, http, full, deadline):
         stats["requests"] += 1
         try:
             code, data = http.post(full_url, params) if method == "POST" else http.get(full_url)
-            if code in (404, 410):
+            if code in (403, 404, 410):
                 stats["absent"] += 1
                 return
             if method == "POST":
@@ -216,14 +216,15 @@ def erik(st, http, full, deadline):
                                sha_of=erik_sha(data) if k == "html" else None)
         if k == "html":
             page = data.decode("utf-8", "replace")
-            rows = []
-            for m, u, p in ajax_calls(page, eid):
+            tables = []   # (position of the table's ajax in the script, its rows)
+            for m, u, p, at in ajax_calls(page, eid):
                 before = len(stats_rows)
                 fetch(eid, m, u, p, depth + 1)
-                rows += stats_rows[before:]
+                tables.append((at, stats_rows[before:]))
             for u in downloads(page):
                 fetch(eid, "GET", u, depth=depth + 1)
-            for parts in row_links(page):
+            for parts, at in row_links(page):   # a link is built from the rows of the table defined just before it
+                rows = next((r for pos, r in reversed(tables) if pos < at), [])
                 for r in rows:
                     u = link(parts, r) if isinstance(r, dict) else None
                     if u:
@@ -371,7 +372,10 @@ def egov(st, http, full, deadline):
 SOURCES = {
     "kolkostruva": {"fn": kolkostruva, "pause": 5, "max_age": 30, "label": "Колко струва (КЗП), дневните цени"},
     "urls": {"fn": urls, "pause": 2, "max_age": 30, "label": "ЕСО товар, НИГГГ земетресения, ЕКАТТЕ, GTFS София, НС"},
-    "erik": {"fn": erik, "pause": 6, "max_age": 30, "label": "ЕРИК (Сметна палата), отчетите по изборите"},
+    # ЕРИК answers 403 for a report that does not exist (a participant asked with the wrong type); its firewall refuses
+    # the connection instead, which stops the run
+    "erik": {"fn": erik, "pause": 6, "max_age": 30, "label": "ЕРИК (Сметна палата), отчетите по изборите",
+             "absent": (403, 404, 410)},
     "dfz": {"fn": dfz, "pause": 5, "max_age": 8 * 24, "label": "ДФЗ, изплатените субсидии по финансови години", "cookies": True},
     "egov": {"fn": egov, "pause": 8, "max_age": 30, "label": "data.egov.bg, наборите от плановете"},
 }
