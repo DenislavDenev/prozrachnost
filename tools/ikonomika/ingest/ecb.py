@@ -40,6 +40,10 @@ SERIES = [
     ("bank", "BSI", "M.{g}.N.A.L21.A.1.U2.2240.Z01.E", "dep_nfc_on", "Депозити на виждане на фирмите"),
 ]
 PLACES = {"rates": {"BG": "BG", "U2": "EA"}, "bank": {"BG": "BG"}}   # ECB code -> our geo
+# Bulgaria's rates before the euro: some series go back to 2007, but in EUR only, the loans and deposits in euro, a small
+# part of all (the consumer rate "jumps" from about 4% to 9% in 2026-01 because the coverage changes, checked 28.09.2026).
+# Only from the euro on are they all loans and deposits, so only these months are kept.
+BG_RATES_FROM = "2026-01"
 FLAGS = {"A": None, "P": "p", "E": "e", "F": "f"}                      # OBS_STATUS -> the flags of live.series
 HEAD = {"KEY", "TIME_PERIOD", "OBS_VALUE", "OBS_STATUS"}
 
@@ -105,7 +109,8 @@ def load(conn, stats, get=None):
             k = key.format(g=ecb_geo)
             try:
                 raw = get(url(flow, k))
-                rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, f) for t, v, f in parse(raw, f"{flow}.{k}"))
+                rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, f) for t, v, f in parse(raw, f"{flow}.{k}")
+                                                if not (ind == "rates" and geo == "BG" and t < BG_RATES_FROM))
                 raws.setdefault(ind, []).append(raw)
             except (http.Gone, ShapeError) as e:
                 failed.add(ind)

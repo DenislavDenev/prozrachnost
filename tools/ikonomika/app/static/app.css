@@ -25,7 +25,7 @@ h1 { font-size: 40px; line-height: 1.08; } h2 { font-size: 19px; line-height: 1.
 .bar-in { max-width: 1280px; margin: 0 auto; display: flex; align-items: center; gap: 28px; padding: 0 32px; height: 64px; }
 .word { font-weight: 700; font-size: 25px; letter-spacing: -.025em; white-space: nowrap; }
 .word .dot { color: var(--accent); }
-.menu { display: flex; gap: 22px; height: 100%; font-size: 15px; }
+.menu { display: flex; gap: 16px; height: 100%; font-size: 15px; white-space: nowrap; }
 .menu a { display: flex; align-items: center; height: 100%; color: var(--ink-3); border-bottom: 2px solid transparent; margin-bottom: -1px; }
 .menu a:hover { color: var(--ink); } .menu a.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
 .hub { margin-left: auto; font-size: 14.5px; color: var(--ink-3); white-space: nowrap; } .hub:hover { color: var(--ink); }
@@ -36,6 +36,7 @@ h1 { font-size: 40px; line-height: 1.08; } h2 { font-size: 19px; line-height: 1.
 .lede b { color: var(--ink); font-weight: 650; }
 .asof { font-size: 13.5px; color: var(--ink-3); }
 .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); margin-top: 28px; }
+.grid > * { min-width: 0; }   /* a wide row of buttons scrolls inside its panel, never widens the page */
 .p { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 22px 24px; min-width: 0; }
 .s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s6 { grid-column: span 6; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
 .ph { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
@@ -52,6 +53,7 @@ h1 { font-size: 40px; line-height: 1.08; } h2 { font-size: 19px; line-height: 1.
 .kpi .w { font-size: 13px; color: var(--ink-3); margin-top: 4px; }
 .flag { display: inline-block; font-size: 12px; font-weight: 600; color: var(--amber); background: var(--amber-soft); border-radius: 4px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
 .nodata { color: var(--ink-4); }
+h2.sec { margin: 40px 0 4px; font-size: 24px; }
 
 /* charts: the legend draws each series' mark inline */
 .chart { width: 100%; height: 300px; } .chart.tall { height: 420px; } .chart.small { height: 220px; }
@@ -145,7 +147,7 @@ th.n .sort { flex-direction: row-reverse; }
 .wrap-f .fb-support { margin-left: auto; }
 
 @media (max-width: 1080px) { .s3, .s4, .s6, .s8 { grid-column: span 12; } .stick { position: static; } }
-@media (max-width: 900px) { .menu { display: none; } }
+@media (max-width: 1240px) { .menu { display: none; } }   /* ten tabs: below this they go to the scrolling row */
 @media (max-width: 720px) {
   .bar-in { padding: 0 16px; gap: 12px; height: 58px; } .word { font-size: 20px; }
   .wrap { padding: 18px 16px 56px; } h1 { font-size: 28px; } .lede { font-size: 18px; }
@@ -157,5 +159,5 @@ th.n .sort { flex-direction: row-reverse; }
 }
 /* the phone menu: the same links under the masthead */
 .menu-s { display: none; }
-@media (max-width: 900px) { .menu-s { display: flex; gap: 16px; overflow-x: auto; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14.5px; white-space: nowrap; }
+@media (max-width: 1240px) { .menu-s { display: flex; gap: 16px; overflow-x: auto; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14.5px; white-space: nowrap; }
   .menu-s a { color: var(--ink-3); } .menu-s a.on { color: var(--ink); font-weight: 600; } }

@@ -222,6 +222,10 @@ def test_ecb_step_writes_both_places_checks_and_keeps_what_fails(conn, monkeypat
                         + [s for s in ecb.SERIES if s[0] == "bank" and s[3] in ("dep_hh", "dep_hh_on")])
     files = {k: ecb_fixture(k) for k in ("MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N", "MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N",
                                          "BSI.M.BG.N.A.L20.A.1.U2.2250.Z01.E", "BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E")}
+    # a month before the euro, as the ECB has it for some series: euro loans only, so it must not be kept
+    head, first, *rest = files["MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N"].decode("utf-8").splitlines(keepends=True)
+    files["MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N"] = (head + first.replace("2026-01", "2025-12").replace(",2.46,", ",4.1,") + first
+                                                 + "".join(rest)).encode()
 
     def get(url):
         flow, key = url.split("/data/")[1].split("?")[0].split("/")
@@ -232,6 +236,7 @@ def test_ecb_step_writes_both_places_checks_and_keeps_what_fails(conn, monkeypat
     stats = ecb.load(conn, {}, get=get)
     assert stats["indicators"] == {"rates": "stored", "bank": "stored"} and stats["problems"] == []
     assert conn.execute("SELECT count(DISTINCT geo) FROM live.series WHERE indicator = 'rates'").fetchone()[0] == 2   # BG and EA
+    assert conn.execute("SELECT min(time) FROM live.series WHERE indicator = 'rates' AND geo = 'BG'").fetchone()[0] == "2026-01"
     assert conn.execute("""SELECT value::float8 FROM live.series WHERE indicator = 'rates' AND geo = 'BG'
                            AND time = '2026-01'""").fetchone()[0] == 2.46
     first = table_hash(conn)

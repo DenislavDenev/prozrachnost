@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "_panels.html" import panels as draw %}
+{% block title %}{{ h1 }}{% endblock %}
+{% block main %}
+<h1>{{ h1 }}</h1>
+<p class="lede">{{ lede }}</p>
+<div class="grid">
+{{ draw(panels) }}
+</div>
+{% endblock %}

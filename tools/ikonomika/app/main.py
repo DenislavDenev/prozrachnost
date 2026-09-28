@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
+from ingest import checks
 from ingest.config import BGN_PER_EUR
 from ingest import ecb, mf
 from ingest.eurostat import EURO_AREA, MEMBERS, indicators
@@ -26,7 +27,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "1"
+ASSET_V = "5"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -110,6 +111,9 @@ T.env.globals.update(v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback
                      support_link=Markup(feedback.support_link(HUB_URL)), label=label, IND=IND)
 
 
+T.env.globals.update(src_html=lambda ind: src_html(ind))
+
+
 def page(request, name, nav, **ctx):
     return T.TemplateResponse(request, name, {"nav": nav, "fresh": freshness_line(), **ctx})
 
@@ -143,20 +147,32 @@ def at(indicator, time, geo="BG", **dims):
     return r[0] if r else (None, None)
 
 
-# the other sources: (name, the page of the data set)
-SOURCE_PAGE = {"ecb": ("ЕЦБ", "https://data.ecb.europa.eu/data/datasets/{dataset}"),
-               "mf": ("Министерство на финансите, data.egov.bg", "https://data.egov.bg/data/view/{dataset}")}
+# every source: (name, the page of a data set, what to call the data set on the page when not its code)
+SOURCE_PAGE = {"eurostat": ("Eurostat", "https://ec.europa.eu/eurostat/databrowser/view/{dataset}/default/table", None),
+               "ecb": ("ЕЦБ", "https://data.ecb.europa.eu/data/datasets/{dataset}", None),
+               "mf": ("Министерство на финансите", "https://data.egov.bg/data/view/{dataset}", "прогнозите на data.egov.bg")}
+
+
+def src_of(indicator):
+    """{name, dataset, url} of an indicator's source, without the database."""
+    ind = IND.get(indicator) or {}
+    name, page, shown = SOURCE_PAGE[ind.get("source", "eurostat")]
+    return {"name": name, "dataset": shown or ind.get("dataset", indicator),
+            "url": page.format(dataset=ind["dataset"]) if ind else ""}
+
+
+def src_html(indicator):
+    s = src_of(indicator)
+    return Markup('<div class="src">{} · <a href="{}" rel="noopener">{}</a> · <a href="/csv/{}.csv">CSV</a></div>').format(
+        s["name"], s["url"], s["dataset"], indicator)
 
 
 def source(indicator):
     """What a panel says under its chart: source, dataset, link, the source's update, our last read."""
-    ind = IND.get(indicator) or {}
-    src = ind.get("source", "eurostat")
-    st = q("SELECT updated, last_ok FROM ops.source_state WHERE source = %s AND ref = %s", src, indicator)
+    st = q("SELECT updated, last_ok FROM ops.source_state WHERE source = %s AND ref = %s",
+           (IND.get(indicator) or {}).get("source", "eurostat"), indicator)
     updated, read = st[0] if st else (None, None)
-    name, page = SOURCE_PAGE.get(src, ("Eurostat", "https://ec.europa.eu/eurostat/databrowser/view/{dataset}/default/table"))
-    return {"name": name, "dataset": ind.get("dataset", indicator), "url": page.format(dataset=ind["dataset"]) if ind else "",
-            "updated": updated[:10] if updated else None, "read": read}
+    return {**src_of(indicator), "updated": updated[:10] if updated else None, "read": read}
 
 
 def euro_area(indicator):
@@ -210,13 +226,50 @@ def inflation(request: Request):
     rest = sorted((r for r in rows if not r["main"]), key=lambda r: (not r["code"].startswith("CP"), r["code"]))   # the classification first
     sub = [c for c in INFL_SUB if any(r["code"] == c for r in rest)]
     return page(request, "inflaciya.html", "Инфлация", month=month, main=main, rest=rest, groups=INFL_MAIN,
-                picked=INFL_PICKED, sub=sub, src=source("hicp_rch_a"))
+                picked=INFL_PICKED, sub=sub, src=source("hicp_rch_a"), panels=inflation_panels(month))
 
 
-MAP_MEASURES = {"EUR_HAB": ("gdp_nuts", "БВП на човек", "€ на човек", 0),
-                "PPS_EU27_2020_HAB": ("gdp_nuts", "БВП на човек по покупателна способност", "СПС на човек", 0),
-                "MIO_EUR": ("gdp_nuts", "БВП", "млн. €", 0),
-                "THS": ("pop_nuts", "Население (средногодишно)", "хил. души", 1)}
+def inflation_panels(month):
+    """What each of the 13 groups adds to the annual rate (its weight in the year times its own rate), producer prices
+    and the price of electricity."""
+    items, total = [], None
+    if month:
+        w = dict(q("""SELECT dims->>'coicop18', value FROM live.series WHERE indicator = 'hicp_w' AND geo = 'BG' AND time = %s""",
+                   month[:4]))
+        r = dict(q("""SELECT dims->>'coicop18', value FROM live.series WHERE indicator = 'hicp_rch_a' AND geo = 'BG' AND time = %s""",
+                   month))
+        for code in (f"CP{n:02d}" for n in range(1, 14)):
+            items.append((label("coicop18", code), round(float(w[code]) * float(r[code]) / 1000, 2)
+                          if w.get(code) is not None and r.get(code) is not None else None, ""))
+        total = r.get("TOTAL")
+    got = [v for _, v, _ in items if v is not None]
+    note = (f"Сборът е {fnum(sum(got), 2)} процентни пункта; общата инфлация е {fnum(total)}%. Разликата е от закръглянето и от"
+            f" това, че Eurostat смята общия индекс верижно, не като сбор." if got and total is not None else None)
+    return [
+        bars("hicp_w", f"Какво движи инфлацията{', ' + fperiod(month) if month else ''}",
+             "принос на всяка група към годишната инфлация, процентни пункта (теглото ѝ по промяната на цените ѝ)", items, digits=2,
+             note=note),
+        chart("ppi", "Цени на производител", "промишленост, % спрямо година по-рано; идват преди цените в магазина",
+              chips=("nace_r2", ["B-E36", "MIG_NRG", "MIG_ING", "MIG_COG", "C10-C12"]), picked=["B-E36", "MIG_NRG", "C10-C12"],
+              s_adj="NSA", unit="PCH_SM", zero=True),
+        chart("elec", "Цена на тока за домакинствата", "€ за 1 kWh с данъците, 2 500-4 999 kWh на година, по полугодия", digits=4,
+              geo=f"BG,EU27_2020,{euro_area('elec')}", tax="I_TAX", currency="EUR", more=("В ЕС →", "/es?p=tok"), cls="s12"),
+    ]
+
+
+# measure -> (indicator, dimensions, title, unit, digits, the NUTS levels it has, per: (indicator, dimensions, factor) or None)
+ALL_LEVELS, TO_REGIONS = (0, 1, 2, 3), (0, 1, 2)
+MAP_MEASURES = {
+    "EUR_HAB": ("gdp_nuts", {"unit": "EUR_HAB"}, "БВП на човек", "€ на човек", 0, ALL_LEVELS, None),
+    "PPS_EU27_2020_HAB": ("gdp_nuts", {"unit": "PPS_EU27_2020_HAB"}, "БВП на човек по покупателна способност", "СПС на човек", 0, ALL_LEVELS, None),
+    "MIO_EUR": ("gdp_nuts", {"unit": "MIO_EUR"}, "БВП", "млн. €", 0, ALL_LEVELS, None),
+    "THS": ("pop_nuts", {"unit": "THS"}, "Население (средногодишно)", "хил. души", 1, ALL_LEVELS, None),
+    # the labour force survey and the regional accounts go down to the regions (NUTS 2), not the oblasts
+    "EMP": ("emp_reg", {"sex": "T", "age": "Y20-64"}, "Заетост на хората от 20 до 64 години", "% от населението на тази възраст", 1, TO_REGIONS, None),
+    "UNEMP": ("unemp_reg", {"age": "Y15-74"}, "Безработица", "% от работната сила", 1, TO_REGIONS, None),
+    "YOUTH": ("unemp_reg", {"age": "Y15-29"}, "Безработица при хората до 29 години", "% от работната сила", 1, TO_REGIONS, None),
+    "COE": ("coe_reg", {}, "Компенсация на един нает (заплата и осигуровки)", "€ на година", 0, TO_REGIONS, ("sal_reg", {}, 1000)),
+}
 # the map covers Bulgaria or Europe on one plane (EPSG:3035), so the page can fly from one to the other; the levels
 # are named as on the Тендер map, from the smallest: scope -> (name, {level: (plural, singular, NUTS level)})
 SCOPES = {"bg": ("България", {"oblasti": ("Области", "Област", 3), "rayoni": ("Райони", "Район", 2),
@@ -247,21 +300,40 @@ def regions_moved(request: Request):
     return RedirectResponse(f"/karta?{request.url.query}" if request.url.query else "/karta", status_code=301)
 
 
+def measure_values(m, time, codes):
+    """{place: value} of a map measure for one period; a measure per something is divided by it."""
+    ind, dims, *_, per = MAP_MEASURES[m]
+    w, a = where(dims)
+    vals = {g: float(v) for g, v in q(f"""SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s
+                                          AND geo = ANY(%s) AND value IS NOT NULL {w}""", ind, time, codes, *a)}
+    if per:
+        ind2, dims2, factor = per
+        w2, a2 = where(dims2)
+        den = {g: float(v) for g, v in q(f"""SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s
+                                             AND geo = ANY(%s) AND value IS NOT NULL {w2}""", ind2, time, codes, *a2)}
+        vals = {g: v / den[g] * factor for g, v in vals.items() if den.get(g)}
+    return vals
+
+
 def map_data(m, y, o, l):
-    """Everything the map shows for one choice; HTTPException(404) for an unknown one."""
+    """Everything the map shows for one choice; HTTPException(404) for an unknown one. A level the measure does not
+    have (the oblasts of a survey that stops at the regions) gives the measure's smallest level instead."""
     if m not in MAP_MEASURES or o not in SCOPES:
         raise HTTPException(404)
-    levels = SCOPES[o][1]
+    ind, dims, title, unit, digits, nuts_levels, per = MAP_MEASURES[m]
+    levels = {k: lv for k, lv in SCOPES[o][1].items() if lv[2] in nuts_levels}
     l = l or ("oblasti" if o == "bg" else "darzhavi")
-    if l not in levels:
+    if l not in SCOPES[o][1]:
         raise HTTPException(404)
-    ind, title, unit, digits = MAP_MEASURES[m]
+    if l not in levels:
+        l = min(levels, key=lambda k: -levels[k][2])
     plural, single, nuts = levels[l]
     shapes = europe_shapes()["bg" if o == "bg" else str(nuts)]
     shapes = shapes[str(nuts)] if o == "bg" else shapes
     codes = sorted(shapes) + (NON_NUTS if nuts == 0 else [])
-    counts = q("""SELECT time, count(*) FROM live.series WHERE indicator = %s AND dims->>'unit' = %s
-                  AND geo = ANY(%s) AND value IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""", ind, m, codes)
+    w, a = where(dims)
+    counts = q(f"""SELECT time, count(*) FROM live.series WHERE indicator = %s {w}
+                   AND geo = ANY(%s) AND value IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""", ind, *a, codes)
     years = [t for t, _ in counts]
     if y is None and years:
         # the latest year with most of the map: a year where big countries are still missing would be mostly grey
@@ -270,10 +342,8 @@ def map_data(m, y, o, l):
     if y is not None and y not in years:
         raise HTTPException(404)
     base = str(int(y) - 10) if y and str(int(y) - 10) in years else (years[-1] if years else None)
-    vals = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
-                  ind, m, y, codes + ["BG"])) if y else {}
-    old = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
-                 ind, m, base, codes)) if base else {}
+    vals = measure_values(m, y, codes + ["BG"]) if y else {}
+    old = measure_values(m, base, codes) if base else {}
     items = []
     for code in codes:
         v, was = vals.get(code), old.get(code)
@@ -286,7 +356,7 @@ def map_data(m, y, o, l):
     return {"m": m, "y": y, "o": o, "l": l, "years": years, "base": base, "title": title, "unit": unit, "digits": digits,
             "plural": plural, "single": single, "nuts": nuts, "levels": [[k, lv[0]] for k, lv in levels.items()], "bg": None if vals.get("BG") is None else float(vals["BG"]),
             "updated": st["updated"], "dataset": st["dataset"], "url": st["url"], "csv": f"/csv/{ind}.csv", "items": items,
-            "countries": {c: label("geo", c) for c in [*europe_shapes()["0"], *NON_NUTS]}}
+            "countries": {c: label("geo", c) for c in [*europe_shapes()["0"], *NON_NUTS]}, "source": src_of(ind)["name"]}
 
 
 @app.get("/api/karta.json")
@@ -311,7 +381,10 @@ ES = {"inflaciya": ("hicp_eu", {"coicop18": "TOTAL"}, "Инфлация (ХИП�
       "zaplata": ("salary", {}, "Средна заплата на пълно работно време", "€ на година", 0),
       "dalg": ("debt", {"na_item": "GD", "unit": "PC_GDP"}, "Държавен дълг", "% от БВП", 1),
       "saldo": ("debt", {"na_item": "B9", "unit": "PC_GDP"}, "Бюджетно салдо", "% от БВП (дефицитът е с минус)", 1),
-      "zhilishta": ("hpi", {"purchase": "TOTAL", "unit": "RCH_A"}, "Цени на жилищата", "% спрямо година по-рано", 1)}
+      "zhilishta": ("hpi", {"purchase": "TOTAL", "unit": "RCH_A"}, "Цени на жилищата", "% спрямо година по-рано", 1),
+      "lihva": ("ltrate", {}, "Дългосрочна лихва", "% годишно (10-годишни държавни облигации)", 2),
+      "bednost": ("poverty", {"age": "TOTAL"}, "Под прага на бедност", "% от населението", 1),
+      "tok": ("elec", {"tax": "I_TAX", "currency": "EUR"}, "Цена на тока за домакинствата", "€ за 1 kWh, с данъците", 4)}
 
 
 @app.get("/es", response_class=HTMLResponse)
@@ -356,8 +429,13 @@ def fx_series(code):
     return out
 
 
-@app.get("/kursove", response_class=HTMLResponse)
-def rates(request: Request, code: str = "USD"):
+@app.get("/kursove")
+def rates_moved(request: Request):
+    return RedirectResponse(f"/pari?{request.url.query}" if request.url.query else "/pari", status_code=301)
+
+
+@app.get("/pari", response_class=HTMLResponse)
+def money(request: Request, code: str = "USD"):
     latest = q("""SELECT DISTINCT ON (dims->>'code') dims->>'code', time, value FROM live.series WHERE indicator = 'fx_eur'
                   ORDER BY dims->>'code', time DESC""")
     codes = sorted({c for c, _, _ in latest} | {r[0] for r in q("SELECT DISTINCT dims->>'code' FROM live.series WHERE indicator = 'fx_bgn'")})
@@ -366,8 +444,259 @@ def rates(request: Request, code: str = "USD"):
     s = fx_series(code) if codes else []
     span = q("SELECT min(time), max(time), count(*) FROM live.series WHERE indicator = 'fx_bgn'")[0]
     year_ago = str(dt.date.fromisoformat(s[-1][0]) - dt.timedelta(days=365)) if s else ""
-    return page(request, "kursove.html", "Курсове", code=code, codes=codes, latest=latest, recent=[x for x in reversed(s) if x[0] > year_ago],
-                first=s[0] if s else None, span=span)
+    hs, ea = last("rates", series="housing"), last("rates", "EA", series="housing")
+    loans = last("bank", series="loans_hh")
+    lede = " ".join(x for x in [
+        hs and f"Жилищните кредити в България струват {fnum(hs[1], 2)}% годишно ({fperiod(hs[0])})"
+               + (f", в еврозоната {fnum(ea[1], 2)}%." if ea and ea[0] == hs[0] else "."),
+        loans and f"Домакинствата дължат на банките {fnum(float(loans[1]) / 1000)} млрд. € ({fperiod(loans[0])})."] if x)
+    return page(request, "pari.html", "Пари", code=code, codes=codes, latest=latest, recent=[x for x in reversed(s) if x[0] > year_ago],
+                first=s[0] if s else None, span=span, lede=lede, panels=money_panels())
+
+
+# ---------- the tabs made of panels (templates/_panels.html) ----------
+
+def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s6", zero=False, tall=False, more=None, **dims):
+    """A line chart over /api/<ind>.json. chips=(dimension, [codes]): buttons that pick the series, `picked` on."""
+    ch = None
+    if chips:
+        dim, codes = chips
+        # only the buttons that have a line: a combination the source does not publish would be a pressed button with nothing
+        w, a = where({k: v for k, v in dims.items() if isinstance(v, str)})
+        have = {r[0] for r in q(f"""SELECT DISTINCT dims->>%s FROM live.series WHERE indicator = %s AND geo = ANY(%s)
+                                    AND value IS NOT NULL {w}""", dim, ind, geo.split(","), *a)}
+        codes = [c for c in codes if c in have] or codes   # an empty database keeps them all
+        picked = [c for c in (picked or codes) if c in codes] or codes
+        ch = {"param": dim, "items": [(c, label(dim, c, ind)) for c in codes], "picked": picked}
+        dims = {**dims, dim: picked}
+    query = "&".join(f"{k}={','.join(v) if isinstance(v, (list, tuple)) else v}" for k, v in {"geo": geo, **dims}.items())
+    return {"kind": "chart", "ind": ind, "title": title, "sub": sub, "api": f"/api/{ind}.json?{query}", "digits": digits,
+            "chips": ch, "cls": cls, "zero": zero, "tall": tall, "more": more}
+
+
+def bars(ind, title, sub, items, digits=1, cls="s6", more=None, note=None):
+    """Horizontal bars of (name, value, css class): the longest first, a value that is missing is "няма данни"."""
+    vals = [float(v) for _, v, _ in items if v is not None]
+    lo, hi = (min(0.0, *vals), max(0.0, *vals)) if vals else (0.0, 1.0)
+    rows = []
+    for name, v, cls_ in items:
+        r = {"name": name, "v": v, "cls": cls_}
+        if v is not None:
+            r["x0"] = (min(0.0, float(v)) - lo) / ((hi - lo) or 1) * 100
+            r["w"] = abs(float(v)) / ((hi - lo) or 1) * 100
+        rows.append(r)
+    rows.sort(key=lambda r: (r["v"] is None, -float(r["v"] or 0)))
+    return {"kind": "bars", "ind": ind, "title": title, "sub": sub, "rows": rows, "digits": digits, "cls": cls, "more": more,
+            "note": note}
+
+
+def tab(request, name, h1, lede, panels):
+    return page(request, "tab.html", name, h1=h1, lede=lede, panels=panels)
+
+
+def sentence(*parts):
+    return " ".join(p for p in parts if p)
+
+
+GVA10 = ["A", "B-E", "F", "G-I", "J", "K", "L", "M_N", "O-Q", "R-U"]
+
+
+@app.get("/rastezh", response_class=HTMLResponse)
+def growth(request: Request):
+    g = last("gdp_full", na_item="B1GQ", unit="CLV_PCH_PRE")
+    ip = last("ind_prod", nace_r2="B-D", s_adj="CA", unit="PCH_SM")
+    rt = last("retail", nace_r2="G47", s_adj="CA", unit="PCH_SM")
+    lede = sentence(g and f"През {g[0]} г. БВП на България расте реално с {fnum(g[1])}%.",
+                    ip and f"Промишленото производство през {fperiod(ip[0])} е с {fnum(ip[1])}% спрямо година по-рано,",
+                    rt and f"а продажбите на дребно с {fnum(rt[1])}%.") or "Още няма данни."
+    euro = lambda ind: f"BG,EU27_2020,{euro_area(ind)}"   # noqa: E731
+    panels = [
+        chart("gdp_full", "Ръстът на БВП и откъде идва", "принос към реалния ръст, процентни пункта; сборът на частите е ръстът на БВП",
+              chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P52_P53", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G", "P6", "P7"],
+              unit="CON_PPCH_PRE", zero=True),
+        chart("gdp_full", "Реален ръст по компоненти", "% спрямо предходната година",
+              chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G"],
+              unit="CLV_PCH_PRE", zero=True),
+        chart("gva", "Добавена стойност по отрасли", "% от общата добавена стойност, по текущи цени",
+              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "J", "L", "O-Q"], unit="PC_TOT", cls="s12"),
+        chart("ind_prod", "Промишлено производство", "индекс, 2021 = 100, сезонно и календарно изгладен",
+              geo=euro("ind_prod"), nace_r2="B-D", s_adj="SCA", unit="I21"),
+        chart("ind_prod", "Промишленост по вид продукция", "% спрямо година по-рано, календарно изгладено",
+              chips=("nace_r2", ["B-D", "MIG_ING", "MIG_CAG", "MIG_COG", "MIG_NRG_X_E"]), picked=["B-D", "MIG_COG", "MIG_NRG_X_E"],
+              s_adj="CA", unit="PCH_SM", zero=True),
+        chart("retail", "Търговия на дребно", "обем на продажбите, индекс, 2021 = 100, сезонно и календарно изгладен",
+              geo=euro("retail"), nace_r2="G47", s_adj="SCA", unit="I21"),
+        chart("retail", "Продажби по вид стоки", "обем, % спрямо година по-рано, календарно изгладен",
+              chips=("nace_r2", ["G47", "G47_FOOD", "G47_NFOOD", "G473"]), picked=["G47_FOOD", "G47_NFOOD", "G473"],
+              s_adj="CA", unit="PCH_SM", zero=True),
+        chart("constr", "Строителство", "индекс, 2021 = 100, сезонно и календарно изгладен",
+              chips=("nace_r2", ["F", "F_CC1", "F_CC2"]), s_adj="SCA", unit="I21"),
+        chart("sentiment", "Икономически настроения", "общ индикатор, дългосрочното средно = 100",
+              geo=euro("sentiment"), indic="BS-ESI-I"),
+        chart("sentiment", "Доверие по сектори в България", "салдо: положителни минус отрицателни отговори, %",
+              chips=("indic", ["BS-ICI-BAL", "BS-SCI-BAL", "BS-RCI-BAL", "BS-CCI-BAL", "BS-CSMCI-BAL"]),
+              picked=["BS-ICI-BAL", "BS-RCI-BAL", "BS-CSMCI-BAL"], zero=True),
+        chart("tourism", "Нощувки в хотелите и другите места за настаняване", "брой нощувки на месец",
+              chips=("c_resid", ["TOTAL", "DOM", "FOR"]), picked=["DOM", "FOR"], nace_r2="I551-I553", unit="NR", digits=0, cls="s12"),
+    ]
+    return tab(request, "Растеж", "Растеж", lede, panels)
+
+
+def region_bars(ind, title, sub, **dims):
+    """The six regions of Bulgaria and the country, for the latest year with all of them."""
+    codes = ["BG", *checks.NUTS2]
+    w, a = where(dims)
+    t = q(f"""SELECT time FROM live.series WHERE indicator = %s AND geo = ANY(%s) AND value IS NOT NULL {w}
+              GROUP BY 1 HAVING count(*) = %s ORDER BY 1 DESC LIMIT 1""", ind, codes, *a, len(codes))
+    if not t:
+        return bars(ind, title, sub, [])
+    got = dict(q(f"SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s AND geo = ANY(%s) {w}", ind, t[0][0], codes, *a))
+    return bars(ind, f"{title}, {t[0][0]}", sub, [(area_name(c), got.get(c), "bg" if c == "BG" else "") for c in codes])
+
+
+@app.get("/zaetost", response_class=HTMLResponse)
+def jobs(request: Request):
+    u = last("unemp_bg", sex="T", age="TOTAL", unit="PC_ACT")
+    y = last("unemp_bg", sex="T", age="Y_LT25", unit="PC_ACT")
+    e = last("emp_ind", nace_r2="TOTAL", unit="THS_PER")
+    lede = sentence(u and f"Безработицата е {fnum(u[1])}% ({fperiod(u[0])})" + (f", при хората под 25 години {fnum(y[1])}%." if y else "."),
+                    e and f"Заетите са {fnum(float(e[1]) / 1000, 2)} млн. ({fperiod(e[0])}).") or "Още няма данни."
+    panels = [
+        chart("unemp_bg", "Безработица по възраст", "% от работната сила, месечно, сезонно изгладена",
+              chips=("age", ["TOTAL", "Y_LT25", "Y25-74"]), sex="T", unit="PC_ACT"),
+        chart("unemp_bg", "Безработица при мъжете и жените", "% от работната сила, месечно, сезонно изгладена",
+              chips=("sex", ["T", "M", "F"]), age="TOTAL", unit="PC_ACT"),
+        chart("emp_ind", "Заети по отрасли", "хил. души, тримесечно, сезонно изгладено",
+              chips=("nace_r2", GVA10), picked=["A", "B-E", "F", "G-I", "O-Q"], unit="THS_PER", cls="s12", tall=True),
+        region_bars("emp_reg", "Заетост по райони", "% от хората от 20 до 64 години", sex="T", age="Y20-64")
+        | {"more": ("На картата →", "/karta?m=EMP&o=bg&l=rayoni")},
+        region_bars("unemp_reg", "Безработица по райони", "% от работната сила", age="Y15-74")
+        | {"more": ("На картата →", "/karta?m=UNEMP&o=bg&l=rayoni")},
+        chart("poverty", "Под прага на бедност", "% от хората с доход под 60% от медианния", geo=f"BG,EU27_2020,{euro_area('poverty')}",
+              age="TOTAL", more=("В ЕС →", "/es?p=bednost")),
+        chart("poverty", "Бедност по възраст в България", "% под прага на бедност",
+              chips=("age", ["TOTAL", "Y_LT18", "Y_GE65"])),
+    ]
+    return tab(request, "Заетост", "Заетост и доходи", lede, panels)
+
+
+FORECAST_ACTUAL = {   # item of the MF forecast -> (indicator, dimensions) of what happened, from Eurostat
+    "gdp_growth": ("gdp_full", {"na_item": "B1GQ", "unit": "CLV_PCH_PRE"}),
+    "hicp": ("hicp_avg", {"coicop18": "TOTAL"}),
+    "unemployment": ("unemp_a", {}),
+}
+
+
+FORECAST_COLORS = ["#121417", "#8a5cb8", "#c2587a", "#7a8b2c", "#5b6b7f", "#b0413e", "#8d6e63", "#9aa1aa"]
+
+
+def vintages():
+    return [r[0] for r in q("SELECT DISTINCT dims->>'vintage' FROM live.series WHERE indicator = 'mf_forecast' ORDER BY 1 DESC")]
+
+
+@app.get("/api/prognoza/{item}.json")
+def api_forecast(item: str, v: str = ""):
+    """What happened (Eurostat) and the MF forecasts of `item`, one line each (?v= the forecasts' dates)."""
+    if item not in FORECAST_ACTUAL:
+        raise HTTPException(404)
+    ind, dims = FORECAST_ACTUAL[item]
+    w, a = where(dims)
+    actual = [[t, float(val), f] for t, val, f in q(f"""SELECT time, value, flag FROM live.series WHERE indicator = %s AND geo = 'BG'
+                                                      AND value IS NOT NULL AND time >= '2015' {w} ORDER BY time""", ind, *a)]
+    # reality in Bulgaria's green, each forecast in its own colour (none of them green, so the two never mix)
+    series = [{"name": "Какво стана (Eurostat)", "geo": "BG", "points": actual, "color": "#0b7a5e"}]
+    for i, vin in enumerate(v.split(",") if v else vintages()[:4]):
+        pts = [[t, None if val is None else float(val), f] for t, val, f in q(
+            """SELECT time, value, flag FROM live.series WHERE indicator = 'mf_forecast' AND dims->>'vintage' = %s
+               AND dims->>'item' = %s ORDER BY time""", vin, item)]
+        if pts:
+            series.append({"name": label("vintage", vin, "mf_forecast"), "geo": f"v{vin}", "points": pts,
+                           "color": FORECAST_COLORS[i % len(FORECAST_COLORS)]})
+    return JSONResponse({"indicator": "mf_forecast", "label": mf.NAMES[item], "unit": mf.NAMES[item], "source": src_of("mf_forecast"),
+                         "series": series})
+
+
+def forecast_panel(item, title, sub):
+    vs = vintages()
+    return {"kind": "chart", "ind": "mf_forecast", "title": title, "sub": sub, "api": f"/api/prognoza/{item}.json?v={','.join(vs[:4])}",
+            "digits": 1, "chips": {"param": "v", "items": [(x, label("vintage", x, "mf_forecast")) for x in vs], "picked": vs[:4]},
+            "cls": "s12", "zero": item == "gdp_growth", "tall": True, "more": None}
+
+
+@app.get("/finansi", response_class=HTMLResponse)
+def finance(request: Request):
+    b = last("govt", sector="S13", na_item="B9", unit="PC_GDP")
+    d = last("govt", sector="S13", na_item="GD", unit="PC_GDP")
+    lt = last("ltrate")
+    lede = sentence(b and f"Бюджетното салдо на държавата за {b[0]} г. е {fnum(b[1])}% от БВП (минусът е дефицит),",
+                    d and f"а дългът {fnum(d[1])}% от БВП.",
+                    lt and f"Държавата взима заем за 10 години при {fnum(lt[1], 2)}% ({fperiod(lt[0])}).") or "Още няма данни."
+    panels = [
+        chart("govt", "Салдо по подсектори", "% от БВП; минусът е дефицит",
+              chips=("sector", ["S13", "S1311", "S1313", "S1314"]), na_item="B9", unit="PC_GDP", zero=True),
+        chart("govt", "Дълг по инструменти", "% от БВП, в края на годината",
+              chips=("na_item", ["GD", "GD_F3", "GD_F4", "GD_F2"]), picked=["GD", "GD_F3", "GD_F4"], sector="S13", unit="PC_GDP", zero=True),
+        chart("govt", "Разходи за лихви", "% от БВП", sector="S13", na_item="D41PAY", unit="PC_GDP", zero=True),
+        chart("ltrate", "Дългосрочна лихва", "% годишно, 10-годишни държавни облигации", digits=2,
+              geo=f"BG,{euro_area('ltrate')}", more=("В ЕС →", "/es?p=lihva")),
+        forecast_panel("gdp_growth", "Ръст на БВП: прогнозите на МФ и какво стана", "реален ръст, %; всяка линия е една прогноза, избери кои"),
+        forecast_panel("hicp", "Инфлация: прогнозите на МФ и какво стана", "средногодишна инфлация (ХИПЦ), %"),
+        forecast_panel("unemployment", "Безработица: прогнозите на МФ и какво стана", "% от работната сила"),
+    ]
+    return tab(request, "Финанси", "Държавни финанси", lede, panels)
+
+
+def sitc_bars(indic, title):
+    t = q("SELECT max(time) FROM live.series WHERE indicator = 'trade_a' AND value IS NOT NULL")[0][0]
+    if not t:
+        return bars("trade_a", title, "млн. €", [], digits=0)
+    got = q("""SELECT dims->>'sitc06', value FROM live.series WHERE indicator = 'trade_a' AND time = %s AND dims->>'indic_et' = %s
+               AND dims->>'partner' = 'WORLD' AND dims->>'sitc06' <> 'TOTAL'""", t, indic)
+    return bars("trade_a", f"{title}, {t}", "млн. €, по стокови групи", [(label("sitc06", c, "trade_a"), v, "") for c, v in got], digits=0)
+
+
+@app.get("/vanshen", response_class=HTMLResponse)
+def external(request: Request):
+    ex = last("trade_m", stk_flow="EXP", partner="WORLD", bclas_bec="TOTAL", indic_et="TRD_VAL")
+    im = at("trade_m", ex[0], stk_flow="IMP", partner="WORLD", bclas_bec="TOTAL", indic_et="TRD_VAL") if ex else (None, None)
+    ca = last("bop", bop_item="CA", stk_flow="BAL")
+    lede = sentence(ex and f"През {fperiod(ex[0])} износът на стоки е {fnum(ex[1], 0)} млн. €"
+                    + (f", вносът {fnum(im[0], 0)} млн. €." if im[0] is not None else "."),
+                    ca and f"Текущата сметка за {fperiod(ca[0])} е {fnum(ca[1], 0)} млн. € (минусът е дефицит).") or "Още няма данни."
+    panels = [
+        chart("trade_m", "Износ и внос на стоки", "млн. € на месец", chips=("stk_flow", ["EXP", "IMP", "BAL_RT"]), picked=["EXP", "IMP"],
+              partner="WORLD", bclas_bec="TOTAL", indic_et="TRD_VAL", digits=0, cls="s12"),
+        chart("trade_m", "Износ към ЕС и извън ЕС", "млн. € на месец", chips=("partner", ["EU27_2020", "EXT_EU27_2020"]),
+              stk_flow="EXP", bclas_bec="TOTAL", indic_et="TRD_VAL", digits=0),
+        chart("trade_m", "Внос по вид стоки", "млн. € на месец", chips=("bclas_bec", ["INT", "CAP", "CONS"]),
+              stk_flow="IMP", partner="WORLD", indic_et="TRD_VAL", digits=0),
+        sitc_bars("MIO_EXP_VAL", "Износ по стокови групи"),
+        sitc_bars("MIO_IMP_VAL", "Внос по стокови групи"),
+        chart("bop", "Текуща сметка", "млн. € на тримесечие; минусът е дефицит",
+              chips=("bop_item", ["CA", "G", "S", "IN1", "IN2", "KA"]), picked=["CA", "G", "S"], stk_flow="BAL", digits=0, zero=True, cls="s12"),
+        chart("bop", "Преки инвестиции, потоци", "млн. € на тримесечие: в България (пасиви) и от България (активи)",
+              chips=("stk_flow", ["LIAB", "ASS"]), bop_item="FA__D__F", digits=0, zero=True, cls="s12"),
+        # the positions: in Bulgaria is a liability of the country, abroad an asset; the other two are reverse investment
+        chart("fdi", "Натрупани преки инвестиции в България", "млн. € в края на годината", nace_r2="FDI", fdi_item="DI__D__F",
+              stk_flow="LIAB", digits=0),
+        chart("fdi", "Натрупани преки инвестиции от България в чужбина", "млн. € в края на годината", nace_r2="FDI",
+              fdi_item="DO__D__F", stk_flow="ASS", digits=0),
+    ]
+    return tab(request, "Външен сектор", "Външен сектор", lede, panels)
+
+
+def money_panels():
+    return [
+        chart("rates", "Лихви по нови кредити", "% годишно; за България от 2026 г. (от влизането в еврозоната)", digits=2,
+              chips=("series", ["housing", "consumer", "cards", "business"]), picked=["housing", "consumer", "business"]),
+        chart("rates", "Жилищни кредити: България и еврозоната", "цена на кредита, % годишно", digits=2,
+              geo="BG,EA", series="housing"),
+        chart("rates", "Лихви по депозити", "% годишно", digits=2, chips=("series", ["dep_hh", "dep_nfc", "dep_hh_on"])),
+        chart("bank", "Кредити и депозити в банките", "млн. €, в края на месеца", digits=0,
+              chips=("series", ["loans_hh", "loans_nfc", "dep_hh", "dep_nfc"])),
+        chart("mm_rate", "Лихви на междубанковия пазар", "% годишно, 3 месеца", digits=2,
+              geo=f"BG,{euro_area('mm_rate')}", int_rt="IRT_M3", cls="s12"),
+    ]
 
 
 @app.get("/sources", response_class=HTMLResponse)

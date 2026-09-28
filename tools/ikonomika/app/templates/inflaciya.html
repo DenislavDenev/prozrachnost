@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_panels.html" import panels as draw %}
 {% block title %}Инфлация{% endblock %}
 {% macro fl(f) %}{% if f %}<span class="flag" title="{{ f | flag }}">{{ f }}</span>{% endif %}{% endmacro %}
 {% macro src_line() %}<div class="src">Eurostat · <a href="{{ src.url }}" rel="noopener">{{ src.dataset }}</a> · данните на НСИ</div>{% endmacro %}
@@ -14,6 +15,8 @@
     </div>
     <div class="chart tall" id="infl" data-src="/api/hicp_rch_a.json?geo=BG&coicop18={{ picked | join(',') }}" data-digits="1"></div>
     {{ src_line() }}</section>
+
+{{ draw(panels, "x") }}
 
   <section class="p s12"><div class="tools"><h2>Основните групи{% if month %} за {{ month | period }}{% endif %}</h2>
     <a class="more" href="/csv/hicp_rch_a.csv">CSV: годишна промяна, всички групи</a></div>

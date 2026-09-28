@@ -1,0 +1,19 @@
+{# The panels of a tab (app/main.py: chart(), bars()): a line chart over /api with optional buttons, or horizontal bars.
+   Every panel ends with its source, quiet, on one line (AGENTS.md 7). #}
+{% macro panels(list, prefix="p") %}
+{% for p in list %}{% set pid = prefix ~ loop.index %}
+<section class="p {{ p.cls }}"><div class="ph"><div><h2>{{ p.title }}</h2><div class="sub">{{ p.sub }}</div></div>{% if p.more %}<a class="more" href="{{ p.more[1] }}">{{ p.more[0] }}</a>{% endif %}</div>
+{% if p.kind == 'chart' %}
+  {% if p.chips and p.chips["items"] | length > 1 %}<div class="chips" data-for="{{ pid }}" data-param="{{ p.chips.param }}" role="group" aria-label="{{ p.title }}">
+    {% for row in p.chips["items"] | slice(2) %}<div class="row">{% for code, name in row %}<button type="button" value="{{ code }}" aria-pressed="{{ 'true' if code in p.chips.picked else 'false' }}">{{ name }}</button>{% endfor %}</div>{% endfor %}
+  </div>{% endif %}
+  <div class="chart{{ ' tall' if p.tall }}" id="{{ pid }}" data-src="{{ p.api }}" data-digits="{{ p.digits }}"{{ ' data-zero' if p.zero }}></div>
+{% elif p.kind == 'bars' %}
+  {% if p.rows %}<div class="hb" style="margin-top:6px">{% for r in p.rows %}<div class="r {{ r.cls }}"><span>{{ r.name }}</span>
+    <div class="tr">{% if r.v is not none %}<i style="left:{{ r.x0 }}%;width:{{ r.w }}%"></i>{% endif %}</div><span class="v">{{ r.v | num(p.digits) }}</span></div>{% endfor %}</div>
+  {% if p.note %}<p class="mut">{{ p.note }}</p>{% endif %}
+  {% else %}<p class="nodata">Още няма данни.</p>{% endif %}
+{% endif %}
+{{ src_html(p.ind) }}</section>
+{% endfor %}
+{% endmacro %}

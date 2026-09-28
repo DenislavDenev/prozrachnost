@@ -210,6 +210,7 @@
     const res = await fetch('/api/karta.json?' + q);
     if (!res.ok) return;
     const next = await res.json(), old = layers.firstElementChild;
+    if (kind === 'colour' && next.l !== d.l) kind = 'level';   // a measure that stops at the regions: its level, not a recolour
     const fresh = kind === 'colour' ? null : layer(next);
     d = next; texts(next); list(next); sel = null; top.replaceChildren(); tip.hidden = true;
     if (kind === 'colour') { recolour(next); return; }
