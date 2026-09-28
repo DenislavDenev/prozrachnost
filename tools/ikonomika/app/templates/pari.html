@@ -1,12 +1,19 @@
 {% extends "base.html" %}
-{% block title %}Валутни курсове{% endblock %}
+{% from "_panels.html" import panels as draw %}
+{% block title %}Пари{% endblock %}
 {% block main %}
-<h1>Валутни курсове</h1>
+<h1>Пари: лихви, кредити, курсове</h1>
+{% if lede %}<p class="lede">{{ lede }}</p>{% endif %}
+<div class="grid">
+{{ draw(panels) }}
+</div>
+
+<h2 class="sec">Валутни курсове</h2>
 <p class="lede">Курсовете на БНБ: до 31.12.2025 в лева, от 1.1.2026 референтните курсове на ЕЦБ към еврото, които БНБ публикува.
   {% if span and span[2] %}Архивът е от {{ span[0] | period }}, {{ span[2] | num(0) }} курса в лева.{% endif %}</p>
 
 <div class="grid">
-  <section class="p s8"><div class="tools"><div><h2>{{ label('code', code) }} ({{ code }}) за 1 евро</h2>
+  <section class="p s8" id="kurs"><div class="tools"><div><h2>{{ label('code', code) }} ({{ code }}) за 1 евро</h2>
     <div class="sub">до 2025 г. пресметнато от курса на лева по фиксирания курс 1,95583 лв. за 1 €</div></div>
     <form method="get"><label>Валута <select name="code" onchange="this.form.submit()">{% for c in codes %}<option value="{{ c }}" {{ 'selected' if c == code }}>{{ c }} · {{ label('code', c) }}</option>{% endfor %}</select></label>
       <noscript><button type="submit">Покажи</button></noscript></form></div>
@@ -21,7 +28,7 @@
 
   <section class="p s12"><div class="tools"><h2>Всички валути</h2><input type="search" placeholder="Търси валута" aria-label="Търси валута" data-filter="fx-all"></div>
     <table class="sortable" id="fx-all"><thead><tr><th>Код</th><th>Валута</th><th>Ден</th><th class="n">За 1 €</th></tr></thead><tbody>
-    {% for c, t, val in latest %}<tr><td><a class="l" href="/kursove?code={{ c }}">{{ c }}</a></td><td>{{ label('code', c) }}</td><td data-v="{{ t }}">{{ t | period }}</td><td class="n">{{ val | num(4) }}</td></tr>{% endfor %}
+    {% for c, t, val in latest %}<tr><td><a class="l" href="/pari?code={{ c }}#kurs">{{ c }}</a></td><td>{{ label('code', c) }}</td><td data-v="{{ t }}">{{ t | period }}</td><td class="n">{{ val | num(4) }}</td></tr>{% endfor %}
     </tbody></table>
     <p class="mut">Курсовете преди 5.7.1999 са в стари лева (1000 стари лева = 1 лев).</p></section>
 </div>

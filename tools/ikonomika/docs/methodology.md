@@ -81,7 +81,7 @@
 `tests/mutations.py` първо пуска същите тестове върху непроменения код (трябва да минат, без пропуснати;
 иначе счупена среда би изглеждала като хваната мутация), после чупи всяко правило в копие и пуска
 тестовете му. Резултат на
-28.09.2026 (Postgres 17): **16 от 16 хванати**.
+28.09.2026 (Postgres 17): **17 от 17 хванати**.
 
 | Счупено правило | Хванато от |
 |---|---|
@@ -92,6 +92,7 @@
 | частите дават цялото | `test_the_parts_add_up_to_the_whole_and_one_moved_part_is_caught` (7 правила) |
 | серия на ЕЦБ без дупка | `test_ecb_series_have_no_gaps_and_overnight_is_part_of_all_deposits` |
 | неуспешна серия на ЕЦБ не пипа показателя | `test_ecb_step_writes_both_places_checks_and_keeps_what_fails` |
+| лихвите за България са от еврото | `test_ecb_step_writes_both_places_checks_and_keeps_what_fails` |
 | БВП в прогнозата се сверява | `test_nominal_gdp_must_follow_real_growth_and_the_deflator` |
 | прогнозните години се четат от таблицата | `test_every_forecast_since_2020_is_read_with_its_forecast_years` |
 | промените следват от индекса | `test_monthly_and_annual_rates_follow_from_the_index` |

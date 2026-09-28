@@ -35,7 +35,7 @@ async function lineChart(el) {
   const d = +(el.dataset.digits ?? 1);
   const times = [...new Set(series.flatMap((s) => s.points.map((p) => p[0])))].sort();
   const byGeo = new Set(series.map((s) => s.geo)).size === series.length;   // one line per place: coloured by place
-  const color = (s, i) => (byGeo && GEO_COLOR[s.geo]) || PALETTE[i % PALETTE.length];
+  const color = (s, i) => s.color || (byGeo && GEO_COLOR[s.geo]) || PALETTE[i % PALETTE.length];   // a series may bring its own
   const byT = series.map((s) => new Map(s.points.map((p) => [p[0], p])));
   let leg = el.previousElementSibling;
   if (!leg || !leg.classList.contains('legend')) { leg = document.createElement('div'); leg.className = 'legend'; el.before(leg); }

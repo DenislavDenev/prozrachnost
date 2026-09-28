@@ -6,8 +6,8 @@
 
 <div class="ctl" id="k-ctl">
   <div class="tabs" role="group" aria-label="Обхват" id="k-scope">{% for k, sc in scopes.items() %}<a href="/karta?m={{ d.m }}&o={{ k }}" data-o="{{ k }}" {% if k == d.o %}aria-current="page"{% endif %}>{{ sc[0] }}</a>{% endfor %}</div>
-  <div class="tabs" role="group" aria-label="Ниво" id="k-level">{% for k, lv in scopes[d.o][1].items() %}<a href="/karta?m={{ d.m }}&o={{ d.o }}&l={{ k }}" data-l="{{ k }}" {% if k == d.l %}aria-current="page"{% endif %}>{{ lv[0] }}</a>{% endfor %}</div>
-  <div class="tabs" role="group" aria-label="Показател" id="k-measure">{% for k, mm in measures.items() %}<a href="/karta?m={{ k }}&o={{ d.o }}&l={{ d.l }}" data-m="{{ k }}" {% if k == d.m %}aria-current="page"{% endif %}>{{ mm[1] }}</a>{% endfor %}</div>
+  <div class="tabs" role="group" aria-label="Ниво" id="k-level">{% for k, name in d.levels %}<a href="/karta?m={{ d.m }}&o={{ d.o }}&l={{ k }}" data-l="{{ k }}" {% if k == d.l %}aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}</div>
+  <div class="tabs" role="group" aria-label="Показател" id="k-measure">{% for k, mm in measures.items() %}<a href="/karta?m={{ k }}&o={{ d.o }}&l={{ d.l }}" data-m="{{ k }}" {% if k == d.m %}aria-current="page"{% endif %}>{{ mm[2] }}</a>{% endfor %}</div>
   <label>Година <select id="k-year">{% for yy in d.years %}<option {{ 'selected' if yy == d.y }}>{{ yy }}</option>{% endfor %}</select></label>
 </div>
 

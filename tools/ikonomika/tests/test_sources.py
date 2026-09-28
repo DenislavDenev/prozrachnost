@@ -309,3 +309,9 @@ def test_every_step_that_writes_has_its_own_lock():
     from ingest import db, run
     writers = [s for s in run.STEPS if s not in ("migrate", "freshness")]
     assert set(writers) <= db.LOCKS.keys() and len(set(db.LOCKS.values())) == len(db.LOCKS)
+
+
+def test_forecasts_get_short_names():
+    assert mf.short_name("Пролетна макроикономическа прогноза 2026 г.", "2026-04-03") == "Пролетна прогноза 2026"
+    assert mf.short_name("Есенна макроикономическа прогноза 2023 г.", "2023-11-02") == "Есенна прогноза 2023"
+    assert mf.short_name("Макроикономическа прогноза, използвана за разработване на проект на ЗДБРБ за 2022 г.", "2022-01-24")         == "Прогноза за бюджета, 24.01.2022"

@@ -136,6 +136,16 @@ def parse(raw):
     return items, first_forecast, unknown
 
 
+def short_name(name, created):
+    """"Пролетна прогноза 2026", "Есенна прогноза 2025" or "Прогноза за бюджета, 24.01.2022": the legend and the buttons
+    have no room for the ministry's full titles."""
+    m = re.search(r"(пролетна|есенна)", name, re.I)
+    year = re.search(r"20\d\d", name)
+    if m:
+        return f"{m.group(1).capitalize()} прогноза {year.group(0) if year else created[:4]}"
+    return f"Прогноза за бюджета, {created[8:10]}.{created[5:7]}.{created[:4]}"
+
+
 def growth_check(vintage, items):
     """[problems]: GDP in current prices grows as real growth times the deflator (1 + g)(1 + d)."""
     level = items.get("gdp_eur") or items.get("gdp_bgn") or {}
@@ -167,7 +177,7 @@ def load(conn, stats, call=None, pause=PAUSE):
             problems.append(f"Икономика: прогноза на МФ {vintage} ({r['name'][:60]}): {e}")
             continue
         raws.append(raw)
-        vintages[vintage] = " ".join(r["name"].split())
+        vintages[vintage] = short_name(r["name"], vintage)
         unknown.update(new_names)
         problems += [f"Икономика: прогноза на МФ: {b}" for b in growth_check(vintage, items)]
         for code, by_year in items.items():

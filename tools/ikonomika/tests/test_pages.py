@@ -14,7 +14,8 @@ pytestmark = pytest.mark.skipif(not DSN, reason="IKONOMIKA_TEST_DSN not set")
 FX = Path(__file__).parent / "fixtures"
 
 PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta?l=makrorayoni", "/karta?o=eu",
-         "/karta?o=eu&l=oblasti", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/kursove", "/sources", "/how"]
+         "/karta?o=eu&l=oblasti", "/karta?m=EMP", "/karta?m=COE&o=eu", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/es?p=lihva",
+         "/es?p=bednost", "/es?p=tok", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari", "/kursove", "/sources", "/how"]
 
 
 def wipe():
@@ -40,6 +41,18 @@ def load():
         store.state(c, "eurostat", "gdp_nuts", updated=mio["updated"], label=mio["label"])
         for ind, unit in (("hicp_i15", "I15"), ("hicp_rch_m", "RCH_M"), ("hicp_rch_a", "RCH_A")):
             put(ind, "eurostat/hicp_rates_2024.json", {"unit", "coicop18"}, unit)
+        for ind, name, pinned in (("gdp_full", "eurostat/nama_10_gdp-2.json", {"unit"}), ("bop", "eurostat/bop_c6_q-2.json", set()),
+                                  ("trade_a", "eurostat/ext_lt_intratrd-2.json", set()), ("hicp_w", "eurostat/prc_hicp_iw-2.json", set())):
+            put(ind, name, pinned)
+        from ingest import ecb, mf
+        for key, code in (("MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N", "housing"), ("MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N", "housing")):
+            geo = "BG" if ".BG." in key else "EA"
+            rows = [({"series": code}, geo, t, v, f) for t, v, f in ecb.parse((FX / "ecb" / f"{key}.csv").read_bytes(), key)]
+            store.apply(c, "ecb", "rates", f"rates-{geo}", key, rows, where="AND geo = %s", args=(geo,))
+        items, first, _ = mf.parse((FX / "mf/2026-04-03.json").read_bytes())
+        store.apply(c, "mf", "mf_forecast", "mf_forecast", "mf", [({"vintage": "2026-04-03", "item": k}, "BG", str(y), v, "f" if y >= first else None)
+                                                                    for k, ys in items.items() for y, v in ys.items()],
+                    {"vintage": {"2026-04-03": mf.short_name("Пролетна макроикономическа прогноза 2026 г.", "2026-04-03")}})
         for name in ("bnb/today.csv", "bnb/q2025-4.csv"):
             rows = bnb.parse((FX / name).read_bytes())
             for ind in {r[0] for r in rows}:
@@ -124,9 +137,28 @@ def test_pages_on_real_answers(client):
     infl = client.get("/inflaciya").text
     row = infl[infl.index("Хранителни продукти и безалкохолни напитки <span"):]
     assert "няма данни" in row[:row.index("</tr>")]
-    fx = client.get("/kursove?code=USD").text
+    fx = client.get("/pari?code=USD").text
     assert "1,1403" in fx and "Щатски долар" in fx
-    assert client.get("/kursove?code=XYZ").status_code == 404
+    assert client.get("/pari?code=XYZ").status_code == 404
+    moved = client.get("/kursove?code=USD", follow_redirects=False)                # Курсове is now Пари
+    assert moved.status_code == 301 and moved.headers["location"] == "/pari?code=USD"
+    assert "Жилищните кредити в България струват 2,43% годишно (юли 2026), в еврозоната 3,54%." in fx
+    fin = client.get("/finansi").text
+    assert 'data-src="/api/prognoza/gdp_growth.json?v=2026-04-03"' in fin          # the latest forecasts are drawn
+    j = client.get("/api/prognoza/gdp_growth.json").json()
+    assert j["series"][1]["name"] == "Пролетна прогноза 2026" and j["series"][0]["color"] != j["series"][1]["color"]
+    assert ["2026", 2.6, "f"] in j["series"][1]["points"] and ["2025", 3.1, None] in j["series"][1]["points"]
+    assert client.get("/api/prognoza/nope.json").status_code == 404
+    infl = client.get("/inflaciya").text
+    assert "Какво движи инфлацията, август 2026" in infl and "процентни пункта" in infl
+    ext = client.get("/vanshen").text
+    assert "Текущата сметка за" in ext and "Износ по стокови групи, 2025" in ext
+    grow = client.get("/rastezh").text
+    assert "През 2025 г. БВП на България расте реално" in grow
+    emp = api("m=EMP&l=oblasti")                                                    # the survey stops at the regions
+    assert emp["l"] == "rayoni" and [k for k, _ in emp["levels"]] == ["rayoni", "makrorayoni"]
+    page = client.get("/karta?m=EMP").text                                        # and the page offers only those levels
+    assert 'data-l="rayoni"' in page and 'data-l="oblasti"' not in page
     src = client.get("/sources").text
     assert "наред" in src and ">ok<" not in src and "help/copyright-notice" in src         # the state in Bulgarian
 
