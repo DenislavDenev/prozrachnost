@@ -429,15 +429,71 @@ def area_cond(aid):
     return ("bp.municipality = %s", [aid]) if aid[0].isdigit() else ("%s IN (m.nuts3, m.nuts2, m.nuts1)", [aid])
 
 
+# The map by the supplier's seat (methodology 7): the NUTS codes of the award notice, one per member in the members'
+# order ("CZ; BG411"). A contract counts once in the place of each of its members; "ZZZ" (a region outside NUTS)
+# places it only in its country, "00" (no country given) nowhere.
+SPLIT = """CROSS JOIN LATERAL (SELECT DISTINCT btrim(x) code FROM unnest(string_to_array(c.supplier_nuts, ';')) x
+                      WHERE btrim(x) ~ '^[A-Z]{2}[0-9A-Z]{0,3}$') sp"""
+SUP_LEVEL = {"oblast": 5, "region": 4, "macro": 3, "country": 2}
+SUP_AREA = re.compile(r"[A-Z]{2}[0-9A-Z]{0,3}")
+# a contract with a supplier whose code begins with the area's code (two parameters: its length and the code)
+SUP_HERE = """c.id IN (SELECT c2.id FROM live.contract c2 CROSS JOIN LATERAL unnest(string_to_array(c2.supplier_nuts, ';')) x
+                        WHERE left(btrim(x), %s) = %s)"""
+# the member's own code: by position, or the only code when the notice gives one for all
+MEMBER_CODE = """JOIN LATERAL (SELECT btrim(u.x) code FROM unnest(string_to_array(c.supplier_nuts, ';')) WITH ORDINALITY u(x, i)
+                  WHERE u.i = s.position + 1 OR array_length(string_to_array(c.supplier_nuts, ';'), 1) = 1) mc ON true"""
+COUNTRY_BG = {
+    "AL": "Албания", "AT": "Австрия", "BA": "Босна и Херцеговина", "BE": "Белгия", "BG": "България", "BY": "Беларус",
+    "CH": "Швейцария", "CY": "Кипър", "CZ": "Чехия", "DE": "Германия", "DK": "Дания", "EE": "Естония", "EL": "Гърция",
+    "ES": "Испания", "FI": "Финландия", "FR": "Франция", "HR": "Хърватия", "HU": "Унгария", "IE": "Ирландия",
+    "IS": "Исландия", "IT": "Италия", "LI": "Лихтенщайн", "LT": "Литва", "LU": "Люксембург", "LV": "Латвия",
+    "MD": "Молдова", "ME": "Черна гора", "MK": "Северна Македония", "MT": "Малта", "NL": "Нидерландия", "NO": "Норвегия",
+    "PL": "Полша", "PT": "Португалия", "RO": "Румъния", "RS": "Сърбия", "RU": "Русия", "SE": "Швеция", "SI": "Словения",
+    "SK": "Словакия", "TR": "Турция", "UA": "Украйна", "UK": "Обединено кралство", "XK": "Косово", "AD": "Андора",
+    "MC": "Монако", "SM": "Сан Марино", "VA": "Ватикана", "GE": "Грузия", "AM": "Армения", "AZ": "Азербайджан",
+    "US": "САЩ", "CA": "Канада", "CN": "Китай", "JP": "Япония", "KR": "Южна Корея", "IN": "Индия", "IL": "Израел",
+    "AE": "Обединени арабски емирства", "SA": "Саудитска Арабия", "SG": "Сингапур", "AU": "Австралия", "BR": "Бразилия"}
+
+
+def supplier_area(level, o):
+    """The area of a supplier's code at a level of the map, or NULL when the code does not reach that level."""
+    n = SUP_LEVEL[level]
+    inside = " AND left(sp.code, 2) = 'BG'" if o == "bg" else ""
+    region = f" AND length(sp.code) >= {n} AND sp.code !~ 'ZZ'" if n > 2 else ""
+    return f"CASE WHEN true{inside}{region} THEN left(sp.code, {n}) END"
+
+
 @app.get("/map", response_class=HTMLResponse)
 def map_page(request: Request):
     return page(request, "map.html", **choices(), nav="Карта")
 
 
+def supplier_map(where, args, level, o):
+    if o not in ("bg", "eu") or level not in SUP_LEVEL or (o, level) == ("bg", "country"):
+        raise HTTPException(400)
+
+    def per(lvl):
+        placed = f"SELECT DISTINCT c.id cid, {supplier_area(lvl, o)} id FROM live.contract c {SPLIT} WHERE {where}"
+        return Q.rows(f"""SELECT a.id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
+            FROM ({placed}) a JOIN live.contract c ON c.id = a.cid WHERE a.id IS NOT NULL GROUP BY 1""", *args), placed
+    areas, placed = per(level)
+    cover = Q.one(f"""SELECT round({Q.SUM}) eur,
+        round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND c.id IN (SELECT cid FROM ({placed}) a WHERE a.id IS NOT NULL))) placed,
+        round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND NOT EXISTS (
+          SELECT 1 FROM unnest(string_to_array(c.supplier_nuts, ';')) x WHERE btrim(x) ~ '^[A-Z]{{2}}'))) unknown
+        FROM live.contract c WHERE {where}""", *args, *args)
+    countries = per("country")[0] if o == "eu" else []   # the page lists those outside the map (the USA …)
+    codes = {a["id"][:2] for a in areas + countries}
+    return {"areas": areas, "cover": cover, "countries": countries, "names": {c: COUNTRY_BG.get(c, c) for c in codes}}
+
+
 @app.get("/map.json")
-def map_data(request: Request, level: str = "muni"):
-    """Contracts per area of the buyer (methodology 7), plus what could not be placed."""
+def map_data(request: Request, level: str = "muni", by: str = "buyer", o: str = "bg"):
+    """Contracts per area of the buyer or of the supplier's seat (methodology 7), plus what could not be placed."""
     where, args = map_filter(request)
+    if by == "supplier":   # "only the municipality and its units" is about buyers; it does not apply here
+        out = supplier_map(where.replace("bp.basis = 'municipality'", "true"), args, level, o)
+        return JSONResponse(json.loads(json.dumps({**out, "level": level, "by": by, "o": o}, default=jdefault)))
     g = LEVEL.get(level, LEVEL["muni"])
     areas = Q.rows(f"""SELECT {g} id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
         FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality
@@ -484,9 +540,20 @@ def place(request: Request, aid: str):
 
 
 @app.get("/map/{aid}.json")
-def map_detail(request: Request, aid: str):
-    cond, a0 = area_cond(aid)
+def map_detail(request: Request, aid: str, by: str = "buyer"):
     where, args = map_filter(request)
+    if by == "supplier":   # the suppliers seated in the area and the buyers who paid them
+        if not SUP_AREA.fullmatch(aid):
+            raise HTTPException(400)
+        where = where.replace("bp.basis = 'municipality'", "true")
+        buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
+            FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+            WHERE {SUP_HERE} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
+        suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+            FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id {MEMBER_CODE}
+            WHERE left(mc.code, %s) = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
+        return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
+    cond, a0 = area_cond(aid)
     base = "FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality"
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
@@ -587,6 +654,8 @@ def contracts(request: Request):
         L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
     if L.get("municipality"):
         L.add("c.buyer_eik IN (SELECT eik FROM live.buyer_place WHERE municipality = %s)", L.get("municipality"))
+    if SUP_AREA.fullmatch(L.get("supplier_area")):  # a place of the supplier's seat (the map by supplier)
+        L.add(SUP_HERE, len(L.get("supplier_area")), L.get("supplier_area"))
     if AREA.fullmatch(L.get("area")):  # oblast / region / macro-region (NUTS code) of the buyer
         L.add("""c.buyer_eik IN (SELECT bp.eik FROM live.buyer_place bp JOIN live.municipality m ON m.id = bp.municipality
                  WHERE %s IN (m.nuts3, m.nuts2, m.nuts1))""", L.get("area"))

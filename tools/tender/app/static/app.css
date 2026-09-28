@@ -241,6 +241,8 @@ details.more[open] > summary { margin-bottom: 14px; }
 .mapbox .selg path { pointer-events: none; fill: none; } .mapbox .selg .halo { stroke: #fff; stroke-width: 5; }
 .mapbox .selg .line { stroke: var(--ink); stroke-width: 2.4; }
 .mapwrap { position: relative; }
+.mapbox .ground path { fill: var(--line-2); stroke: #fff; stroke-width: .6; cursor: default; pointer-events: none; }   /* the countries around */
+.mapbox svg.flying { pointer-events: none; }
 .mapbox .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .mapbox .zoom button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; color: var(--ink-2);
   font: 600 18px/1 var(--font-body); cursor: pointer; } .mapbox .zoom button:hover { color: var(--ink); border-color: var(--ink-4); }
@@ -253,7 +255,8 @@ details.more[open] > summary { margin-bottom: 14px; }
 .hb.few .r:nth-child(n+6) { display: none; }
 button.l.more { background: none; border: 0; padding: 8px 0 0; font: inherit; font-size: 14px; color: var(--accent-ink); cursor: pointer; }
 .h3s { font-size: 15px; margin: 18px 0 10px; }
-.mapctl .tabs { height: 38px; align-items: center; }
+.mapctl .tabs { min-height: 38px; align-items: center; flex-wrap: wrap; max-width: 100%; }
+.fld[hidden] { display: none; }
 .mapbox path { fill: var(--line-2); }
 .tabs button { white-space: nowrap; }
 .fbtn { display: flex; align-items: center; gap: 16px; height: 38px; align-self: end; }

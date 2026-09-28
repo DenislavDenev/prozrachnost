@@ -9,7 +9,7 @@ EPSG:3035, so Bulgaria and Europe share one plane and the map can fly from one t
 Licence (GISCO): use only for non-commercial purposes and with the credit
 "© EuroGeographics for the administrative boundaries" on the map; the page shows it in Bulgarian.
 
-Writes app/static/europe.json: {"h", "names": {NUTS code: Latin name}, "world": {country: path}, "0".."3": {code: path},
+Writes app/static/europe.json: {"h", "frame": {x0, y1, s}, "names": {NUTS code: Latin name}, "world": {country: path}, "0".."3": {code: path},
 "bg": {"0".."3": {code: path}}}, in a frame 1000 wide. Parts outside the frame (the Canaries, the Azores, Madeira,
 the French overseas regions, Svalbard, Asia) are cut off, as on the maps of Eurostat. Needs shapely (dev only).
 
@@ -57,7 +57,8 @@ def svg(geom, digits=1, simplify=0):
 
 
 def main():
-    out = {"h": round((Y1 - Y0) * S), "names": {}, "world": {}, "bg": {}}
+    # the frame: map x = (X - x0) * s, map y = (y1 - Y) * s for EPSG:3035 metres; Тендер draws on the same plane
+    out = {"h": round((Y1 - Y0) * S), "frame": {"x0": X0, "y1": Y1, "s": S}, "names": {}, "world": {}, "bg": {}}
     for f in get(WORLD):
         d = svg(shape(f["geometry"]))
         if d:
