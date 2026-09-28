@@ -482,3 +482,10 @@ def test_every_run_state_has_its_bulgarian_name():
     sql = (root / "db/migrations/0001_init.sql").read_text(encoding="utf-8")
     states = re.findall(r"'(\w+)'", re.search(r"status\s+text NOT NULL DEFAULT 'running' CHECK \(status IN \(([^)]*)\)", sql).group(1))
     assert set(states) == set(main.RUN) and "r.status | run" in (root / "app/templates/sources.html").read_text(encoding="utf-8")
+
+
+def test_the_map_scale_shows_only_its_two_ends():
+    # AGENTS.md 7: the legend of every map is the gradient with its lowest and highest value, no median
+    from pathlib import Path
+    html = (Path(__file__).parent.parent / "app/templates/map.html").read_text(encoding="utf-8")
+    assert "медиана" not in html and "ticks: [lo, hi]" in html

@@ -13,7 +13,8 @@ DSN = os.environ.get("IKONOMIKA_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="IKONOMIKA_TEST_DSN not set")
 FX = Path(__file__).parent / "fixtures"
 
-PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta?l=makrorayoni", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/kursove", "/sources", "/how"]
+PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta?l=makrorayoni", "/karta?o=eu",
+         "/karta?o=eu&l=oblasti", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/kursove", "/sources", "/how"]
 
 
 def wipe():
@@ -33,7 +34,10 @@ def load():
             store.apply(c, "eurostat", ind, ind, name, rows, p["labels"])
             store.state(c, "eurostat", ind, updated=p["updated"], label=p["label"])
         put("gdp_a", "eurostat/gdp_bg_since2023.json", {"unit", "na_item"})
-        put("gdp_nuts", "eurostat/gdp_nuts_mio.json", {"unit"})
+        # the regions: M€ of Bulgaria and € per person of some of Europe, in one answer as the import has it
+        mio, eu = (jsonstat.parse((FX / n).read_bytes(), {"unit"}) for n in ("eurostat/gdp_nuts_mio.json", "eurostat/gdp_nuts_europe.json"))
+        store.apply(c, "eurostat", "gdp_nuts", "gdp_nuts", "nuts", mio["rows"] + eu["rows"], {**mio["labels"], **eu["labels"]})
+        store.state(c, "eurostat", "gdp_nuts", updated=mio["updated"], label=mio["label"])
         for ind, unit in (("hicp_i15", "I15"), ("hicp_rch_m", "RCH_M"), ("hicp_rch_a", "RCH_A")):
             put(ind, "eurostat/hicp_rates_2024.json", {"unit", "coicop18"}, unit)
         for name in ("bnb/today.csv", "bnb/q2025-4.csv"):
@@ -82,12 +86,24 @@ def test_pages_on_real_answers(client):
     assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
     obl = client.get("/karta?m=MIO_EUR&y=2024").text
     assert "София (столица)" in obl and 'id="a-BG411"' in obl and obl.count("<path") == 28
-    assert "медиана" in obl and "color-mix(in srgb, var(--accent) 8%, #fff)" in obl and "var(--accent) 100%" in obl   # a gradient
+    assert "медиана" not in obl and "color-mix(in srgb, var(--accent) 8%, #fff)" in obl and "var(--accent) 100%" in obl   # a gradient
+    assert "geoBoundaries" in obl
     reg = client.get("/karta?m=MIO_EUR&y=2024&l=rayoni").text
     assert reg.count("<path") == 6 and "Югозападен район" in reg and "Район</th>" in reg
     assert client.get("/karta?m=MIO_EUR&y=2024&l=makrorayoni").text.count("<path") == 2
     assert client.get("/karta?y=1999").status_code == 404 and client.get("/karta?m=X").status_code == 404
-    assert client.get("/karta?l=obshtini").status_code == 404
+    assert client.get("/karta?l=obshtini").status_code == 404 and client.get("/karta?o=bg&l=darzhavi").status_code == 404
+    assert client.get("/karta?o=xx").status_code == 404
+    import json
+    europe = json.loads((FX.parent.parent / "app/static/europe.json").read_text(encoding="utf-8"))
+    eu = client.get("/karta?o=eu&y=2024").text                       # the countries of Europe
+    assert eu.count("<path") == len(europe["0"]) and "EuroGeographics" in eu and "Германия" in eu and "Норвегия" in eu
+    de = eu[eu.index('id="a-DE"'):]
+    assert "data-v=\"51800\"" in de[:de.index("</tr>")] and 'class=" bg"' in eu                  # Bulgaria is outlined
+    no = eu[eu.index('id="a-NO"'):]
+    assert "няма данни" in no[:no.index("</tr>")]                                     # 2024 not yet out for Norway
+    obl = client.get("/karta?o=eu&l=oblasti&y=2024").text
+    assert obl.count("<path") == len(europe["3"]) and "Stuttgart" in obl and 'id="a-BG411" class="hl"' in obl
     moved = client.get("/oblasti?m=THS", follow_redirects=False)                # the old address still leads there
     assert moved.status_code == 301 and moved.headers["location"] == "/karta?m=THS"
     from ingest import db
@@ -117,6 +133,6 @@ def test_api_and_csv(client):
     assert ["2025-10-01", round(1.95583 / 1.66823, 6), "bgn"] in usd                # leva turned into euro by the fixed rate
     r = client.get("/csv/gdp_nuts.csv")
     lines = r.text.lstrip("﻿").splitlines()
-    assert lines[0] == "indicator,unit,geo,time,value,flag" and len(lines) == 926
+    assert lines[0] == "indicator,unit,geo,time,value,flag" and len(lines) == 926 + 13   # + the € per person of some of Europe
     assert client.get("/api/nope.json").status_code == 404 and client.get("/csv/nope.csv").status_code == 404
     assert client.get("/no-such-page").status_code == 404

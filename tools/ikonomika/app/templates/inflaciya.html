@@ -12,7 +12,7 @@
     <div class="chips" data-for="infl" data-param="coicop18" role="group" aria-label="Групи">
       {% for row in groups | slice(2) %}<div class="row">{% for c in row %}<button type="button" value="{{ c }}" aria-pressed="{{ 'true' if c in picked else 'false' }}">{{ label('coicop18', c) }}</button>{% endfor %}</div>{% endfor %}
     </div>
-    <div class="chart tall" id="infl" data-src="/api/hicp_rch_a.json?geo=BG&coicop18={{ picked | join(',') }}" data-zoom="2010-01" data-digits="1"></div>
+    <div class="chart tall" id="infl" data-src="/api/hicp_rch_a.json?geo=BG&coicop18={{ picked | join(',') }}" data-digits="1"></div>
     {{ src_line() }}</section>
 
   <section class="p s12"><div class="tools"><h2>Основните групи{% if month %} за {{ month | period }}{% endif %}</h2>
@@ -29,7 +29,7 @@
     <div class="chips" id="sub-chips" data-for="infl-sub" data-param="coicop18" role="group" aria-label="Подгрупи">
       {% for row in rest | slice(2) %}<div class="row">{% for r in row %}<button type="button" value="{{ r.code }}" title="{{ r.code }}" aria-pressed="{{ 'true' if r.code in sub else 'false' }}">{{ r.name }}</button>{% endfor %}</div>{% endfor %}
     </div>
-    <div class="chart tall" id="infl-sub" data-src="/api/hicp_rch_a.json?geo=BG&coicop18={{ sub | join(',') }}" data-zoom="2010-01" data-digits="1"></div>
+    <div class="chart tall" id="infl-sub" data-src="/api/hicp_rch_a.json?geo=BG&coicop18={{ sub | join(',') }}" data-digits="1"></div>
     {{ src_line() }}
     <div class="tools" style="margin-top:22px"><span></span><span><a class="more" href="/csv/hicp_i15.csv">CSV: индекси</a> · <a class="more" href="/csv/hicp_rch_m.csv">CSV: месечна промяна</a></span></div>
     <table class="sortable" id="all-groups"><thead><tr><th>Код</th><th>Група</th><th class="n">Година, %</th><th class="n">Месец, %</th><th class="n">Индекс</th></tr></thead><tbody>

@@ -7,6 +7,8 @@ const GEO_COLOR = { BG: '#0b7a5e', EU27_2020: EU, EA, EA21: EA, EA20: EA };
 const PALETTE = ['#121417', '#0b7a5e', '#8a5cb8', '#c2587a', '#7a8b2c', '#5b6b7f', '#2a9d8f', '#8d6e63', '#9aa1aa', '#b0413e'];
 const FLAGS = { p: 'предварителни', e: 'оценка', b: 'прекъсване на реда', d: 'различно определение', u: 'ниска надеждност', s: 'оценка на Eurostat', r: 'ревизирани' };
 
+const ZOOM_FROM = '2010';
+
 const num = (v, d = 1) => v == null ? 'няма данни'
   : v.toLocaleString('bg-BG', { minimumFractionDigits: d, maximumFractionDigits: d }).replace('-', '−');
 function period(t) {
@@ -38,13 +40,13 @@ async function lineChart(el) {
   let leg = el.previousElementSibling;
   if (!leg || !leg.classList.contains('legend')) { leg = document.createElement('div'); leg.className = 'legend'; el.before(leg); }
   leg.innerHTML = series.map((s, i) => `<span><i style="background:${color(s, i)}"></i>${s.name}</span>`).join('');
-  const zoom = el.dataset.zoom;
-  const start = zoom ? Math.max(0, times.indexOf(times.find((t) => t >= zoom))) / Math.max(1, times.length - 1) * 100 : 0;
+  // every chart has the slider and opens on the same period: from ZOOM_FROM to the latest (AGENTS.md 7)
+  const start = Math.max(0, times.indexOf(times.find((t) => t >= ZOOM_FROM))) / Math.max(1, times.length - 1) * 100;
   const chart = echarts.getInstanceByDom(el) || echarts.init(el, null, { renderer: 'svg' });
   chart.setOption({
     animation: false,
     textStyle: { fontFamily: 'Sofia Sans, sans-serif' },
-    grid: { left: 8, right: 12, top: 12, bottom: zoom ? 44 : 4, containLabel: true },
+    grid: { left: 8, right: 12, top: 12, bottom: 44, containLabel: true },
     tooltip: {
       trigger: 'axis', confine: true,
       formatter: (items) => `<b>${period(items[0].axisValue)}</b><br>` + items.map((it) => {
@@ -57,8 +59,8 @@ async function lineChart(el) {
       axisLabel: { color: '#69707a', interval: yearTicks(times), formatter: (t) => t.slice(0, 4) } },
     yAxis: { type: 'value', scale: el.dataset.zero == null, splitLine: { lineStyle: { color: '#eceef1' } },
       axisLabel: { color: '#69707a', formatter: (v) => num(v, Math.min(4, (String(v).split('.')[1] || '').length)) } },   // as many decimals as the tick has
-    dataZoom: zoom ? [{ type: 'slider', start, bottom: 8, height: 22, borderColor: '#e1e4e8', fillerColor: 'rgba(11,122,94,.08)',
-      handleStyle: { color: '#0b7a5e' }, labelFormatter: (i) => period(times[i] || '') }] : [],   // only the slider: an "inside" zoom takes the wheel and the finger from the page
+    dataZoom: [{ type: 'slider', start, bottom: 8, height: 22, borderColor: '#e1e4e8', fillerColor: 'rgba(11,122,94,.08)',
+      handleStyle: { color: '#0b7a5e' }, labelFormatter: (i) => period(times[i] || '') }],   // only the slider: an "inside" zoom takes the wheel and the finger from the page
     series: series.map((s, i) => ({
       name: s.name, type: 'line', showSymbol: false, connectNulls: false, color: color(s, i),
       lineStyle: { width: s.geo === 'BG' || i === 0 ? 2.4 : 1.6 },

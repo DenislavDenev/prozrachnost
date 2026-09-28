@@ -10,6 +10,7 @@ from pathlib import Path
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -17,7 +18,6 @@ from markupsafe import Markup
 
 from ingest.config import BGN_PER_EUR
 from ingest.eurostat import EURO_AREA, MEMBERS, indicators
-from ingest.checks import NUTS1, NUTS2, NUTS3
 
 from . import feedback
 
@@ -29,6 +29,7 @@ ASSET_V = "1"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+app.add_middleware(GZipMiddleware, minimum_size=1000)   # the map of Europe is ~0.5 MB of paths
 T = Jinja2Templates(directory=HERE / "templates")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STATE_DIRECTORY", ROOT / ".data"), "Икономика"))
 
@@ -209,9 +210,12 @@ MAP_MEASURES = {"EUR_HAB": ("gdp_nuts", "БВП на човек", "€ на чо
                 "PPS_EU27_2020_HAB": ("gdp_nuts", "БВП на човек по покупателна способност", "СПС на човек", 0),
                 "MIO_EUR": ("gdp_nuts", "БВП", "млн. €", 0),
                 "THS": ("pop_nuts", "Население (средногодишно)", "хил. души", 1)}
-# the map's levels, named as on the Тендер map: (plural, singular, key in bg-oblasti.json, codes)
-LEVELS = {"oblasti": ("Области", "Област", "oblasts", NUTS3), "rayoni": ("Райони", "Район", "regions", NUTS2),
-          "makrorayoni": ("Макрорайони", "Макрорайон", "macros", NUTS1)}
+# the map covers Bulgaria or Europe; the levels are named as on the Тендер map and listed from the smallest:
+# scope -> {level: (plural, singular, where the outlines are)}
+SCOPES = {"bg": ("България", {"oblasti": ("Области", "Област", ("bg", "oblasts")), "rayoni": ("Райони", "Район", ("bg", "regions")),
+                              "makrorayoni": ("Макрорайони", "Макрорайон", ("bg", "macros"))}),
+          "eu": ("Европа", {"oblasti": ("Области", "Област", ("eu", "3")), "rayoni": ("Райони", "Район", ("eu", "2")),
+                            "makrorayoni": ("Макрорайони", "Макрорайон", ("eu", "1")), "darzhavi": ("Държави", "Държава", ("eu", "0"))})}
 MAP_MIN = 8  # % of the accent on the lowest value, as on the Тендер map
 
 
@@ -221,9 +225,28 @@ def map_shapes():
     return json.loads((HERE / "static" / "bg-oblasti.json").read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def europe_shapes():
+    """{h, names, "0".."3": {code: path}}: Eurostat GISCO, NUTS 2024 (tools/build_europe_map.py)."""
+    return json.loads((HERE / "static" / "europe.json").read_text(encoding="utf-8"))
+
+
 def area_name(code):
-    s = map_shapes()
-    return s["oblasts"][code]["n"] if len(code) == 5 else s["names"][code] + (" район" if len(code) == 4 else "")
+    """Bulgarian for Bulgaria and the countries, the Latin name of GISCO for the other regions."""
+    if len(code) == 2:
+        return label("geo", code)
+    if code.startswith("BG"):
+        s = map_shapes()
+        return s["oblasts"][code]["n"] if len(code) == 5 else s["names"][code] + (" район" if len(code) == 4 else "")
+    return europe_shapes()["names"].get(code, code)
+
+
+def outlines(where):
+    """(height, {code: SVG path}) of a level."""
+    src, key = where
+    if src == "bg":
+        return map_shapes()["h"], {c: v["d"] for c, v in map_shapes()[key].items()}
+    return europe_shapes()["h"], europe_shapes()[key]
 
 
 def shade(t):
@@ -237,15 +260,24 @@ def regions_moved(request: Request):
 
 
 @app.get("/karta", response_class=HTMLResponse)
-def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, l: str = "oblasti"):
-    if m not in MAP_MEASURES or l not in LEVELS:
+def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, o: str = "bg", l: str | None = None):
+    if m not in MAP_MEASURES or o not in SCOPES:
+        raise HTTPException(404)
+    levels = SCOPES[o][1]
+    l = l or ("oblasti" if o == "bg" else "darzhavi")
+    if l not in levels:
         raise HTTPException(404)
     ind, title, unit, digits = MAP_MEASURES[m]
-    plural, single, key, codes = LEVELS[l]
-    years = [r[0] for r in q("""SELECT DISTINCT time FROM live.series WHERE indicator = %s AND dims->>'unit' = %s
-                                AND geo = ANY(%s) AND value IS NOT NULL ORDER BY 1 DESC""", ind, m, codes)]
+    plural, single, where = levels[l]
+    h, shapes = outlines(where)
+    codes = sorted(shapes)
+    counts = q("""SELECT time, count(*) FROM live.series WHERE indicator = %s AND dims->>'unit' = %s
+                  AND geo = ANY(%s) AND value IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""", ind, m, codes)
+    years = [t for t, _ in counts]
     if y is None and years:
-        y = years[0]
+        # the latest year with most of the map: a year where big countries are still missing would be mostly grey
+        most = max(n for _, n in counts)
+        y = next(t for t, n in counts if n >= 0.8 * most)
     if y is not None and y not in years:
         raise HTTPException(404)
     base = str(int(y) - 10) if y and str(int(y) - 10) in years else (years[-1] if years else None)
@@ -253,24 +285,25 @@ def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, l: str 
                   ind, m, y, codes + ["BG"])) if y else {}
     old = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
                  ind, m, base, codes)) if base else {}
-    present = sorted(float(v) for g, v in vals.items() if g != "BG" and v is not None and v > 0)
+    present = sorted(float(vals[c]) for c in codes if vals.get(c) is not None and vals[c] > 0)
     lo, hi = (present[0], present[-1]) if present else (1.0, 1.0)
     # log scale, as on the Тендер map for money and counts: the capital would wash out the rest on a linear one
     at_ = lambda v: math.log(max(float(v), lo) / lo) / (math.log(hi / lo) or 1)  # noqa: E731 - the place of a value
     table = []
     for code in codes:
-        v, o = vals.get(code), old.get(code)
+        v, old_v = vals.get(code), old.get(code)
         table.append({"code": code, "name": area_name(code), "v": v, "fill": None if v is None else shade(at_(v)),
-                      "change": (float(v) / float(o) - 1) * 100 if v is not None and o else None})
+                      "bg": o == "eu" and code.startswith("BG"),
+                      "change": (float(v) / float(old_v) - 1) * 100 if v is not None and old_v else None})
     ranked = sorted((r for r in table if r["v"] is not None), key=lambda r: -float(r["v"]))
     for i, r in enumerate(ranked, 1):
         r["rank"] = i
-    mid = present[len(present) // 2] if present else None
-    ticks = [(v, at_(v) * 100, c) for v, c in ((lo, "a"), (mid, "m"), (hi, "z"))] if len(present) > 2 else \
-        [(v, at_(v) * 100, c) for v, c in ((lo, "a"), (hi, "z"))] if present else []
-    return page(request, "karta.html", "Карта", m=m, y=y, l=l, years=years, base=base, title=title, unit=unit, digits=digits,
-                table=table, bg=vals.get("BG"), shapes=map_shapes()[key], h=map_shapes()["h"], levels=LEVELS, plural=plural,
-                single=single, grad=(shade(0), shade(1)), ticks=ticks, measures=MAP_MEASURES, src=source(ind))
+    if o == "eu":   # over a thousand places: by rank, so the list reads with the map
+        table.sort(key=lambda r: r.get("rank", 10 ** 6))
+    ticks = [(lo, "a"), (hi, "z")] if present else []
+    return page(request, "karta.html", "Карта", m=m, y=y, o=o, l=l, years=years, base=base, title=title, unit=unit, digits=digits,
+                table=table, bg=vals.get("BG"), shapes=shapes, h=h, scopes=SCOPES, levels=levels, plural=plural, single=single,
+                grad=(shade(0), shade(1)), ticks=ticks, measures=MAP_MEASURES, src=source(ind))
 
 
 # the comparisons with the EU: (indicator, dims, title, unit, digits)
