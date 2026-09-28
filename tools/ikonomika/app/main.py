@@ -3,20 +3,21 @@ import csv
 import datetime as dt
 import io
 import json
+import math
 import os
 from functools import lru_cache
 from pathlib import Path
 
 import psycopg
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from ingest.config import BGN_PER_EUR
-from ingest.eurostat import MEMBERS, indicators
-from ingest.checks import NUTS3
+from ingest.eurostat import EURO_AREA, MEMBERS, indicators
+from ingest.checks import NUTS1, NUTS2, NUTS3
 
 from . import feedback
 
@@ -93,7 +94,16 @@ def flagtext(f):
     return label("flag", f) if f else ""
 
 
-T.env.filters.update(num=fnum, period=fperiod, date=fdate, flag=flagtext)
+# the state of a source, in the words every tool uses (AGENTS.md 7)
+STATUS = {"ok": "наред", "held": "задържан до второ четене", "invalid": "невалиден отговор",
+          "gone": "липсва при източника", "error": "грешка при четене", None: "не е четен"}
+
+
+def fstatus(s):
+    return STATUS.get(s, s)
+
+
+T.env.filters.update(num=fnum, period=fperiod, date=fdate, flag=flagtext, status=fstatus)
 T.env.globals.update(v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback.BUTTON),
                      support_link=Markup(feedback.support_link(HUB_URL)), label=label, IND=IND)
 
@@ -141,6 +151,12 @@ def source(indicator):
             "updated": updated[:10] if updated else None, "read": read}
 
 
+def euro_area(indicator):
+    """The euro area code this indicator has: EA (changing composition), else EA21 or EA20."""
+    have = {r[0] for r in q("SELECT DISTINCT geo FROM live.series WHERE indicator = %s AND geo = ANY(%s)", indicator, EURO_AREA)}
+    return next((g for g in EURO_AREA if g in have), "EA")
+
+
 # ---------- pages ----------
 
 @app.get("/", response_class=HTMLResponse)
@@ -156,11 +172,14 @@ def home(request: Request):
     k["pps"] = last("gdp_pps")
     k["min_wage"] = last("min_wage")
     k["salary"] = last("salary")
-    return page(request, "home.html", "Табло", k=k)
+    ea = {i: euro_area(i) for i in ("hicp_eu", "gdp_q", "unemp", "debt", "hpi")}
+    return page(request, "home.html", "Табло", k=k, ea=ea)
 
 
 INFL_MAIN = ["TOTAL", "CP01", "CP02", "CP03", "CP04", "CP05", "CP06", "CP07", "CP08", "CP09", "CP10", "CP11", "CP12", "CP13",
              "GD", "SERV", "FOOD", "FOOD_NP", "NRG", "ELC_GAS", "FUEL", "IGD_NNRG", "TOT_X_NRG_FOOD", "AP"]
+INFL_PICKED = ["TOTAL", "CP01", "NRG", "SERV"]          # drawn when the page opens
+INFL_SUB = ["CP01113", "CP01122", "CP0451", "CP07221"]  # bread, meat, electricity, diesel
 
 
 @app.get("/inflaciya", response_class=HTMLResponse)
@@ -174,64 +193,84 @@ def inflation(request: Request):
             for code, v, f in q("""SELECT dims->>'coicop18', value, flag FROM live.series
                                    WHERE indicator = %s AND geo = 'BG' AND time = %s""", ind, month):
                 vals.setdefault(code, {})[ind] = (v, f)
-        names = dict(q("SELECT code, label FROM live.dim_label WHERE indicator = 'hicp_rch_a' AND dim = 'coicop18'"))
         for code, v in vals.items():
-            rows.append({"code": code, "name": ref_labels().get(("coicop18", code)), "en": names.get(code, code),
-                         "main": code in INFL_MAIN, "a": v.get("hicp_rch_a", (None, None)), "m": v.get("hicp_rch_m", (None, None)),
+            rows.append({"code": code, "name": label("coicop18", code, "hicp_rch_a"), "main": code in INFL_MAIN,
+                         "a": v.get("hicp_rch_a", (None, None)), "m": v.get("hicp_rch_m", (None, None)),
                          "i": v.get("hicp_i15", (None, None))})
     order = {c: i for i, c in enumerate(INFL_MAIN)}
     main = sorted((r for r in rows if r["main"]), key=lambda r: order[r["code"]])
-    rest = sorted((r for r in rows if not r["main"]), key=lambda r: r["code"])
+    rest = sorted((r for r in rows if not r["main"]), key=lambda r: (not r["code"].startswith("CP"), r["code"]))   # the classification first
+    sub = [c for c in INFL_SUB if any(r["code"] == c for r in rest)]
     return page(request, "inflaciya.html", "Инфлация", month=month, main=main, rest=rest, groups=INFL_MAIN,
-                src=source("hicp_rch_a"))
+                picked=INFL_PICKED, sub=sub, src=source("hicp_rch_a"))
 
 
-OBL_MEASURES = {"EUR_HAB": ("gdp_nuts", "БВП на човек", "€ на човек", 0),
+MAP_MEASURES = {"EUR_HAB": ("gdp_nuts", "БВП на човек", "€ на човек", 0),
                 "PPS_EU27_2020_HAB": ("gdp_nuts", "БВП на човек по покупателна способност", "СПС на човек", 0),
                 "MIO_EUR": ("gdp_nuts", "БВП", "млн. €", 0),
                 "THS": ("pop_nuts", "Население (средногодишно)", "хил. души", 1)}
+# the map's levels, named as on the Тендер map: (plural, singular, key in bg-oblasti.json, codes)
+LEVELS = {"oblasti": ("Области", "Област", "oblasts", NUTS3), "rayoni": ("Райони", "Район", "regions", NUTS2),
+          "makrorayoni": ("Макрорайони", "Макрорайон", "macros", NUTS1)}
+MAP_MIN = 8  # % of the accent on the lowest value, as on the Тендер map
 
 
 @lru_cache(maxsize=1)
-def oblast_shapes():
+def map_shapes():
+    """{h, oblasts, regions, macros, names}: the outlines of the Тендер map (geoBoundaries, NUTS 2024)."""
     return json.loads((HERE / "static" / "bg-oblasti.json").read_text(encoding="utf-8"))
 
 
-@app.get("/oblasti", response_class=HTMLResponse)
-def regions(request: Request, m: str = "EUR_HAB", y: str | None = None):
-    if m not in OBL_MEASURES:
+def area_name(code):
+    s = map_shapes()
+    return s["oblasts"][code]["n"] if len(code) == 5 else s["names"][code] + (" район" if len(code) == 4 else "")
+
+
+def shade(t):
+    """The fill for a value at t (0..1) of the scale: one continuous gradient of the accent."""
+    return f"color-mix(in srgb, var(--accent) {round(MAP_MIN + t * (100 - MAP_MIN))}%, #fff)"
+
+
+@app.get("/oblasti")
+def regions_moved(request: Request):
+    return RedirectResponse(f"/karta?{request.url.query}" if request.url.query else "/karta", status_code=301)
+
+
+@app.get("/karta", response_class=HTMLResponse)
+def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, l: str = "oblasti"):
+    if m not in MAP_MEASURES or l not in LEVELS:
         raise HTTPException(404)
-    ind, title, unit, digits = OBL_MEASURES[m]
+    ind, title, unit, digits = MAP_MEASURES[m]
+    plural, single, key, codes = LEVELS[l]
     years = [r[0] for r in q("""SELECT DISTINCT time FROM live.series WHERE indicator = %s AND dims->>'unit' = %s
-                                AND geo = ANY(%s) AND value IS NOT NULL ORDER BY 1 DESC""", ind, m, NUTS3)]
+                                AND geo = ANY(%s) AND value IS NOT NULL ORDER BY 1 DESC""", ind, m, codes)]
     if y is None and years:
         y = years[0]
     if y is not None and y not in years:
         raise HTTPException(404)
     base = str(int(y) - 10) if y and str(int(y) - 10) in years else (years[-1] if years else None)
     vals = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
-                  ind, m, y, NUTS3 + ["BG"])) if y else {}
+                  ind, m, y, codes + ["BG"])) if y else {}
     old = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
-                 ind, m, base, NUTS3)) if base else {}
-    shapes = oblast_shapes()
-    present = sorted((float(v) for g, v in vals.items() if g != "BG" and v is not None))
-    # five classes by rank (quintiles): equal counts of oblasts, so the capital does not wash out the rest
-    cuts = [present[min(len(present) - 1, round(len(present) * i / 5))] for i in (1, 2, 3, 4)] if present else []
-    TINT = ["#e2f2ec", "#b4dccb", "#7fc0a6", "#3f9a7a", "#0b7a5e"]
-
-    def cls(v):
-        return None if v is None else sum(float(v) >= c for c in cuts)
+                 ind, m, base, codes)) if base else {}
+    present = sorted(float(v) for g, v in vals.items() if g != "BG" and v is not None and v > 0)
+    lo, hi = (present[0], present[-1]) if present else (1.0, 1.0)
+    # log scale, as on the Тендер map for money and counts: the capital would wash out the rest on a linear one
+    at_ = lambda v: math.log(max(float(v), lo) / lo) / (math.log(hi / lo) or 1)  # noqa: E731 - the place of a value
     table = []
-    for code in NUTS3:
-        v = vals.get(code)
-        o = old.get(code)
-        table.append({"code": code, "name": shapes["oblasts"][code]["n"], "v": v, "c": cls(v),
+    for code in codes:
+        v, o = vals.get(code), old.get(code)
+        table.append({"code": code, "name": area_name(code), "v": v, "fill": None if v is None else shade(at_(v)),
                       "change": (float(v) / float(o) - 1) * 100 if v is not None and o else None})
     ranked = sorted((r for r in table if r["v"] is not None), key=lambda r: -float(r["v"]))
     for i, r in enumerate(ranked, 1):
         r["rank"] = i
-    return page(request, "oblasti.html", "Области", m=m, y=y, years=years, base=base, title=title, unit=unit, digits=digits,
-                table=table, bg=vals.get("BG"), shapes=shapes, tint=TINT, cuts=cuts, measures=OBL_MEASURES, src=source(ind))
+    mid = present[len(present) // 2] if present else None
+    ticks = [(v, at_(v) * 100, c) for v, c in ((lo, "a"), (mid, "m"), (hi, "z"))] if len(present) > 2 else \
+        [(v, at_(v) * 100, c) for v, c in ((lo, "a"), (hi, "z"))] if present else []
+    return page(request, "karta.html", "Карта", m=m, y=y, l=l, years=years, base=base, title=title, unit=unit, digits=digits,
+                table=table, bg=vals.get("BG"), shapes=map_shapes()[key], h=map_shapes()["h"], levels=LEVELS, plural=plural,
+                single=single, grad=(shade(0), shade(1)), ticks=ticks, measures=MAP_MEASURES, src=source(ind))
 
 
 # the comparisons with the EU: (indicator, dims, title, unit, digits)
@@ -259,9 +298,11 @@ def eu(request: Request, p: str = "inflaciya"):
         w, a = where(dims)
         got = {g: (v, f) for g, v, f in q(f"SELECT geo, value, flag FROM live.series WHERE indicator = %s AND time = %s {w}",
                                           ind, lt[0], *a)}
-        for g in ["EU27_2020", "EA", *MEMBERS]:
+        ea = euro_area(ind)
+        for g in ["EU27_2020", ea, *MEMBERS]:
             v, f = got.get(g, (None, None))
-            rows.append({"geo": g, "name": label("geo", g), "v": v, "f": f, "agg": g in ("EU27_2020", "EA")})
+            rows.append({"geo": g, "name": label("geo", g), "v": v, "f": f, "agg": g in ("EU27_2020", ea),
+                         "cls": {"BG": "bg", "EU27_2020": "eu", ea: "ea"}.get(g, "")})
     vals = [float(r["v"]) for r in rows if r["v"] is not None]
     lo, hi = (min(0.0, *vals), max(0.0, *vals)) if vals else (0.0, 1.0)
     for r in rows:
@@ -273,7 +314,7 @@ def eu(request: Request, p: str = "inflaciya"):
     rank = next((i for i, r in enumerate(members, 1) if r["geo"] == "BG"), None)
     qs = "&".join(f"{k}={v}" for k, v in dims.items())
     return page(request, "es.html", "ЕС", p=p, pages=ES, ind=ind, title=title, unit=unit, digits=digits, period=lt[0] if lt else None,
-                rows=rows, bars=bars, rank=rank, n=len(members), api=f"/api/{ind}.json?geo=BG,EU27_2020&{qs}", src=source(ind))
+                rows=rows, bars=bars, rank=rank, n=len(members), api=f"/api/{ind}.json?geo=BG,EU27_2020,{euro_area(ind)}&{qs}", src=source(ind))
 
 
 def fx_series(code):
@@ -297,7 +338,8 @@ def rates(request: Request, code: str = "USD"):
         raise HTTPException(404)
     s = fx_series(code) if codes else []
     span = q("SELECT min(time), max(time), count(*) FROM live.series WHERE indicator = 'fx_bgn'")[0]
-    return page(request, "kursove.html", "Курсове", code=code, codes=codes, latest=latest, recent=list(reversed(s[-30:])),
+    year_ago = str(dt.date.fromisoformat(s[-1][0]) - dt.timedelta(days=365)) if s else ""
+    return page(request, "kursove.html", "Курсове", code=code, codes=codes, latest=latest, recent=[x for x in reversed(s) if x[0] > year_ago],
                 first=s[0] if s else None, span=span)
 
 

@@ -9,8 +9,10 @@ from .config import EUROSTAT, ROOT
 
 SOURCE = "eurostat"
 MEMBERS = "BE BG CZ DK DE EE IE EL ES FR HR IT CY LV LT LU HU MT NL AT PL PT RO SI SK FI SE".split()
-GEO = {"BG": ["BG"], "BGEU": ["BG", "EU27_2020", "EA"], "EU": ["EU27_2020", "EA", *MEMBERS],
-       "NUTS": ["BG", "BG3", "BG4", "BG31", "BG32", "BG33", "BG34", "BG41", "BG42", *checks.NUTS3]}
+# the euro area: EA (changing composition) where a dataset has it, else EA21 (with BG, from 2026) or EA20
+EURO_AREA = ["EA", "EA21", "EA20"]
+GEO = {"BG": ["BG"], "BGEU": ["BG", "EU27_2020", *EURO_AREA], "EU": ["EU27_2020", *EURO_AREA, *MEMBERS],
+       "NUTS": ["BG", *checks.NUTS1, *checks.NUTS2, *checks.NUTS3]}
 
 
 def indicators(path=ROOT / "db" / "ref" / "indicators.csv"):

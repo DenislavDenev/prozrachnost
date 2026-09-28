@@ -5,6 +5,7 @@
   --slate: #6b7a8c; --slate-soft: #eceff3; --amber: #b25b06; --amber-soft: #fcefd9;
   --ink: #121417; --ink-2: #464c55; --ink-3: #69707a; --ink-4: #9aa1aa;
   --line: #e1e4e8; --line-2: #eceef1; --surface: #fff; --surface-2: #f7f8f9;
+  --eu: #1f4fa8; --ea: #d9a400;   /* the EU is blue, the euro area yellow, everywhere (AGENTS.md 7) */
   --radius: 6px; --gap: 20px;
   --font-head: 'Sofia Sans Semi Condensed', sans-serif; --font-body: 'Sofia Sans', sans-serif;
 }
@@ -39,8 +40,9 @@ h1 { font-size: 40px; line-height: 1.08; } h2 { font-size: 19px; line-height: 1.
 .s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s6 { grid-column: span 6; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
 .ph { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
 .sub { font-size: 14px; color: var(--ink-3); margin-top: 3px; }
-.src { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line-2); font-size: 13px; color: var(--ink-3); }
-.src a { color: var(--accent-ink); }
+/* the source under a chart: one quiet line right under it */
+.src { margin-top: 2px; font-size: 12px; color: var(--ink-4); }
+.src a { color: var(--ink-3); } .src a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }
 .more { font-size: 14px; color: var(--accent-ink); white-space: nowrap; }
 
 /* key numbers */
@@ -57,14 +59,29 @@ h1 { font-size: 40px; line-height: 1.08; } h2 { font-size: 19px; line-height: 1.
 .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: 4px; margin-right: 7px; }
 
 /* controls */
-.tabs { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.tabs { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px; padding: 3px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
 .tabs a, .tabs button { all: unset; cursor: pointer; font-size: 13.5px; font-weight: 500; color: var(--ink-3); padding: 4px 11px; border-radius: var(--radius); }
 .tabs a[aria-current], .tabs button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
 .tabs a:focus-visible, .tabs button:focus-visible { outline: 2px solid var(--accent); }
 select, input[type=search] { font: 500 14.5px var(--font-body); height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
-.checks { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin: 4px 0 12px; }
-.checks label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
-.checks input { accent-color: var(--accent); }
+.ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-top: 24px; }
+/* a scroll area with a visible green bar */
+.chips, .scroll { scrollbar-width: thin; scrollbar-color: var(--accent) var(--line-2); }
+.chips::-webkit-scrollbar, .scroll::-webkit-scrollbar { height: 8px; width: 8px; background: var(--line-2); border-radius: 4px; }
+.chips::-webkit-scrollbar-thumb, .scroll::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+/* buttons that pick series: two rows, scrolled sideways; green when on, grey when off */
+.chips { display: flex; flex-direction: column; gap: 6px; overflow-x: auto; padding: 2px 2px 10px; margin: 12px 0 14px; }
+.chips .row { display: flex; gap: 6px; width: max-content; }
+.chips button { font: 500 13.5px var(--font-body); white-space: nowrap; cursor: pointer; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-3); }
+.chips button:hover { color: var(--ink); border-color: var(--ink-4); }
+.chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chips button[hidden] { display: none; }
+/* in a row of two panels the shorter one (map, chart) stays in view while the longer one scrolls */
+.stick { position: sticky; top: 16px; align-self: start; }
+/* a list as tall as the panel beside it, scrolled inside */
+.fill { display: flex; flex-direction: column; } .fill .box { position: relative; flex: 1; min-height: 240px; margin-top: 12px; }
+.fill .box > .scroll { position: absolute; inset: 0; overflow-y: auto; padding-right: 6px; }
 
 /* tables: sortable by header (▲/▼), filterable, with CSV */
 table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
@@ -86,7 +103,7 @@ th.n .sort { flex-direction: row-reverse; }
 .hb .r.bg { font-weight: 700; } .hb .r.agg { color: var(--ink-3); }
 .hb .tr { position: relative; height: 12px; background: var(--line-2); border-radius: 3px; }
 .hb .tr i { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--slate) 55%, #fff); border-radius: 3px; }
-.hb .r.bg .tr i { background: var(--accent); } .hb .r.agg .tr i { background: var(--ink-4); }
+.hb .r.bg .tr i { background: var(--accent); } .hb .r.eu .tr i { background: var(--eu); } .hb .r.ea .tr i { background: var(--ea); }
 .hb .v { text-align: right; white-space: nowrap; }
 
 /* map */
@@ -94,20 +111,31 @@ th.n .sort { flex-direction: row-reverse; }
 .map path { stroke: #fff; stroke-width: 1.2; }
 .map path.none { fill: var(--line-2); }
 .map a:focus-visible path, .map a:hover path { stroke: var(--ink); stroke-width: 2; }
-.scale { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--ink-2); margin-top: 10px; }
-.scale i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; }
+/* the map's scale: one continuous gradient with the lowest, the median and the highest value (as on the Тендер map) */
+.mkey { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 28px; margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
+.mkey .grad { position: relative; width: min(360px, 100%); height: 52px; }
+.mkey .grad .bar { height: 10px; border-radius: 2px; }
+.mkey .grad span { position: absolute; top: 14px; transform: translateX(-50%); white-space: nowrap; }
+.mkey .grad span.a { transform: none; } .mkey .grad span.z { transform: translateX(-100%); }
+.mkey .grad span::before { content: ""; position: absolute; top: -6px; left: 50%; width: 1px; height: 5px; background: var(--ink-3); }
+.mkey .grad span.a::before { left: 0; } .mkey .grad span.z::before { left: auto; right: 0; }
+/* the median on a line of its own, so it never runs into the ends */
+.mkey .grad span.m { top: 32px; } .mkey .grad span.m::before { top: -22px; height: 21px; }
+.mkey div { display: flex; align-items: center; gap: 6px; } .mkey em { width: 14px; height: 10px; border-radius: 2px; }
 
 .prose { max-width: 72ch; font-size: 16.5px; } .prose h2 { margin: 28px 0 8px; } .prose li { margin: 4px 0; }
 .dl { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 14.5px; }
 .dl dt { color: var(--ink-3); } .dl dd { margin: 0; }
 .warn { color: var(--amber); font-weight: 600; }
+.why { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; } .why summary { cursor: pointer; }
+.why ul { margin: 6px 0 0; padding-left: 18px; max-height: 220px; overflow-y: auto; }
 
 .foot { border-top: 1px solid var(--line); }
 .wrap-f { max-width: 1280px; margin: 0 auto; padding: 22px 32px 40px; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13.5px; color: var(--ink-3); }
 .wrap-f b { color: var(--ink-2); }
 .wrap-f .fb-support { margin-left: auto; }
 
-@media (max-width: 1080px) { .s3, .s4, .s6, .s8 { grid-column: span 12; } }
+@media (max-width: 1080px) { .s3, .s4, .s6, .s8 { grid-column: span 12; } .stick { position: static; } }
 @media (max-width: 900px) { .menu { display: none; } }
 @media (max-width: 720px) {
   .bar-in { padding: 0 16px; gap: 12px; height: 58px; } .word { font-size: 20px; }

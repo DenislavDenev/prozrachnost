@@ -13,7 +13,7 @@ DSN = os.environ.get("IKONOMIKA_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="IKONOMIKA_TEST_DSN not set")
 FX = Path(__file__).parent / "fixtures"
 
-PAGES = ["/", "/inflaciya", "/oblasti", "/oblasti?m=THS", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/kursove", "/sources", "/how"]
+PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta?l=makrorayoni", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/kursove", "/sources", "/how"]
 
 
 def wipe():
@@ -57,6 +57,7 @@ def check_page(r):
     html = r.text
     head = html[html.index('<header'):html.index('</header>')]
     assert head.rindex('class="fb-open"') > head.rindex('class="hub"')      # Обратна връзка is last in the header
+    assert re.findall(r'<a href="(/[^"]*)"', head)[:2] == ["/", "/karta"]   # the map is second in the menu (AGENTS 7)
     foot = html[html.index('<footer'):html.index('</footer>')]
     assert re.search(r'class="fb-support"[^>]*>Подкрепи проекта</a>\s*</div>$', foot.strip()), foot    # last in the footer
     assert ">0<" not in html.replace(" ", "")
@@ -77,19 +78,29 @@ def test_pages_on_real_answers(client):
     home = client.get("/").text
     assert "116,0 млрд. €" in home and "предварителни данни" in home              # GDP 2025 is provisional
     infl = client.get("/inflaciya").text
-    assert "Храни и безалкохолни напитки" in infl and "август 2026" in infl
-    obl = client.get("/oblasti?m=MIO_EUR&y=2024").text
-    assert "София (столица)" in obl and 'id="o-BG411"' in obl and obl.count("<path") == 28
-    assert client.get("/oblasti?y=1999").status_code == 404 and client.get("/oblasti?m=X").status_code == 404
+    assert "Хранителни продукти и безалкохолни напитки" in infl and "август 2026" in infl
+    assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
+    obl = client.get("/karta?m=MIO_EUR&y=2024").text
+    assert "София (столица)" in obl and 'id="a-BG411"' in obl and obl.count("<path") == 28
+    assert "медиана" in obl and "color-mix(in srgb, var(--accent) 8%, #fff)" in obl and "var(--accent) 100%" in obl   # a gradient
+    reg = client.get("/karta?m=MIO_EUR&y=2024&l=rayoni").text
+    assert reg.count("<path") == 6 and "Югозападен район" in reg and "Район</th>" in reg
+    assert client.get("/karta?m=MIO_EUR&y=2024&l=makrorayoni").text.count("<path") == 2
+    assert client.get("/karta?y=1999").status_code == 404 and client.get("/karta?m=X").status_code == 404
+    assert client.get("/karta?l=obshtini").status_code == 404
+    moved = client.get("/oblasti?m=THS", follow_redirects=False)                # the old address still leads there
+    assert moved.status_code == 301 and moved.headers["location"] == "/karta?m=THS"
     from ingest import db
     with db.connect(autocommit=True) as c:                    # a region without a value is "няма данни", not 0
         c.execute("DELETE FROM live.series WHERE indicator = 'gdp_nuts' AND geo = 'BG311' AND time = '2024'")
-    obl = client.get("/oblasti?m=MIO_EUR&y=2024").text
-    row = obl[obl.index('id="o-BG311"'):]
+    obl = client.get("/karta?m=MIO_EUR&y=2024").text
+    row = obl[obl.index('id="a-BG311"'):]
     assert row[:row.index("</tr>")].count("няма данни") == 2 and 'class="none"' in obl
     fx = client.get("/kursove?code=USD").text
     assert "1,1403" in fx and "Щатски долар" in fx
     assert client.get("/kursove?code=XYZ").status_code == 404
+    src = client.get("/sources").text
+    assert "наред" in src and ">ok<" not in src and "help/copyright-notice" in src         # the state in Bulgarian
 
 
 def test_api_and_csv(client):
@@ -97,9 +108,10 @@ def test_api_and_csv(client):
     j = client.get("/api/gdp_a.json?geo=BG&na_item=B1GQ").json()
     assert j["series"][0]["points"][-1] == ["2025", 116018.3, "p"] and j["source"]["dataset"] == "nama_10_gdp"
     j = client.get("/api/hicp_rch_a.json?geo=BG&coicop18=TOTAL,CP01").json()
-    assert [s["name"] for s in j["series"]] == ["Общо", "Храни и безалкохолни напитки"]        # in the order asked for
+    food = "Хранителни продукти и безалкохолни напитки"
+    assert [s["name"] for s in j["series"]] == ["Общо", food]        # in the order asked for
     j = client.get("/api/hicp_rch_a.json?geo=BG&coicop18=CP01,TOTAL").json()
-    assert [s["name"] for s in j["series"]] == ["Храни и безалкохолни напитки", "Общо"]
+    assert [s["name"] for s in j["series"]] == [food, "Общо"]
     usd = client.get("/api/fx/USD.json").json()["points"]
     assert usd[-1] == ["2026-09-25", 1.1403, "eur"]
     assert ["2025-10-01", round(1.95583 / 1.66823, 6), "bgn"] in usd                # leva turned into euro by the fixed rate

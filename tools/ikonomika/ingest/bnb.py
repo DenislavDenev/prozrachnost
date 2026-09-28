@@ -46,6 +46,13 @@ def close(a, b, digits=4):
     return abs(a - b) <= 10 ** -digits * max(abs(a), abs(b)) * 5
 
 
+def agree(x, inv, printed):
+    """inv is 1/x as the source printed it (`printed`): the same to about 4 significant digits, or to the
+    last decimal it was printed with (the gold's inverse, 1/502.631 lev for an ounce, is printed as 0)."""
+    step = 10 ** -len(printed.strip().partition(".")[2])
+    return close(x * inv, 1) or abs(1 / x - inv) <= step / 2 * 1.001   # rounding moves it at most half a step
+
+
 def parse(raw):
     """-> list of (indicator, dims, day, value). ShapeError for anything else than a known CSV layout,
     including the HTML page the archive returns for a query it refuses."""
@@ -67,7 +74,7 @@ def parse(raw):
             d, code, per_eur, eur_per = day(f[0]), f[2].strip(), num(f[3]), num(f[4])
             if per_eur is None:
                 continue
-            if eur_per is not None and not close(per_eur * eur_per, 1):
+            if eur_per is not None and not agree(per_eur, eur_per, f[4]):
                 raise ShapeError(f"{code} {d}: {per_eur} × {eur_per} is not 1")
             out.append(("fx_eur", {"code": code}, d, per_eur))
         return out
@@ -94,14 +101,14 @@ def parse(raw):
                     continue
                 if units is None or units <= 0:
                     raise ShapeError(f"{code} {d}: units {g[1]!r}")
-                if inv is not None and not close(rate * inv / units, 1):
+                if inv is not None and not agree(rate / units, inv, g[3]):
                     raise ShapeError(f"{code} {d}: {rate} for {units:g} and {inv} for 1 lev do not agree")
                 out.append(("fx_bgn", {"code": code, "units": f"{units:g}"}, d, rate))
             else:
                 rate, inv = num(g[1]), num(g[2])
                 if rate is None:
                     continue
-                if inv is not None and not close(rate * inv, 1):
+                if inv is not None and not agree(rate, inv, g[2]):
                     raise ShapeError(f"{code} {d}: {rate} for 1 euro and {inv} euro do not agree")
                 out.append(("fx_eur", {"code": code}, d, rate))
     return out
