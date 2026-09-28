@@ -33,6 +33,7 @@ app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STAT
 MONTHS = "януари февруари март април май юни юли август септември октомври ноември декември".split()
 CODE = {"+": "за", "-": "против", "=": "въздържал се", "0": "не гласувал", "П": "регистриран", "О": "не е регистриран",
         "Р": "не е регистриран"}
+LINE = {"+": "за", "-": "не подкрепя"}   # a group's line: for, or not for (against or abstained; ingest/stats.py)
 LIST_LIMIT = 400   # rows of the list of votes on the page; the CSV has all
 
 
@@ -93,7 +94,7 @@ STATUS = {"ok": "наред", "held": "задържан до второ чете
           None: "не е четен"}
 
 T.env.filters.update(num=fnum, date=fdate, long=flong, name=fname, district=fdistrict, status=lambda s: STATUS.get(s, s))
-T.env.globals.update(gcolor=lambda code: gref.info(code)[1], asset_v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback.BUTTON), pct=fpct, CODE=CODE,
+T.env.globals.update(gcolor=lambda code: gref.info(code)[1], asset_v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback.BUTTON), pct=fpct, CODE=CODE, LINE=LINE,
                      support_link=Markup(feedback.support_link(HUB_URL)), ordinal=ordinal, SITE=SITE)
 
 
@@ -211,7 +212,7 @@ def vote_page(request: Request, sitting: int, no: int):
     against = q("""SELECT v.mp, m.name, v.grp, v.code, l.line FROM live.vote v
                    JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
                    JOIN live.sitting s ON s.id = v.sitting JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
-                   WHERE v.sitting = %s AND v.item = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND v.code <> l.line
+                   WHERE v.sitting = %s AND v.item = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')
                    ORDER BY v.grp, m.name""", sitting, no)
     nav = q("""SELECT no FROM live.item WHERE sitting = %s AND kind = 'vote' AND no IN (%s, %s) ORDER BY no""", sitting, no - 1, no + 1)
     same_day = q("SELECT no, topic FROM live.item WHERE sitting = %s AND kind = 'vote' ORDER BY no", sitting)
@@ -277,7 +278,7 @@ def mp_page(request: Request, ns: int, mp: int):
     against = q("""SELECT i.sitting, i.no, i.at, i.topic, v.code, l.line FROM live.vote v
                    JOIN live.sitting x ON x.id = v.sitting JOIN live.item i ON i.sitting = v.sitting AND i.no = v.item
                    JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
-                   WHERE x.assembly = %s AND v.mp = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND v.code <> l.line
+                   WHERE x.assembly = %s AND v.mp = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')
                    ORDER BY i.at DESC""", ns, mp)
     avg = one("SELECT sum(voted)::float / nullif(sum(votes), 0), sum(against_line)::float / nullif(sum(with_line + against_line), 0) FROM live.mp_stat WHERE assembly = %s", ns)
     return page(request, "mp.html", "Депутати", ns=ns, s=s, groups=groups, against=against, avg=avg, names=group_names(ns))
@@ -322,7 +323,7 @@ def unity_api(ns: int):
     series = {}
     for g, m, w, n in rows:
         series.setdefault(g, []).append([m, round(100 * w / n, 1)])
-    return JSONResponse({"series": [{"name": g, "points": p} for g, p in series.items() if len(p) >= 2]})
+    return JSONResponse({"series": [{"name": g, "color": gref.info(g)[1], "points": p} for g, p in series.items() if len(p) >= 2]})
 
 
 @app.get("/sources", response_class=HTMLResponse)

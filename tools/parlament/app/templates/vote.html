@@ -11,15 +11,17 @@
   Резултатът горе е от гласуването по групи, залата и списъкът долу са от поименното гласуване.</p>{% endif %}
 
 <div class="grid">
-  <section class="p s8"><div class="ph"><div><h2>Залата</h2><div class="sub">всеки кръг е депутат; групите са в реда на Народното събрание</div></div>
+  <section class="p s8"><div class="ph"><div><h2>Залата</h2><div class="sub">всеки кръг е депутат в цвета на групата си, значката е вотът:
+    <span class="k-yes">+ за</span>, <span class="k-no">− против</span>, <span class="k-abs">= въздържал се</span>; бледите не гласуваха.
+    Натиснете число долу, за да видите само тези депутати.</div></div>
     <button type="button" class="replay">Пусни отново</button></div>
     <div class="hall" data-vote="/api/glasuvane/{{ v.sitting }}/{{ v.no }}.json" role="img"
          aria-label="за {{ v.yes }}, против {{ v.no_ }}, въздържали се {{ v.abstain }}, не гласували {{ seats | length - v.voted }}"></div>
-    <div class="counts">
-      <div class="yes"><div class="n">{{ v.yes }}</div><div class="t">за</div></div>
-      <div class="no"><div class="n">{{ v.no_ }}</div><div class="t">против</div></div>
-      <div class="abs"><div class="n">{{ v.abstain }}</div><div class="t">въздържали се</div></div>
-      <div class="none"><div class="n">{{ seats | length - v.voted }}</div><div class="t">не гласуваха</div></div></div>
+    <div class="counts" role="group" aria-label="Покажи само">
+      <button type="button" class="yes" data-c="+" aria-pressed="false"><span class="n">{{ v.yes }}</span><span class="t">за</span></button>
+      <button type="button" class="no" data-c="-" aria-pressed="false"><span class="n">{{ v.no_ }}</span><span class="t">против</span></button>
+      <button type="button" class="abs" data-c="=" aria-pressed="false"><span class="n">{{ v.abstain }}</span><span class="t">въздържали се</span></button>
+      <button type="button" class="none" data-c="0" aria-pressed="false"><span class="n">{{ seats | length - v.voted }}</span><span class="t">не гласуваха</span></button></div>
     {{ m.src(v.sitting, v.assembly) }}</section>
 
   <section class="p s4"><div class="ph"><div><h2>Как гласува всяка група</h2><div class="sub">всяка точка е депутат:
@@ -32,10 +34,10 @@
     {% endfor %}</div></section>
 
   {% if against %}<section class="p s12"><div class="ph"><div><h2>Гласуваха различно от групата си</h2>
-    <div class="sub">линията на групата е изборът на повечето ѝ депутати, които гласуваха</div></div></div>
+    <div class="sub">линията на групата е „за“ или „не подкрепя“ (против или въздържал се), според повечето ѝ депутати, които гласуваха</div></div></div>
     <table><thead><tr><th>Депутат</th><th>Група</th><th>Гласува</th><th>Групата</th></tr></thead><tbody>
     {% for mp, name, g, code, line in against %}<tr><td><a class="l" href="/deputati/{{ v.assembly }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names) }}</td>
-      <td>{{ CODE[code] }}</td><td class="mut">{{ CODE[line] }}</td></tr>{% endfor %}
+      <td>{{ CODE[code] }}</td><td class="mut">{{ LINE[line] }}</td></tr>{% endfor %}
     </tbody></table></section>{% endif %}
 
   <section class="p s12"><div class="ph"><div><h2>Всички депутати</h2><div class="sub">как гласува всеки</div></div></div>

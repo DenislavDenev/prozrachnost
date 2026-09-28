@@ -12,7 +12,7 @@
 <div class="grid">
   <section class="p s3 kpi"><div class="n">{{ pct(voted, votes) }}</div><div class="t">участвал в гласуванията</div><div class="w">{{ voted | num }} от {{ votes | num }}</div></section>
   <section class="p s3 kpi"><div class="n">{{ pct(with_line, with_line + against_n) }}</div><div class="t">гласувал като групата си</div><div class="w">от гласуванията, в които групата има линия</div></section>
-  <section class="p s3 kpi"><div class="n">{{ against_n | num }}</div><div class="t">пъти срещу групата</div><div class="w">гласувал за, против или въздържал се, различно от повечето в групата</div></section>
+  <section class="p s3 kpi"><div class="n">{{ against_n | num }}</div><div class="t">пъти срещу групата</div><div class="w">подкрепил, когато повечето в групата не подкрепят (против или въздържал се), или обратно</div></section>
   <section class="p s3 kpi"><div class="n">{{ pct(present, regs) }}</div><div class="t">регистриран в началото на заседанието</div><div class="w">{{ present | num }} от {{ regs | num }} регистрации</div></section>
 
   <section class="p s12"><div class="ph"><div><h2>Всяко гласуване</h2><div class="sub">една тясна черта на гласуване, във времето:
@@ -20,12 +20,12 @@
     черта отгоре е гласуване срещу групата</div></div></div>
     <div class="strip" data-strip="/api/deputat/{{ ns }}/{{ mp }}.json"><canvas aria-label="всяко гласуване на депутата във времето" role="img"></canvas><div class="axis"></div></div>
     <h2 style="margin-top:22px;font-size:16px">Участие по месеци</h2>
-    <div class="chart small" data-months></div>{{ m.src() }}</section>
+    <div class="chart small" data-months data-color="{{ gcolor(g) }}"></div>{{ m.src() }}</section>
 
   <section class="p s12"><div class="ph"><div><h2>Гласувания срещу групата</h2><div class="sub">{{ against | length }}; най-новите първи</div></div></div>
     {% if against %}<table class="sortable"><thead><tr><th>Дата</th><th>Тема</th><th>Гласува</th><th>Групата</th></tr></thead><tbody>
     {% for sid, no, at, topic, code, line in against %}<tr><td class="mut" data-v="{{ at.isoformat() }}" style="white-space:nowrap">{{ at | date }}</td>
-      <td class="topic"><a href="/glasuvane/{{ sid }}/{{ no }}">{{ topic or 'без тема' }}</a></td><td>{{ CODE[code] }}</td><td class="mut">{{ CODE[line] }}</td></tr>{% endfor %}
+      <td class="topic"><a href="/glasuvane/{{ sid }}/{{ no }}">{{ topic or 'без тема' }}</a></td><td>{{ CODE[code] }}</td><td class="mut">{{ LINE[line] }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="mut">Няма: винаги е гласувал като групата си.</p>{% endif %}</section>
 </div>
 {% endblock %}
