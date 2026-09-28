@@ -274,3 +274,12 @@ def test_the_assemblies_archive_absences_and_penalties():
     assert pen and all(x["kind"] and x["by"] for x in pen)
     with pytest.raises(parse.ShapeError):
         parse.absences(b'{"a": 1}')
+
+
+def test_online_registration_is_read_and_counted_the_way_the_file_by_group_does():
+    """"онлайн" in the roll calls of 01.2022 is a registration from afar (Д). 27.01.2022: the file by group counts it
+    as present (188 П + 7 онлайн = 195); 21.01.2022: it does not (181 П = 181). Both add up."""
+    for day, remote, present in (("270122", 7, 195), ("210122", 8, 181)):
+        items, votes = parse.groups(parse.sheet(raw(f"gv{day}.xlsx"))), parse.rollcall(parse.sheet(raw(f"iv{day}.xlsx")))
+        assert sum(1 for v in votes if v[3] == 1 and v[4] == "Д") == remote and items[1]["total"][0] == present
+        assert parse.check(items, votes)[0] == []

@@ -389,3 +389,11 @@ def test_a_sitting_of_2009_is_read_from_its_sheets(conn):
     assert q("SELECT count(*) FROM live.item WHERE sitting = 596") == [(7,)] and q("SELECT count(*) FROM live.vote WHERE sitting = 596") == [(1680,)]
     assert q("SELECT string_agg(code, '' ORDER BY item) FROM live.vote WHERE sitting = 596 AND mp = 343") == [("О0+00+0",)]
     assert q("SELECT count(*) FROM live.speech WHERE sitting = 596")[0][0] > 1
+
+
+def test_a_sitting_the_source_cannot_answer_is_reported_and_the_rest_go_on(conn):
+    from ingest import http
+    src = Source()
+    src.files["pl-sten/11174"] = http.Failed("източникът не отговаря: pl-sten/11174 след 5 опита")
+    st = run(conn, src)
+    assert st["sittings"] == {"stored": 1, "invalid": 1} and any("11174" in p and "не отговаря" in p for p in st["problems"])

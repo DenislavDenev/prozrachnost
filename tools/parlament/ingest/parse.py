@@ -263,7 +263,11 @@ def group_code(s):
 
 VOTES = {"+": "yes", "-": "no", "=": "abstain", "0": "none"}
 UNALIGNED = "?"   # a code of a row with a column per item whose codes cannot be matched to the items (split_shifted)
-MARKS = {"П", "О", "Р"}   # a registration: П is counted as present (the file by group proves it); О and Р are not
+MARKS = {"П", "О", "Р", "Д"}   # a registration: П is counted as present (the file by group proves it); О and Р are not
+# "онлайн" in the roll calls of the online sittings of 01-03.2022: registered from afar, kept as Д. Some files by group
+# count them as present (27.01.2022: 188 П + 7 онлайн = 195), some do not (21.01.2022: 181 П = 181): check() takes the
+# one of the two that the whole assembly's count says
+REMOTE = {"онлайн": "Д"}
 
 
 def rollcall(raw):
@@ -307,6 +311,7 @@ def _wide(text):
 
 def _one(no, name, group, item, code):
     code = (code or "").strip()
+    code = REMOTE.get(code.lower(), code)
     if code not in VOTES and code not in MARKS:
         raise ShapeError(f"unknown code {code!r} for {name}, item {item}")
     return (_int(no, "MP"), " ".join(name.split()), group_code(group), _int(item, "item"), code)
@@ -375,7 +380,8 @@ def check(items, votes, aside=None):
         it, by = items[item], counted[item]
         reg = it["kind"] == "registration"
         if reg:
-            got = {g: (c.count("П"), len(c)) for g, c in by.items()}
+            remote = sum(c.count("П") + c.count("Д") for c in by.values()) == it["total"][0] and any("Д" in c for c in by.values())
+            got = {g: (c.count("П") + (c.count("Д") if remote else 0), len(c)) for g, c in by.items()}
             wrong = [c for cs in by.values() for c in cs if c not in MARKS]
         else:
             got = {g: (c.count("+"), c.count("-"), c.count("="), sum(x in "+-=" for x in c)) for g, c in by.items()}

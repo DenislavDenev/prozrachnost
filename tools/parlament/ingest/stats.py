@@ -50,7 +50,7 @@ def rebuild(conn, assemblies):
                    count(*) FILTER (WHERE i.kind = 'vote'),
                    count(*) FILTER (WHERE i.kind = 'vote' AND v.code IN ('+', '-', '=')),
                    count(*) FILTER (WHERE v.code = '+'), count(*) FILTER (WHERE v.code = '-'), count(*) FILTER (WHERE v.code = '='),
-                   count(*) FILTER (WHERE i.kind = 'registration'), count(*) FILTER (WHERE v.code = 'П'),
+                   count(*) FILTER (WHERE i.kind = 'registration'), count(*) FILTER (WHERE v.code IN ('П', 'Д')),
                    count(*) FILTER (WHERE l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') = (l.line = '+')),
                    count(*) FILTER (WHERE l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')),
                    min(s.date), max(s.date)

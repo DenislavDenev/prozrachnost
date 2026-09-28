@@ -9,6 +9,11 @@ class Gone(Exception):
     """The resource does not exist (403/404): a source gap or a renamed dataset, reported, not retried."""
 
 
+class Failed(RuntimeError):
+    """The source kept failing (429/5xx or no answer) through every retry: this resource is reported, the run goes on
+    (pl-sten/9523 answers 500 every time, 29.09.2026)."""
+
+
 _last = [0.0]
 
 
@@ -36,7 +41,7 @@ def get(url, timeout=120, retries=5, delay=30, data=None):
             break
         time.sleep(wait)
         delay = min(delay * 2, 600)
-    raise RuntimeError(f"giving up on {url} after {retries} attempts")
+    raise Failed(f"източникът не отговаря: {url} след {retries} опита")
 
 
 def post(url, body):
