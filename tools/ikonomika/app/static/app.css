@@ -113,7 +113,7 @@ th.n .sort { flex-direction: row-reverse; }
 .mapbox path { vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .world path { fill: var(--line-2); stroke: #fff; stroke-width: .6; } .world path.far { fill: #f4f5f7; }
 .world.inbg path[data-code="BG"] { fill: none; stroke: none; }
-.layers path { stroke: #fff; stroke-width: .6; transition: fill .4s; cursor: pointer; }
+.layers path { stroke: #fff; stroke-width: .6; cursor: pointer; } .layers g.few path { transition: fill .4s; }
 .layers path:hover, .layers path.hov, .world path.ctx:hover { stroke: var(--ink); stroke-width: 1.6; }
 .layers path.bg { stroke: var(--ink-3); }
 .borders path { fill: none; stroke: rgba(18, 20, 23, .42); stroke-width: .8; pointer-events: none; }

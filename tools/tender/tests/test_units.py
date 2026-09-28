@@ -491,6 +491,8 @@ def test_the_map_is_interactive_and_has_no_legend():
     assert "mkey" not in html and "медиана" not in html
     assert 'data-z="in"' in html and "e.ctrlKey" in html and 'class="selg"' in html
     assert "EuroGeographics" in html and "geoBoundaries" not in html          # the outlines are GISCO, with its credit
+    from app import main   # the template compiles (a Jinja error would be a 500 for the whole map)
+    assert main.T.env.get_template("map.html")
 
 
 def test_every_municipality_has_its_own_outline():

@@ -70,6 +70,7 @@
       p.style.fill = fill(it.v) || 'var(--line-2)';
       g.append(p);
     }
+    g.classList.toggle('few', g.childElementCount < 400);   // colour changes fade only on small layers: a thousand would lag
     return g;
   }
   function recolour(data) {
@@ -230,7 +231,8 @@
     const a = e.target.closest('a'); if (!a) return; e.preventDefault();
     if (a.dataset[key] === d[key]) return;
     const p = { [key]: a.dataset[key] };
-    if (key === 'o' && !(d.l in { oblasti: 1, rayoni: 1, makrorayoni: 1 })) p.l = 'oblasti';   // Държави is Europe only
+    // away from Bulgaria the map opens on the countries (light, and the first thing to see); back home on the oblasts
+    if (key === 'o') p.l = p.o === 'eu' ? 'darzhavi' : 'oblasti';
     go(p, kind);
   });
   pick('k-scope', 'o', 'fly'); pick('k-level', 'l', 'level'); pick('k-measure', 'm', 'colour');

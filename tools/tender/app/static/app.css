@@ -234,7 +234,11 @@ details.more[open] > summary { margin-bottom: 14px; }
 /* municipality map */
 .mapbox svg { width: 100%; height: auto; display: block; cursor: grab; user-select: none; touch-action: pan-x pan-y; }
 .mapbox svg.drag { cursor: grabbing; }
-.mapbox path { stroke: #fff; stroke-width: .8; cursor: pointer; transition: fill .15s; vector-effect: non-scaling-stroke; }
+.mapbox path { stroke: #fff; stroke-width: .8; cursor: pointer; vector-effect: non-scaling-stroke; }
+.mapbox .layers g.few path { transition: fill .2s; }   /* colour changes fade only on small layers: on a thousand paths they lag */
+.mapbox svg.loading { opacity: .85; transition: opacity .2s; }
+.mapbox .tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 6px 10px; font-size: 13px; line-height: 1.4; max-width: 280px; }
 .mapbox path:hover, .mapbox path:focus-visible { stroke: var(--ink); stroke-width: 1.4; outline: none; }
 .mapbox path.sel { stroke: var(--ink); stroke-width: 2; }
 /* the selection: its borders on top of everything, a white halo under a dark line (AGENTS.md 7) */

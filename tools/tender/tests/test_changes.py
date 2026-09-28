@@ -450,6 +450,8 @@ def test_the_map_by_supplier_places_each_member_and_says_what_it_cannot(conn):
     import json
     d = json.loads(main.map_detail(req, "CZ", by="supplier").body)
     assert [s["name"] for s in d["suppliers"]] == ["ES Group"] and [b["eik"] for b in d["buyers"]] == ["B1"]   # only the Czech member
-    for bad in (("country", "bg"), ("muni", "eu"), ("oblast", "xx")):
+    world = main.supplier_map("true", [], "country", "world")                    # the world: countries only
+    assert by(world) == by(eu) and world["names"]["CN"] == "Китай"
+    for bad in (("country", "bg"), ("muni", "eu"), ("oblast", "xx"), ("oblast", "world")):
         with pytest.raises(main.HTTPException):
             main.supplier_map("true", [], *bad)
