@@ -470,3 +470,15 @@ def test_a_procedure_known_only_from_its_contracts_keeps_its_eop_id():
          "contractCurrency": "EUR", "supplierName": "А", "supplierRegisterNumber": "202210490", "contractDate": "01.02.2024"}
     (t,) = N.normalize([("2024-02-02", "contracts", [dict(c, tenderId=None, contractNumber="0"), c])], N.Fx({}))["tender"]
     assert t["synthetic"] and t["tender_id"] == "123456"
+
+
+def test_every_run_state_has_its_bulgarian_name():
+    # AGENTS.md 7: the states of the sources are shown in Bulgarian, never as ok/failed
+    import re
+    from pathlib import Path
+
+    from app import main
+    root = Path(__file__).parent.parent
+    sql = (root / "db/migrations/0001_init.sql").read_text(encoding="utf-8")
+    states = re.findall(r"'(\w+)'", re.search(r"status\s+text NOT NULL DEFAULT 'running' CHECK \(status IN \(([^)]*)\)", sql).group(1))
+    assert set(states) == set(main.RUN) and "r.status | run" in (root / "app/templates/sources.html").read_text(encoding="utf-8")

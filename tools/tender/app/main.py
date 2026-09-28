@@ -119,7 +119,9 @@ def fperiod(r):
 STATE = {"contracted": "с договор", "cancelled": "прекратена", "unawarded": "без възложен договор", "open": "в ход",
          "no_contract": "без публикуван договор"}
 T.env.globals.update(STATE=STATE)
-T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r),
+# the state of a run (ops.job_run.status), in the words every tool uses (AGENTS.md 7)
+RUN = {"running": "работи", "ok": "наред", "failed": "неуспешно", "skipped": "пропуснато"}
+T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r), run=lambda r: RUN.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
                      json=lambda o: json.dumps(o, default=jdefault, ensure_ascii=False).replace("</", "<\\/"),
                      q=lambda s: quote(s, safe=":"), noembed=lambda h: re.sub(r"(?<=[?&])embed=1(&|$)", "", h).rstrip("?&"))
