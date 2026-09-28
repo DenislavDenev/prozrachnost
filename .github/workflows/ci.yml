@@ -14,10 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: feedback.py and its test are the same everywhere
+      - name: the shared copies are the same everywhere (feedback.py and its test, the outlines of Europe)
         run: |
           for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py tools/ikonomika/app/feedback.py; do cmp hub/feedback.py "$f"; done
           for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py tools/ikonomika/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
+          cmp tools/ikonomika/app/static/europe.json tools/tender/app/static/europe.json   # the outlines of Europe: Икономика builds, Тендер copies
 
   hub:
     runs-on: ubuntu-latest

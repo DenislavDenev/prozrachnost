@@ -417,3 +417,39 @@ def test_a_procedure_known_only_from_its_contracts_is_queued(conn):
     conn.execute("INSERT INTO live.tender VALUES ('S', '777', NULL, NULL, '2024-03-01')")   # no deadline, no notice date
     assert E.enqueue(conn)["new"] == 1
     assert conn.execute("SELECT reason FROM eopsvc.queue WHERE tender_id = 777").fetchone() == ("backfill",)
+
+
+def test_the_map_by_supplier_places_each_member_and_says_what_it_cannot(conn):
+    # the seat codes of the award notice: one per member in their order; ZZZ is a country only; 00 is no country
+    from starlette.requests import Request
+    from app import main
+    conn.execute("""CREATE SCHEMA live;
+        CREATE TABLE live.contract (id text, buyer_eik text, amount_eur numeric, is_framework bool, offers_count int, supplier_nuts text);
+        CREATE TABLE live.contract_supplier (contract_id text, position int, party_key text, name text);
+        CREATE TABLE live.buyer (eik text, name text)""")
+    conn.execute("""INSERT INTO live.contract VALUES
+        ('a', 'B1', 100, false, 1, 'CZ; BG411'),   -- a consortium: Czechia and Sofia
+        ('b', 'B1', 50, false, 2, 'BG411'),
+        ('c', 'B2', 30, false, 1, 'DE111'),
+        ('d', 'B2', 20, false, 1, 'ATZZZ'),         -- Austria, region not given
+        ('e', 'B2', 7, false, 1, '00'),             -- no country
+        ('f', 'B2', 5, false, 1, 'US'),             -- abroad, off the map of Europe
+        ('g', 'B2', 1000, true, 1, 'BG412')         -- a framework agreement: counted, not summed""")
+    conn.execute("""INSERT INTO live.contract_supplier VALUES ('a', 0, 'name:CZ', 'ES Group'), ('a', 1, 'eik:1', 'СОФИЯ ООД'),
+        ('b', 0, 'eik:1', 'СОФИЯ ООД'), ('c', 0, 'name:DE', 'Stuttgart GmbH'), ('d', 0, 'name:AT', 'Netz')""")
+    conn.execute("INSERT INTO live.buyer VALUES ('B1', 'ОБЩИНА'), ('B2', 'МИНИСТЕРСТВО')")
+    by = lambda out: {a["id"]: (a["n"], float(a["eur"] or 0)) for a in out["areas"]}
+    eu = main.supplier_map("true", [], "country", "eu")
+    assert by(eu) == {"BG": (3, 150.0), "CZ": (1, 100.0), "DE": (1, 30.0), "AT": (1, 20.0), "US": (1, 5.0)}
+    assert eu["names"]["US"] == "САЩ" and float(eu["cover"]["unknown"]) == 7        # "00" is not on any map
+    assert by(main.supplier_map("true", [], "oblast", "eu")) == {"BG411": (2, 150.0), "BG412": (1, 0.0), "DE111": (1, 30.0)}
+    bg = main.supplier_map("true", [], "oblast", "bg")
+    assert by(bg) == {"BG411": (2, 150.0), "BG412": (1, 0.0)}
+    assert (float(bg["cover"]["placed"]), float(bg["cover"]["eur"])) == (150.0, 212.0)     # the rest is abroad or unknown
+    req = Request({"type": "http", "method": "GET", "path": "/map/CZ.json", "headers": [], "query_string": b"by=supplier", "app": main.app})
+    import json
+    d = json.loads(main.map_detail(req, "CZ", by="supplier").body)
+    assert [s["name"] for s in d["suppliers"]] == ["ES Group"] and [b["eik"] for b in d["buyers"]] == ["B1"]   # only the Czech member
+    for bad in (("country", "bg"), ("muni", "eu"), ("oblast", "xx")):
+        with pytest.raises(main.HTTPException):
+            main.supplier_map("true", [], *bad)
