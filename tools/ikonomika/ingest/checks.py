@@ -7,6 +7,8 @@ from collections import defaultdict
 
 NUTS3 = ("BG311 BG312 BG313 BG314 BG315 BG321 BG322 BG323 BG324 BG325 BG331 BG332 BG333 BG334 BG341 BG342 "
          "BG343 BG344 BG411 BG412 BG413 BG414 BG415 BG421 BG422 BG423 BG424 BG425").split()
+NUTS2 = "BG31 BG32 BG33 BG34 BG41 BG42".split()   # райони (за планиране)
+NUTS1 = ["BG3", "BG4"]                              # макрорайони
 NUTS_TOLERANCE = 0.1  # million €: the regions are published rounded to 0.01
 
 

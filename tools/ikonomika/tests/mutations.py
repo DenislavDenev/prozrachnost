@@ -37,7 +37,7 @@ MUTATIONS = [
      "                            db.log_change(conn, source, name, field, cur[k][i], new[k][i], \"rewritten\")",
      "                            pass", "tests/test_store.py::test_a_revision_and_a_new_period_are_logged_field_by_field"),
     ("the BNB rate and its inverse agree", "ingest/bnb.py",
-     "                if inv is not None and not close(rate * inv / units, 1):", "                if False:",
+     "                if inv is not None and not agree(rate / units, inv, g[3]):", "                if False:",
      "tests/test_sources.py::test_bnb_rate_and_inverse_must_agree"),
     ("the day's rates are the archive's", "ingest/bnb.py",
      "        if dd >= today - dt.timedelta(days=31) and arch.get((d[\"code\"], dd)) != v:", "        if False:",

@@ -1,18 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Източници{% endblock %}
+{# a problem in one line; the whole report (the source's words) opens on click #}
+{% macro problem(status, error) %}<span class="{{ 'warn' if status != 'ok' }}">{{ status | status }}</span>{% if status != 'ok' and error %}{% set all = error.split('; ') %}
+  <details class="why"><summary>{{ all | length }} {{ 'проблем' if all | length == 1 else 'проблема' }}</summary><ul>{% for e in all %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}{% endmacro %}
 {% block main %}
 <h1>Източници и свежест</h1>
 <p class="lede">Всеки показател, откъде идва, докъде стига и кога е прочетен за последно. Нов прочит, който би изтрил нещо пазено,
   чака второ четене поне ден по-късно (виж <a class="l" href="/how">Как работи</a>).</p>
 
 <div class="grid">
-  <section class="p s12"><h2>Eurostat</h2><div class="sub">Statistics API, JSON-stat 2.0, <a class="l" href="https://ec.europa.eu/eurostat/about-us/policies/copyright" rel="noopener">CC BY 4.0</a>; данните за България са на НСИ</div>
+  <section class="p s12"><h2>Eurostat</h2><div class="sub">Statistics API, JSON-stat 2.0, <a class="l" href="https://ec.europa.eu/eurostat/help/copyright-notice" rel="noopener">CC BY 4.0</a>; данните за България са на НСИ</div>
     <table class="sortable" style="margin-top:14px"><thead><tr><th>Показател</th><th>Набор</th><th class="n">Редове</th><th>Период</th><th>Обновен от Eurostat</th><th>Прочетен</th><th>Състояние</th><th data-nosort></th></tr></thead><tbody>
     {% for it in items %}{% set st = it.st %}<tr><td>{{ it.ind.label }}<div class="mut">{{ it.ind.unit_label }}</div></td>
       <td><a class="l" href="https://ec.europa.eu/eurostat/databrowser/view/{{ it.ind.dataset }}/default/table" rel="noopener">{{ it.ind.dataset }}</a></td>
       <td class="n">{{ it.span[2] | num(0) if it.span else 'няма' }}</td><td class="mut">{% if it.span %}{{ it.span[0] }} – {{ it.span[1] }}{% endif %}</td>
       <td class="mut">{{ st[6][:10] if st and st[6] }}</td><td class="mut">{{ st[4] | date if st }}</td>
-      <td class="{{ 'warn' if not st or st[1] != 'ok' }}">{{ st[1] if st else 'не е четен' }}{% if st and st[2] %}<div class="mut">{{ st[2] }}</div>{% endif %}</td>
+      <td>{{ problem(st[1] if st else none, st[2] if st else none) }}</td>
       <td><a class="l" href="/csv/{{ it.ind.id }}.csv">CSV</a></td></tr>{% endfor %}
     </tbody></table></section>
 
@@ -20,11 +23,11 @@
     <dt>В лева</dt><dd>{% if fx_span.fx_bgn %}{{ fx_span.fx_bgn[0] | period }} – {{ fx_span.fx_bgn[1] | period }}, {{ fx_span.fx_bgn[2] | num(0) }} курса{% else %}още няма{% endif %}</dd>
     <dt>В евро</dt><dd>{% if fx_span.fx_eur %}{{ fx_span.fx_eur[0] | period }} – {{ fx_span.fx_eur[1] | period }}, {{ fx_span.fx_eur[2] | num(0) }} курса{% else %}още няма{% endif %}</dd>
     <dt>Прочетени</dt><dd>{{ fx[3] | date if fx else 'никога' }}</dd>
-    <dt>Състояние</dt><dd class="{{ 'warn' if not fx or fx[0] != 'ok' }}">{{ fx[0] if fx else 'не е четено' }}{% if fx and fx[1] %}: {{ fx[1] }}{% endif %}</dd></dl></section>
+    <dt>Състояние</dt><dd>{{ problem(fx[0] if fx else none, fx[1] if fx else none) }}</dd></dl></section>
 
   <section class="p s6"><h2>Промени в източниците, последните 30 дни</h2>
     {% if changes %}<table><thead><tr><th>Източник</th><th>Вид</th><th class="n">Брой</th></tr></thead><tbody>
-    {% for s, c, n in changes %}<tr><td>{{ s }}</td><td>{{ {'new-record': 'нов запис', 'rewritten': 'променена стойност', 'removed': 'премахнат', 'held': 'задържан', 'confirmed': 'потвърдено', 'invalid': 'невалиден отговор', 'gone': 'липсва'}.get(c, c) }}</td><td class="n">{{ n | num(0) }}</td></tr>{% endfor %}
+    {% for s, c, n in changes %}<tr><td>{{ {'bnb': 'БНБ', 'eurostat': 'Eurostat'}.get(s, s) }}</td><td>{{ {'new-record': 'нов запис', 'rewritten': 'променена стойност', 'removed': 'премахнат', 'held': 'задържан', 'confirmed': 'потвърдено', 'invalid': 'невалиден отговор', 'gone': 'липсва при източника'}.get(c, c) }}</td><td class="n">{{ n | num(0) }}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p class="mut">Няма.</p>{% endif %}
     {% if held %}<h2 style="margin-top:18px">Задържани</h2><ul>{% for s, r, n, at in held %}<li>{{ s }} {{ r }}: {{ n }} реда, от {{ at | date }}</li>{% endfor %}</ul>{% endif %}</section>
 </div>

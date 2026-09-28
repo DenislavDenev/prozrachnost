@@ -176,6 +176,16 @@ def test_bnb_rate_and_inverse_must_agree():
         bnb.parse(text.encode())
 
 
+def test_bnb_gold_inverse_printed_as_zero_is_not_a_mismatch():
+    # 1999-Q3: an ounce of gold is 502.631 lev and "0" ounces for 1 lev; the check stops at the printed decimals
+    rows = bnb.parse(raw("bnb/q1999-3-xau.csv"))
+    xau = {day: v for ind, d, day, v in rows if d["code"] == "XAU"}
+    assert xau[dt.date(1999, 7, 5)] == 502.631 and xau[dt.date(1999, 7, 1)] == 496749.5267   # before 5.7.1999: old leva
+    text = raw("bnb/q1999-3-xau.csv").decode("utf-8-sig").replace("1,502.631, 0,", "1,502.631, 1,", 1)
+    with pytest.raises(jsonstat.ShapeError, match="do not agree"):
+        bnb.parse(text.encode())
+
+
 def test_bnb_currency_list_and_windows():
     codes = bnb.currencies(raw("bnb/search.html"))
     assert len(codes) == 59 and "USD" in codes and "DEM" in codes

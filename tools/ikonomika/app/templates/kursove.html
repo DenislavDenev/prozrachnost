@@ -11,12 +11,13 @@
     <form method="get"><label>Валута <select name="code" onchange="this.form.submit()">{% for c in codes %}<option value="{{ c }}" {{ 'selected' if c == code }}>{{ c }} · {{ label('code', c) }}</option>{% endfor %}</select></label>
       <noscript><button type="submit">Покажи</button></noscript></form></div>
     <div class="chart tall" data-src="/api/fx/{{ code }}.json" data-zoom="2020-01-01" data-digits="4"></div>
-    <div class="src">БНБ, <a href="https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm" rel="noopener">валутни курсове</a> · <a href="/csv/fx_eur.csv">CSV от 2026</a> · <a href="/csv/fx_bgn.csv">CSV в лева, от 1991</a></div></section>
+    <div class="src">БНБ · <a href="https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm" rel="noopener">валутни курсове</a> · <a href="/csv/fx_eur.csv">CSV от 2026</a> · <a href="/csv/fx_bgn.csv">CSV в лева, от 1991</a></div></section>
 
-  <section class="p s4"><h2>Последните {{ recent | length }} дни</h2>
+  <section class="p s4 fill"><h2>Последната година</h2><div class="sub">{{ recent | length }} работни дни</div>
+    <div class="box"><div class="scroll" tabindex="0" aria-label="Курсовете за последната година">
     <table class="sortable"><thead><tr><th>Ден</th><th class="n">{{ code }} за 1 €</th></tr></thead><tbody>
     {% for t, val, how in recent %}<tr><td data-v="{{ t }}">{{ t | period }}</td><td class="n">{{ val | num(4) }}</td></tr>{% endfor %}
-    </tbody></table></section>
+    </tbody></table></div></div></section>
 
   <section class="p s12"><div class="tools"><h2>Всички валути</h2><input type="search" placeholder="Търси валута" aria-label="Търси валута" data-filter="fx-all"></div>
     <table class="sortable" id="fx-all"><thead><tr><th>Код</th><th>Валута</th><th>Ден</th><th class="n">За 1 €</th></tr></thead><tbody>

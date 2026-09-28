@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Карта{% endblock %}
+{% block main %}
+<h1>{{ title }} по {{ plural | lower }}</h1>
+<p class="lede">{% if y %}През {{ y }} г.{% if bg is not none %} за страната: <b>{{ bg | num(digits) }} {{ unit }}</b>.{% endif %}
+  {% if src.updated %}Регионалните сметки излизат около 14 месеца след края на годината: данните за {{ y }} г. са публикувани от Eurostat на {{ src.updated | date }}.{% endif %}{% else %}Още няма данни.{% endif %}</p>
+
+<form class="ctl" method="get">
+  <div class="tabs" role="group" aria-label="Ниво">{% for k, lv in levels.items() %}<a href="/karta?m={{ m }}&l={{ k }}" {% if k == l %}aria-current="page"{% endif %}>{{ lv[0] }}</a>{% endfor %}</div>
+  <div class="tabs" role="group" aria-label="Показател">{% for k, mm in measures.items() %}<a href="/karta?m={{ k }}&l={{ l }}" {% if k == m %}aria-current="page"{% endif %}>{{ mm[1] }}</a>{% endfor %}</div>
+  <input type="hidden" name="m" value="{{ m }}"><input type="hidden" name="l" value="{{ l }}">
+  <label>Година <select name="y" onchange="this.form.submit()">{% for yy in years %}<option {{ 'selected' if yy == y }}>{{ yy }}</option>{% endfor %}</select></label>
+  <noscript><button type="submit">Покажи</button></noscript>
+</form>
+
+<div class="grid">
+  <section class="p s8 map stick"><h2>{{ title }}{% if y %}, {{ y }}{% endif %}</h2><div class="sub">{{ unit }}</div>
+    <svg viewBox="-6 -6 1012 {{ h + 12 }}" role="img" aria-label="Карта по {{ plural | lower }}: {{ title }}{% if y %}, {{ y }}{% endif %}">
+    {% for r in table %}<a href="#a-{{ r.code }}"><path d="{{ shapes[r.code].d }}" {% if r.fill is none %}class="none"{% else %}style="fill:{{ r.fill }}"{% endif %}><title>{{ r.name }}: {{ r.v | num(digits) }} {{ unit }}</title></path></a>{% endfor %}
+    </svg>
+    <div class="mkey">{% if ticks %}<div class="grad"><div class="bar" style="background:linear-gradient(90deg, {{ grad[0] }}, {{ grad[1] }})"></div>
+      {% for v, at, c in ticks %}<span class="{{ c }}" style="left:{{ at }}%">{{ 'медиана ' if c == 'm' }}{{ v | num(digits) }}</span>{% endfor %}</div>{% endif %}
+      <div><em style="background:var(--line-2)"></em>няма данни</div></div>
+    <div class="src">Eurostat · <a href="{{ src.url }}" rel="noopener">{{ src.dataset }}</a> · <a href="/csv/{{ 'pop_nuts' if m == 'THS' else 'gdp_nuts' }}.csv">CSV</a></div></section>
+
+  <section class="p s4"><h2>{{ plural }}</h2>
+    <table class="sortable" style="margin-top:12px"><thead><tr><th>{{ single }}</th><th class="n">{{ y or "" }}</th><th class="n">Промяна{% if base %} от {{ base }}{% endif %}, %</th><th class="n">Място</th></tr></thead><tbody>
+    {% for r in table %}<tr id="a-{{ r.code }}"><td>{{ r.name }}</td><td class="n" data-v="{{ r.v if r.v is not none else '' }}">{{ r.v | num(digits) }}</td>
+      <td class="n" data-v="{{ r.change if r.change is not none else '' }}">{{ r.change | num }}</td><td class="n">{{ r.rank or '' }}</td></tr>{% endfor %}
+    </tbody></table></section>
+</div>
+{% endblock %}
