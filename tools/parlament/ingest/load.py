@@ -242,6 +242,7 @@ def write(conn, sid, assembly, items, votes, notes, logged):
     with conn.cursor().copy("COPY live.item_group (sitting, no, grp, yes, no_, abstain, voted, present, listed) FROM STDIN") as cp:
         for no, it in sorted(items.items()):
             for g, c in it["groups"].items():
+                c = c or (None,) * (4 if it["kind"] == "vote" else 2)   # an empty row in the file by group: no numbers
                 cp.write_row((sid, no, g, *((*c, None, None) if it["kind"] == "vote" else (None, None, None, None, *c))))
     names = {no: name for no, name, *_ in votes}
     was = dict(conn.execute("SELECT no, name FROM live.mp WHERE assembly = %s AND no = ANY(%s)", (assembly, list(names))))
