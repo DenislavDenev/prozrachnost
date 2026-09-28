@@ -227,6 +227,18 @@ def test_an_mp_set_aside_is_said_on_the_sitting(conn):
     assert conn.execute("SELECT count(*) FROM live.vote WHERE sitting = 11174 AND mp = 3839").fetchone()[0] == 0
 
 
+def test_an_empty_row_of_a_group_is_kept_without_numbers(conn):
+    """30.04.2026: the row of ПП in one item of the file by group has empty cells; the roll call adds up."""
+    src = Source()
+    gv = next(k for k in src.files if "_gv240926" in k)
+    src.files[gv] = src.files[gv].replace(",ПП,52,1,0,6,7".encode(), ",ПП,52,,,,".encode(), 1)
+    assert src.files[gv].count(",ПП,52,,,,".encode()) == 1
+    assert run(conn, src)["sittings"] == {"stored": 2}
+    row = conn.execute("""SELECT g.yes, i.mismatch FROM live.item_group g JOIN live.item i USING (sitting, no)
+                          WHERE g.sitting = 11174 AND g.grp = 'ПП' AND i.kind = 'vote' AND g.yes IS NULL""").fetchone()
+    assert row == (None, "по групи редът на ПП е празен")
+
+
 def test_the_groups_get_one_code_and_a_renamed_group_stays_one(conn):
     from ingest import stats
     src = Source()
