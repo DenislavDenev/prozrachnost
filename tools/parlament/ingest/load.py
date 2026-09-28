@@ -118,7 +118,7 @@ def load(conn, stats_, first=None, get=None, today=None):
         for sid, _ in listed:
             try:
                 got, assembly = sitting(conn, sid, get)
-            except (http.Gone, parse.ShapeError) as e:
+            except (http.Gone, http.Failed, parse.ShapeError) as e:
                 got, assembly = "invalid", None
                 state(conn, f"sten/{sid}", status="invalid", error=str(e)[:2000])
             out[got] = out.get(got, 0) + 1
@@ -142,7 +142,7 @@ def recheck(conn, stats_, get=None):
                                 AND status IN ('invalid', 'no-files') ORDER BY 1""", (SOURCE,)).fetchall():
         try:
             got, assembly = sitting(conn, sid, get)
-        except (http.Gone, parse.ShapeError) as e:
+        except (http.Gone, http.Failed, parse.ShapeError) as e:
             got, assembly = "invalid", None
             state(conn, f"sten/{sid}", status="invalid", error=str(e)[:2000])
         out[got] = out.get(got, 0) + 1

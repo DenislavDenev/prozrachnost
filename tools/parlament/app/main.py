@@ -35,7 +35,7 @@ app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STAT
 
 MONTHS = "януари февруари март април май юни юли август септември октомври ноември декември".split()
 CODE = {"+": "за", "-": "против", "=": "въздържал се", "0": "не гласувал", "П": "регистриран", "О": "не е регистриран",
-        "Р": "не е регистриран"}
+        "Р": "не е регистриран", "Д": "регистриран онлайн"}
 LINE = {"+": "за", "-": "не подкрепя"}   # a group's line: for, or not for (against or abstained; ingest/stats.py)
 LIST_LIMIT = 400   # rows of the list of votes on the page; the CSV has all
 
