@@ -69,24 +69,37 @@ def assembly_no(heading):
 
 
 def sitting(raw):
-    """-> {id, date, heading, assembly, gv, iv}: gv and iv are the paths of the CSV files, or None."""
+    """-> {id, date, heading, assembly, files}: files are the paths of the sitting's CSV files of the two kinds, by
+    their name ("..._gv<ddmmyy>..." or "..._iv<ddmmyy>..."). Which is which is decided by the content (kind()): one
+    of 04.2023 has the same file twice, one of 12.2022 a roll call under the name of the file by group."""
     s = _json(raw)
     if not isinstance(s, dict) or not {"Pl_Sten_id", "Pl_Sten_date", "Pl_Sten_sub"} <= set(s):
         raise ShapeError(f"not a sitting: {str(s)[:120]}")
     files = s.get("files") or []
     if not isinstance(files, list):
         raise ShapeError(f"files is not a list: {str(files)[:80]}")
-    csvs = {}
-    for f in files:
-        path = (f or {}).get("Pl_StenDfile") or ""
-        m = re.search(r"(gv|iv)\d{6}[^/]*\.csv$", path, re.I)
-        if m:
-            kind = m.group(1).lower()
-            if kind in csvs:
-                raise ShapeError(f"two {kind} files: {csvs[kind]}, {path}")
-            csvs[kind] = path
+    csvs = [p for p in ((f or {}).get("Pl_StenDfile") or "" for f in files) if re.search(r"[gi]v\d{6}[^/]*\.csv$", p, re.I)]
     return {"id": int(s["Pl_Sten_id"]), "date": _date(s["Pl_Sten_date"]), "heading": s["Pl_Sten_sub"] or "",
-            "assembly": assembly_no(s["Pl_Sten_sub"]), "gv": csvs.get("gv"), "iv": csvs.get("iv")}
+            "assembly": assembly_no(s["Pl_Sten_sub"]), "files": csvs}
+
+
+def file_date(path):
+    """"..._iv011223.csv" -> date(2023, 12, 1): the day the name says, or None."""
+    m = re.search(r"[gi]v(\d\d)(\d\d)(\d\d)", path.rsplit("/", 1)[-1], re.I)
+    try:
+        return dt.date(2000 + int(m[3]), int(m[2]), int(m[1])) if m else None
+    except ValueError:
+        return None
+
+
+def kind(raw):
+    """"gv" for a file by group, "iv" for a roll call, None for anything else (read from the content, not the name)."""
+    text = _text(raw)          # a damaged file says so (ShapeError)
+    if text.startswith(("NAME,", "Регистрации и гласувания от:")):
+        return "iv"
+    if text.startswith("textbox3") or re.search(r"^Номер \(\d+", text, re.M) and re.search(r"^ПГ;", text, re.M):
+        return "gv"
+    return None
 
 
 MARKERS = ("Номер (", "NAME,", "Регистрации и гласувания")
@@ -98,6 +111,8 @@ def _text(raw):
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
+        if raw.startswith(b"\xef\xbb\xbf"):     # marked as UTF-8 but not: damaged at the source (18.03.2026)
+            raise ShapeError("повреден файл: започва като UTF-8, но не е")
         for enc in ("cp1251", "mac_cyrillic"):
             text = raw.decode(enc, errors="replace")
             if any(m in text[:3000] for m in MARKERS):
@@ -124,8 +139,9 @@ GV_HEAD = {"textbox3", "textbox11", "textbox12", "textbox13", "textbox18", "NAME
 
 def groups(raw):
     """The file by group -> {item: {kind, at, topic, total, groups}}. A registration counts (present, listed), a vote
-    (yes, no, abstain, voted); `total` is the row of the whole assembly, `groups` {group: counts}. Two layouts: a table
-    with a row per item and group (textbox3 ...), or, in the online sittings of early 2022, a block per item."""
+    (yes, no, abstain, voted); `total` is the row of the whole assembly, `groups` {group: counts}, None for a group
+    whose row has empty cells (a new group, 03.2025). Two layouts: a table with a row per item and group (textbox3 ...),
+    or a block per item (the online sittings of early 2022, some of 12.2024-04.2026), its columns named in the row "ПГ"."""
     text = _text(raw)
     items = {}
     if text.startswith("textbox3"):
@@ -149,27 +165,36 @@ def groups(raw):
             own = ("START_DATE", "ALL_DEPUTIES", "REGISTERED", "textbox22") if vote else ("START_DATE", "ALL_DEPUTIES")
             _add(items, r["textbox3"], [r[k] for k in keys], r["NAME"], [r[k] for k in own])
     elif re.search(r"^Номер \(\d+", text, re.M) and re.search(r"^ПГ;", text, re.M):
-        title = None
+        title = cols = None
         for r in csv.reader(io.StringIO(text), delimiter=";"):
             c0 = (r[0] if r else "").strip()
             if ITEM.match(c0):
-                title, total = ";".join(r).rstrip("; "), None   # a ";" in the topic splits the cell
-                n = 4 if ITEM.match(c0).group(2) == "ГЛАСУВАНЕ" else 2
+                title, total, cols = ";".join(r).rstrip("; "), None, None   # a ";" in the topic splits the cell
+                names = BLOCK_VOTE if ITEM.match(c0).group(2) == "ГЛАСУВАНЕ" else BLOCK_REG
             elif not c0 or c0.startswith("Народни представители"):
                 title = None                      # the block ends; the MPs who took part online follow the last one
             elif title and c0 == "ПГ":
-                continue
+                head = [x.strip() for x in r]
+                if not set(names) <= set(head):
+                    raise ShapeError(f"unexpected columns of a block: {head}")
+                cols = [head.index(x) for x in names]
             elif title and c0 == "Общо:":
-                total = r[1:1 + n]
+                if cols is None:
+                    raise ShapeError(f"a total before the columns: {r}")
+                total = [r[i] if i < len(r) else "" for i in cols]
             elif title:
                 if total is None:
                     raise ShapeError(f"a group before the total: {r}")
-                _add(items, title, total, c0, r[1:1 + n])
+                _add(items, title, total, c0, [r[i] if i < len(r) else "" for i in cols])
     else:
         raise ShapeError(f"unexpected start of the file by group: {text[:80]!r}")
     if not items:
         raise ShapeError("the file by group has no item")
     return items
+
+
+BLOCK_REG = ("Присъстват", "По списък")
+BLOCK_VOTE = ("За", "Против", "Въздържали се", "Гласували")
 
 
 def _add(items, title, total, group, own):
@@ -179,8 +204,9 @@ def _add(items, title, total, group, own):
     no, kind, d, mo, y, h, mi, topic = m.groups()
     kind = "registration" if kind == "РЕГИСТРАЦИЯ" else "vote"
     n = 2 if kind == "registration" else 4
-    total, own = tuple(_int(x, "total") for x in total[:n]), tuple(_int(x, group) for x in own[:n])
-    if len(total) != n or len(own) != n:
+    total = tuple(_int(x, "total") for x in total[:n])
+    own = None if any(not (x or "").strip() for x in own[:n]) else tuple(_int(x, group) for x in own[:n])
+    if len(total) != n or own is not None and len(own) != n:
         raise ShapeError(f"item {no}: short row")
     it = items.setdefault(int(no), {"kind": kind, "at": dt.datetime(int(y), int(mo), int(d), int(h), int(mi)),
                                     "topic": " ".join((topic or "").split()) or None, "total": total, "groups": {}})
@@ -193,10 +219,13 @@ def _add(items, title, total, group, own):
 
 
 def group_code(s):
-    return " ".join((s or "").split())
+    """The group as one code in both files: "ГЕРБ - СДС" and "ГЕРБ-СДС", "ДЕМОКРАЦИЯ, ПРАВА" and "ДЕМОКРАЦИЯ,ПРАВА" are
+    one group (the two files of 10.12.2024 write it differently)."""
+    return re.sub(r"\s*([,-])\s*", r"\1", " ".join((s or "").split()))
 
 
 VOTES = {"+": "yes", "-": "no", "=": "abstain", "0": "none"}
+UNALIGNED = "?"   # a code of a row with a column per item whose codes cannot be matched to the items (split_shifted)
 MARKS = {"П", "О", "Р"}   # a registration: П is counted as present (the file by group proves it); О and Р are not
 
 
@@ -209,7 +238,9 @@ def rollcall(raw):
     rows = list(csv.DictReader(io.StringIO(text)))
     if not rows or not {"NAME", "textbox7", "textbox8", "ITEM", "textbox2"} <= set(rows[0]):
         raise ShapeError(f"unexpected header of the roll call: {list(rows[0]) if rows else 'empty'}")
-    return [_one(r["textbox7"], r["NAME"], r["textbox8"], r["ITEM"], r["textbox2"]) for r in rows]
+    # an empty code: the MP was not on the hall's list for that item (sworn in or gone that day); the file by group
+    # does not count them either, which the check proves
+    return [_one(r["textbox7"], r["NAME"], r["textbox8"], r["ITEM"], r["textbox2"]) for r in rows if (r["textbox2"] or "").strip()]
 
 
 def _wide(text):
@@ -229,9 +260,11 @@ def _wide(text):
         codes = [x.strip() for x in r[start:] if x.strip()]
         if not codes:
             continue   # an MP listed without a single code: not in the hall's list that day (the file by group agrees)
-        if len(codes) != len(nums):
-            raise ShapeError(f"{len(codes)} codes for {len(nums)} items: {r[:6]}")
-        out += [_one(r[2], r[0], r[3], c, v) for c, v in zip(nums, codes)]
+        if len(codes) == len(nums):
+            out += [_one(r[2], r[0], r[3], c, v) for c, v in zip(nums, codes)]
+        else:   # some items without a code: which code is for which item is not known, the MP is set aside
+            first = _one(r[2], r[0], r[3], nums[0], codes[0])
+            out += [(*first[:3], int(c), UNALIGNED) for c in nums]
     return out
 
 
@@ -263,27 +296,48 @@ def roster(raw):
     return {"assembly": int(m.group(1)), "mps": mps}
 
 
+def split_shifted(items, votes):
+    """-> (votes, set aside {mp: (name, group)}). Some roll calls have one MP's codes out of place (04.2024-02.2026:
+    a vote in the column of a registration, codes missing after it): no code of that MP can be trusted that day, so
+    all of them are set aside and named on the sitting's page; the check allows for them."""
+    reg = {n for n, it in items.items() if it["kind"] == "registration"}
+    bad = {no: (name, g) for no, name, g, item, code in votes
+           if code == UNALIGNED or item in reg and code in VOTES or item in items and item not in reg and code in MARKS}
+    return [v for v in votes if v[0] not in bad], bad
+
+
 # The two files are made by the Assembly from the same voting system, but now and then (a vote corrected in the hall,
 # checked 03.2022) they differ by a vote or two in one group. Such an item is shown with the difference said on its
 # page; anything larger, or in too many items, means the files or our parser changed, and the sitting is not written.
+# When the groups differ but the whole assembly adds up in every item (a group formed that week counted apart in one
+# file only, 03.2025), the item is kept with that said.
 SMALL = 2
 SMALL_SHARE = 1 / 3
 
 
-def check(items, votes):
-    """-> (problems, notes). problems: the sitting must not be written; notes {item: text}: the roll call, counted by
-    group, differs from the file by group by at most SMALL votes (the file by group is the result, the roll call
-    the MPs). Every row of the roll call belongs to one item of the file by group and every item has its roll call."""
-    bad, notes = [], {}
+def check(items, votes, aside=None):
+    """-> (problems, notes). problems: the sitting must not be written; notes {item: text}, said on the item's page.
+
+    Per item and group, the roll call counted by group against the file by group: equal, or at most SMALL apart (a
+    note). At a registration only the present count is compared. A group whose row in the file by group is empty is
+    a note. Where the groups do not agree but the roll call adds up to the total of the whole assembly, the item is
+    kept with a note. `aside` {mp: group}: MPs set aside (split_shifted): the file by group still counts them, so each
+    count may be lower in the roll call by up to their number. Every row of the roll call belongs to one item of the
+    file by group and every item has its roll call."""
+    from collections import Counter
+    aside = aside or {}
+    allow, allow_all = Counter(aside.values()), len(aside)
+    bad, notes, small = [], {}, 0
     counted = {}
     for no, _, g, item, code in votes:
         counted.setdefault(item, {}).setdefault(g, []).append(code)
     if set(counted) != set(items):
-        bad.append(f"пунктовете се различават: поименно {sorted(set(counted) - set(items))[:5]}, "
-                   f"по групи {sorted(set(items) - set(counted))[:5]}")
+        bad.append(f"точките се различават: само в поименното {sorted(set(counted) - set(items))[:5]}, "
+                   f"само в гласуването по групи {sorted(set(items) - set(counted))[:5]}")
     for item in sorted(set(items) & set(counted)):
         it, by = items[item], counted[item]
-        if it["kind"] == "registration":
+        reg = it["kind"] == "registration"
+        if reg:
             got = {g: (c.count("П"), len(c)) for g, c in by.items()}
             wrong = [c for cs in by.values() for c in cs if c not in MARKS]
         else:
@@ -292,21 +346,43 @@ def check(items, votes):
         if wrong:
             bad.append(f"точка {item}: кодове {sorted(set(wrong))} не са за {it['kind']}")
             continue
-        diff = sorted(g for g in set(got) | set(it["groups"]) if got.get(g) != it["groups"].get(g))
-        whole = tuple(map(sum, zip(*it["groups"].values())))
-        whole_ok = whole == it["total"] if it["kind"] == "vote" else whole[0] == it["total"][0]
-        if not diff and whole_ok:
-            continue
-        size = max([0] + [abs(a - b) for g in diff for a, b in zip(got.get(g) or (0,) * 4, it["groups"].get(g) or (0,) * 4)]
-                   + ([abs(a - b) for a, b in zip(whole, it["total"])] if not whole_ok else []))
-        mine, theirs = ", ".join(f"{g} {got.get(g)}" for g in diff), ", ".join(f"{g} {it['groups'].get(g)}" for g in diff)
-        text = f"поименно {mine}; по групи {theirs}" if diff else f"сборът на групите {whole} не е общото {it['total']}"
-        if diff and set(diff) - set(got) or diff and set(diff) - set(it["groups"]) or size > SMALL:
-            bad.append(f"точка {item}: {text}")
-        else:
-            notes[item] = text
-    if len(notes) > max(1, SMALL_SHARE * len(items)):
-        bad.append(f"разминавания в {len(notes)} от {len(items)} точки")
+        keys = 1 if reg else 4                     # what must agree: the present, or the four counts of a vote
+
+        def off(mine, theirs, slack):
+            """How far the roll call is from the file by group beyond what the MPs set aside explain."""
+            return max([0] + [max(0, (b - a) - slack) if b >= a else a - b for a, b in zip(mine[:keys], theirs[:keys])])
+
+        roll = tuple(map(sum, zip(*got.values())))
+        adds_up = off(roll, it["total"], allow_all) == 0
+        broken = sorted(g for g, v in it["groups"].items() if v is None)
+        theirs = {g: v for g, v in it["groups"].items() if v is not None and (any(v) or g in got)}
+        mine = {g: v for g, v in got.items() if g not in broken}
+        said = [f"по групи редът на {', '.join(broken)} е празен"] if broken else []
+        lone = sorted(set(mine) ^ set(theirs))
+        size = max([0] + [off(mine[g], theirs[g], allow[g]) for g in set(mine) & set(theirs)])
+        if not broken:
+            size = max(size, off(tuple(map(sum, zip(*theirs.values()))), it["total"], 0))
+        diff = sorted(g for g in set(mine) & set(theirs) if off(mine[g], theirs[g], allow[g]))
+        if lone or size > SMALL:
+            if not adds_up:
+                bad.append(f"точка {item}: " + (f"групи само в единия файл: {lone}" if lone else
+                           f"поименно {', '.join(f'{g} {mine[g]}' for g in diff)}; по групи {', '.join(f'{g} {theirs[g]}' for g in diff)}"))
+                continue
+            said.append("групите в двата файла на Народното събрание се различават; общият резултат съвпада")
+        elif diff:
+            small += 1
+            said.insert(0, f"поименно {', '.join(f'{g} {mine[g]}' for g in diff)}; по групи {', '.join(f'{g} {theirs[g]}' for g in diff)}")
+        elif broken and not adds_up:
+            text = f"поименното {roll[:keys]}, общото {it['total'][:keys]}"
+            if off(roll, it["total"], allow_all) > SMALL:
+                bad.append(f"точка {item}: празен ред по групи за {', '.join(broken)} и {text}")
+                continue
+            small += 1
+            said.append(text)
+        if said:
+            notes[item] = "; ".join(said)
+    if small > max(1, SMALL_SHARE * len(items)):
+        bad.append(f"разминавания в {small} от {len(items)} точки")
     seen = set()
     for no, _, _, item, _ in votes:
         if (no, item) in seen:

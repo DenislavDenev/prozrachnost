@@ -115,9 +115,35 @@ def load(conn, stats_, first=None, get=None, today=None):
     return stats_
 
 
+def recheck(conn, stats_, get=None):
+    """Read again every sitting that was refused or had no files (after the parser learns a new layout), then give
+    every assembly its groups' one code and rebuild what the pages read."""
+    get = get or http.get
+    out, problems, touched = {}, [], set()
+    for sid, in conn.execute("""SELECT substr(ref, 6)::int FROM ops.source_state WHERE source = %s AND ref LIKE 'sten/%%'
+                                AND status IN ('invalid', 'no-files') ORDER BY 1""", (SOURCE,)).fetchall():
+        try:
+            got, assembly = sitting(conn, sid, get)
+        except (http.Gone, parse.ShapeError) as e:
+            got, assembly = "invalid", None
+            state(conn, f"sten/{sid}", status="invalid", error=str(e)[:2000])
+        out[got] = out.get(got, 0) + 1
+        if got == "invalid":
+            problems.append(f"Парламент: заседание {sid}: " + conn.execute(
+                "SELECT error FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()[0])
+    everyone = [a for a, in conn.execute("SELECT DISTINCT assembly FROM live.sitting ORDER BY 1")]
+    stats.rebuild(conn, everyone)
+    stats_.update(sittings=out, rebuilt=everyone, problems=problems)
+    return stats_
+
+
 def sitting(conn, sid, get):
-    """Read one sitting and its two files. -> (outcome, assembly): outcome is stored | unchanged | no-files | held |
-    invalid (the files do not add up; the reason is in ops.source_state)."""
+    """Read one sitting and its files. -> (outcome, assembly): outcome is stored | unchanged | no-files | held |
+    invalid (the files do not add up; the reason is in ops.source_state).
+
+    Every CSV of the sitting is read and told apart by its content (parse.kind), not its name; a file whose name is
+    for another day is not this sitting's (12.2023: the roll call of 1.12 under 11.12). The same file twice is one
+    file. When a kind has two different files, the first pair that adds up is taken."""
     ref = f"sten/{sid}"
     raw = get(f"{API}/pl-sten/{sid}")
     s = parse.sitting(raw)
@@ -125,28 +151,51 @@ def sitting(conn, sid, get):
         raise parse.ShapeError(f"asked for sitting {sid}, got {s['id']}")
     if s["assembly"] is None:
         raise parse.ShapeError(f"the heading names no assembly: {s['heading'][:120]!r}")
-    conn.execute("""INSERT INTO live.sitting (id, date, assembly, heading, gv, iv) VALUES (%s,%s,%s,%s,%s,%s)
+    conn.execute("""INSERT INTO live.sitting (id, date, assembly, heading) VALUES (%s,%s,%s,%s)
                     ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, assembly = EXCLUDED.assembly,
-                    heading = EXCLUDED.heading, gv = EXCLUDED.gv, iv = EXCLUDED.iv""",
-                 (sid, s["date"], s["assembly"], s["heading"], s["gv"], s["iv"]))
-    if not (s["gv"] and s["iv"]):
-        state(conn, ref, status="no-files", error=None, last_ok="now", rows=0)
+                    heading = EXCLUDED.heading""", (sid, s["date"], s["assembly"], s["heading"]))
+    found, why = {"gv": {}, "iv": {}}, []
+    for path in sorted(s["files"], reverse=True):              # the newest upload first (the name starts with its time)
+        if parse.file_date(path) not in (None, s["date"]):
+            why.append(f"{path.rsplit('/', 1)[-1]} е за друг ден")
+            continue
+        body = get(SITE + urllib.parse.quote(path))
+        try:
+            k = parse.kind(body) if body.strip() else None
+        except parse.ShapeError as e:
+            k, reason = None, str(e)
+        else:
+            reason = "празен" if not body.strip() else "непознат вид файл"
+        if k is None:
+            why.append(f"{path.rsplit('/', 1)[-1]}: {reason}")
+            continue
+        found[k].setdefault(hashlib.sha256(body).hexdigest(), (path, body))
+    if not (found["gv"] and found["iv"]):
+        missing = " и ".join(x for x, k in (("по групи", "gv"), ("поименно", "iv")) if not found[k])
+        state(conn, ref, status="no-files", error="; ".join([f"няма файл {missing} в CSV", *why])[:2000], last_ok="now", rows=0)
         return "no-files", s["assembly"]
-    gv = get(SITE + urllib.parse.quote(s["gv"]))
-    iv = get(SITE + urllib.parse.quote(s["iv"]))
-    if not gv.strip() or not iv.strip():   # published empty (checked: three sittings of 2022)
-        state(conn, ref, status="no-files", error="празен файл " + ("по групи" if not gv.strip() else "поименно"), last_ok="now", rows=0)
-        return "no-files", s["assembly"]
-    gsha, isha = hashlib.sha256(gv).hexdigest(), hashlib.sha256(iv).hexdigest()
-    held_sha = f"{gsha}:{isha}"
-    if conn.execute("SELECT 1 FROM live.sitting WHERE id = %s AND gv_sha = %s AND iv_sha = %s", (sid, gsha, isha)).fetchone():
-        state(conn, ref, status="ok", error=None, last_ok="now")
-        return "unchanged", s["assembly"]
-    items, votes = parse.groups(gv), parse.rollcall(iv)
-    bad, notes = parse.check(items, votes)
-    if bad:
-        state(conn, ref, status="invalid", error="; ".join(bad[:5])[:2000])
+    tried = []
+    for gsha, (gpath, gv) in found["gv"].items():
+        for isha, (ipath, iv) in found["iv"].items():
+            if conn.execute("SELECT 1 FROM live.sitting WHERE id = %s AND gv_sha = %s AND iv_sha = %s", (sid, gsha, isha)).fetchone():
+                state(conn, ref, status="ok", error=None, last_ok="now")
+                return "unchanged", s["assembly"]
+            items = parse.groups(gv)
+            votes, aside = parse.split_shifted(items, parse.rollcall(iv))
+            bad, notes = parse.check(items, votes, {mp: g for mp, (_, g) in aside.items()})
+            tried.append(bad)
+            if not bad:
+                break
+        if not tried[-1]:
+            break
+    if tried[-1]:
+        state(conn, ref, status="invalid", error="; ".join(tried[0][:5])[:2000])
         return "invalid", s["assembly"]
+    held_sha = f"{gsha}:{isha}"
+    s["gv"], s["iv"] = gpath, ipath
+    note = (f"Знаците на {', '.join(n for n, _ in aside.values())} в поименното гласуване на Народното събрание са "
+            f"разместени; гласовете {'му' if len(aside) == 1 else 'им'} от този ден не са показани, а резултатите са от "
+            f"гласуването по групи." if aside else None)
     with conn.transaction():
         save_raw(conn, f"{ref}/gv", s["gv"].rsplit("/", 1)[-1], gv)
         save_raw(conn, f"{ref}/iv", s["iv"].rsplit("/", 1)[-1], iv)
@@ -168,7 +217,8 @@ def sitting(conn, sid, get):
             db.log_change(conn, SOURCE, ref, "votes", n_votes, len(votes), "confirmed")
         conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
         write(conn, sid, s["assembly"], items, votes, notes, logged=n_votes > 0)
-        conn.execute("UPDATE live.sitting SET gv_sha = %s, iv_sha = %s WHERE id = %s", (gsha, isha, sid))
+        conn.execute("UPDATE live.sitting SET gv = %s, iv = %s, gv_sha = %s, iv_sha = %s, note = %s WHERE id = %s",
+                     (gpath, ipath, gsha, isha, note, sid))
         state(conn, ref, status="ok", error=None, last_ok="now", last_change="now", rows=len(votes))
     return "stored", s["assembly"]
 

@@ -77,8 +77,10 @@ def test_the_vote_page_the_hall_and_the_csv(client, loaded):
     assert 'data-vote="/api/glasuvane/11174/2.json"' in html
     j = client.get("/api/glasuvane/11174/2.json").json()
     assert j["totals"] == {"yes": 183, "no": 10, "abstain": 0, "voted": 193} and len(j["seats"]) == 240
-    assert j["groups"][0] == "ПБ" and {s["code"] for s in j["seats"]} <= {"+", "-", "=", "0"}
-    assert next(s for s in j["seats"] if s["mp"] == 3839) == {"mp": 3839, "name": "Стефан Апостолов Апостолов", "grp": "ГЕРБ - СДС", "code": "+"}
+    assert j["groups"][0] == {"grp": "ПБ", "name": "Прогресивна България", "color": "#034A3F"}
+    assert {s["code"] for s in j["seats"]} <= {"+", "-", "=", "0"}
+    assert next(s for s in j["seats"] if s["mp"] == 3839) == {"mp": 3839, "name": "Стефан Апостолов Апостолов", "grp": "ГЕРБ-СДС", "code": "+"}
+    assert html.count('class="v0"') == 183 and html.count('class="v2"') == 10          # a dot per MP: for, against
     rows = client.get("/csv/glasuvane/11174/2.csv").text.splitlines()
     assert len(rows) == 241 and rows[0].lstrip("﻿") == "депутат,група,код,вот"
     assert len(client.get("/csv/glasuvaniya-52.csv").text.splitlines()) == 1 + 15
@@ -95,6 +97,7 @@ def test_the_mp_page_and_its_strip(client, loaded):
 
 def test_the_hall_of_the_assembly(client, loaded):
     j = client.get("/api/zala/52.json").json()
-    assert sum(g["n"] for g in j["groups"]) == 240 and j["groups"][0] == {"grp": "ПБ", "n": 131}
+    assert sum(g["n"] for g in j["groups"]) == 240
+    assert j["groups"][0] == {"grp": "ПБ", "n": 131, "name": "Прогресивна България", "color": "#034A3F"}
     assert client.get("/api/zala/40.json").status_code == 404
     assert client.get("/api/grupi/52/edinstvo.json").status_code == 200

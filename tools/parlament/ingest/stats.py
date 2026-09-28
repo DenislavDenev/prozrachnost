@@ -1,5 +1,7 @@
 """What the pages read, built from live.vote after every import, for the assemblies that changed.
 
+- First every group gets its one code (ingest/groups.py): "ГЕРБ - СДС" is "ГЕРБ-СДС", "ДПС - Ново начало" is
+  "ДПС-НН" and so on, in live.vote and live.item_group, so a renamed group stays one group.
 - live.line: a group's line in a vote is the choice (+, -, =) of most of its MPs who voted; a tie has no line.
   MPs outside a group (INDEPENDENT) have none.
 - live.mp_stat: per MP and assembly, how often they voted, how, how often with and against their group's line
@@ -7,12 +9,22 @@
 - The constituency and profile come from the current assembly's roster, joined by the full name only where the
   name is once in the roster and once in the roll call of the same assembly; otherwise there is none.
 """
+from .groups import INDEPENDENT, aliases
 
-INDEPENDENT = ("НЕЗ", "Независими", "НЕЗАВИСИМИ")
+
+def regroup(conn, assemblies):
+    """The one code of every group, in the rows of these assemblies."""
+    for table, key in (("live.vote", "sitting"), ("live.item_group", "sitting")):
+        conn.execute(f"""UPDATE {table} t SET grp = regexp_replace(grp, '\\s*([,-])\\s*', '\\1', 'g') FROM live.sitting s
+                         WHERE s.id = t.{key} AND s.assembly = ANY(%s) AND grp ~ '\\s[,-]|[,-]\\s'""", (assemblies,))
+        for asm, code, group in aliases():
+            conn.execute(f"""UPDATE {table} t SET grp = %s FROM live.sitting s WHERE s.id = t.{key} AND t.grp = %s
+                             AND s.assembly = ANY(%s)""", (group, code, [asm] if asm in assemblies else [] if asm else assemblies))
 
 
 def rebuild(conn, assemblies):
     with conn.transaction():
+        regroup(conn, assemblies)
         conn.execute("DELETE FROM live.line l USING live.sitting s WHERE l.sitting = s.id AND s.assembly = ANY(%s)", (assemblies,))
         conn.execute("""
             INSERT INTO live.line (sitting, item, grp, line, voters, with_line)

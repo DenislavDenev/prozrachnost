@@ -24,13 +24,13 @@ def test_the_file_by_group_of_24_09_2026_is_the_assemblys_pdf():
     items = parse.groups(raw("gv240926.csv"))
     assert len(items) == 12
     assert items[1] == {"kind": "registration", "at": items[1]["at"], "topic": None, "total": (188, 240),
-                        "groups": {"ПБ": (113, 131), "ГЕРБ - СДС": (29, 39), "ДПС": (15, 21), "ДБ": (14, 21), "ПП": (7, 16),
+                        "groups": {"ПБ": (113, 131), "ГЕРБ-СДС": (29, 39), "ДПС": (15, 21), "ДБ": (14, 21), "ПП": (7, 16),
                                    "ВЪЗРАЖДАНЕ": (10, 12)}}
     two = items[2]
     assert two["topic"] == "ЗИД на Наказателния кодекс – първо гласуване" and str(two["at"]) == "2026-09-24 10:12:00"
     assert two["total"] == (183, 10, 0, 193)                                     # the PDF: за 183, против 10, гласували 193
     assert two["groups"]["ПБ"] == (119, 0, 0, 119) and two["groups"]["ВЪЗРАЖДАНЕ"] == (0, 10, 0, 10)
-    assert "ДПС" in two["groups"]                                                # "ДПС " in the file, spaces trimmed
+    assert "ДПС" in two["groups"] and "ГЕРБ-СДС" in two["groups"]                # "ДПС " and "ГЕРБ - СДС" in the file
 
 
 def test_the_roll_call_of_24_09_2026_is_the_assemblys_pdf():
@@ -57,6 +57,7 @@ def test_the_two_files_agree_and_prove_the_meaning_of_the_codes():
     ("250222", 101, 24240, 240),     # the same, in windows-1251, with the separator column elsewhere in the header (2022)
     ("080322", 2, 480, 240),         # the file by group in blocks, from the online sittings (2022)
     ("260122-closed", 5, 1195, 239),  # a topic with commas and no quotes; an MP listed without a single code
+    ("101224", 7, 1680, 240),        # blocks with a column НС (12.2024)
 ])
 def test_every_layout_since_12_2021_is_read_and_adds_up(pre, items, votes, mps):
     it, v = parse.groups(raw(f"gv{pre}.csv")), parse.rollcall(raw(f"iv{pre}.csv"))
@@ -82,15 +83,15 @@ def test_a_difference_of_a_vote_is_a_note_a_larger_one_stops_the_sitting():
     items, votes = parse.groups(raw("gv240926.csv")), parse.rollcall(raw("iv240926.csv"))
     one = [(n, m, g, i, "-" if (n, i) == (3839, 2) else c) for n, m, g, i, c in votes]      # Апостолов: против
     bad, notes = parse.check(items, one)
-    assert bad == [] and list(notes) == [2] and "ГЕРБ - СДС (22, 1, 0, 23)" in notes[2]
-    gerb = {n for n, _, g, i, _ in votes if g == "ГЕРБ - СДС" and i == 2}
+    assert bad == [] and list(notes) == [2] and "ГЕРБ-СДС (22, 1, 0, 23)" in notes[2]
+    gerb = {n for n, _, g, i, _ in votes if g == "ГЕРБ-СДС" and i == 2}
     many = [(n, m, g, i, "-" if n in gerb and i == 2 and c == "+" else c) for n, m, g, i, c in votes]
     assert parse.check(items, many)[0][0].startswith("точка 2:")
 
 
 def test_the_roll_call_and_the_file_by_group_must_have_the_same_items():
     items, votes = parse.groups(raw("gv240926.csv")), parse.rollcall(raw("iv240926.csv"))
-    assert "пунктовете се различават" in parse.check(items, [v for v in votes if v[3] != 12])[0][0]
+    assert "точките се различават" in parse.check(items, [v for v in votes if v[3] != 12])[0][0]
     assert "два пъти" in parse.check(items, votes + votes[:1])[0][-1]
 
 
@@ -98,7 +99,6 @@ def test_the_roll_call_and_the_file_by_group_must_have_the_same_items():
     (b"<!doctype html><html lang=bg>", "HTML"),
     (b"", "unexpected"),
     (b"NAME,textbox7,textbox8,ITEM,textbox2\nX,1,A,1,?\n", "unknown code"),
-    (b"NAME,textbox7,textbox8,ITEM,textbox2\nX,1,A,1,\n", "unknown code"),
     (b"NAME,textbox7,textbox8,ITEM,textbox2\nX,,A,1,+\n", "not a count"),
 ])
 def test_the_roll_call_refuses_what_it_does_not_know(bad, match):
@@ -116,12 +116,51 @@ def test_the_file_by_group_refuses_a_cut_file_and_another_layout():
         parse.groups(good.replace(b",183,10,0,193,", b",183,10,,193,", 1))
 
 
-def test_a_sitting_its_assembly_and_its_two_csv_files():
+def test_a_sitting_its_assembly_and_its_csv_files():
     s = parse.sitting(raw("sten-240926.json"))
     assert (s["id"], str(s["date"]), s["assembly"]) == (11174, "2026-09-24", 52)
-    assert s["gv"] == "/pub/StenD/20260924140052_gv240926.csv" and s["iv"] == "/pub/StenD/20260924140118_iv240926.csv"
+    assert s["files"] == ["/pub/StenD/20260924140052_gv240926.csv", "/pub/StenD/20260924140118_iv240926.csv"]
     assert parse.sitting(raw("sten-10612.json"))["assembly"] == 47
-    assert parse.sitting(raw("sten-10612.json"))["iv"].endswith("iv260122 - Извънредно закрито.csv")
+    assert parse.sitting(raw("sten-10612.json"))["files"][1].endswith("iv260122 - Извънредно закрито.csv")
+    assert parse.file_date("/pub/StenD/20231212121408_iv011223.csv") == parse._date("2023-12-01")
+    assert parse.file_date("x.csv") is None
+
+
+def test_the_kind_of_a_file_is_read_from_its_content():
+    """12.2022: a roll call under the name of the file by group; 03.2026: a file damaged at the source."""
+    assert parse.kind(raw("gv240926.csv")) == "gv" and parse.kind(raw("iv240926.csv")) == "iv"
+    assert parse.kind(raw("gv080322.csv")) == "gv" and parse.kind(raw("iv310726.csv")) == "iv"
+    assert parse.kind("x;y\n".encode()) is None
+    with pytest.raises(parse.ShapeError, match="повреден"):
+        parse.kind(raw("iv240926.csv")[:3000] + bytes([0xDE, 0x00, 0x15, 0xE9]) + raw("iv240926.csv")[3000:])
+
+
+def test_a_block_file_with_the_assembly_column_and_a_group_written_two_ways():
+    """10.12.2024: blocks with a column НС; "ДЕМОКРАЦИЯ, ПРАВА И СВОБОДИ-ДПС" in one file, without the space in the other."""
+    items, votes = parse.groups(raw("gv101224.csv")), parse.rollcall(raw("iv101224.csv"))
+    assert items[1]["total"] == (218, 240) and items[2]["total"] == (224, 0, 0, 224)
+    assert items[1]["groups"]["ДЕМОКРАЦИЯ,ПРАВА И СВОБОДИ-ДПС"] == (17, 19)
+    assert parse.check(items, votes) == ([], {})
+
+
+def test_an_mp_with_codes_out_of_place_is_set_aside_and_named():
+    """04.2024-02.2026: one MP's codes shifted (a vote in the registration's column, nothing after): the MP is set
+    aside and the rest must add up allowing for them."""
+    items, votes = parse.groups(raw("gv240926.csv")), parse.rollcall(raw("iv240926.csv"))
+    mine = sorted((v for v in votes if v[0] == 3839), key=lambda v: v[3])
+    codes = [c for *_, c in mine]
+    shifted = [(n, m, g, i, codes[i] if i < 12 else "") for n, m, g, i, c in mine]      # item k gets the code of k + 1
+    moved = [v for v in votes if v[0] != 3839] + [v for v in shifted if v[4]]
+    assert parse.check(items, moved)[0]                                                  # as it is: it does not add up
+    kept, aside = parse.split_shifted(items, moved)
+    assert aside == {3839: ("СТЕФАН АПОСТОЛОВ АПОСТОЛОВ", "ГЕРБ-СДС")} and len(kept) == 2880 - 12
+    assert parse.check(items, kept, {3839: "ГЕРБ-СДС"}) == ([], {})
+    assert parse.check(items, kept)[0] == ["разминавания в 6 от 12 точки"]            # without the allowance: refused
+
+
+def test_an_empty_code_is_an_mp_not_on_the_list_for_that_item():
+    rows = "NAME,textbox7,textbox8,ITEM,textbox2\nX,1,A,1,П\nX,1,A,2,\n".encode()
+    assert parse.rollcall(rows) == [(1, "X", "A", 1, "П")]
     with pytest.raises(parse.ShapeError, match="not JSON"):
         parse.sitting(b"<!doctype html><html>")                                  # a wrong API path answers 200 with the site
 
