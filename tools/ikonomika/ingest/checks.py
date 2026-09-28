@@ -59,9 +59,47 @@ def hicp_rates(i15, rch_m, rch_a):
     return bad
 
 
+# the parts add up to the whole (measured on the whole series, 28.09.2026: the largest gap is 0.2, from rounding):
+# indicator -> (the dimension that adds up, {the other dimensions it holds for}, whole, [parts, "-" subtracts], what)
+SUMS = {
+    "hicp_w": ("coicop18", {}, "TOTAL", [f"CP{n:02d}" for n in range(1, 14)], "теглата на 13-те групи"),
+    "gdp_full": ("na_item", {"unit": "CP_MEUR"}, "B1GQ", ["P3", "P5G", "P6", "-P7"], "БВП по разходите"),
+    "gva": ("nace_r2", {"unit": "CP_MEUR"}, "TOTAL", ["A", "B-E", "F", "G-I", "J", "K", "L", "M_N", "O-Q", "R-U"],
+            "добавената стойност на отраслите"),
+    "bop": ("bop_item", {"stk_flow": "BAL"}, "CA", ["G", "S", "IN1", "IN2"], "текущата сметка"),
+    "trade_a": ("indic_et", {}, "MIO_BAL_VAL", ["MIO_EXP_VAL", "-MIO_IMP_VAL"], "търговското салдо"),
+    "trade_m": ("stk_flow", {"indic_et": "TRD_VAL"}, "BAL_RT", ["EXP", "-IMP"], "търговското салдо"),
+    "govt": ("sector", {"unit": "MIO_EUR", "na_item": "B9"}, "S13", ["S1311", "S1313", "S1314"], "салдото на подсекторите"),
+}
+SUM_TOLERANCE = 0.5
+
+
+def parts_sum(rows, dim, hold, whole, parts, what):
+    """[problems]: in every group (the same place, period and other dimensions) with the whole and all its parts,
+    the parts add up to the whole."""
+    groups = defaultdict(dict)
+    for dims, geo, time, value, _ in rows:
+        if value is not None and all(dims.get(k) == v for k, v in hold.items()):
+            rest = tuple(sorted((k, v) for k, v in dims.items() if k != dim))
+            groups[(geo, time, rest)][dims.get(dim)] = value
+    bad = []
+    for (geo, time, rest), g in sorted(groups.items()):
+        names = [p.lstrip("-") for p in parts]
+        if whole in g and all(n in g for n in names):
+            s = sum(-g[n] if p.startswith("-") else g[n] for p, n in zip(parts, names))
+            if abs(s - g[whole]) > SUM_TOLERANCE:
+                bad.append(f"{geo} {time}: {what} {s:.2f} ≠ {g[whole]:.2f}")
+    return bad
+
+
 def eurostat(parsed):
     """{indicator: problem} for the answers of one run (parsed: {indicator: jsonstat.parse() result})."""
     out = {}
+    for ind, rule in SUMS.items():
+        if ind in parsed:
+            bad = parts_sum(parsed[ind]["rows"], *rule)
+            if bad:
+                out[ind] = f"{len(bad)} несъответствия: " + "; ".join(bad[:5])
     if "gdp_nuts" in parsed:
         bad = nuts_sum(parsed["gdp_nuts"]["rows"])
         if bad:

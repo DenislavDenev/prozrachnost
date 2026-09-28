@@ -16,3 +16,29 @@ salary,nama_10_fte,unit=EUR,EU,500,"Средна годишна заплата �
 lci,lc_lci_r2_q,nace_r2=B-S&lcstruct=D11&unit=PCH_SM&s_adj=NSA,BG,130,"Ръст на заплатите (индекс на разходите за труд, заплати)",% спрямо същото тримесечие на предходната година
 debt,gov_10dd_edpt1,na_item=GD&na_item=B9&sector=S13&unit=PC_GDP&unit=MIO_EUR,EU,500,"Държавен дълг и дефицит (сектор „Държавно управление“)",по мерна единица
 hpi,prc_hpi_q,purchase=TOTAL&purchase=DW_NEW&purchase=DW_EXST&unit=I15_Q&unit=RCH_A,EU,130,"Цени на жилищата",по мерна единица
+hicp_w,prc_hicp_iw,statinfo=IW,BG,400,"Тегла на групите в ХИПЦ",на 1000 от потребителските разходи
+hicp_avg,prc_hicp_ainr,unit=RCH_A_AVG&coicop18=TOTAL,BG,400,"ХИПЦ, средногодишна инфлация",% (средно за годината спрямо предходната)
+ppi,sts_inppd_m,indic_bt=PRC_PRR_DOM&nace_r2=B-E36&nace_r2=MIG_ING&nace_r2=MIG_NRG&nace_r2=MIG_CAG&nace_r2=MIG_COG&nace_r2=C10-C12&s_adj=NSA&unit=I21&unit=PCH_SM,BGEU,60,"Цени на производител в промишлеността (вътрешен пазар)",по мерна единица
+elec,nrg_pc_204,siec=E7000&nrg_cons=KWH2500-4999&unit=KWH&tax=I_TAX&tax=X_TAX&currency=EUR&currency=PPS,EU,250,"Цена на тока за домакинствата (2 500-4 999 kWh годишно)",за 1 kWh
+gdp_full,nama_10_gdp,unit=CP_MEUR&unit=CLV_PCH_PRE&unit=PC_GDP&unit=CON_PPCH_PRE&unit=PD_PCH_PRE_EUR,BG,400,"БВП по компоненти, годишно",по мерна единица
+gva,nama_10_a10,na_item=B1G&unit=CP_MEUR&unit=PC_TOT&unit=CLV_PCH_PRE,BG,400,"Брутна добавена стойност по отрасли, годишно",по мерна единица
+ind_prod,sts_inpr_m,indic_bt=PRD&nace_r2=B-D&nace_r2=B&nace_r2=C&nace_r2=D&nace_r2=MIG_ING&nace_r2=MIG_CAG&nace_r2=MIG_COG&nace_r2=MIG_NRG_X_E&s_adj=SCA&s_adj=CA&unit=I21&unit=PCH_SM,BGEU,60,"Промишлено производство, месечно",по мерна единица
+retail,sts_trtu_m,indic_bt=VOL_SLS&nace_r2=G47&nace_r2=G47_FOOD&nace_r2=G47_NFOOD&nace_r2=G473&s_adj=SCA&s_adj=CA&unit=I21&unit=PCH_SM,BGEU,60,"Търговия на дребно (обем на продажбите), месечно",по мерна единица
+constr,sts_copr_m,indic_bt=PRD&nace_r2=F&nace_r2=F_CC1&nace_r2=F_CC2&s_adj=SCA&s_adj=CA&unit=I21&unit=PCH_SM,BGEU,60,"Строителство, месечно",по мерна единица
+sentiment,ei_bssi_m_r2,s_adj=SA,BGEU,50,"Бизнес и потребителско доверие, месечно","салдо на отговорите, а общият индикатор: дългосрочно средно = 100"
+tourism,tour_occ_nim,nace_r2=I551-I553&unit=NR&unit=PCH_SM,BG,90,"Нощувки в местата за настаняване, месечно",по мерна единица
+emp_ind,namq_10_a10_e,na_item=EMP_DC&s_adj=SCA&unit=THS_PER&unit=PCH_SM_PER,BG,130,"Заети по отрасли, тримесечно (сезонно изгладено)",по мерна единица
+unemp_bg,une_rt_m,s_adj=SA&unit=PC_ACT&unit=THS_PER,BG,50,"Безработица по пол и възраст, месечно (сезонно изгладена)",по мерна единица
+unemp_a,une_rt_a,age=Y15-74&sex=T&unit=PC_ACT,BG,400,"Безработица, средногодишно",% от работната сила
+emp_reg,lfst_r_lfe2emprt,unit=PC&age=Y20-64&sex=T&sex=M&sex=F,ALL,500,"Заетост на хората от 20 до 64 години по райони",% от населението на тази възраст
+unemp_reg,lfst_r_lfu3rt,unit=PC&isced11=TOTAL&age=Y15-74&age=Y15-29&sex=T,ALL,500,"Безработица по райони",% от работната сила
+coe_reg,nama_10r_2coe,currency=MIO_EUR&nace_r2=TOTAL,ALL,730,"Компенсации на наетите по райони",млн. €
+sal_reg,nama_10r_2emhrw,wstatus=SAL&nace_r2=TOTAL&unit=THS,ALL,730,"Наети по райони (за компенсацията на един нает)",хил. души
+poverty,ilc_li02,statinfo=MED_EI&unit=PC&rskpovth=B_60&sex=T&age=TOTAL&age=Y_LT18&age=Y_GE65,EU,500,"Под прага на бедност (60% от медианния доход)",% от населението
+govt,gov_10dd_edpt1,unit=MIO_EUR&unit=PC_GDP,BG,500,"Дълг и дефицит по подсектори на държавното управление",по мерна единица
+ltrate,irt_lt_mcby_m,int_rt=MCBY,EU,50,"Дългосрочна лихва по държавния дълг (критерий за еврото)",% годишно
+mm_rate,irt_st_m,int_rt=IRT_DTD&int_rt=IRT_M3,BGEU,50,"Лихви на междубанковия пазар",% годишно
+trade_m,ext_st_27_2020msbec,indic_et=TRD_VAL&indic_et=TRD_VAL_RT12&partner=WORLD&partner=EU27_2020&partner=EXT_EU27_2020&stk_flow=EXP&stk_flow=IMP&stk_flow=BAL_RT,BG,60,"Износ и внос на стоки по икономически категории, месечно",по показател
+trade_a,ext_lt_intratrd,indic_et=MIO_EXP_VAL&indic_et=MIO_IMP_VAL&indic_et=MIO_BAL_VAL,BG,400,"Износ и внос на стоки по стокови групи, годишно",млн. €
+bop,bop_c6_q,currency=MIO_EUR&partner=WRL_REST&sector10=S1&sectpart=S1&bop_item=CA&bop_item=G&bop_item=S&bop_item=IN1&bop_item=IN2&bop_item=KA&bop_item=CKA&bop_item=FA&bop_item=FA__D__F&bop_item=FA__P__F&bop_item=FA__O__F&bop_item=FA__R__F&bop_item=EO&stk_flow=BAL&stk_flow=CRE&stk_flow=DEB&stk_flow=NET&stk_flow=ASS&stk_flow=LIAB,BG,130,"Платежен баланс, тримесечно",млн. €
+fdi,bop_fdi6_pos,currency=MIO_EUR&partner=WRL_REST&counterp=IMM&entity=TOTAL&stk_flow=LIAB&stk_flow=ASS&fdi_item=DI__D__F&fdi_item=DO__D__F,BG,500,"Преки инвестиции, натрупани (позиции), по отрасли",млн. €
