@@ -7,7 +7,7 @@
   <div class="fld"><span>По</span><div class="tabs" id="by" role="group" aria-label="По">
     <button type="button" data-k="buyer" aria-pressed="true">Възложители</button><button type="button" data-k="supplier" aria-pressed="false">Изпълнители</button></div></div>
   <div class="fld" id="o-fld" hidden><span>Обхват</span><div class="tabs" id="o" role="group" aria-label="Обхват">
-    <button type="button" data-k="bg" aria-pressed="true">България</button><button type="button" data-k="eu" aria-pressed="false">Европа</button></div></div>
+    <button type="button" data-k="bg" aria-pressed="true">България</button><button type="button" data-k="eu" aria-pressed="false">Европа</button><button type="button" data-k="world" aria-pressed="false">Свят</button></div></div>
   <div class="fld grow"><span>Ниво</span><div class="tabs" id="level" role="group" aria-label="Ниво"></div></div>
   <div class="fld grow"><span>Показател</span><div class="tabs" id="metric" role="group" aria-label="Показател">
     <button type="button" data-k="eur" aria-pressed="true">Стойност</button><button type="button" data-k="n" aria-pressed="false">Брой</button><button type="button" data-k="single_pct" aria-pressed="false">Една оферта</button></div></div>
@@ -26,56 +26,81 @@
 </form>
 <div class="grid" style="margin-top:18px">
   <section class="p s8 mapbox"><div class="mapwrap"><svg id="bgmap" role="img" aria-label="Карта на България по общини"><g class="ground"></g><g class="layers"></g><g class="selg"></g></svg>
+    <div class="tip" id="maptip" hidden></div>
     <div class="zoom" role="group" aria-label="Мащаб"><button type="button" data-z="in" title="Приближи" aria-label="Приближи">+</button><button type="button" data-z="out" title="Отдалечи" aria-label="Отдалечи">−</button><button type="button" data-z="home" title="Цялата карта" aria-label="Цялата карта">⤢</button></div></div>
     <p class="mut" id="cover"></p><p class="mut hint">Влачи, за да местиш; Ctrl + колелото, двойно щракване или два пръста приближават.</p></section>
   <section class="p s4" id="side" aria-live="polite"></section>
 </div>
-<p class="mut" style="margin-top:14px">Граници: © EuroGeographics за административните граници (Eurostat GISCO: общините по LAU 2024, областите, районите, макрорайоните и Европа по NUTS 2024, държавите по 2024 г.).</p>
+<p class="mut" style="margin-top:14px">Граници: © EuroGeographics за административните граници (Eurostat GISCO: общините по LAU 2024, областите, районите, макрорайоните и Европа по NUTS 2024, държавите по 2024 г.; светът в проекция Equal Earth).</p>
 {% endblock %}
 {% block scripts %}
 <script>
 (async () => {
   const NS = 'http://www.w3.org/2000/svg';
-  const geo = await (await fetch('/static/bg-municipalities.json?v={{ v }}')).json();
-  let E = null;   // the outlines of Europe (a copy of Икономика's), read when the map first needs them
-  const europe = async () => E || (E = await (await fetch('/static/europe.json?v={{ v }}')).json());
+  const json = async (u) => (await fetch(u + '?v={{ v }}')).json();
+  // Bulgaria and Europe share one plane (EPSG:3035, the frame of europe.json); the world (Equal Earth) is scaled so its
+  // Europe sits on Europe's, and the map flies between the three
+  const [geo, E] = await Promise.all([json('/static/bg-municipalities.json'), json('/static/europe.json')]);
+  let W = null;
   const svg = $('bgmap'), ground = svg.querySelector('g.ground'), layers = svg.querySelector('g.layers'), selg = svg.querySelector('g.selg');
-  const side = $('side'), form = $('mf'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  // Bulgaria and Europe share one plane (EPSG:3035, the frame of europe.json): the map flies between them
+  const side = $('side'), form = $('mf'), tip = $('maptip'), still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [vx, vy, vw, vh] = geo.view, ASPECT = vw / vh;
   svg.style.aspectRatio = `${ASPECT}`;
   const fit = (b) => { const w = Math.max(b.w, b.h * ASPECT), h = w / ASPECT; return { x: b.x + b.w / 2 - w / 2, y: b.y + b.h / 2 - h / 2, w, h }; };
-  const HOME = { bg: { x: vx, y: vy, w: vw, h: vh }, eu: null };
-  let view;
+  const HOME = { bg: { x: vx, y: vy, w: vw, h: vh }, eu: fit({ x: -6, y: -6, w: 1012, h: E.h + 12 }), world: null };
+  let view, WT = '';
   const setView = (v) => { view = v; svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`); };
   setView(HOME.bg);
+  async function world() {   // read once, when "Свят" is first chosen
+    if (W) return;
+    W = await json('/static/world.json');
+    const [ex, ey, ew, eh] = W.europe, k = 1000 / ew, tx = 500 - k * (ex + ew / 2), ty = E.h / 2 - k * (ey + eh / 2);
+    WT = `matrix(${k} 0 0 ${k} ${tx} ${ty})`;
+    HOME.world = fit({ x: tx, y: ty, w: 1000 * k, h: W.h * k });
+  }
+  // the ground: every country around, drawn once, the same under both views (AGENTS.md 7)
+  ground.innerHTML = Object.values(E.world).map((d) => `<path d="${d}"/>`).join('');
+
   const st = { k: 'eur', by: 'buyer', o: 'bg', level: 'muni', sel: null, data: null };
   const home = () => HOME[st.o];
   const fmt = { eur: (v) => big(+v), n: (v) => nf.format(v) + ' дог.', single_pct: (v) => pct(v) };
   const LEVELS = { buyer: [['muni', 'Общини'], ['oblast', 'Области'], ['region', 'Райони'], ['macro', 'Макрорайони']],
     bg: [['oblast', 'Области'], ['region', 'Райони'], ['macro', 'Макрорайони']],
-    eu: [['oblast', 'Области'], ['region', 'Райони'], ['macro', 'Макрорайони'], ['country', 'Държави']] };
+    eu: [['country', 'Държави'], ['macro', 'Макрорайони'], ['region', 'Райони'], ['oblast', 'Области']], world: [['country', 'Държави']] };
   const levels = () => LEVELS[st.by === 'buyer' ? 'buyer' : st.o];
   const LV = { muni: 'общини', oblast: 'области', region: 'райони', macro: 'макрорайони', country: 'държави' };
-  const NUTS = { oblast: '3', region: '2', macro: '1', country: '0' };
+  const NUTS = { oblast: '3', region: '2', macro: '1' };
+  const PLACE = { bg: 'България', eu: 'Европа', world: 'света' };
   // "all buyers in the area" vs only the municipalities and their units, named for the level
   const SCOPE = { muni: ['Всички в общината', 'Само общината и звената ѝ'], oblast: ['Всички в областта', 'Само общините и звената им'],
     region: ['Всички в района', 'Само общините и звената им'], macro: ['Всички в макрорайона', 'Само общините и звената им'] };
   const LEDE = { buyer: $('lede').textContent,
     supplier: 'Договорите по седалището на изпълнителя, както е в обявлението за възлагане (код по NUTS). Договор на обединение се брои към мястото на всеки член. Когато обявлението дава само държавата, договорът е само на нивото „Държави“.' };
-  function outlines() {   // {id: SVG path} of the level on the map
-    if (st.o === 'bg' || st.by === 'buyer') {
-      const src = { muni: geo.shapes, oblast: geo.oblasts, region: geo.regions, macro: geo.macros }[st.level];
-      return Object.fromEntries(Object.entries(src).map(([id, s]) => [id, s.d]));
+
+  // ---------- the layers: each (view, level) is built once, then only recoloured ----------
+  const built = new Map();
+  function outlines(key) {
+    const [o, level] = key.split(':');
+    if (o === 'bg') return Object.fromEntries(Object.entries({ muni: geo.shapes, oblast: geo.oblasts, region: geo.regions, macro: geo.macros }[level]).map(([id, s]) => [id, s.d]));
+    if (o === 'world') return W.shapes;
+    return level === 'country' ? { ...E.world, ...E['0'] } : E[NUTS[level]];   // Russia, the UK, Belarus … are countries here too
+  }
+  const keyNow = () => `${st.by === 'buyer' ? 'bg' : st.o}:${st.level}`;
+  function layer(key) {
+    if (!built.has(key)) {
+      const g = document.createElementNS(NS, 'g'), shapes = outlines(key), n = Object.keys(shapes).length;
+      g.innerHTML = Object.entries(shapes).map(([id, d]) => `<path d="${d}" data-id="${id}"${n < 400 ? ' tabindex="0" role="button"' : ''}/>`).join('');
+      if (key.startsWith('world')) g.setAttribute('transform', WT);
+      g.classList.toggle('few', n < 400);   // colour changes fade only on small layers: on a thousand paths they would lag
+      built.set(key, g);
     }
-    const out = { ...E[NUTS[st.level]] };
-    if (st.level === 'country') for (const a of st.data.areas) if (!out[a.id] && E.world[a.id]) out[a.id] = E.world[a.id];   // Russia, the UK …
-    return out;
+    return built.get(key);
   }
   function nameOf(id) {
-    const bgName = /^\d/.test(id) ? geo.shapes[id]?.n : id.length === 2 ? 'България' : id.length === 5 ? 'област ' + geo.oblasts[id]?.n : geo.names[id] + (id.length === 4 ? ' район' : '');
-    if (st.o !== 'eu') return bgName;
-    if (id.length === 2) return st.data?.names?.[id] || id;
+    const names = st.data?.names || {};
+    if (id.length === 2) return names[id] || W?.names[id] || id;
+    const bgName = /^\d/.test(id) ? geo.shapes[id]?.n : id.length === 5 ? 'област ' + geo.oblasts[id]?.n : geo.names[id] + (id.length === 4 ? ' район' : '');
+    if (st.o !== 'eu' || st.by === 'buyer') return bgName;
     return `${id.startsWith('BG') ? bgName : E.names[id] || id} [${id.slice(0, 2)}]`;
   }
   const qs = () => {
@@ -86,18 +111,11 @@
   };
   function tabsFor() {
     $('level').innerHTML = levels().map(([k, n]) => `<button type="button" data-k="${k}" aria-pressed="${k === st.level}">${n}</button>`).join('');
+    $('o').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x.dataset.k === st.o));
     $('o-fld').hidden = st.by !== 'supplier'; $('scope-fld').hidden = st.by === 'supplier';
     $('lede').textContent = LEDE[st.by];
     if (SCOPE[st.level]) [...$('scope').options].forEach((o, i) => { o.textContent = SCOPE[st.level][i]; });
-  }
-  function drawGround() {   // the countries around, grey, when the map is about suppliers (they can be abroad)
-    ground.innerHTML = st.by === 'supplier' && E ? Object.values(E.world).map((d) => `<path d="${d}"/>`).join('') : '';
-  }
-  function layer() {
-    const g = document.createElementNS(NS, 'g');
-    g.innerHTML = Object.entries(outlines()).map(([id, d]) => `<path d="${d}" data-id="${id}" tabindex="0" role="button" aria-label="${esc(nameOf(id))}"><title>${esc(nameOf(id))}</title></path>`).join('');
-    svg.setAttribute('aria-label', `Карта на ${st.o === 'eu' ? 'Европа' : 'България'} по ${LV[st.level]}`);
-    return g;
+    svg.setAttribute('aria-label', `Карта на ${PLACE[st.by === 'buyer' ? 'bg' : st.o]} по ${LV[st.level]}`);
   }
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
   function fly(to, ms, each) {   // the camera moves to `to`; the zoom runs on a log scale so it feels even
@@ -112,22 +130,35 @@
       requestAnimationFrame(step);
     });
   }
-  // a new level or view: fetch, then a crossfade, or the flight between Bulgaria and Europe
+  // a change: fetch (cached on the server), colour the layer off screen, then a swap, a crossfade or the flight
+  let busy = 0;
   async function load(how) {
-    if (st.by === 'supplier') { await europe(); HOME.eu = HOME.eu || fit({ x: -6, y: -6, w: 1012, h: E.h + 12 }); }
-    st.data = await (await fetch('/map.json?' + qs())).json();
-    const old = layers.firstElementChild, fresh = layer();
-    drawGround(); fresh.style.opacity = old ? 0 : 1; layers.append(fresh);
-    if (how === 'fly') {
-      svg.classList.add('flying');
-      await fly(home(), 1300, (k) => { fresh.style.opacity = Math.min(1, Math.max(0, (k - 0.25) / 0.6)); if (old) old.style.opacity = 1 - Math.min(1, k / 0.6); });
-      svg.classList.remove('flying');
-    } else if (old) {
-      fresh.style.transition = 'opacity .3s'; requestAnimationFrame(() => { fresh.style.opacity = 1; });
-      if (!view || view.w > home().w * 1.01 || how === 'home') setView(home());
+    const my = ++busy;
+    svg.classList.add('loading');
+    if (st.o === 'world') await world();
+    const data = await (await fetch('/map.json?' + qs())).json();
+    if (my !== busy) return;   // a newer choice came while this one loaded
+    st.data = data;
+    const old = layers.firstElementChild, fresh = layer(keyNow());
+    paint(fresh);
+    svg.classList.remove('loading');
+    if (fresh !== old) {
+      if (how === 'fly' && old && !still) {
+        fresh.style.opacity = 0; layers.append(fresh); svg.classList.add('flying');
+        const g0 = +getComputedStyle(ground).opacity, g1 = st.o === 'world' ? 0 : 1;
+        await fly(home(), st.o === 'world' || old === built.get('world:country') ? 1600 : 1300, (k) => {
+          fresh.style.opacity = Math.min(1, Math.max(0, (k - 0.2) / 0.6)); old.style.opacity = 1 - Math.min(1, k / 0.6);
+          ground.style.opacity = g0 + (g1 - g0) * k;
+        });
+        svg.classList.remove('flying');
+      } else {
+        layers.append(fresh); ground.style.opacity = st.o === 'world' ? 0 : 1;
+        if (how === 'fly' || how === 'home') setView(home());
+      }
+      fresh.style.opacity = 1;
+      if (old && old !== fresh) { old.remove(); old.style.opacity = 1; }
     }
-    if (old) setTimeout(() => old.remove(), how === 'fly' ? 0 : 320);
-    draw(); st.sel && outlines()[st.sel] ? pick(st.sel) : (st.sel = null, top());
+    draw(); st.sel && fresh.querySelector(`[data-id="${st.sel}"]`) ? pick(st.sel) : (st.sel = null, top());
   }
   // one continuous scale: log for money and counts (a few areas dwarf the rest), linear 0-100 for the share
   function scale(vals) {
@@ -137,24 +168,25 @@
     return { t: (x) => Math.log(Math.max(x, lo) / lo) / L };   // no legend under the map (AGENTS.md 7): hover and the side say the values
   }
   const MIN = 8, shade = (tone, t) => `color-mix(in srgb, ${tone} ${Math.round(MIN + t * (100 - MIN))}%, #fff)`;
-  const g = () => layers.lastElementChild;
-  function draw() {
-    const by = new Map(st.data.areas.map((m) => [m.id, m])), sc = scale(st.data.areas.map((m) => m[st.k] == null ? null : +m[st.k]));
-    const tone = st.k === 'single_pct' ? 'var(--amber)' : 'var(--accent)';
-    g().querySelectorAll('path').forEach((p) => {
-      const a = p.dataset.id, m = by.get(a), v = m && m[st.k] != null ? +m[st.k] : null;
+  let byId = new Map();
+  function paint(g) {
+    byId = new Map(st.data.areas.map((m) => [m.id, m]));
+    const sc = scale(st.data.areas.map((m) => m[st.k] == null ? null : +m[st.k])), tone = st.k === 'single_pct' ? 'var(--amber)' : 'var(--accent)';
+    for (const p of g.children) {
+      const m = byId.get(p.dataset.id), v = m && m[st.k] != null ? +m[st.k] : null;
       p.style.fill = v != null && (v > 0 || st.k === 'single_pct') ? shade(tone, sc.t(v)) : 'var(--line-2)';
-      p.querySelector('title').textContent = `${nameOf(a)}: ${m ? fmt[st.k](m[st.k] ?? 0) : 'няма договори'}`;
-      p.classList.toggle('sel', a === st.sel);
-    });
+    }
+  }
+  function draw() {
+    const g = layers.lastElementChild;
+    if (!g) return;
+    paint(g);
+    g.querySelectorAll('.sel').forEach((p) => p.classList.remove('sel'));
     // the selection's borders on top of everything: a white halo under a dark line (AGENTS.md 7)
     selg.replaceChildren();
-    const on = st.sel && g().querySelector(`path[data-id="${st.sel}"]`);
-    if (on) for (const cls of ['halo', 'line']) {
-      const c = on.cloneNode(false);
-      ['tabindex', 'role', 'aria-label', 'style'].forEach((a) => c.removeAttribute(a));
-      c.setAttribute('class', cls); selg.append(c);
-    }
+    selg.setAttribute('transform', g.getAttribute('transform') || '');
+    const on = st.sel && g.querySelector(`path[data-id="${st.sel}"]`);
+    if (on) { on.classList.add('sel'); for (const cls of ['halo', 'line']) { const c = document.createElementNS(NS, 'path'); c.setAttribute('d', on.getAttribute('d')); c.setAttribute('class', cls); selg.append(c); } }
     const c = st.data.cover;
     $('cover').textContent = !(c && c.eur) ? '' : `На картата са ${Math.round((100 * c.placed) / c.eur)}% от стойността на договорите по тези филтри (${big(+c.placed)} от ${big(+c.eur)}).`
       + (st.by === 'supplier' && +c.unknown ? ` Без посочена държава на изпълнителя: ${big(+c.unknown)}.` : '')
@@ -162,17 +194,17 @@
   }
   function top() {
     const rows = [...st.data.areas].filter((m) => m[st.k] != null).sort((a, b) => b[st.k] - a[st.k]).slice(0, 12);
-    // abroad and outside the map (the USA …): named under the list, with their contracts
-    const drawn = st.o === 'eu' ? new Set([...Object.keys(E['0']), ...Object.keys(E.world)]) : null;
-    const away = drawn ? (st.data.countries || []).filter((m) => !drawn.has(m.id)) : [];
+    // abroad and outside the map of Europe (China, the USA …): named under the list, with a pointer to "Свят"
+    const away = st.o === 'eu' ? (st.data.countries || []).filter((m) => !E.world[m.id] && !E['0'][m.id]) : [];
     side.innerHTML = `<h2>${LV[st.level][0].toUpperCase() + LV[st.level].slice(1)} по ${({ eur: 'стойност', n: 'брой договори', single_pct: 'дял с една оферта' })[st.k]}</h2><div class="sub" style="margin-bottom:16px">${st.by === 'supplier' ? 'по седалището на изпълнителя; ' : ''}избери място на картата</div><div class="hb st" id="mtop"></div>
-      ${away.length ? `<p class="mut" style="margin-top:14px">Извън картата: ${away.map((m) => `${esc(st.data.names[m.id] || m.id)}, ${nf.format(m.n)} дог., ${big(+m.eur || 0)}`).join('; ')}.</p>` : ''}`;
+      ${away.length ? `<p class="mut" style="margin-top:14px">Извън Европа (виж „Свят“): ${away.map((m) => `${esc(nameOf(m.id))}, ${nf.format(m.n)} дог., ${big(+m.eur || 0)}`).join('; ')}.</p>` : ''}`;
     hbars($('mtop'), rows, { name: (r) => nameOf(r.id), val: (r) => +r[st.k], href: (r) => '#' + r.id, right: (r) => fmt[st.k](r[st.k]) });
     side.querySelectorAll('.nm').forEach((a) => a.onclick = (e) => { e.preventDefault(); pick(a.getAttribute('href').slice(1)); });
   }
   async function pick(id) {
     st.sel = id; draw();
-    const m = st.data.areas.find((x) => x.id === id) || {}, d = await (await fetch(`/map/${id}.json?` + qs())).json();
+    const m = byId.get(id) || {}, d = await (await fetch(`/map/${id}.json?` + qs())).json();
+    if (st.sel !== id) return;
     const p = qs(); ['level', 'scope', 'by', 'o'].forEach((k) => p.delete(k));
     p.set(st.by === 'supplier' ? 'supplier_area' : /^\d/.test(id) ? 'municipality' : 'area', id);
     const acts = st.by === 'supplier' ? `<a class="btn go" href="/contracts?${p}">Договорите с изпълнители оттук</a>`
@@ -190,6 +222,18 @@
     }
     $('back').onclick = (e) => { e.preventDefault(); st.sel = null; draw(); top(); };
   }
+  // hover: one tooltip for the whole map (a <title> on each of a thousand paths weighs on every change)
+  svg.addEventListener('pointermove', (e) => {
+    const p = e.target.closest('.layers path');
+    if (!p || drag) { tip.hidden = true; return; }
+    const m = byId.get(p.dataset.id), r = svg.parentElement.getBoundingClientRect();
+    tip.innerHTML = `<b>${esc(nameOf(p.dataset.id))}</b><br>${m ? fmt[st.k](m[st.k] ?? 0) : 'няма договори'}`;
+    tip.hidden = false;
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    tip.style.left = `${Math.min(x + 14, r.width - tip.offsetWidth - 4)}px`;
+    tip.style.top = `${y + 16 + tip.offsetHeight > r.height ? y - tip.offsetHeight - 10 : y + 16}px`;
+  });
+  svg.addEventListener('pointerleave', () => { tip.hidden = true; });
   const hit = (p) => p && pick(p.dataset.id);
   layers.addEventListener('click', (e) => { if (!moved) hit(e.target.closest('path')); });
   layers.addEventListener('keydown', (e) => { if (e.key === 'Enter') hit(e.target.closest('path')); });
@@ -198,14 +242,15 @@
   tabs($('metric'), (k) => { st.k = k; draw(); if (!st.sel) top(); });
   tabs($('level'), (k) => { st.level = k; st.sel = null; load(); });
   tabs($('by'), (k) => {   // who: the buyers are all in Bulgaria; the suppliers can be anywhere
+    const was = st.o;
     st.by = k; st.sel = null;
-    if (k === 'buyer' && st.o === 'eu') { st.o = 'bg'; $('o').querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x.dataset.k === 'bg')); }
+    if (k === 'buyer') st.o = 'bg';
     if (!levels().some(([l]) => l === st.level)) st.level = levels()[0][0];
-    tabsFor(); load(st.o === 'eu' ? 'fly' : 'home');
+    tabsFor(); load(was !== st.o ? 'fly' : 'home');
   });
-  tabs($('o'), (k) => {
+  tabs($('o'), (k) => {   // away from Bulgaria the map opens on the countries: light, and the first thing to see
     st.o = k; st.sel = null;
-    if (!levels().some(([l]) => l === st.level)) st.level = k === 'eu' ? 'country' : 'oblast';
+    st.level = k === 'bg' ? (levels().some(([l]) => l === st.level) ? st.level : 'oblast') : 'country';
     tabsFor(); load('fly');
   });
   form.addEventListener('change', () => load());
@@ -216,7 +261,7 @@
   // zoom and move (AGENTS.md 7): the buttons, Ctrl + wheel, double click, two fingers; drag with the mouse.
   // The wheel alone and one finger scroll the page. Lines keep their width (vector-effect in the CSS).
   function clamp(v) {
-    const H = home(), w = Math.min(H.w, Math.max(H.w / 30, v.w)), h = w / ASPECT;
+    const H = home(), w = Math.min(H.w, Math.max(H.w / (st.o === 'bg' ? 30 : 60), v.w)), h = w / ASPECT;
     return { x: Math.min(H.x + H.w - w / 2, Math.max(H.x - w / 2, v.x)), y: Math.min(H.y + H.h - h / 2, Math.max(H.y - h / 2, v.y)), w, h };
   }
   const toMap = (cx, cy) => { const r = svg.getBoundingClientRect(); return [view.x + ((cx - r.left) / r.width) * view.w, view.y + ((cy - r.top) / r.height) * view.h]; };

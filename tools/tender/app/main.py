@@ -15,6 +15,7 @@ import os
 import secrets
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +28,7 @@ from .fields import fields, ocds_fields
 HERE = Path(__file__).parent
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
+app.add_middleware(GZipMiddleware, minimum_size=1000)   # the outlines of the map are ~1.5 MB of paths
 T = Jinja2Templates(directory=HERE / "templates")
 
 ROLE = {"manager": "управител", "sole_owner": "едноличен собственик", "partner": "съдружник",
@@ -452,7 +454,12 @@ COUNTRY_BG = {
     "SK": "Словакия", "TR": "Турция", "UA": "Украйна", "UK": "Обединено кралство", "XK": "Косово", "AD": "Андора",
     "MC": "Монако", "SM": "Сан Марино", "VA": "Ватикана", "GE": "Грузия", "AM": "Армения", "AZ": "Азербайджан",
     "US": "САЩ", "CA": "Канада", "CN": "Китай", "JP": "Япония", "KR": "Южна Корея", "IN": "Индия", "IL": "Израел",
-    "AE": "Обединени арабски емирства", "SA": "Саудитска Арабия", "SG": "Сингапур", "AU": "Австралия", "BR": "Бразилия"}
+    "AE": "Обединени арабски емирства", "SA": "Саудитска Арабия", "SG": "Сингапур", "AU": "Австралия", "BR": "Бразилия",
+    "MA": "Мароко", "DZ": "Алжир", "TN": "Тунис", "LY": "Либия", "EG": "Египет", "SY": "Сирия", "IQ": "Ирак", "IR": "Иран",
+    "LB": "Ливан", "JO": "Йордания", "PS": "Палестина", "KZ": "Казахстан", "GL": "Гренландия", "FO": "Фарьорски острови",
+    "SJ": "Свалбард", "GI": "Гибралтар", "GG": "Гърнси", "JE": "Джърси", "IM": "остров Ман", "MX": "Мексико", "AR": "Аржентина",
+    "ZA": "Южна Африка", "TW": "Тайван", "HK": "Хонконг", "TH": "Тайланд", "VN": "Виетнам", "ID": "Индонезия", "MY": "Малайзия",
+    "NZ": "Нова Зеландия", "UZ": "Узбекистан", "PK": "Пакистан", "NG": "Нигерия", "KE": "Кения", "QA": "Катар", "KW": "Кувейт"}
 
 
 def supplier_area(level, o):
@@ -469,22 +476,31 @@ def map_page(request: Request):
 
 
 def supplier_map(where, args, level, o):
-    if o not in ("bg", "eu") or level not in SUP_LEVEL or (o, level) == ("bg", "country"):
+    """Contracts per place of the supplier's seat. The contracts are first summed per list of codes (about 1 200
+    different lists for 200 000 contracts), and only the lists are split: a contract's places depend on its list."""
+    if o not in ("bg", "eu", "world") or level not in SUP_LEVEL or (o, level) == ("bg", "country") or (o == "world" and level != "country"):
         raise HTTPException(400)
+    per_list = f"""SELECT c.supplier_nuts, count(*) n, {Q.SUM} eur, count(*) FILTER (WHERE c.offers_count = 1) one,
+                   count(*) FILTER (WHERE c.offers_count IS NOT NULL) known FROM live.contract c WHERE {where} GROUP BY 1"""
+    split = SPLIT.replace("c.supplier_nuts", "l.supplier_nuts")
 
     def per(lvl):
-        placed = f"SELECT DISTINCT c.id cid, {supplier_area(lvl, o)} id FROM live.contract c {SPLIT} WHERE {where}"
-        return Q.rows(f"""SELECT a.id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
-            FROM ({placed}) a JOIN live.contract c ON c.id = a.cid WHERE a.id IS NOT NULL GROUP BY 1""", *args), placed
-    areas, placed = per(level)
-    cover = Q.one(f"""SELECT round({Q.SUM}) eur,
-        round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND c.id IN (SELECT cid FROM ({placed}) a WHERE a.id IS NOT NULL))) placed,
-        round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND NOT EXISTS (
-          SELECT 1 FROM unnest(string_to_array(c.supplier_nuts, ';')) x WHERE btrim(x) ~ '^[A-Z]{{2}}'))) unknown
-        FROM live.contract c WHERE {where}""", *args, *args)
-    countries = per("country")[0] if o == "eu" else []   # the page lists those outside the map (the USA …)
+        return f"""SELECT DISTINCT l.supplier_nuts, {supplier_area(lvl, o)} id FROM l {split}"""
+    areas = Q.rows(f"""WITH l AS ({per_list}), a AS ({per(level)})
+        SELECT a.id, sum(l.n) n, round(sum(l.eur)) eur, round(100.0 * sum(l.one) / nullif(sum(l.known), 0), 1) single_pct
+        FROM a JOIN l USING (supplier_nuts) WHERE a.id IS NOT NULL GROUP BY 1""", *args)
+    cover = Q.one(f"""WITH l AS ({per_list}), a AS ({per(level)})
+        SELECT round(sum(l.eur)) eur,
+               round(sum(l.eur) FILTER (WHERE l.supplier_nuts IN (SELECT supplier_nuts FROM a WHERE id IS NOT NULL))) placed,
+               -- no valid code at all (none, or only "00"): the list has no row in a
+               round(sum(l.eur) FILTER (WHERE l.supplier_nuts IS NULL OR l.supplier_nuts NOT IN (SELECT supplier_nuts FROM a))) unknown
+        FROM l""", *args)
+    countries = []
+    if o == "eu":   # the page names those outside the map of Europe (China, the USA …)
+        countries = Q.rows(f"""WITH l AS ({per_list}), a AS ({per("country")})
+            SELECT a.id, sum(l.n) n, round(sum(l.eur)) eur FROM a JOIN l USING (supplier_nuts) WHERE a.id IS NOT NULL GROUP BY 1""", *args)
     codes = {a["id"][:2] for a in areas + countries}
-    return {"areas": areas, "cover": cover, "countries": countries, "names": {c: COUNTRY_BG.get(c, c) for c in codes}}
+    return {"areas": areas, "cover": cover, "countries": countries, "names": {**{c: c for c in codes}, **COUNTRY_BG}}
 
 
 @app.get("/map.json")
@@ -492,16 +508,21 @@ def map_data(request: Request, level: str = "muni", by: str = "buyer", o: str = 
     """Contracts per area of the buyer or of the supplier's seat (methodology 7), plus what could not be placed."""
     where, args = map_filter(request)
     if by == "supplier":   # "only the municipality and its units" is about buyers; it does not apply here
-        out = supplier_map(where.replace("bp.basis = 'municipality'", "true"), args, level, o)
+        out = Q.cached("map:" + str(request.url.query), lambda: supplier_map(where.replace("bp.basis = 'municipality'", "true"), args, level, o),
+                       ttl=6 * 3600)   # the same until the next build is published (Q.cached)
         return JSONResponse(json.loads(json.dumps({**out, "level": level, "by": by, "o": o}, default=jdefault)))
     g = LEVEL.get(level, LEVEL["muni"])
-    areas = Q.rows(f"""SELECT {g} id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
-        FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality
-        WHERE {where} GROUP BY 1""", *args)
-    cover = Q.one(f"""SELECT round({Q.SUM}) eur, round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND bp.eik IS NOT NULL)) placed
-        FROM live.contract c LEFT JOIN live.buyer_place bp ON bp.eik = c.buyer_eik
-        WHERE {where.replace("bp.basis = 'municipality'", "true")}""", *args)
-    return JSONResponse(json.loads(json.dumps({"areas": areas, "cover": cover, "level": level}, default=jdefault)))
+
+    def buyer_map():
+        areas = Q.rows(f"""SELECT {g} id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
+            FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality
+            WHERE {where} GROUP BY 1""", *args)
+        cover = Q.one(f"""SELECT round({Q.SUM}) eur, round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND bp.eik IS NOT NULL)) placed
+            FROM live.contract c LEFT JOIN live.buyer_place bp ON bp.eik = c.buyer_eik
+            WHERE {where.replace("bp.basis = 'municipality'", "true")}""", *args)
+        return {"areas": areas, "cover": cover}
+    out = Q.cached("map:" + str(request.url.query), buyer_map, ttl=6 * 3600)   # the same until the next build is published
+    return JSONResponse(json.loads(json.dumps({**out, "level": level}, default=jdefault)))
 
 
 NUTS_NAME = {"BG31": "Северозападен район", "BG32": "Северен централен район", "BG33": "Североизточен район",
