@@ -34,7 +34,7 @@ MUTATIONS = [
      "        if ind in failed or bad:", "        if bad:",
      "tests/test_store.py::test_ecb_step_writes_both_places_checks_and_keeps_what_fails"),
     ("Bulgaria's bank rates start with the euro", "ingest/ecb.py",
-     'if not (ind == "rates" and geo == "BG" and t < BG_RATES_FROM))', "if True)",
+     "parts = [(parts[0][0], lambda t: t >= BG_RATES_FROM)]", "parts = [(parts[0][0], lambda t: True)]",
      "tests/test_store.py::test_ecb_step_writes_both_places_checks_and_keeps_what_fails"),
     ("the forecast's GDP adds up", "ingest/mf.py",
      "        if abs(nominal - implied) > GROWTH_TOLERANCE:", "        if False:",

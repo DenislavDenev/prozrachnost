@@ -32,7 +32,8 @@ async function lineChart(el) {
   const j = await res.json();
   const series = j.series || [{ name: j.unit, geo: 'BG', points: j.points }];
   if (!series.length) { el.textContent = 'Няма данни.'; return; }
-  const d = +(el.dataset.digits ?? 1);
+  const d = +(el.dataset.digits ?? 1), k = +(el.dataset.scale || 1);   // data-scale: million shown as billion (1000)
+  const val = (p) => (p && p[1] != null ? p[1] / k : null);
   const times = [...new Set(series.flatMap((s) => s.points.map((p) => p[0])))].sort();
   const byGeo = new Set(series.map((s) => s.geo)).size === series.length;   // one line per place: coloured by place
   const color = (s, i) => s.color || (byGeo && GEO_COLOR[s.geo]) || PALETTE[i % PALETTE.length];   // a series may bring its own
@@ -52,7 +53,7 @@ async function lineChart(el) {
       formatter: (items) => `<b>${period(items[0].axisValue)}</b><br>` + items.map((it) => {
         const p = byT[it.seriesIndex].get(it.axisValue);
         const f = p && p[2] && FLAGS[p[2]] ? ` <span style="color:#b25b06">(${FLAGS[p[2]]})</span>` : '';
-        return `${it.marker}${it.seriesName}: <b>${num(p ? p[1] : null, d)}</b>${f}`;
+        return `${it.marker}${it.seriesName}: <b>${num(val(p), d)}</b>${f}`;
       }).join('<br>'),
     },
     xAxis: { type: 'category', data: times, boundaryGap: false, axisLine: { lineStyle: { color: '#e1e4e8' } }, axisTick: { show: false },
@@ -62,9 +63,9 @@ async function lineChart(el) {
     dataZoom: [{ type: 'slider', start, bottom: 8, height: 22, borderColor: '#e1e4e8', fillerColor: 'rgba(11,122,94,.08)',
       handleStyle: { color: '#0b7a5e' }, labelFormatter: (i) => period(times[i] || '') }],   // only the slider: an "inside" zoom takes the wheel and the finger from the page
     series: series.map((s, i) => ({
-      name: s.name, type: 'line', showSymbol: false, connectNulls: false, color: color(s, i),
-      lineStyle: { width: s.geo === 'BG' || i === 0 ? 2.4 : 1.6 },
-      data: times.map((t) => { const p = byT[i].get(t); return p ? p[1] : null; }),
+      name: s.name, type: 'line', showSymbol: !!s.symbol, symbolSize: 7, connectNulls: false, color: color(s, i),
+      lineStyle: { width: s.geo === 'BG' || i === 0 ? 2.4 : 1.6, type: s.dashed ? 'dashed' : 'solid' },
+      data: times.map((t) => val(byT[i].get(t))),
     })),
   }, true);
   addEventListener('resize', () => chart.resize());

@@ -40,10 +40,14 @@ SERIES = [
     ("bank", "BSI", "M.{g}.N.A.L21.A.1.U2.2240.Z01.E", "dep_nfc_on", "Депозити на виждане на фирмите"),
 ]
 PLACES = {"rates": {"BG": "BG", "U2": "EA"}, "bank": {"BG": "BG"}}   # ECB code -> our geo
-# Bulgaria's rates before the euro: some series go back to 2007, but in EUR only, the loans and deposits in euro, a small
-# part of all (the consumer rate "jumps" from about 4% to 9% in 2026-01 because the coverage changes, checked 28.09.2026).
-# Only from the euro on are they all loans and deposits, so only these months are kept.
+# Bulgaria's rates before the euro: the EUR series go back to 2007 but cover only the loans and deposits in euro, a small
+# part of all (the consumer rate would "jump" from about 4% to 9% in 2026-01, checked 28.09.2026), so they are kept only
+# from the euro on. Before it the ECB has the same rates in leva, the currency of most loans and deposits then (from
+# 2017-08, the overnight deposits from 2007): these are Bulgaria's rates until 2025-12. They join smoothly: housing
+# 2.48% in 2025-12 in leva, 2.46% in 2026-01 in euro; consumer 9.43 / 9.05; business 4.09 / 3.95.
 BG_RATES_FROM = "2026-01"
+BG_BEFORE = {"housing": "M.BG.B.A2C.A.R.A.2250.BGN.N", "consumer": "M.BG.B.A2B.A.R.A.2250.BGN.N",
+             "business": "M.BG.B.A2A.A.R.A.2240.BGN.N", "dep_hh_on": "M.BG.B.L21.A.R.A.2250.BGN.N"}
 FLAGS = {"A": None, "P": "p", "E": "e", "F": "f"}                      # OBS_STATUS -> the flags of live.series
 HEAD = {"KEY", "TIME_PERIOD", "OBS_VALUE", "OBS_STATUS"}
 
@@ -106,15 +110,19 @@ def load(conn, stats, get=None):
     rows, raws, failed, problems = {}, {}, set(), []
     for ind, flow, key, code, _ in SERIES:
         for ecb_geo, geo in PLACES[ind].items():
-            k = key.format(g=ecb_geo)
-            try:
-                raw = get(url(flow, k))
-                rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, f) for t, v, f in parse(raw, f"{flow}.{k}")
-                                                if not (ind == "rates" and geo == "BG" and t < BG_RATES_FROM))
-                raws.setdefault(ind, []).append(raw)
-            except (http.Gone, ShapeError) as e:
-                failed.add(ind)
-                problems.append(f"Икономика: ЕЦБ {flow}.{k}: {e}")
+            parts = [(key.format(g=ecb_geo), lambda t: True)]
+            if ind == "rates" and geo == "BG":   # in euro from the euro on; in leva before it, where the ECB has them
+                parts = [(parts[0][0], lambda t: t >= BG_RATES_FROM)]
+                if code in BG_BEFORE:
+                    parts.append((BG_BEFORE[code], lambda t: t < BG_RATES_FROM))
+            for k, keep in parts:
+                try:
+                    raw = get(url(flow, k))
+                    rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, f) for t, v, f in parse(raw, f"{flow}.{k}") if keep(t))
+                    raws.setdefault(ind, []).append(raw)
+                except (http.Gone, ShapeError) as e:
+                    failed.add(ind)
+                    problems.append(f"Икономика: ЕЦБ {flow}.{k}: {e}")
     out = {}
     for ind in dict.fromkeys(i for i, *_ in SERIES):
         bad = [] if ind in failed else check(rows.get(ind, []))

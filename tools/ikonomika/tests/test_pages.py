@@ -93,12 +93,16 @@ def test_pages_on_real_answers(client):
     for path in PAGES:
         check_page(client.get(path))
     home = client.get("/").text
-    assert "116,0 млрд. €" in home and "предварителни данни" in home              # GDP 2025 is provisional
+    assert "116,02 млрд. €" in home and "предварителни данни" in home             # GDP 2025 is provisional
     infl = client.get("/inflaciya").text
     assert "Хранителни продукти и безалкохолни напитки" in infl and "август 2026" in infl
     assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
     assert 'value="SERV" aria-pressed="false"' in infl
     import re as _re
+    for path in ("/", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari"):   # every value in the lede is bold, dates are not
+        lede = _re.search(r'<p class="lede">(.*?)</p>', client.get(path).text, _re.S).group(1)
+        rest = _re.sub(r"<b>.*?</b>|\b(19|20)\d\d\b", "", lede)
+        assert ("<b>" in lede or lede.strip() == "Още няма данни.") and not _re.search(r"\d", rest), (path, lede)
     for path in ("/inflaciya", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari"):   # a chart is full width, or 2/3
         for size, body in _re.findall(r'<section class="p (s\d+)[^"]*"[^>]*>(.*?)</section>', client.get(path).text, _re.S):
             assert size in ("s12", "s8") or ('class="chart' not in body and 'class="hb"' not in body), (path, size, body[:120])
@@ -151,17 +155,21 @@ def test_pages_on_real_answers(client):
     assert client.get("/pari?code=XYZ").status_code == 404
     moved = client.get("/kursove?code=USD", follow_redirects=False)                # Курсове is now Пари
     assert moved.status_code == 301 and moved.headers["location"] == "/pari?code=USD"
-    assert "Жилищните кредити в България струват 2,43% годишно (юли 2026), в еврозоната 3,54%." in fx
+    assert "Жилищните кредити в България струват <b>2,43% годишно</b> (юли 2026), в еврозоната <b>3,54%</b>." in fx
+    assert "СОФИБОР" in fx and 'int_rt=IRT_DTD,IRT_M3' in fx                         # the interbank market: why the lines stop
     fin = client.get("/finansi").text
-    assert 'data-src="/api/prognoza/gdp_growth.json?v=2026-04-03"' in fin          # the latest forecasts are drawn
+    assert 'data-src="/api/prognoza/gdp_growth.json"' in fin                        # one point a year, three lines
     j = client.get("/api/prognoza/gdp_growth.json").json()
-    assert j["series"][1]["name"] == "Пролетна прогноза 2026" and j["series"][0]["color"] != j["series"][1]["color"]
-    assert ["2026", 2.6, "f"] in j["series"][1]["points"] and ["2025", 3.1, None] in j["series"][1]["points"]
+    assert [s["name"] for s in j["series"]] == ["Какво стана (Eurostat)", "Прогноза на МФ от пролетта на същата година",
+                                                "Прогноза на МФ от есента на предходната година"]
+    assert j["series"][1]["points"] == [["2026", 2.6, "f"]]                          # the spring 2026 forecast for 2026
+    assert ["2025", 3.1, "p"] in j["series"][0]["points"]                            # Eurostat's 2025, provisional
     assert client.get("/api/prognoza/nope.json").status_code == 404
     infl = client.get("/inflaciya").text
     assert "Какво движи инфлацията, август 2026" in infl and "процентни пункта" in infl
     ext = client.get("/vanshen").text
     assert "Текущата сметка за" in ext and "Износ по стокови групи, 2025" in ext
+    assert "млрд. €" in ext and not _re.search(r"\d \d{3} млн\.", ext)               # a thousand millions is a billion
     grow = client.get("/rastezh").text
     assert "През 2025 г. БВП на България расте реално" in grow
     emp = api("m=EMP&l=oblasti")                                                    # the survey stops at the regions
