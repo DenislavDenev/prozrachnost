@@ -22,11 +22,11 @@
     <div class="t">минимална месечна заплата</div><div class="w">{{ k.min_wage[0] | period if k.min_wage }}{% if k.salary %} · средна {{ (k.salary[1] / 12) | num(0) }} € на месец ({{ k.salary[0] }}){% endif %}</div></section>
 
   <section class="p s6"><div class="ph"><div><h2>Инфлация</h2><div class="sub">ХИПЦ, % спрямо същия месец на предходната година</div></div><a class="more" href="/inflaciya">По групи →</a></div>
-    <div class="chart" data-src="/api/hicp_eu.json?geo=BG,EU27_2020,{{ ea.hicp_eu }}&coicop18=TOTAL&since=2010-01" data-digits="1"></div>{{ src("hicp_eu") }}</section>
+    <div class="chart" data-src="/api/hicp_eu.json?geo=BG,EU27_2020,{{ ea.hicp_eu }}&coicop18=TOTAL" data-digits="1"></div>{{ src("hicp_eu") }}</section>
   <section class="p s6"><div class="ph"><div><h2>Ръст на икономиката</h2><div class="sub">реален ръст на БВП, % спрямо същото тримесечие на предходната година, сезонно изгладен</div></div></div>
-    <div class="chart" data-src="/api/gdp_q.json?geo=BG,EU27_2020,{{ ea.gdp_q }}&unit=CLV_PCH_SM&since=2010-Q1" data-digits="1"></div>{{ src("gdp_q") }}</section>
+    <div class="chart" data-src="/api/gdp_q.json?geo=BG,EU27_2020,{{ ea.gdp_q }}&unit=CLV_PCH_SM" data-digits="1"></div>{{ src("gdp_q") }}</section>
   <section class="p s6"><div class="ph"><div><h2>Безработица</h2><div class="sub">% от работната сила, месечно, сезонно изгладена</div></div><a class="more" href="/es?p=bezrabotica">В ЕС →</a></div>
-    <div class="chart" data-src="/api/unemp.json?geo=BG,EU27_2020,{{ ea.unemp }}&age=TOTAL&since=2010-01" data-digits="1"></div>{{ src("unemp") }}</section>
+    <div class="chart" data-src="/api/unemp.json?geo=BG,EU27_2020,{{ ea.unemp }}&age=TOTAL" data-digits="1"></div>{{ src("unemp") }}</section>
   <section class="p s6"><div class="ph"><div><h2>Държавен дълг</h2><div class="sub">% от БВП, в края на годината</div></div><a class="more" href="/es?p=dalg">В ЕС →</a></div>
     <div class="chart" data-src="/api/debt.json?geo=BG,EU27_2020,{{ ea.debt }}&na_item=GD&unit=PC_GDP" data-digits="1" data-zero></div>{{ src("debt") }}</section>
   <section class="p s6"><div class="ph"><div><h2>Заплати</h2><div class="sub">ръст на заплатите (индекс на разходите за труд), % спрямо година по-рано</div></div></div>

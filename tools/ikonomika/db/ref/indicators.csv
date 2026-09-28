@@ -8,8 +8,8 @@ gdp_a_eu,nama_10_gdp,na_item=B1GQ&unit=CLV_PCH_PRE,EU,400,"Реален ръст
 gdp_q,namq_10_gdp,na_item=B1GQ&unit=CP_MEUR&unit=CLV_PCH_PRE&unit=CLV_PCH_SM&s_adj=SCA,BGEU,130,"БВП, тримесечно (сезонно изгладено)",по мерна единица
 gdp_pc,nama_10_pc,na_item=B1GQ&unit=CP_EUR_HAB,EU,400,"БВП на човек",€ на човек по текущи цени
 gdp_pps,tec00114,,EU,400,"БВП на човек по паритет на покупателната способност","ЕС = 100"
-gdp_nuts,nama_10r_3gdp,unit=MIO_EUR&unit=EUR_HAB&unit=PPS_EU27_2020_HAB,NUTS,730,"БВП по области",по мерна единица
-pop_nuts,nama_10r_3popgdp,unit=THS,NUTS,730,"Средногодишно население по области (за БВП на човек)",хил. души
+gdp_nuts,nama_10r_3gdp,unit=MIO_EUR&unit=EUR_HAB&unit=PPS_EU27_2020_HAB,ALL,730,"БВП по области",по мерна единица
+pop_nuts,nama_10r_3popgdp,unit=THS,ALL,730,"Средногодишно население по области (за БВП на човек)",хил. души
 unemp,une_rt_m,sex=T&age=TOTAL&age=Y_LT25&unit=PC_ACT&s_adj=SA,EU,50,"Безработица, месечно (сезонно изгладена)",% от работната сила
 min_wage,earn_mw_cur,currency=EUR,EU,250,"Минимална месечна заплата",€ на месец
 salary,nama_10_fte,unit=EUR,EU,500,"Средна годишна заплата на пълно работно време",€ на година

@@ -110,17 +110,18 @@ th.n .sort { flex-direction: row-reverse; }
 .map svg { width: 100%; height: auto; display: block; }
 .map path { stroke: #fff; stroke-width: 1.2; }
 .map path.none { fill: var(--line-2); }
+.map.eu path { stroke-width: .35; } .map.eu path.bg { stroke: var(--ink); stroke-width: .9; }   /* Europe: fine borders, Bulgaria outlined */
+/* the list beside the map fits its panel: headers and names wrap */
+.places th.n { white-space: normal; } .places th, .places td { padding-right: 8px; } .places td:first-child { overflow-wrap: anywhere; }
 .map a:focus-visible path, .map a:hover path { stroke: var(--ink); stroke-width: 2; }
-/* the map's scale: one continuous gradient with the lowest, the median and the highest value (as on the Тендер map) */
+/* the map's scale: one continuous gradient from the lowest to the highest value (as on the Тендер map) */
 .mkey { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 28px; margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
-.mkey .grad { position: relative; width: min(360px, 100%); height: 52px; }
+.mkey .grad { position: relative; width: min(360px, 100%); height: 34px; }
 .mkey .grad .bar { height: 10px; border-radius: 2px; }
 .mkey .grad span { position: absolute; top: 14px; transform: translateX(-50%); white-space: nowrap; }
 .mkey .grad span.a { transform: none; } .mkey .grad span.z { transform: translateX(-100%); }
 .mkey .grad span::before { content: ""; position: absolute; top: -6px; left: 50%; width: 1px; height: 5px; background: var(--ink-3); }
 .mkey .grad span.a::before { left: 0; } .mkey .grad span.z::before { left: auto; right: 0; }
-/* the median on a line of its own, so it never runs into the ends */
-.mkey .grad span.m { top: 32px; } .mkey .grad span.m::before { top: -22px; height: 21px; }
 .mkey div { display: flex; align-items: center; gap: 6px; } .mkey em { width: 14px; height: 10px; border-radius: 2px; }
 
 .prose { max-width: 72ch; font-size: 16.5px; } .prose h2 { margin: 28px 0 8px; } .prose li { margin: 4px 0; }

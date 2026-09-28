@@ -53,9 +53,9 @@
   // one continuous scale: log for money and counts (a few areas dwarf the rest), linear 0-100 for the share
   function scale(vals) {
     const v = vals.filter((x) => x != null && x > 0).sort((a, b) => a - b);
-    if (st.k === 'single_pct') return { t: (x) => x / 100, ticks: [0, 50, 100] };
+    if (st.k === 'single_pct') return { t: (x) => x / 100, ticks: [0, 100] };
     const lo = v[0] || 1, hi = v[v.length - 1] || 1, L = Math.log(hi / lo) || 1;
-    return { t: (x) => Math.log(Math.max(x, lo) / lo) / L, ticks: [lo, v[Math.floor(v.length / 2)] ?? lo, hi] };
+    return { t: (x) => Math.log(Math.max(x, lo) / lo) / L, ticks: [lo, hi] };   // the two ends only (AGENTS.md 7)
   }
   const MIN = 8, shade = (tone, t) => `color-mix(in srgb, ${tone} ${Math.round(MIN + t * (100 - MIN))}%, #fff)`;
   function draw() {
@@ -68,7 +68,7 @@
       p.classList.toggle('sel', a === st.sel);
     });
     $('mkey').innerHTML = `<div class="grad"><div class="bar" style="background:linear-gradient(90deg, ${shade(tone, 0)}, ${shade(tone, 1)})"></div>
-      ${sc.ticks.map((x, i) => `<span style="left:${sc.t(x) * 100}%" class="${['a', 'm', 'z'][i]}">${i === 1 && st.k !== 'single_pct' ? 'медиана ' : ''}${fmt[st.k](x)}</span>`).join('')}</div>
+      ${sc.ticks.map((x, i) => `<span style="left:${sc.t(x) * 100}%" class="${['a', 'z'][i]}">${fmt[st.k](x)}</span>`).join('')}</div>
       <div><em style="background:var(--line-2)"></em>няма договори</div>`;
     const c = st.data.cover; $('cover').textContent = c && c.eur ? `На картата са ${Math.round((100 * c.placed) / c.eur)}% от стойността на договорите по тези филтри (${big(+c.placed)} от ${big(+c.eur)}).` : '';
   }
