@@ -1,9 +1,14 @@
 """CLI for n8n and people: python -m ingest.run --step <name>
 
-  migrate                     apply db/migrations
+  migrate                     apply db/migrations; the assemblies from db/ref/assemblies.csv
   roster                      the current assembly's MPs (profile, group, constituency)
-  sittings [--from YYYY-MM]   every sitting from that month (default: from the month before the last one we hold)
-  recheck                     read again the sittings refused or without files; rebuild every assembly
+  sittings [--from YYYY-MM]   every sitting from that month (default: from the month before the last one we hold);
+                              its stenogram, video and votes (from 1879: --from 1879-02)
+  recheck                     read again the sittings refused or without readable files; rebuild every assembly
+  people [--all]              the assemblies of the API (39th-), their bodies and every MP's profile (read again
+                              only the current assembly's, unless --all); the same person across assemblies
+  absences                    the official absences and penalties the Assembly shows now, kept
+  pdfs [--limit N]            archive the scanned stenograms (before 1992) not archived yet
   freshness                   what is late, held or broken
 
 Prints one JSON line with the stats. Exit code 1 on a failure or when `problems` is not empty: that is what the n8n
@@ -14,21 +19,25 @@ import datetime as dt
 import json
 import sys
 
-from . import checks, db, load, stats
+from . import checks, db, load, people, stats
 
-STEPS = ["migrate", "roster", "sittings", "recheck", "freshness"]
+STEPS = ["migrate", "roster", "sittings", "recheck", "people", "absences", "pdfs", "freshness"]
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--step", required=True, choices=STEPS)
     ap.add_argument("--from", dest="first", help="sittings: the first month, YYYY-MM")
+    ap.add_argument("--all", action="store_true", help="people: read every profile again")
+    ap.add_argument("--limit", type=int, default=0, help="pdfs: at most this many")
     a = ap.parse_args()
     out = {"step": a.step}
     try:
         if a.step == "migrate":
             with db.connect() as conn:
                 out["applied"] = db.migrate(conn)
+                with conn.transaction():
+                    out["assemblies"] = people.assemblies(conn)
         elif a.step == "roster":
             with db.job("roster") as (conn, st):
                 load.roster(conn, st)
@@ -46,6 +55,18 @@ def main():
         elif a.step == "recheck":
             with db.job("sittings", {"recheck": True}) as (conn, st):
                 load.recheck(conn, st)
+                out.update(st)
+        elif a.step == "people":
+            with db.job("people", {"all": a.all}) as (conn, st):
+                people.people(conn, st, everyone=a.all)
+                out.update(st)
+        elif a.step == "absences":
+            with db.job("absences") as (conn, st):
+                people.absences(conn, st)
+                out.update(st)
+        elif a.step == "pdfs":
+            with db.job("pdfs", {"limit": a.limit}) as (conn, st):
+                load.pdfs(conn, st, limit=a.limit)
                 out.update(st)
         elif a.step == "freshness":
             with db.connect(autocommit=True) as conn:

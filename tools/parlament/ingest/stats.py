@@ -7,8 +7,11 @@
   tie has no line. MPs outside a group (INDEPENDENT) have none.
 - live.mp_stat: per MP and assembly, how often they voted, how, how often with and against their group's line
   (the group of that vote), how often present at the registration.
-- The constituency and profile come from the current assembly's roster, joined by the full name only where the
-  name is once in the roster and once in the roll call of the same assembly; otherwise there is none.
+- The roll call's MP gets the Assembly's profile (live.profile) where the full name is once among the assembly's
+  profiles and once in its roll call; the constituency comes from that profile, else from the current assembly's
+  roster by the same rule; otherwise there is none.
+- A speaker of the stenogram gets the profile where their name, as the stenogram writes it (full, or first and last),
+  is one profile's in that assembly; ministers and guests are not linked (a namesake MP is not them).
 """
 from .groups import INDEPENDENT, aliases
 
@@ -57,9 +60,41 @@ def rebuild(conn, assemblies):
             LEFT JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
             WHERE s.assembly = ANY(%s)
             GROUP BY s.assembly, v.mp, m.name""", (assemblies,))
+        link_mps(conn, assemblies)
+        conn.execute("""UPDATE live.mp_stat t SET profile = m.profile, district = p.district FROM live.mp m
+                        JOIN live.profile p ON p.id = m.profile
+                        WHERE m.assembly = t.assembly AND m.no = t.mp AND t.assembly = ANY(%s)""", (assemblies,))
         conn.execute("""
-            UPDATE live.mp_stat t SET profile = r.profile, district = r.district
+            UPDATE live.mp_stat t SET profile = coalesce(t.profile, r.profile), district = coalesce(t.district, r.district)
             FROM live.roster r
             WHERE r.assembly = t.assembly AND r.name = t.name AND t.assembly = ANY(%s)
               AND (SELECT count(*) FROM live.roster x WHERE x.assembly = r.assembly AND x.name = r.name) = 1
               AND (SELECT count(*) FROM live.mp_stat y WHERE y.assembly = t.assembly AND y.name = t.name) = 1""", (assemblies,))
+
+
+def link_mps(conn, assemblies):
+    """live.mp.profile: the profile with the same full name, where the name is once among the assembly's profiles and
+    once among its roll call's MPs."""
+    conn.execute("""UPDATE live.mp m SET profile = u.id FROM
+                      (SELECT assembly, name, min(id) id FROM live.profile WHERE assembly = ANY(%s) GROUP BY 1, 2 HAVING count(*) = 1) u
+                    WHERE u.assembly = m.assembly AND u.name = m.name AND m.profile IS DISTINCT FROM u.id
+                      AND (SELECT count(*) FROM live.mp x WHERE x.assembly = m.assembly AND x.name = m.name) = 1""", (assemblies,))
+
+
+# the roles an MP speaks in; a minister or a guest with an MP's name is not that MP
+MP_ROLES = ("председател", "председателят", "заместник-председател", "заместник председател", "докладчик", "секретар")
+
+
+def link_speakers(conn, sitting=None, assemblies=None):
+    """live.speech.profile, for one sitting or for assemblies: the name as the stenogram writes it (the full name, or
+    the first and the last) is one profile's in the sitting's assembly."""
+    where, args = ("s.id = %s", [sitting]) if sitting else ("s.assembly = ANY(%s)", [assemblies])
+    conn.execute(f"""
+        WITH keys AS (
+            SELECT p.assembly, k.key, min(p.id) id FROM live.profile p,
+                   LATERAL (VALUES (p.name), (split_part(p.name, ' ', 1) || ' ' || regexp_replace(p.name, '^.* ', ''))) k(key)
+            WHERE p.assembly IN (SELECT DISTINCT s.assembly FROM live.sitting s WHERE {where})
+            GROUP BY 1, 2 HAVING count(DISTINCT p.id) = 1)
+        UPDATE live.speech sp SET profile = keys.id FROM live.sitting s, keys
+        WHERE s.id = sp.sitting AND {where} AND keys.assembly = s.assembly AND keys.key = sp.name
+          AND (sp.role IS NULL OR sp.role = ANY(%s)) AND sp.profile IS DISTINCT FROM keys.id""", (*args, *args, list(MP_ROLES)))

@@ -46,9 +46,18 @@ class Source:
         self.months = {"2026/7": [{"t_id": 11159, "t_label": 11159, "t_date": "2026-07-31"}], "2026/8": [],
                        "2026/9": [x for x in json.loads((FX / "month-2026-09.json").read_bytes()) if x["t_id"] in SITTINGS]}
         self.files["coll-list-ns/bg"] = (FX / "roster.json").read_bytes()
+        # the assemblies and their people: the 51st and 52nd, cut to the MPs of roster.json and their 51st profiles
+        self.files["fn-assembly/bg"] = (FX / "fn-assembly.json").read_bytes()
+        self.files["archive/bg/61"] = (FX / "archive-61.json").read_bytes()
+        for a in (61, 62):
+            self.files[f"fn-mps/bg/{a}"] = (FX / f"fn-mps-{a}.json").read_bytes()
+        for f in FX.glob("mp-profile-*.json"):
+            self.files[f"mp-profile/bg/{f.stem.rsplit('-', 1)[1]}"] = f.read_bytes()
+        self.files["mp-absense/bg"] = (FX / "mp-absense.json").read_bytes()
+        self.files["mp-penalty"] = (FX / "mp-penalty.json").read_bytes()
         self.calls = []
 
-    def get(self, url):
+    def get(self, url, data=None):
         self.calls.append(url)
         m = re.search(r"archive-period/bg/Pl_StenV/(\d+)/(\d+)/0/0$", url)
         if m:
@@ -63,6 +72,15 @@ class Source:
 def run(conn, src, first=(2026, 7), today=TODAY):
     from ingest import load
     return load.load(conn, {}, first=first, get=src.get, today=today)
+
+
+def everyone(conn, src):
+    """What n8n runs besides the sittings: the roster, the people, the absences."""
+    from ingest import load, people
+    load.roster(conn, {}, get=src.get)
+    people.assemblies(conn)
+    people.people(conn, {}, get=src.get)
+    people.absences(conn, {}, get=src.get)
 
 
 def table_hash(conn):
@@ -156,8 +174,8 @@ def test_an_empty_file_is_no_roll_call_and_a_late_sitting_is_reported_for_a_week
     src = Source()
     name = iv_name(src, 11174)
     src.files[name] = b""
-    load.roster(conn, {}, get=src.get)
     st = run(conn, src)
+    everyone(conn, src)
     assert st["sittings"] == {"stored": 1, "no-files": 1} and st["problems"] == []
     assert checks.freshness(conn, TODAY) == []
     late = checks.freshness(conn, dt.date(2026, 10, 10))
@@ -214,7 +232,7 @@ def test_the_files_are_told_apart_by_content_the_same_file_twice_is_one(conn):
     src.files["pl-sten/11174"] = json.dumps(s).encode()
     assert run(conn, src)["sittings"] == {"no-files": 1, "unchanged": 1}
     err = conn.execute("SELECT error FROM ops.source_state WHERE ref = 'sten/11174'").fetchone()[0]
-    assert err.startswith("няма файл по групи в CSV") and "iv230926.csv: името е за 23.09.2026" in err
+    assert err.startswith("няма четим файл по групи") and "iv230926.csv: името е за 23.09.2026" in err
 
 
 def test_the_day_is_the_contents_not_the_names(conn):
@@ -277,7 +295,97 @@ def test_freshness_knows_a_stale_list(conn):
     from ingest import checks, load
     src = Source()
     run(conn, src)
-    load.roster(conn, {}, get=src.get)
+    everyone(conn, src)
     assert checks.freshness(conn, TODAY) == []
     conn.execute("UPDATE ops.source_state SET last_ok = now() - interval '5 days' WHERE ref LIKE 'month/%'")
     assert any("списъкът на заседанията" in p for p in checks.freshness(conn, TODAY))
+    conn.execute("UPDATE ops.source_state SET last_ok = now() - interval '5 days' WHERE ref = 'absences'")
+    assert any("официалните отсъствия" in p for p in checks.freshness(conn, TODAY))
+
+
+def test_the_assemblies_their_people_and_the_same_person_across_them(conn):
+    from ingest import people
+    src = Source()
+    run(conn, src)
+    everyone(conn, src)
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()   # noqa: E731
+    assert q("SELECT count(*), min(no), max(no) FROM live.assembly") == [(60, 1, 107)]
+    assert q("SELECT no, api_id, start, \"end\" FROM live.assembly WHERE no = 51") == [(51, 61, dt.date(2024, 11, 11), dt.date(2026, 4, 30))]
+    assert q("SELECT count(*) FROM live.profile") == [(18,)]
+    assert q("SELECT count(*) FROM live.body WHERE assembly = 51 AND kind = 'група'")[0][0] >= 11
+    # Атанас Атанасов (5121 in the 52nd) was in the 51st as 4842 (the Assembly lists it; the name is there once)
+    assert q("SELECT id, person FROM live.profile WHERE name = 'АТАНАС ПЕТРОВ АТАНАСОВ' ORDER BY id") == [(4842, 4842), (5121, 4842)]
+    assert q("SELECT count(DISTINCT person) FROM live.profile") == [(12,)]   # 12 people, 6 of them in both
+    # a namesake in the earlier assembly is not linked: the name must be there once
+    conn.execute("INSERT INTO live.profile (id, assembly, name) VALUES (1, 51, 'АТАНАС ПЕТРОВ АТАНАСОВ')")
+    people.link(conn)
+    assert q("SELECT person FROM live.profile WHERE id = 5121") == [(5121,)]
+    conn.execute("DELETE FROM live.profile WHERE id = 1")
+    # the roll call's MPs get their profile and constituency; the chair's speeches get hers
+    assert q("SELECT count(*) FROM live.mp WHERE assembly = 52 AND profile IS NOT NULL")[0][0] >= 12
+    assert q("SELECT profile, district FROM live.mp_stat WHERE name = 'МИХАЕЛА МИЛЧЕВА ДОЦОВА'") == [(5237, q("SELECT district FROM live.profile WHERE id = 5237")[0][0])]
+    # the absences and penalties are kept when the Assembly no longer shows them
+    n = q("SELECT count(*) FROM live.absence")[0][0]
+    assert n > 0 and q("SELECT count(*) FROM live.penalty")[0][0] > 0
+    src.files["mp-absense/bg"] = b"[]"
+    assert people.absences(conn, {}, get=src.get)["new"] == {"absences": 0, "penalties": 0}
+    assert q("SELECT count(*) FROM live.absence") == [(n,)]
+
+
+def test_a_sitting_keeps_its_stenogram_video_and_a_shorter_one_waits(conn):
+    from ingest import people
+    src = Source()
+    src.files["pl-sten/11159"] = (FX / "sten-310726-text.json").read_bytes()
+    people.assemblies(conn)
+    people.people(conn, {}, get=src.get)
+    assert run(conn, src)["sittings"] == {"stored": 2}
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()   # noqa: E731
+    assert q("SELECT count(*) FROM live.speech WHERE sitting = 11159") == [(39,)]
+    assert q("SELECT count(*) FROM live.speech WHERE sitting = 11174") == [(0,)]           # not published yet
+    assert q("SELECT array_length(video, 1) > 0, steno_sha IS NOT NULL FROM live.sitting WHERE id = 11159") == [(True, True)]
+    assert q("SELECT DISTINCT profile FROM live.speech WHERE sitting = 11159 AND name = 'МИХАЕЛА ДОЦОВА'") == [(5237,)]
+    assert q("SELECT count(*) FROM live.speech WHERE tsv @@ to_tsquery('simple', 'заседание')")[0][0] > 0
+    # the same again: nothing changes; a stenogram with fewer speeches waits a day
+    before = q("SELECT no, text FROM live.speech WHERE sitting = 11159 ORDER BY no")
+    run(conn, src)
+    s = json.loads(src.files["pl-sten/11159"])
+    s["Pl_Sten_body"] = s["Pl_Sten_body"][:len(s["Pl_Sten_body"]) // 2]
+    src.files["pl-sten/11159"] = json.dumps(s).encode()
+    run(conn, src)
+    assert q("SELECT no, text FROM live.speech WHERE sitting = 11159 ORDER BY no") == before
+    assert [r[4] for r in log(conn)] == ["held"]
+    conn.execute("UPDATE ops.held SET first_at = now() - interval '2 days'")
+    run(conn, src)
+    assert q("SELECT count(*) FROM live.speech WHERE sitting = 11159")[0][0] < 39
+    assert [r[4] for r in log(conn)] == ["held", "confirmed", "rewritten"]
+
+
+def test_an_old_sitting_is_kept_with_its_scan_and_its_assembly_by_date(conn):
+    from ingest import load, people
+    src = Source()
+    src.months = {"1879/3": [{"t_id": 9507, "t_label": 9507, "t_date": "1879-03-28"}]}
+    src.files["pl-sten/9507"] = (FX / "sten-9507.json").read_bytes()
+    people.assemblies(conn)
+    st = load.load(conn, {}, first=(1879, 3), get=src.get, today=dt.date(1879, 3, 31))
+    assert st["sittings"] == {"no-votes": 1} and st["problems"] == []
+    assert conn.execute("SELECT assembly, pdf FROM live.sitting WHERE id = 9507").fetchone() == (100, "/pub/StenD/20191212105118XVIII_28-03-1879.pdf")
+    src.files["20191212105118XVIII_28-03-1879.pdf"] = b"%PDF-1.4 scanned"
+    assert load.pdfs(conn, {}, get=src.get) == {"archived": 1, "bytes": 16, "left": 0, "problems": []}
+    assert load.pdfs(conn, {}, get=src.get)["archived"] == 0                             # once
+
+
+def test_a_sitting_of_2009_is_read_from_its_sheets(conn):
+    from ingest import people
+    src = Source()
+    src.months = {"2009/7": [{"t_id": 596, "t_label": 596, "t_date": "2009-07-30"}]}
+    src.files["pl-sten/596"] = (FX / "sten-300709.json").read_bytes()
+    for k in ("gv", "iv"):
+        src.files[f"{k}300709.xls"] = (FX / f"{k}300709.xls").read_bytes()
+    people.assemblies(conn)
+    st = run(conn, src, first=(2009, 7), today=dt.date(2009, 7, 31))
+    assert st["sittings"] == {"stored": 1} and st["rebuilt"] == [41]
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()   # noqa: E731
+    assert q("SELECT assembly, iv FROM live.sitting WHERE id = 596") == [(41, "/pub/StenD/iv300709.xls")]
+    assert q("SELECT count(*) FROM live.item WHERE sitting = 596") == [(7,)] and q("SELECT count(*) FROM live.vote WHERE sitting = 596") == [(1680,)]
+    assert q("SELECT string_agg(code, '' ORDER BY item) FROM live.vote WHERE sitting = 596 AND mp = 343") == [("О0+00+0",)]
+    assert q("SELECT count(*) FROM live.speech WHERE sitting = 596")[0][0] > 1

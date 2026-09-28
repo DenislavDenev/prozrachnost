@@ -37,7 +37,7 @@ def migrate(conn):
     return applied
 
 
-LOCKS = {"roster": 7_260_001, "sittings": 7_260_002}   # one per step that writes
+LOCKS = {"roster": 7_260_001, "sittings": 7_260_002, "people": 7_260_003, "absences": 7_260_004, "pdfs": 7_260_005}   # one per step that writes
 
 
 class Busy(RuntimeError):

@@ -1,15 +1,20 @@
 """The answers of parliament.bg, parsed and checked. Nothing here touches the database.
 
-- archive-period/bg/Pl_StenV/<y>/<m>/0/0: the sittings of a month, [{t_id, t_date}]
-- pl-sten/<id>: one sitting: its date, its heading (which names the National Assembly) and its files
-- the files of a sitting: `..._gv<ddmmyy>.csv`, the result of every registration and vote by parliamentary group, and
-  `..._iv<ddmmyy>.csv`, every MP's registration and vote (roll call)
+- archive-period/bg/Pl_StenV/<y>/<m>/0/0: the sittings of a month, [{t_id, t_date}] (from 1879)
+- pl-sten/<id>: one sitting: its date, its heading (which names the National Assembly from 2009), its files, the
+  text of the stenogram (from 1992; before, a scanned PDF) and the video (from 2010)
+- the files of a sitting: `..._gv<ddmmyy>`, the result of every registration and vote by parliamentary group, and
+  `..._iv<ddmmyy>`, every MP's registration and vote (roll call): CSV from 12.2021, XLS from 07.2009, XLSX in
+  2020-2021; a sheet is read as the ";" CSV it was exported from (sheet())
+- the stenogram's speeches (speeches()), the assemblies and their MPs (fn-assembly, archive, fn-mps, mp-profile), the
+  official absences and penalties (mp-absense, mp-penalty)
 
 A wrong API path answers 200 with the site's HTML page: everything that is not the JSON or CSV expected is a
 ShapeError, which stops the sitting without writing.
 """
 import csv
 import datetime as dt
+import html
 import io
 import json
 import re
@@ -69,18 +74,50 @@ def assembly_no(heading):
 
 
 def sitting(raw):
-    """-> {id, date, heading, assembly, files}: files are the paths of the sitting's CSV files of the two kinds, by
-    their name ("..._gv<ddmmyy>..." or "..._iv<ddmmyy>..."). Which is which is decided by the content (kind()): one
-    of 04.2023 has the same file twice, one of 12.2022 a roll call under the name of the file by group."""
+    """-> {id, date, heading, assembly, files, pdf, body, video}: files are the paths of the sitting's vote files of
+    the two kinds, CSV, XLS or XLSX, by their name ("..._gv<ddmmyy>..." or "..._iv<ddmmyy>..."). Which is which is
+    decided by the content (kind()): one of 04.2023 has the same file twice, one of 12.2022 a roll call under the
+    name of the file by group. pdf: the scanned stenogram (before 1992); body: the stenogram's text as published
+    (HTML lines); video: the URLs of the recording's parts, in order."""
     s = _json(raw)
     if not isinstance(s, dict) or not {"Pl_Sten_id", "Pl_Sten_date", "Pl_Sten_sub"} <= set(s):
         raise ShapeError(f"not a sitting: {str(s)[:120]}")
     files = s.get("files") or []
     if not isinstance(files, list):
         raise ShapeError(f"files is not a list: {str(files)[:80]}")
-    csvs = [p for p in ((f or {}).get("Pl_StenDfile") or "" for f in files) if re.search(r"[gi]v\d{6}[^/]*\.csv$", p, re.I)]
+    paths = [((f or {}).get("Pl_StenDfile") or "", (f or {}).get("Pl_StenDname") or "") for f in files]
+    votes = [p for p, _ in paths if re.search(r"[gi]v\d{6}[^/]*\.csv$", p, re.I)]         or [p for p, _ in paths if re.search(r"[gi]v\d{6}[^/]*\.xlsx?$", p, re.I)]   # the sheets only where no CSV
+    pdf = next((p for p, n in paths if p.lower().endswith(".pdf") and n.startswith("Текст на стенограма")), None)
+    v = s.get("video")
+    video = [x["file"] for x in sorted(v.get("playlist") or [], key=lambda x: x.get("item") or 0) if x.get("file")] \
+        if isinstance(v, dict) else []
     return {"id": int(s["Pl_Sten_id"]), "date": _date(s["Pl_Sten_date"]), "heading": s["Pl_Sten_sub"] or "",
-            "assembly": assembly_no(s["Pl_Sten_sub"]), "files": csvs}
+            "assembly": assembly_no(s["Pl_Sten_sub"]), "files": votes, "pdf": pdf,
+            "body": s.get("Pl_Sten_body") or "", "video": video}
+
+
+def sheet(raw):
+    """An XLS or XLSX vote file -> the same file as the ";" CSV the Assembly's system exports (numbers as integers),
+    so groups() and rollcall() read it; CSV and anything else is returned as it is."""
+    try:
+        if raw[:4] == b"\xd0\xcf\x11\xe0":
+            import xlrd
+            sh = xlrd.open_workbook(file_contents=raw, logfile=io.StringIO()).sheet_by_index(0)
+            rows = [sh.row_values(r) for r in range(sh.nrows)]
+        elif raw[:2] == b"PK":
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+            rows = [list(r) for r in wb.worksheets[0].iter_rows(values_only=True)]
+        else:
+            return raw
+    except Exception as e:  # noqa: BLE001 - a damaged sheet is a file we cannot read, said as such
+        raise ShapeError(f"повреден файл: {e}"[:200]) from None
+    cell = lambda v: "" if v is None else str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip()  # noqa: E731
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\n")
+    for r in rows:
+        w.writerow([cell(v) for v in r])
+    return buf.getvalue().encode("utf-8")
 
 
 def file_date(path):
@@ -390,3 +427,178 @@ def check(items, votes, aside=None):
             break
         seen.add((no, item))
     return bad, notes
+
+
+# ---------- the stenogram ----------
+
+# "ПРЕДСЕДАТЕЛ МИХАЕЛА ДОЦОВА: ...", "АТАНАС СЛАВОВ (ДБ): ...", "ХРИСТО БИСЕРОВ (от място): ...", "РЕПЛИКА ОТ ДБ: ...":
+# the same from 1992 to now. A role (the longest first) comes before the name; the name is two or three words.
+SPEAKER = re.compile(r"^(?P<who>[А-ЯЁЪЬЮЯІ][А-ЯЁЪЬЮЯІ\-\.' ]{2,120}?)\s*(?:\((?P<note>[^()]{0,200})\))?\s*:\s*(?P<rest>.*)$", re.S)
+ROLES = sorted(("ПРЕДСЕДАТЕЛ", "ПРЕДСЕДАТЕЛЯТ", "ЗАМЕСТНИК-ПРЕДСЕДАТЕЛ", "ЗАМЕСТНИК ПРЕДСЕДАТЕЛ", "ДОКЛАДЧИК", "СЕКРЕТАР",
+                "МИНИСТЪР-ПРЕДСЕДАТЕЛ", "МИНИСТЪР", "ЗАМЕСТНИК МИНИСТЪР-ПРЕДСЕДАТЕЛ", "ЗАМЕСТНИК-МИНИСТЪР-ПРЕДСЕДАТЕЛ",
+                "ЗАМЕСТНИК-МИНИСТЪР", "ЗАМЕСТНИК МИНИСТЪР", "ПРЕЗИДЕНТ", "ВИЦЕПРЕЗИДЕНТ", "ГЛАВЕН ПРОКУРОР",
+                "ОМБУДСМАН", "УПРАВИТЕЛ", "ПОДУПРАВИТЕЛ", "ГЛАВЕН СЕКРЕТАР", "ПОСЛАНИК"), key=len, reverse=True)
+# the hall's voices that are no one's speech: "РЕПЛИКА ОТ ДБ", "ГЛАСОВЕ ОТ ГЕРБ", "ВИКОВЕ"
+CHORUS = re.compile(r"^(РЕПЛИК[АИ]|ГЛАС(?:ОВЕ)?|ВИКОВЕ|ВЪЗГЛАСИ?|ОБАЖДАНИ[ЕЯ]|ШУМ)(?:\s+ОТ\s+(?P<from>.+))?$")
+WORD = re.compile(r"^[А-ЯЁЪЬЮЯІ][А-ЯЁЪЬЮЯІ\-']*[А-ЯЁЪЬЮЯІ]$")
+STAGE = {"звъни"}                            # "(Звъни)": what the chair does, not a group
+UNPUBLISHED = re.compile(r"^\s*Чл\.\s*67")   # the notice shown until the stenogram is published (in 7 days)
+
+
+def speaker(line):
+    """A line that opens a speech -> {role, name, note, grp, rest}, else None."""
+    m = SPEAKER.match(line)
+    if not m:
+        return None
+    who = " ".join(m["who"].split())
+    note = " ".join((m["note"] or "").split()) or None
+    c = CHORUS.match(who)
+    if c:
+        return {"role": "реплика", "name": None, "note": note, "grp": c["from"], "rest": m["rest"]}
+    role = next((r for r in ROLES if who == r or who.startswith(r + " ")), None)
+    name = who[len(role):].strip() if role else who
+    words = name.split()
+    if not 2 <= len(words) <= 3 or not all(WORD.match(w) for w in words):
+        return None
+    grp = None
+    if note:
+        first = note.split(",")[0].strip()
+        if first and not first[0].islower() and first.lower() not in STAGE:   # "(ДБ, от място)" names the group
+            grp = first
+    return {"role": role.lower() if role else None, "name": name, "note": note, "grp": grp, "rest": m["rest"]}
+
+
+def speeches(body):
+    """The stenogram's text -> [{no, role, name, note, grp, text}] in order; no 0 is what comes before the first
+    speech (who presided, the secretaries). [] while the stenogram is not published (the Assembly shows a notice)."""
+    if not body or UNPUBLISHED.match(re.sub(r"<[^>]+>", "", body)):
+        return []
+    lines = [html.unescape(re.sub(r"<[^>]+>", "", x)).replace("\xa0", " ").strip() for x in re.split(r"<br\s*/?>|\n", body)]
+    out, cur = [], {"no": 0, "role": None, "name": None, "note": None, "grp": None, "lines": []}
+    for line in lines:
+        sp = speaker(line) if line else None
+        if sp:
+            out.append(cur)
+            rest = sp.pop("rest").strip()
+            cur = {"no": len(out), **sp, "lines": [rest] if rest else []}
+        else:
+            cur["lines"].append(line)
+    out.append(cur)
+    res = []
+    for sp in out:
+        text = re.sub(r"\n{3,}", "\n\n", "\n".join(sp.pop("lines")).strip())
+        if sp["no"] == 0 and not text:
+            continue
+        res.append({**sp, "text": text})
+    if not any(sp["no"] for sp in res):
+        raise ShapeError("стенограма без нито едно изказване")
+    return res
+
+
+# ---------- the assemblies and their people ----------
+
+def assemblies(raw):
+    """fn-assembly/bg -> [(API id, assembly number)]: the assemblies the API knows (from the 39th, 2001)."""
+    got = _json(raw)
+    if not isinstance(got, list) or not got:
+        raise ShapeError(f"not a list of assemblies: {str(got)[:120]}")
+    out = []
+    for a in got:
+        n = assembly_no(a.get("A_nsL_value") if isinstance(a, dict) else None)
+        if not isinstance(a.get("A_ns_id"), int) or n is None:
+            raise ShapeError(f"not an assembly: {str(a)[:120]}")
+        out.append((a["A_ns_id"], n))
+    return out
+
+
+BODY_KINDS = {"pg": "група", "cm": "комисия", "cm_v": "временна комисия", "cm_u": "подкомисия", "dl": "делегация",
+              "fg": "група за приятелство", "pc": "друго"}
+
+
+def archive(raw):
+    """archive/bg/<API id> -> {start, end, bodies: [{id, kind, name, since, until, n_start, n_end, n_total}]}."""
+    a = _json(raw)
+    if not isinstance(a, dict) or "A_ns_start" not in a:
+        raise ShapeError(f"not an assembly: {str(a)[:120]}")
+    bodies = []
+    for key, kind_ in BODY_KINDS.items():
+        for b in a.get(key) or []:
+            if not isinstance(b.get("A_ns_C_id"), int):
+                raise ShapeError(f"not a body: {str(b)[:120]}")
+            bodies.append({"id": b["A_ns_C_id"], "kind": kind_, "name": " ".join((b.get("A_ns_CL_value") or b.get("A_ns_C_name") or "").split()),
+                           "since": _day(b.get("A_ns_C_date_F")), "until": _day(b.get("A_ns_C_date_T")),
+                           "n_start": b.get("A_ns_C_start_count"), "n_end": b.get("A_ns_C_end_count"), "n_total": b.get("A_ns_C_total_count")})
+    return {"start": _date(a["A_ns_start"]), "end": _day(a.get("A_ns_end")), "bodies": bodies}
+
+
+def _day(s):
+    """A date of the API, None for none (empty, "9999-12-31": until now, "0000-00-00")."""
+    if not s or s.startswith(("9999", "0000", "0001")):
+        return None
+    return _date(s[:10])
+
+
+def mps(raw):
+    """fn-mps/bg/<API id> -> [profile id]: every MP of the assembly, the ones who left too."""
+    got = _json(raw)
+    if not isinstance(got, list) or not got or not all(isinstance(x.get("A_ns_MP_id"), int) for x in got):
+        raise ShapeError(f"not a list of MPs: {str(got)[:120]}")
+    return [x["A_ns_MP_id"] for x in got]
+
+
+def full_name(x):
+    return " ".join(" ".join(x.get(f"A_ns_MPL_Name{i}") or "" for i in (1, 2, 3)).split()).upper()
+
+
+def profile(raw):
+    """mp-profile/bg/<id> -> the MP in their public role: {id, api_assembly, name, district, list, profession,
+    languages, past: [API ids of earlier assemblies], memberships: [...]}. The date and place of birth, e-mail,
+    phones, links and photo are left out."""
+    p = _json(raw)
+    if not isinstance(p, dict) or not isinstance(p.get("A_ns_MP_id"), int) or not p.get("A_ns_MPL_Name1"):
+        raise ShapeError(f"not a profile: {str(p)[:120]}")
+    ms = []
+    for m in p.get("mshipList") or []:
+        if not isinstance(m.get("A_ns_MSP_id"), int) or not isinstance(m.get("A_ns_C_id"), int):
+            raise ShapeError(f"not a membership: {str(m)[:120]}")
+        ms.append({"id": m["A_ns_MSP_id"], "body": m["A_ns_C_id"], "body_name": " ".join((m.get("A_ns_CL_value") or "").split()),
+                   "body_kind": m.get("A_ns_CT_id"), "role": (m.get("A_ns_MP_PosL_value") or "").strip() or None,
+                   "since": _day(m.get("A_ns_MSP_date_F")), "until": _day(m.get("A_ns_MSP_date_T"))})
+    words = lambda key, field: ", ".join(x[field] for x in p.get(key) or [] if x.get(field)) or None  # noqa: E731
+    lang = next((k for k in (p.get("lngList") or [{}])[0] if k.endswith("L_value")), None) if p.get("lngList") else None
+    return {"id": p["A_ns_MP_id"], "api_assembly": p.get("A_ns_id"), "name": full_name(p),
+            "district": (p.get("A_ns_Va_name") or "").strip() or None, "list": (p.get("A_ns_CoalL_value") or "").strip() or None,
+            "profession": words("prsList", "A_ns_MP_Pr_TL_value"), "languages": words("lngList", lang) if lang else None,
+            "past": [x["A_ns_id"] for x in p.get("oldnsList") or [] if isinstance(x.get("A_ns_id"), int)], "memberships": ms}
+
+
+def absences(raw):
+    """POST mp-absense/bg -> [{id, date, profile, name, body, body_name, kind}]: kind 1 the plenary, 2 a committee.
+    The Assembly shows only the last months: what we read is kept."""
+    got = _json(raw)
+    if not isinstance(got, list):
+        raise ShapeError(f"not a list of absences: {str(got)[:120]}")
+    out = []
+    for a in got:
+        if not isinstance(a.get("MP_Ab_id"), int) or not isinstance(a.get("A_ns_MP_id"), int):
+            raise ShapeError(f"not an absence: {str(a)[:120]}")
+        out.append({"id": a["MP_Ab_id"], "date": _date(a["MP_Ab_date"]), "profile": a["A_ns_MP_id"], "name": full_name(a),
+                    "body": a.get("A_ns_C_id"), "body_name": (a.get("A_ns_CL_value") or "").strip() or None, "kind": a.get("MP_Ab_T_id")})
+    return out
+
+
+def penalties(raw):
+    """POST mp-penalty -> [{id, date, profile, name, kind, note, by, what}]: the chair's penalties (a remark, a
+    reprimand, removal from the sitting), who imposed it and for what."""
+    got = _json(raw)
+    if not isinstance(got, list):
+        raise ShapeError(f"not a list of penalties: {str(got)[:120]}")
+    out = []
+    for a in got:
+        if not isinstance(a.get("A_ns_MP_Pen_id"), int) or not isinstance(a.get("A_ns_MP_id"), int):
+            raise ShapeError(f"not a penalty: {str(a)[:120]}")
+        by = " ".join(" ".join(a.get(f"A_ns_MP_Chr_Name{i}") or "" for i in (1, 2, 3)).split()).upper() or None
+        out.append({"id": a["A_ns_MP_Pen_id"], "date": _date(a["A_ns_MP_Pen_date"]), "profile": a["A_ns_MP_id"], "name": full_name(a),
+                    "kind": (a.get("A_ns_MP_PenT_name") or "").strip(), "note": (a.get("A_ns_MP_Pen_note") or "").strip() or None,
+                    "by": by, "what": ", ".join(x.get("A_ns_MP_PenS_name") or "" for x in a.get("activity") or []) or None})
+    return out

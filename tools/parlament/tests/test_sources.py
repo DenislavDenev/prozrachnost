@@ -1,7 +1,11 @@
 """The parsers against real answers of parliament.bg (tests/fixtures/parliament), every layout seen since 12.2021.
 
 The values below were checked by hand on 28.09.2026 against the Assembly's own PDF of the same sitting: the roll call
-of 24.09.2026 (iv240926.pdf) for three MPs, and the file by group (gv240926.pdf) for item 2.
+of 24.09.2026 (iv240926.pdf) for three MPs, and the file by group (gv240926.pdf) for item 2; on 29.09.2026 the roll
+call of 30.07.2009 (iv300709.pdf, an XLS sitting) for three MPs.
+
+The answers of mp-profile are cut to what the parser reads: the date and place of birth, contacts, photo, CV and the
+lists not read (bills, questions, staff) are taken out before they enter the repository.
 """
 from pathlib import Path
 
@@ -184,3 +188,87 @@ def test_the_months_list_and_the_roster():
     assert r["assembly"] == 52 and len(r["mps"]) == 12
     assert r["mps"][0] == {"profile": 5237, "name": "МИХАЕЛА МИЛЧЕВА ДОЦОВА", "group": 'Парламентарна група "Прогресивна България"',
                            "district": "23-СОФИЯ", "since": parse._date("2026-04-30")}
+
+
+def test_a_sheet_of_2009_reads_as_the_csv_and_adds_up():
+    """30.07.2009, the XLS of the 41st assembly: the same layouts as the CSV (a block per item, a row per MP)."""
+    gv, iv = parse.sheet(raw("gv300709.xls")), parse.sheet(raw("iv300709.xls"))
+    assert parse.kind(gv) == "gv" and parse.kind(iv) == "iv"
+    items, votes = parse.groups(gv), parse.rollcall(iv)
+    assert len(items) == 7 and len(votes) == 1680
+    assert parse.check(items, votes) == ([], {})
+    assert codes(votes, 334) == "П++++++"                                        # Александър Ненков, ГЕРБ
+    assert codes(votes, 335) == "П++0+++"                                        # Александър Стойков, ГЕРБ
+    assert codes(votes, 343) == "О0+00+0"                                        # Антон Кутев, КБ
+    assert parse.sheet(raw("gv240926.csv")) == raw("gv240926.csv")               # a CSV passes as it is
+    with pytest.raises(parse.ShapeError, match="повреден"):
+        parse.sheet(raw("gv300709.xls")[:3000])
+
+
+def test_a_sitting_says_its_vote_files_scan_and_video():
+    s = parse.sitting(raw("sten-300709.json"))
+    assert s["assembly"] is None                                                 # the heading of 2009 does not name it
+    assert s["files"] == ["/pub/StenD/gv300709.xls", "/pub/StenD/iv300709.xls"] and s["pdf"] is None
+    old = parse.sitting(raw("sten-9507.json"))
+    assert old["files"] == [] and old["pdf"].endswith("28-03-1879.pdf") and old["body"] == ""
+    new = parse.sitting(raw("sten-310726-text.json"))
+    assert new["video"] and all(v.startswith("https://parliament.bg/Gallery/video/archive-2026_07_31_") for v in new["video"])
+
+
+def test_the_stenogram_is_split_by_speaker():
+    sp = parse.speeches(parse.sitting(raw("sten-310726-text.json"))["body"])
+    assert len(sp) == 39 and sp[0]["no"] == 0 and sp[0]["name"] is None           # who presided, before the first speech
+    assert [x["no"] for x in sp] == list(range(39))
+    chair = sp[1]
+    assert chair["role"] == "председател" and chair["name"] == "МИХАЕЛА ДОЦОВА" and chair["grp"] is None
+    grouped = [x for x in sp if x["grp"]]
+    assert grouped and all(x["role"] is None or x["role"] == "докладчик" for x in grouped)
+    assert all(x["text"] for x in sp[1:])
+
+
+@pytest.mark.parametrize("line, got", [
+    ("АТАНАС СЛАВОВ (ДБ): Уважаеми колеги!", ("АТАНАС СЛАВОВ", None, "ДБ")),
+    ("ХРИСТО БИСЕРОВ (от място): Да, да!", ("ХРИСТО БИСЕРОВ", None, None)),
+    ("ЦВЕТЕЛИНА СИМЕОНОВА-ЗАРКИН (Продължаваме Промяната, чрез интернет платформа): Тук.",
+     ("ЦВЕТЕЛИНА СИМЕОНОВА-ЗАРКИН", None, "Продължаваме Промяната")),
+    ("ПРЕДСЕДАТЕЛ КАДИР КАДИР (Звъни): Моля!", ("КАДИР КАДИР", "председател", None)),
+    ("ЗАМЕСТНИК МИНИСТЪР-ПРЕДСЕДАТЕЛ ВЕСЕЛИН МЕТОДИЕВ: Благодаря.", ("ВЕСЕЛИН МЕТОДИЕВ", "заместник министър-председател", None)),
+    ("РЕПЛИКА ОТ ДБ: Срам!", (None, "реплика", "ДБ")),
+    ("ПРЕХОДНИ И ЗАКЛЮЧИТЕЛНИ РАЗПОРЕДБИ:", None),                              # a heading of a bill is no speaker
+    ("§ 1. В чл. 2: текст", None),
+    ("Гласували 117 народни представители: за 100", None),
+])
+def test_a_speaker_line(line, got):
+    sp = parse.speaker(line)
+    assert (sp and (sp["name"], sp["role"], sp["grp"])) == got if got else sp is None
+
+
+def test_an_unpublished_stenogram_is_no_speech():
+    assert parse.speeches(parse.sitting(raw("sten-240926.json"))["body"]) == []   # the notice of art. 67 until then
+    with pytest.raises(parse.ShapeError):
+        parse.speeches("Текст без нито едно изказване.<br />Още текст.")
+
+
+def test_a_profile_keeps_the_public_role_only():
+    p = parse.profile(raw("mp-profile-5121.json"))
+    assert p["id"] == 5121 and p["name"] == "АТАНАС ПЕТРОВ АТАНАСОВ" and p["api_assembly"] == 62
+    assert set(p) == {"id", "api_assembly", "name", "district", "list", "profession", "languages", "past", "memberships"}
+    assert set(p["past"]) == {2, 51, 55, 56, 57, 58, 59, 60, 61}
+    groups = [m for m in p["memberships"] if m["body_kind"] == 2]
+    assert groups and all(m["since"] for m in groups)
+    with pytest.raises(parse.ShapeError):
+        parse.profile(b'{"A_ns_MP_id": 1}')
+
+
+def test_the_assemblies_archive_absences_and_penalties():
+    assert parse.assemblies(raw("fn-assembly.json")) == [(62, 52), (61, 51)]
+    a = parse.archive(raw("archive-61.json"))
+    assert str(a["start"]) == "2024-11-11" and str(a["end"]) == "2026-04-30"
+    groups = [b for b in a["bodies"] if b["kind"] == "група"]
+    assert len(groups) == 11 and all(b["since"] for b in groups)
+    ab = parse.absences(raw("mp-absense.json"))
+    assert ab and {x["kind"] for x in ab} <= {1, 2} and all(x["name"] for x in ab)
+    pen = parse.penalties(raw("mp-penalty.json"))
+    assert pen and all(x["kind"] and x["by"] for x in pen)
+    with pytest.raises(parse.ShapeError):
+        parse.absences(b'{"a": 1}')
