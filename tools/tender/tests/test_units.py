@@ -484,8 +484,9 @@ def test_every_run_state_has_its_bulgarian_name():
     assert set(states) == set(main.RUN) and "r.status | run" in (root / "app/templates/sources.html").read_text(encoding="utf-8")
 
 
-def test_the_map_scale_shows_only_its_two_ends():
-    # AGENTS.md 7: the legend of every map is the gradient with its lowest and highest value, no median
+def test_the_map_is_interactive_and_has_no_legend():
+    # AGENTS.md 7: no scale under the map; zoom buttons, Ctrl + wheel and the selection drawn on top
     from pathlib import Path
     html = (Path(__file__).parent.parent / "app/templates/map.html").read_text(encoding="utf-8")
-    assert "медиана" not in html and "ticks: [lo, hi]" in html
+    assert "mkey" not in html and "медиана" not in html
+    assert 'data-z="in"' in html and "e.ctrlKey" in html and 'class="selg"' in html
