@@ -210,48 +210,29 @@ MAP_MEASURES = {"EUR_HAB": ("gdp_nuts", "БВП на човек", "€ на чо
                 "PPS_EU27_2020_HAB": ("gdp_nuts", "БВП на човек по покупателна способност", "СПС на човек", 0),
                 "MIO_EUR": ("gdp_nuts", "БВП", "млн. €", 0),
                 "THS": ("pop_nuts", "Население (средногодишно)", "хил. души", 1)}
-# the map covers Bulgaria or Europe; the levels are named as on the Тендер map and listed from the smallest:
-# scope -> {level: (plural, singular, where the outlines are)}
-SCOPES = {"bg": ("България", {"oblasti": ("Области", "Област", ("bg", "oblasts")), "rayoni": ("Райони", "Район", ("bg", "regions")),
-                              "makrorayoni": ("Макрорайони", "Макрорайон", ("bg", "macros"))}),
-          "eu": ("Европа", {"oblasti": ("Области", "Област", ("eu", "3")), "rayoni": ("Райони", "Район", ("eu", "2")),
-                            "makrorayoni": ("Макрорайони", "Макрорайон", ("eu", "1")), "darzhavi": ("Държави", "Държава", ("eu", "0"))})}
-MAP_MIN = 8  # % of the accent on the lowest value, as on the Тендер map
-
-
-@lru_cache(maxsize=1)
-def map_shapes():
-    """{h, oblasts, regions, macros, names}: the outlines of the Тендер map (geoBoundaries, NUTS 2024)."""
-    return json.loads((HERE / "static" / "bg-oblasti.json").read_text(encoding="utf-8"))
+# the map covers Bulgaria or Europe on one plane (EPSG:3035), so the page can fly from one to the other; the levels
+# are named as on the Тендер map, from the smallest: scope -> (name, {level: (plural, singular, NUTS level)})
+SCOPES = {"bg": ("България", {"oblasti": ("Области", "Област", 3), "rayoni": ("Райони", "Район", 2),
+                              "makrorayoni": ("Макрорайони", "Макрорайон", 1)}),
+          "eu": ("Европа", {"oblasti": ("Области", "Област", 3), "rayoni": ("Райони", "Район", 2),
+                            "makrorayoni": ("Макрорайони", "Макрорайон", 1), "darzhavi": ("Държави", "Държава", 0)})}
+# European countries without NUTS regions: on the map and in the list of countries, with no data
+NON_NUTS = ["AD", "BY", "MC", "MD", "RU", "SM", "UK", "VA"]
 
 
 @lru_cache(maxsize=1)
 def europe_shapes():
-    """{h, names, "0".."3": {code: path}}: Eurostat GISCO, NUTS 2024 (tools/build_europe_map.py)."""
+    """{h, names, world, "0".."3", bg}: Eurostat GISCO outlines (tools/build_europe_map.py)."""
     return json.loads((HERE / "static" / "europe.json").read_text(encoding="utf-8"))
 
 
-def area_name(code):
-    """Bulgarian for Bulgaria and the countries, the Latin name of GISCO for the other regions."""
+def area_name(code, o="bg"):
+    """Bulgarian for Bulgaria and the countries, the Latin name of GISCO for the other regions; in Europe every
+    region carries its country's code, since the names alone do not say where they are."""
     if len(code) == 2:
         return label("geo", code)
-    if code.startswith("BG"):
-        s = map_shapes()
-        return s["oblasts"][code]["n"] if len(code) == 5 else s["names"][code] + (" район" if len(code) == 4 else "")
-    return europe_shapes()["names"].get(code, code)
-
-
-def outlines(where):
-    """(height, {code: SVG path}) of a level."""
-    src, key = where
-    if src == "bg":
-        return map_shapes()["h"], {c: v["d"] for c, v in map_shapes()[key].items()}
-    return europe_shapes()["h"], europe_shapes()[key]
-
-
-def shade(t):
-    """The fill for a value at t (0..1) of the scale: one continuous gradient of the accent."""
-    return f"color-mix(in srgb, var(--accent) {round(MAP_MIN + t * (100 - MAP_MIN))}%, #fff)"
+    name = label("geo", code) + (" район" if len(code) == 4 else "") if code.startswith("BG")         else europe_shapes()["names"].get(code, code)
+    return f"{name} [{code[:2]}]" if o == "eu" else name
 
 
 @app.get("/oblasti")
@@ -259,8 +240,8 @@ def regions_moved(request: Request):
     return RedirectResponse(f"/karta?{request.url.query}" if request.url.query else "/karta", status_code=301)
 
 
-@app.get("/karta", response_class=HTMLResponse)
-def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, o: str = "bg", l: str | None = None):
+def map_data(m, y, o, l):
+    """Everything the map shows for one choice; HTTPException(404) for an unknown one."""
     if m not in MAP_MEASURES or o not in SCOPES:
         raise HTTPException(404)
     levels = SCOPES[o][1]
@@ -268,9 +249,10 @@ def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, o: str 
     if l not in levels:
         raise HTTPException(404)
     ind, title, unit, digits = MAP_MEASURES[m]
-    plural, single, where = levels[l]
-    h, shapes = outlines(where)
-    codes = sorted(shapes)
+    plural, single, nuts = levels[l]
+    shapes = europe_shapes()["bg" if o == "bg" else str(nuts)]
+    shapes = shapes[str(nuts)] if o == "bg" else shapes
+    codes = sorted(shapes) + (NON_NUTS if nuts == 0 else [])
     counts = q("""SELECT time, count(*) FROM live.series WHERE indicator = %s AND dims->>'unit' = %s
                   AND geo = ANY(%s) AND value IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""", ind, m, codes)
     years = [t for t, _ in counts]
@@ -285,25 +267,30 @@ def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, o: str 
                   ind, m, y, codes + ["BG"])) if y else {}
     old = dict(q("SELECT geo, value FROM live.series WHERE indicator = %s AND dims->>'unit' = %s AND time = %s AND geo = ANY(%s)",
                  ind, m, base, codes)) if base else {}
-    present = sorted(float(vals[c]) for c in codes if vals.get(c) is not None and vals[c] > 0)
-    lo, hi = (present[0], present[-1]) if present else (1.0, 1.0)
-    # log scale, as on the Тендер map for money and counts: the capital would wash out the rest on a linear one
-    at_ = lambda v: math.log(max(float(v), lo) / lo) / (math.log(hi / lo) or 1)  # noqa: E731 - the place of a value
-    table = []
+    items = []
     for code in codes:
-        v, old_v = vals.get(code), old.get(code)
-        table.append({"code": code, "name": area_name(code), "v": v, "fill": None if v is None else shade(at_(v)),
-                      "bg": o == "eu" and code.startswith("BG"),
-                      "change": (float(v) / float(old_v) - 1) * 100 if v is not None and old_v else None})
-    ranked = sorted((r for r in table if r["v"] is not None), key=lambda r: -float(r["v"]))
-    for i, r in enumerate(ranked, 1):
-        r["rank"] = i
-    if o == "eu":   # over a thousand places: by rank, so the list reads with the map
-        table.sort(key=lambda r: r.get("rank", 10 ** 6))
-    ticks = [(lo, "a"), (hi, "z")] if present else []
-    return page(request, "karta.html", "Карта", m=m, y=y, o=o, l=l, years=years, base=base, title=title, unit=unit, digits=digits,
-                table=table, bg=vals.get("BG"), shapes=shapes, h=h, scopes=SCOPES, levels=levels, plural=plural, single=single,
-                grad=(shade(0), shade(1)), ticks=ticks, measures=MAP_MEASURES, src=source(ind))
+        v, was = vals.get(code), old.get(code)
+        items.append({"code": code, "name": area_name(code, o), "v": None if v is None else float(v),
+                      "change": (float(v) / float(was) - 1) * 100 if v is not None and was else None})
+    for i, it in enumerate(sorted((it for it in items if it["v"] is not None), key=lambda it: -it["v"]), 1):
+        it["rank"] = i
+    items.sort(key=lambda it: (it.get("rank", 10 ** 6), it["name"]))   # by rank, so the list reads with the map
+    st = source(ind)
+    return {"m": m, "y": y, "o": o, "l": l, "years": years, "base": base, "title": title, "unit": unit, "digits": digits,
+            "plural": plural, "single": single, "nuts": nuts, "levels": [[k, lv[0]] for k, lv in levels.items()], "bg": None if vals.get("BG") is None else float(vals["BG"]),
+            "updated": st["updated"], "dataset": st["dataset"], "url": st["url"], "csv": f"/csv/{ind}.csv", "items": items,
+            "countries": {c: label("geo", c) for c in [*europe_shapes()["0"], *NON_NUTS]}}
+
+
+@app.get("/api/karta.json")
+def api_map(m: str = "EUR_HAB", y: str | None = None, o: str = "bg", l: str | None = None):
+    return JSONResponse(map_data(m, y, o, l))
+
+
+@app.get("/karta", response_class=HTMLResponse)
+def area_map(request: Request, m: str = "EUR_HAB", y: str | None = None, o: str = "bg", l: str | None = None):
+    d = map_data(m, y, o, l)   # the page is drawn in the browser (static/karta.js) from /api/karta.json; here: 404s and the start
+    return page(request, "karta.html", "Карта", d=d, scopes=SCOPES, measures=MAP_MEASURES)
 
 
 # the comparisons with the EU: (indicator, dims, title, unit, digits)

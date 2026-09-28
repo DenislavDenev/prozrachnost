@@ -84,34 +84,46 @@ def test_pages_on_real_answers(client):
     infl = client.get("/inflaciya").text
     assert "Хранителни продукти и безалкохолни напитки" in infl and "август 2026" in infl
     assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
-    obl = client.get("/karta?m=MIO_EUR&y=2024").text
-    assert "София (столица)" in obl and 'id="a-BG411"' in obl and obl.count("<path") == 28
-    assert "медиана" not in obl and "color-mix(in srgb, var(--accent) 8%, #fff)" in obl and "var(--accent) 100%" in obl   # a gradient
-    assert "geoBoundaries" in obl
-    reg = client.get("/karta?m=MIO_EUR&y=2024&l=rayoni").text
-    assert reg.count("<path") == 6 and "Югозападен район" in reg and "Район</th>" in reg
-    assert client.get("/karta?m=MIO_EUR&y=2024&l=makrorayoni").text.count("<path") == 2
-    assert client.get("/karta?y=1999").status_code == 404 and client.get("/karta?m=X").status_code == 404
-    assert client.get("/karta?l=obshtini").status_code == 404 and client.get("/karta?o=bg&l=darzhavi").status_code == 404
-    assert client.get("/karta?o=xx").status_code == 404
+    page = client.get("/karta?m=MIO_EUR&y=2024").text                    # the page: a shell, drawn by karta.js
+    assert 'id="k-svg"' in page and "/static/karta.js" in page and 'id="k-data"' in page and "EuroGeographics" in page
+    assert "медиана" not in page and "mkey" not in page                     # no legend under any map (AGENTS 7)
+
+    def api(qs):
+        r = client.get("/api/karta.json?" + qs)
+        assert r.status_code == 200, r.text
+        return r.json()
     import json
     europe = json.loads((FX.parent.parent / "app/static/europe.json").read_text(encoding="utf-8"))
-    eu = client.get("/karta?o=eu&y=2024").text                       # the countries of Europe
-    assert eu.count("<path") == len(europe["0"]) and "EuroGeographics" in eu and "Германия" in eu and "Норвегия" in eu
-    de = eu[eu.index('id="a-DE"'):]
-    assert "data-v=\"51800\"" in de[:de.index("</tr>")] and 'class=" bg"' in eu                  # Bulgaria is outlined
-    no = eu[eu.index('id="a-NO"'):]
-    assert "няма данни" in no[:no.index("</tr>")]                                     # 2024 not yet out for Norway
-    obl = client.get("/karta?o=eu&l=oblasti&y=2024").text
-    assert obl.count("<path") == len(europe["3"]) and "Stuttgart" in obl and 'id="a-BG411" class="hl"' in obl
+    bg = api("m=MIO_EUR&y=2024")
+    by = {it["code"]: it for it in bg["items"]}
+    assert len(by) == 28 == len(europe["bg"]["3"]) and by["BG411"]["name"] == "София (столица)" and by["BG411"]["rank"] == 1
+    assert bg["items"][0]["code"] == "BG411" and bg["levels"][0] == ["oblasti", "Области"]          # by rank
+    reg = api("m=MIO_EUR&y=2024&l=rayoni")
+    assert [it["name"] for it in reg["items"]][0] == "Югозападен район" and len(reg["items"]) == 6 and reg["single"] == "Район"
+    assert len(api("m=MIO_EUR&y=2024&l=makrorayoni")["items"]) == 2
+    for bad in ("y=1999", "m=X", "l=obshtini", "o=bg&l=darzhavi", "o=xx"):
+        assert client.get("/karta?" + bad).status_code == 404 and client.get("/api/karta.json?" + bad).status_code == 404
+    eu = api("o=eu&y=2024")                                              # the countries of Europe
+    by = {it["code"]: it for it in eu["items"]}
+    assert set(europe["0"]) <= set(by) and by["DE"]["name"] == "Германия" and by["DE"]["v"] == 51800
+    assert by["NO"]["v"] is None                                         # 2024 not yet out for Norway: "няма данни"
+    assert by["BY"]["name"] == "Беларус" and by["BY"]["v"] is None and by["MD"]["v"] is None      # outside NUTS, still listed
+    obl = api("o=eu&l=oblasti&y=2024")
+    by = {it["code"]: it for it in obl["items"]}
+    assert len(by) == len(europe["3"]) and by["DE111"]["name"] == "Stuttgart, Stadtkreis [DE]"      # the country's code with the name
+    assert by["BG411"]["name"] == "София (столица) [BG]" and "BY" not in by
     moved = client.get("/oblasti?m=THS", follow_redirects=False)                # the old address still leads there
     assert moved.status_code == 301 and moved.headers["location"] == "/karta?m=THS"
     from ingest import db
-    with db.connect(autocommit=True) as c:                    # a region without a value is "няма данни", not 0
+    with db.connect(autocommit=True) as c:                    # a region without a value is None ("няма данни"), not 0
         c.execute("DELETE FROM live.series WHERE indicator = 'gdp_nuts' AND geo = 'BG311' AND time = '2024'")
-    obl = client.get("/karta?m=MIO_EUR&y=2024").text
-    row = obl[obl.index('id="a-BG311"'):]
-    assert row[:row.index("</tr>")].count("няма данни") == 2 and 'class="none"' in obl
+    it = next(it for it in api("m=MIO_EUR&y=2024")["items"] if it["code"] == "BG311")
+    assert it["v"] is None and it["change"] is None and "rank" not in it
+    with db.connect(autocommit=True) as c:                    # and on a page: a missing monthly rate is "няма данни"
+        c.execute("DELETE FROM live.series WHERE indicator = 'hicp_rch_m' AND dims->>'coicop18' = 'CP01' AND time = '2026-08'")
+    infl = client.get("/inflaciya").text
+    row = infl[infl.index("Хранителни продукти и безалкохолни напитки <span"):]
+    assert "няма данни" in row[:row.index("</tr>")]
     fx = client.get("/kursove?code=USD").text
     assert "1,1403" in fx and "Щатски долар" in fx
     assert client.get("/kursove?code=XYZ").status_code == 404
