@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Депутати{% endblock %}
+{% block main %}
+<h1>Депутати</h1>
+{% if ns %}
+<p class="lede">{{ ordinal(ns) }} Народно събрание: <b>{{ rows | length }} депутати</b> са гласували поне веднъж. За всеки: в колко от
+  гласуванията е участвал и колко пъти е гласувал различно от групата си.</p>
+<div class="ctl">{{ m.assemblies(all, ns, "/deputati") }}</div>
+<div class="grid"><section class="p s12">
+  <div class="tools"><input type="search" data-filter="mps" placeholder="Търси депутат, група или район" aria-label="Търси депутат, група или район">
+    <a class="l" href="/csv/deputati-{{ ns }}.csv">CSV</a></div>
+  <table class="sortable" id="mps"><thead><tr><th>Депутат</th><th>Група</th>{% if current %}<th>Избирателен район</th>{% endif %}
+    <th class="n">Гласувания</th><th class="n">Участвал</th><th class="n">С групата</th><th class="n">Срещу групата</th><th class="n">Регистриран</th></tr></thead><tbody>
+  {% for mp, name, g, votes, voted, with_line, against, regs, present, first, last, district in rows %}
+  <tr><td><a class="l" href="/deputati/{{ ns }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names) }}</td>
+    {% if current %}<td class="mut">{{ district | district }}</td>{% endif %}
+    <td class="n">{{ votes | num }}</td><td class="n">{{ pct(voted, votes) }}</td><td class="n">{{ pct(with_line, with_line + against) }}</td>
+    <td class="n" data-v="{{ against }}">{{ against | num }}</td><td class="n">{{ pct(present, regs) }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="mut">„Участвал“: гласувал за, против или въздържал се, от гласуванията, докато е депутат. „С групата“: от гласуванията, в
+    които групата има линия, колко пъти е гласувал като нея. „Регистриран“: при регистрациите в началото на заседанията.
+    {% if current %}Районът е от списъка на Народното събрание, свързан по трите имена в същото събрание.{% endif %}</p>
+  {{ m.src() }}</section></div>
+{% else %}<p class="lede">Още няма прочетени заседания.</p>{% endif %}
+{% endblock %}

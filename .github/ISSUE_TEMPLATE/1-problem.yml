@@ -13,6 +13,7 @@ body:
         - Пътна обстановка
         - Икономика
         - Наблюдател
+        - Парламент
     validations:
       required: true
   - type: textarea

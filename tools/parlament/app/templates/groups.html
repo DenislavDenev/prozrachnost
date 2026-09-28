@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Групи{% endblock %}
+{% block main %}
+<h1>Парламентарни групи</h1>
+{% if ns and unity %}
+{% set top = unity[0] %}{% set low = unity[-1] %}
+<p class="lede">В {{ ordinal(ns) }} Народно събрание най-единна е {{ m.grp(top[0], names) }}: <b>{{ pct(top[1], top[2], 1) }}</b> от
+  гласовете на депутатите ѝ са като линията на групата; най-малко е {{ m.grp(low[0], names) }} с <b>{{ pct(low[1], low[2], 1) }}</b>.</p>
+<div class="ctl">{{ m.assemblies(all, ns, "/grupi") }}</div>
+<div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>Единство</h2><div class="sub">от гласовете на депутатите на групата, колко са като линията ѝ (изборът на повечето)</div></div></div>
+    <div class="hb">{% for g, w, n, c in unity %}<div class="r"><span>{{ names.get(g) or g }}</span>
+      <div class="tr"><i style="left:0;width:{{ 100 * w / n }}%;background:var(--accent)"></i></div><span class="v">{{ pct(w, n, 1) }}</span></div>{% endfor %}</div>
+    <p class="mut">Броят се гласуванията, в които групата има линия ({{ unity | map(attribute=3) | sum | num }} общо); равенство няма линия.</p>{{ m.src() }}</section>
+
+  <section class="p s12"><div class="ph"><div><h2>Единство по месеци</h2><div class="sub">% от гласовете на депутатите на групата, като линията ѝ</div></div></div>
+    <div class="chart" data-src="/api/grupi/{{ ns }}/edinstvo.json" data-digits="1"></div>{{ m.src() }}</section>
+
+  <section class="p s12"><div class="ph"><div><h2>Кои групи гласуват заедно</h2><div class="sub">% от гласуванията, в които линиите на двете групи съвпадат</div></div></div>
+    {% set pm = {} %}{% for a, b, n, same in pairs %}{% set _ = pm.update({(a, b): (same, n), (b, a): (same, n)}) %}{% endfor %}
+    <div class="scroll" style="overflow-x:auto"><table class="sim"><thead><tr><th></th>{% for g in order %}<th class="rot n">{{ m.grp(g, names) }}</th>{% endfor %}</tr></thead><tbody>
+    {% for a in order %}<tr><th>{{ m.grp(a, names) }}</th>{% for b in order %}{% set x = pm.get((a, b)) %}
+      {% if a == b %}<td class="c mut">·</td>{% elif x and x[1] %}{% set p = x[0] / x[1] %}<td class="c" title="{{ x[0] }} от {{ x[1] }} гласувания"
+        style="background:color-mix(in srgb, var(--accent) {{ (8 + 92 * p) | round(0) }}%, #fff);color:{{ '#fff' if p > 0.55 else 'var(--ink)' }}">{{ pct(x[0], x[1]) }}</td>
+      {% else %}<td class="c nodata">няма</td>{% endif %}{% endfor %}</tr>{% endfor %}
+    </tbody></table></div>{{ m.src() }}</section>
+</div>
+{% elif ns %}<p class="lede">Още няма достатъчно гласувания.</p>
+{% else %}<p class="lede">Още няма прочетени заседания.</p>{% endif %}
+{% endblock %}

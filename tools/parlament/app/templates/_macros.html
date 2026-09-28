@@ -1,0 +1,14 @@
+{# the result of a vote as a thin bar of all MPs, and the numbers beside it #}
+{% macro rbar(v) %}{% set all = v.listed or 240 %}<div class="rb" role="img" aria-label="за {{ v.yes }}, против {{ v.no_ }}, въздържали се {{ v.abstain }}, не гласували {{ all - v.voted }}">
+  <i class="y" style="width:{{ 100 * v.yes / all }}%"></i><i class="n" style="width:{{ 100 * v.no_ / all }}%"></i><i class="a" style="width:{{ 100 * v.abstain / all }}%"></i></div>{% endmacro %}
+{% macro res(v) %}<span class="res"><b class="k-yes">{{ v.yes }}</b> · <b class="k-no">{{ v.no_ }}</b> · <b class="k-abs">{{ v.abstain }}</b></span>{% endmacro %}
+
+{# the assemblies as tabs; the page keeps its other parameters #}
+{% macro assemblies(all, ns, path, extra="") %}{% if all | length > 1 %}<nav class="tabs" aria-label="Народно събрание">
+  {% for a in all %}<a href="{{ path }}?ns={{ a[0] }}{{ extra }}" {% if a[0] == ns %}aria-current="page"{% endif %}>{{ ordinal(a[0]) }} НС</a>{% endfor %}
+</nav>{% endif %}{% endmacro %}
+
+{% macro grp(code, names) %}{% if names.get(code) %}<span title="{{ names[code] }}">{{ code }}</span>{% else %}{{ code }}{% endif %}{% endmacro %}
+
+{# the site numbers the assemblies its own way: the 52nd is 62 (the 47th to the 52nd checked 28.09.2026) #}
+{% macro src(sitting=none, ns=none) %}<div class="src">Народно събрание · {% if sitting %}<a href="{{ SITE }}/bg/plenaryst/ns/{{ ns + 10 }}/ID/{{ sitting }}" rel="noopener">стенограма и файлове</a>{% else %}<a href="{{ SITE }}/bg/plenaryst" rel="noopener">стенограми</a>{% endif %}</div>{% endmacro %}

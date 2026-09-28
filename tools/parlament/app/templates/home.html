@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Парламент{% endblock %}
+{% block main %}
+<h1>Как гласува Народното събрание</h1>
+{% if ns %}
+<p class="lede">{{ ordinal(ns) }} Народно събрание заседава от {{ first | long }} г. В <b>{{ sittings | num }} заседания</b> депутатите
+  са гласували <b>{{ votes | num }} пъти</b>; средно всеки е участвал в <b>{{ pct(part[0] or 0, part[1] or 0) }}</b> от гласуванията.</p>
+<p class="asof">Всяко число е от поименните гласувания, които публикува Народното събрание, и е сверено с гласуването по групи. Последно заседание: {{ last | date }}.</p>
+
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Залата</h2><div class="sub">депутатите по парламентарни групи при последната регистрация</div></div></div>
+    <div class="hall" data-hall="/api/zala/{{ ns }}.json" data-names='{{ names | tojson }}' role="img" aria-label="{% for g, n in seats %}{{ g }}: {{ n }}; {% endfor %}"></div>
+    <div class="glegend"></div>{{ m.src() }}</section>
+  <section class="p s4"><div class="ph"><div><h2>Последното гласуване</h2><div class="sub">{{ latest[0].at | date if latest }}</div></div></div>
+    {% if latest %}{% set v = latest[0] %}<p style="margin:0 0 12px"><a class="l" href="{{ v.url }}">{{ v.topic }}</a></p>
+    {{ m.rbar(v) }}
+    <div class="counts" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="yes"><div class="n">{{ v.yes }}</div><div class="t">за</div></div>
+      <div class="no"><div class="n">{{ v.no_ }}</div><div class="t">против</div></div>
+      <div class="abs"><div class="n">{{ v.abstain }}</div><div class="t">въздържали се</div></div></div>
+    <p style="margin-top:16px"><a class="more" href="{{ v.url }}">Виж го в залата →</a></p>{% endif %}</section>
+
+  <section class="p s12"><div class="ph"><div><h2>Последните гласувания</h2><div class="sub">за · против · въздържали се, от всички депутати</div></div>
+    <a class="more" href="/glasuvaniya">Всички →</a></div>
+    <table><thead><tr><th>Дата</th><th>Тема</th><th>Резултат</th><th class="n">Гласове</th></tr></thead><tbody>
+    {% for v in latest %}<tr><td class="mut" style="white-space:nowrap">{{ v.at | date }}</td><td class="topic"><a href="{{ v.url }}">{{ v.topic }}</a></td>
+      <td style="width:22%">{{ m.rbar(v) }}</td><td class="n">{{ m.res(v) }}</td></tr>{% endfor %}
+    </tbody></table>{{ m.src() }}</section>
+
+  <section class="p s12"><div class="ph"><div><h2>Най-оспорваните гласувания</h2><div class="sub">„за“ най-близо до половината от гласувалите, в гласувания с поне 100 гласа</div></div></div>
+    <table><thead><tr><th>Дата</th><th>Тема</th><th>Резултат</th><th class="n">Гласове</th></tr></thead><tbody>
+    {% for v in close %}<tr><td class="mut" style="white-space:nowrap">{{ v.at | date }}</td><td class="topic"><a href="{{ v.url }}">{{ v.topic }}</a></td>
+      <td style="width:22%">{{ m.rbar(v) }}</td><td class="n">{{ m.res(v) }}</td></tr>{% endfor %}
+    </tbody></table>{{ m.src() }}</section>
+</div>
+{% else %}
+<p class="lede">Още няма прочетени заседания.</p>
+{% endif %}
+{% endblock %}
