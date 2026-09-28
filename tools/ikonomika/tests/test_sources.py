@@ -91,13 +91,18 @@ def test_a_flag_without_a_value_is_no_data_not_zero():
     assert r[((("na_item", "B1GQ"), ("unit", "CP_MEUR")), "BG", "2024")] == (None, "c")
 
 
+NO_UNIT = ("tec00114", "earn_mw_cur", "prc_hicp_iw", "ei_bssi_m_r2", "irt_lt_mcby_m", "irt_st_m", "ext_st_27_2020msbec",
+           "ext_lt_intratrd", "bop_c6_q", "bop_fdi6_pos", "nama_10r_2coe")
+
+
 def test_every_indicator_pins_its_unit_and_has_a_known_geo():
     ids = set()
     for ind in eurostat.indicators():
         assert ind["id"] not in ids
         ids.add(ind["id"])
         assert ind["geo"] in eurostat.GEO and int(ind["stale_days"]) > 0 and ind["label"]
-        assert "unit=" in ind["filters"] or ind["dataset"] in ("tec00114", "earn_mw_cur"), ind["id"]
+        # the datasets without a unit dimension (checked 28.09.2026); the parser refuses any other answer with an unpinned unit
+        assert "unit=" in ind["filters"] or ind["dataset"] in NO_UNIT, ind["id"]
         assert eurostat.url(ind).startswith("https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/")
 
 
@@ -121,6 +126,36 @@ def test_monthly_and_annual_rates_follow_from_the_index():
     moved = [(d, g, t, v + 0.3 if (d["coicop18"], t) == ("TOTAL", "2025-03") else v, f) for d, g, t, v, f in by["RCH_M"]]
     bad = checks.hicp_rates(by["I15"], moved, by["RCH_A"])
     assert len(bad) == 1 and bad[0].startswith("TOTAL 2025-03: месечна")
+
+
+SUM_FIXTURES = {"hicp_w": "prc_hicp_iw-2.json", "gdp_full": "nama_10_gdp-2.json", "gva": "nama_10_a10-2.json",
+                "bop": "bop_c6_q-2.json", "trade_a": "ext_lt_intratrd-2.json", "trade_m": "ext_st_27_2020msbec-2.json",
+                "govt": "gov_10dd_edpt1-2.json"}
+
+
+def test_every_sum_rule_has_a_real_answer():
+    assert SUM_FIXTURES.keys() == checks.SUMS.keys()
+
+
+@pytest.mark.parametrize("ind", sorted(SUM_FIXTURES))
+def test_the_parts_add_up_to_the_whole_and_one_moved_part_is_caught(ind):
+    """Weights to 1000, GDP to its uses, industries to the total, the current account to goods, services and income,
+    the trade balance to exports less imports, the government to its subsectors: on the real answer, then with one
+    part moved by 1."""
+    spec = next(i for i in eurostat.indicators() if i["id"] == ind)
+    p = jsonstat.parse(raw("eurostat/" + SUM_FIXTURES[ind]), eurostat.pinned(spec))
+    rule = checks.SUMS[ind]
+    assert checks.parts_sum(p["rows"], *rule) == []
+    assert checks.eurostat({ind: p}) == {}
+    dim, hold, _, parts, what = rule
+    for i, (d, g, t, v, f) in enumerate(p["rows"]):
+        if d.get(dim) == parts[0].lstrip("-") and v is not None and all(d.get(k) == x for k, x in hold.items()):
+            moved = p["rows"][:i] + [(d, g, t, v + 1, f)] + p["rows"][i + 1:]
+            bad = checks.parts_sum(moved, *rule)
+            if bad:   # the first part of a complete group
+                break
+    assert len(bad) == 1 and what in bad[0]
+    assert list(checks.eurostat({ind: {**p, "rows": moved}})) == [ind]
 
 
 def test_checks_name_the_indicators_that_fail():
