@@ -1,9 +1,9 @@
 """Bank interest rates, loans and deposits in Bulgaria from the ECB Data Portal API (Bulgaria is in the euro area
 from 1.1.2026): https://data-api.ecb.europa.eu/service/data/<flow>/<key>, CSV.
 
-Bulgaria's rates (MIR) start in 2026-01, its loans and deposits (BSI) in 2022-01; the euro area (`U2`, stored as
-`EA`) has its rates from 2003, drawn beside Bulgaria's. The BNB's own history before 2026 is only in the PDFs of
-its press releases (checked 28.09.2026), so it is not here.
+Bulgaria's rates (MIR) are in euro from 2026-01 and in leva before it, from 2007 (see BG_BEFORE, BG_PARTS); its
+loans and deposits (BSI) start in 2022-01; the euro area (`U2`, stored as `EA`) has its rates from 2003, drawn beside
+Bulgaria's.
 
 Two indicators in live.series, with the series in `dims`: `rates` (% a year, new business) and `bank` (stocks,
 million €). Checks: every series is monthly without a gap, and overnight deposits never exceed all deposits.
@@ -47,7 +47,16 @@ PLACES = {"rates": {"BG": "BG", "U2": "EA"}, "bank": {"BG": "BG"}}   # ECB code 
 # 2.48% in 2025-12 in leva, 2.46% in 2026-01 in euro; consumer 9.43 / 9.05; business 4.09 / 3.95.
 BG_RATES_FROM = "2026-01"
 BG_BEFORE = {"housing": "M.BG.B.A2C.A.R.A.2250.BGN.N", "consumer": "M.BG.B.A2B.A.R.A.2250.BGN.N",
-             "business": "M.BG.B.A2A.A.R.A.2240.BGN.N", "dep_hh_on": "M.BG.B.L21.A.R.A.2250.BGN.N"}
+             "business": "M.BG.B.A2A.A.R.A.2240.BGN.N", "dep_hh_on": "M.BG.B.L21.A.R.A.2250.BGN.N",
+             "cards": "M.BG.B.A2Z.A.R.A.2250.BGN.N"}
+# Where that total in leva is missing (loans before 2017-08, term deposits always) the ECB has, from 2007, its parts
+# by how long the rate is fixed or the money is tied, each with its rate (R) and amount of new business (B). The
+# total is their average weighted by the amounts, as the ECB builds its own: checked 28.09.2026 against the published
+# total over 2017-08..2025-12, never more than 0.01 points apart (housing, consumer). Loans to firms have the parts
+# only up to EUR 1 million before 2017-08, so they start then.
+BG_PARTS = {"housing": "M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N", "consumer": "M.BG.B.A2B.F+I+J.R+B.A.2250.BGN.N",
+            "dep_hh": "M.BG.B.L22.F+G+H.R+B.A.2250.BGN.N", "dep_nfc": "M.BG.B.L22.F+G+H.R+B.A.2240.BGN.N"}
+PARTS_TOLERANCE = 0.02   # points between the weighted average and the published total, where both exist
 FLAGS = {"A": None, "P": "p", "E": "e", "F": "f"}                      # OBS_STATUS -> the flags of live.series
 HEAD = {"KEY", "TIME_PERIOD", "OBS_VALUE", "OBS_STATUS"}
 
@@ -58,6 +67,14 @@ def url(flow, key):
 
 def parse(raw, want_key):
     """-> [(time, value, flag)] of one series. ShapeError for anything but the ECB CSV of exactly that series."""
+    got = parse_many(raw)
+    if set(got) != {want_key}:
+        raise ShapeError(f"a row of another series: {sorted(set(got) - {want_key})[:3]}")
+    return got[want_key]
+
+
+def parse_many(raw):
+    """-> {key: [(time, value, flag)]} of an ECB CSV of one or more series. ShapeError for anything else."""
     try:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError as e:
@@ -67,10 +84,8 @@ def parse(raw, want_key):
     rows = list(csv.DictReader(io.StringIO(text)))
     if not rows or not HEAD <= set(rows[0]):
         raise ShapeError(f"unexpected CSV header: {text[:200]!r}")
-    out = []
+    out = {}
     for r in rows:
-        if r["KEY"] != want_key:
-            raise ShapeError(f"a row of another series: {r['KEY']}")
         t, v = r["TIME_PERIOD"], r["OBS_VALUE"].strip()
         if len(t) != 7 or t[4] != "-" or not (t[:4] + t[5:]).isdigit():
             raise ShapeError(f"not a month: {t!r}")
@@ -78,8 +93,33 @@ def parse(raw, want_key):
             value = float(v) if v else None
         except ValueError:
             raise ShapeError(f"not a number: {v!r}") from None
-        out.append((t, value, FLAGS.get(r.get("OBS_STATUS") or "A", r.get("OBS_STATUS"))))
+        out.setdefault(r["KEY"], []).append((t, value, FLAGS.get(r.get("OBS_STATUS") or "A", r.get("OBS_STATUS"))))
     return out
+
+
+def matches(key, query):
+    """Is the series `MIR.M.BG...` one the query `M.BG.B.A2C.F+I.R+B...` asked for?"""
+    k, q = key.split(".")[1:], query.split(".")
+    return len(k) == len(q) and all(a in b.split("+") for a, b in zip(k, q))
+
+
+def weighted(series):
+    """{key: [(time, value, flag)]} of the parts' rates (R) and amounts of new business (B) -> {time: rate}, their
+    average weighted by the amounts. ShapeError for an amount without its rate."""
+    rate, amount = {}, {}
+    for key, pts in series.items():
+        part, kind = key.split(".")[5:7]
+        for t, v, _ in pts:
+            if v is not None:
+                (rate if kind == "R" else amount)[part, t] = v
+    sums = {}
+    for (part, t), b in amount.items():
+        if b:
+            if (part, t) not in rate:
+                raise ShapeError(f"{part} {t}: an amount without its rate")
+            n, d = sums.get(t, (0.0, 0.0))
+            sums[t] = (n + rate[part, t] * b, d + b)
+    return {t: round(n / d, 2) for t, (n, d) in sums.items()}
 
 
 def months_between(a, b):
@@ -119,6 +159,25 @@ def load(conn, stats, get=None):
                 try:
                     raw = get(url(flow, k))
                     rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, f) for t, v, f in parse(raw, f"{flow}.{k}") if keep(t))
+                    raws.setdefault(ind, []).append(raw)
+                except (http.Gone, ShapeError) as e:
+                    failed.add(ind)
+                    problems.append(f"Икономика: ЕЦБ {flow}.{k}: {e}")
+            if ind == "rates" and geo == "BG" and code in BG_PARTS:   # the months with no total in leva
+                k = BG_PARTS[code]
+                try:
+                    raw = get(url(flow, k))
+                    got = parse_many(raw)
+                    if not all(matches(s, k) for s in got):
+                        raise ShapeError(f"a row of another series: {[s for s in got if not matches(s, k)][:3]}")
+                    avg = {t: v for t, v in weighted(got).items() if t < BG_RATES_FROM}
+                    have = {t: v for d, g, t, v, _ in rows.get(ind, []) if d["series"] == code and g == geo}
+                    off = [t for t in sorted(avg.keys() & have.keys())
+                           if have[t] is not None and abs(avg[t] - have[t]) > PARTS_TOLERANCE]
+                    if off:
+                        raise ShapeError(f"{off[0]}: средното по срочност {avg[off[0]]} срещу общото {have[off[0]]}")
+                    rows.setdefault(ind, []).extend(({"series": code}, geo, t, v, None)
+                                                    for t, v in sorted(avg.items()) if t not in have)
                     raws.setdefault(ind, []).append(raw)
                 except (http.Gone, ShapeError) as e:
                     failed.add(ind)

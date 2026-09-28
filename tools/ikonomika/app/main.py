@@ -27,7 +27,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "9"
+ASSET_V = "10"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -712,8 +712,8 @@ def money_panels():
               chips=("series", ["housing", "consumer", "cards", "business"]), picked=["housing", "consumer", "business"]),
         chart("rates", "Жилищни кредити: България и еврозоната", "цена на кредита, % годишно", digits=2,
               geo="BG,EA", series="housing"),
-        chart("rates", "Лихви по депозити", "% годишно; на виждане: до 2025 г. в левове; срочни: от 2026 г.", digits=2,
-              chips=("series", ["dep_hh", "dep_nfc", "dep_hh_on"])),
+        chart("rates", "Лихви по депозити", "% годишно; до 2025 г. по депозитите в левове (повечето), от 2026 г. всички (в евро)",
+              digits=2, chips=("series", ["dep_hh", "dep_nfc", "dep_hh_on"])),
         chart("bank", "Кредити и депозити в банките", "млрд. €, в края на месеца", digits=1, scale=1000,
               chips=("series", ["loans_hh", "loans_nfc", "dep_hh", "dep_nfc"]), picked=["loans_hh", "loans_nfc", "dep_hh"]),
         {**chart("mm_rate", "Лихви на междубанковия пазар", "% годишно: овърнайт и 3 месеца, България и еврозоната", digits=2,
