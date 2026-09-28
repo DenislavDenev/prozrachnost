@@ -17,13 +17,16 @@ import sys
 from . import bnb, checks, db, ecb, eurostat, mf
 
 
+STEPS = ["migrate", "eurostat", "bnb", "ecb", "mf", "freshness"]
+
+
 def all_indicators():
     return eurostat.indicators() + ecb.INDICATORS + mf.INDICATORS
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--step", required=True, choices=["migrate", "eurostat", "bnb", "ecb", "mf", "freshness"])
+    ap.add_argument("--step", required=True, choices=STEPS)
     ap.add_argument("--only", help="eurostat: comma-separated indicator ids")
     ap.add_argument("--backfill", action="store_true", help="bnb: from 1991, skipping quarters already read")
     a = ap.parse_args()
