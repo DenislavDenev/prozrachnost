@@ -10,14 +10,21 @@ LATE_FILES = 14
 REPORT_FOR = 7
 LIST_STALE = 2          # days since the last good read of this month's list of sittings
 ROSTER_STALE = 8
+PEOPLE_STALE = 8        # the profiles of the current assembly, read weekly
+LISTS_STALE = 2         # the absences and penalties, read daily: the Assembly keeps them for months only
 HELD_TOO_LONG = 2
+# The stenogram is published within 7 days (the notice on each sitting quotes art. 67 of the Rules): a sitting
+# without it after LATE_STENO days is reported for a week.
+LATE_STENO = 10
 
 
 def freshness(conn, today=None):
     today = today or dt.date.today()
     problems = []
     month = f"month/{today.year}-{today.month:02d}"
-    for ref, days, what in ((month, LIST_STALE, "списъкът на заседанията за месеца"), ("roster", ROSTER_STALE, "списъкът на депутатите")):
+    for ref, days, what in ((month, LIST_STALE, "списъкът на заседанията за месеца"), ("roster", ROSTER_STALE, "списъкът на депутатите"),
+                            ("absences", LISTS_STALE, "официалните отсъствия"), ("penalties", LISTS_STALE, "наказанията"),
+                            (f"assembly/{current(conn)}", PEOPLE_STALE, "профилите на депутатите")):
         r = conn.execute("SELECT last_ok FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, ref)).fetchone()
         if not r or not r[0] or r[0].date() < today - dt.timedelta(days=days):
             problems.append(f"Парламент: {what} не е четен успешно от {r[0].date() if r and r[0] else 'никога'}")
@@ -29,8 +36,16 @@ def freshness(conn, today=None):
         if status == "held":
             continue   # reported below when it waits too long
         problems.append(f"Парламент: заседание {date:%d.%m.%Y} ({sid}): " +
-                        (f"{LATE_FILES} дни без поименно гласуване в CSV" if status in (None, "no-files") else f"{status}: {error}"))
+                        (f"{LATE_FILES} дни без поименно гласуване" if status in (None, "no-files", "no-votes") else f"{status}: {error}"))
+    for sid, date in conn.execute("""SELECT id, date FROM live.sitting WHERE steno_sha IS NULL AND date BETWEEN %s AND %s ORDER BY date""",
+                                  (today - dt.timedelta(days=LATE_STENO + REPORT_FOR), today - dt.timedelta(days=LATE_STENO))):
+        problems.append(f"Парламент: заседание {date:%d.%m.%Y} ({sid}): {LATE_STENO} дни без стенограма")
     for ref, first in conn.execute("SELECT ref, first_at FROM ops.held WHERE source = %s", (SOURCE,)):
         if first.date() < today - dt.timedelta(days=HELD_TOO_LONG):
             problems.append(f"Парламент: {ref} задържан от {first.date():%d.%m.%Y}")
     return problems
+
+
+def current(conn):
+    r = conn.execute("SELECT max(no) FROM live.assembly WHERE api_id IS NOT NULL").fetchone()
+    return r[0] if r else None

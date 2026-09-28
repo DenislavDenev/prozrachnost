@@ -1,9 +1,10 @@
 """The import: the roster, then every sitting of the months asked for, each checked before it is written.
 
-A sitting is written only when its roll call, counted by group, is the file by group for every item and group
+Every sitting is kept with its stenogram (speech by speech), its video and, before 1992, its scanned stenogram.
+Its votes are written only when its roll call, counted by group, is the file by group for every item and group
 (parse.check). Its raw files are kept by sha256; the same files again change nothing. New files with fewer items or
-votes than we hold are `held`: they replace ours only when a read at least a day later gives the same files. A sitting
-that leaves the list of its month is never deleted here.
+votes than we hold, or a stenogram with fewer speeches, are `held`: they replace ours only when a read at least a
+day later gives the same. A sitting that leaves the list of its month is never deleted here.
 """
 import datetime as dt
 import hashlib
@@ -71,6 +72,23 @@ def roster(conn, stats_, get=None):
 
 # ---------- the sittings ----------
 
+def hold(conn, ref, sha, rows, old, new):
+    """The smaller answer waits: True while it must (first seen, or seen less than CONFIRM_AFTER ago), False when a
+    later read gave the same (then it replaces ours, logged as confirmed)."""
+    held = conn.execute("SELECT sha256, first_at <= now() - %s FROM ops.held WHERE source = %s AND ref = %s",
+                        (CONFIRM_AFTER, SOURCE, ref)).fetchone()
+    if not held or held[0] != sha:
+        conn.execute("""INSERT INTO ops.held (source, ref, sha256, rows) VALUES (%s,%s,%s,%s) ON CONFLICT (source, ref)
+                        DO UPDATE SET sha256 = EXCLUDED.sha256, rows = EXCLUDED.rows, first_at = now()""", (SOURCE, ref, sha, rows))
+        db.log_change(conn, SOURCE, ref, "rows", old, new, "held")
+        return True
+    if not held[1]:
+        return True
+    db.log_change(conn, SOURCE, ref, "rows", old, new, "confirmed")
+    conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
+    return False
+
+
 def months(first, last):
     y, m = first
     while (y, m) <= last:
@@ -120,7 +138,7 @@ def recheck(conn, stats_, get=None):
     every assembly its groups' one code and rebuild what the pages read."""
     get = get or http.get
     out, problems, touched = {}, [], set()
-    for sid, in conn.execute("""SELECT substr(ref, 6)::int FROM ops.source_state WHERE source = %s AND ref LIKE 'sten/%%'
+    for sid, in conn.execute("""SELECT substr(ref, 6)::int FROM ops.source_state WHERE source = %s AND ref ~ '^sten/[0-9]+$'
                                 AND status IN ('invalid', 'no-files') ORDER BY 1""", (SOURCE,)).fetchall():
         try:
             got, assembly = sitting(conn, sid, get)
@@ -138,8 +156,10 @@ def recheck(conn, stats_, get=None):
 
 
 def sitting(conn, sid, get):
-    """Read one sitting and its files. -> (outcome, assembly): outcome is stored | unchanged | no-files | held |
-    invalid (the files do not add up; the reason is in ops.source_state).
+    """Read one sitting, its stenogram and its vote files. -> (outcome of the votes, assembly): stored | unchanged |
+    no-votes (the sitting has no vote file: before 07.2009, or none published) | no-files (vote files, none readable) |
+    held | invalid (the files do not add up; the reason is in ops.source_state). The stenogram is written apart
+    (steno()), whatever the votes are.
 
     Every CSV of the sitting is read and told apart by its content (parse.kind), not its name. The day is the
     content's too: the items of the file by group carry their date and must be of the sitting's day (a name can be
@@ -151,18 +171,32 @@ def sitting(conn, sid, get):
     s = parse.sitting(raw)
     if s["id"] != sid:
         raise parse.ShapeError(f"asked for sitting {sid}, got {s['id']}")
-    if s["assembly"] is None:
-        raise parse.ShapeError(f"the heading names no assembly: {s['heading'][:120]!r}")
-    conn.execute("""INSERT INTO live.sitting (id, date, assembly, heading) VALUES (%s,%s,%s,%s)
-                    ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, assembly = EXCLUDED.assembly,
-                    heading = EXCLUDED.heading""", (sid, s["date"], s["assembly"], s["heading"]))
-    found, why = {"gv": {}, "iv": {}}, []
+    with conn.transaction():
+        save_raw(conn, ref, "pl-sten.json", raw)
+        conn.execute("""INSERT INTO live.sitting (id, date, assembly, heading, video, pdf) VALUES (%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, assembly = coalesce(EXCLUDED.assembly, live.sitting.assembly),
+                        heading = EXCLUDED.heading, video = EXCLUDED.video, pdf = EXCLUDED.pdf""",
+                     (sid, s["date"], s["assembly"], s["heading"], s["video"] or None, s["pdf"]))
+        if s["assembly"] is None:
+            date_sittings(conn)
+        assembly = conn.execute("SELECT assembly FROM live.sitting WHERE id = %s", (sid,)).fetchone()[0]
+    why = []
+    try:
+        with conn.transaction():
+            steno(conn, sid, assembly, s["body"])
+    except parse.ShapeError as e:      # the votes do not wait for a stenogram we cannot read; it is said
+        why.append(f"стенограмата: {e}")
+    if not s["files"]:
+        state(conn, ref, status="no-votes", error="; ".join(why) or None, last_ok="now", rows=0)
+        return "no-votes", assembly
+    s["assembly"] = assembly
+    found = {"gv": {}, "iv": {}}
     for path in sorted(s["files"], reverse=True):              # the newest upload first (the name starts with its time)
         named = parse.file_date(path)
         if named not in (None, s["date"]):
             why.append(f"{path.rsplit('/', 1)[-1]}: името е за {named:%d.%m.%Y}")
-        body = get(SITE + urllib.parse.quote(path))
         try:
+            body = parse.sheet(get(SITE + urllib.parse.quote(path)))
             k = parse.kind(body) if body.strip() else None
         except parse.ShapeError as e:
             k, reason = None, str(e)
@@ -179,7 +213,7 @@ def sitting(conn, sid, get):
         found[k].setdefault(hashlib.sha256(body).hexdigest(), (path, body))
     if not (found["gv"] and found["iv"]):
         missing = " и ".join(x for x, k in (("по групи", "gv"), ("поименно", "iv")) if not found[k])
-        state(conn, ref, status="no-files", error="; ".join([f"няма файл {missing} в CSV", *why])[:2000], last_ok="now", rows=0)
+        state(conn, ref, status="no-files", error="; ".join([f"няма четим файл {missing}", *why])[:2000], last_ok="now", rows=0)
         return "no-files", s["assembly"]
     tried = []
     for gsha, (gpath, gv) in found["gv"].items():
@@ -208,20 +242,10 @@ def sitting(conn, sid, get):
         save_raw(conn, f"{ref}/iv", s["iv"].rsplit("/", 1)[-1], iv)
         n_items, n_votes = conn.execute("""SELECT (SELECT count(*) FROM live.item WHERE sitting = %s),
                                                   (SELECT count(*) FROM live.vote WHERE sitting = %s)""", (sid, sid)).fetchone()
-        if len(items) < n_items or len(votes) < n_votes:
-            held = conn.execute("SELECT sha256, first_at <= now() - %s FROM ops.held WHERE source = %s AND ref = %s",
-                                (CONFIRM_AFTER, SOURCE, ref)).fetchone()
-            if not held or held[0] != held_sha:
-                conn.execute("""INSERT INTO ops.held (source, ref, sha256, rows) VALUES (%s,%s,%s,%s) ON CONFLICT (source, ref)
-                                DO UPDATE SET sha256 = EXCLUDED.sha256, rows = EXCLUDED.rows, first_at = now()""",
-                             (SOURCE, ref, held_sha, len(votes)))
-                db.log_change(conn, SOURCE, ref, "votes", n_votes, len(votes), "held")
-                state(conn, ref, status="held", error=f"новите файлове имат {len(items)} точки и {len(votes)} гласа, "
-                                                       f"пазените {n_items} и {n_votes}")
-                return "held", s["assembly"]
-            if not held[1]:
-                return "held", s["assembly"]
-            db.log_change(conn, SOURCE, ref, "votes", n_votes, len(votes), "confirmed")
+        if (len(items) < n_items or len(votes) < n_votes) and hold(conn, ref, held_sha, len(votes), n_votes, len(votes)):
+            state(conn, ref, status="held", error=f"новите файлове имат {len(items)} точки и {len(votes)} гласа, "
+                                                   f"пазените {n_items} и {n_votes}")
+            return "held", s["assembly"]
         conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
         write(conn, sid, s["assembly"], items, votes, notes, logged=n_votes > 0)
         conn.execute("UPDATE live.sitting SET gv = %s, iv = %s, gv_sha = %s, iv_sha = %s, note = %s WHERE id = %s",
@@ -263,3 +287,58 @@ def write(conn, sid, assembly, items, votes, notes, logged):
     with conn.cursor().copy("COPY live.vote (sitting, item, mp, grp, code) FROM STDIN") as cp:
         for no, _, g, item, code in votes:
             cp.write_row((sid, item, no, g, code))
+
+
+def date_sittings(conn):
+    """The assembly of a sitting whose heading does not name it (before 2009): the last one begun by its day."""
+    conn.execute("""UPDATE live.sitting s SET assembly = (SELECT a.no FROM live.assembly a WHERE a.start <= s.date
+                                                           ORDER BY a.start DESC LIMIT 1)
+                    WHERE s.assembly IS NULL""")
+
+
+def steno(conn, sid, assembly, body):
+    """The stenogram speech by speech (parse.speeches), replaced when its text changes; one with fewer speeches than
+    ours waits for a second read. Not published yet (a notice instead): nothing. -> stored | unchanged | held | None."""
+    sp = parse.speeches(body)
+    if not sp:
+        return None
+    sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    old_sha, old_n = conn.execute("""SELECT steno_sha, (SELECT count(*) FROM live.speech WHERE sitting = %s)
+                                     FROM live.sitting WHERE id = %s""", (sid, sid)).fetchone()
+    if old_sha == sha:
+        return "unchanged"
+    ref = f"sten/{sid}/text"
+    if old_sha and len(sp) < old_n and hold(conn, ref, sha, len(sp), old_n, len(sp)):
+        return "held"
+    if old_sha:
+        db.log_change(conn, SOURCE, ref, "speeches", old_n, len(sp), "rewritten")
+    conn.execute("DELETE FROM live.speech WHERE sitting = %s", (sid,))
+    with conn.cursor().copy("COPY live.speech (sitting, no, role, name, note, grp, text) FROM STDIN") as cp:
+        for x in sp:
+            cp.write_row((sid, x["no"], x["role"], x["name"], x["note"], x["grp"], x["text"]))
+    conn.execute("UPDATE live.sitting SET steno_sha = %s WHERE id = %s", (sha, sid))
+    stats.link_speakers(conn, sitting=sid)
+    return "stored"
+
+
+def pdfs(conn, stats_, get=None, limit=0):
+    """Archive the scanned stenograms (before 1992) we have not archived: they are the only record of those sittings."""
+    get = get or http.get
+    todo = conn.execute("""SELECT s.id, s.pdf FROM live.sitting s WHERE s.pdf IS NOT NULL AND NOT EXISTS
+                             (SELECT 1 FROM ops.raw_file r WHERE r.source = %s AND r.ref = 'sten/' || s.id || '/pdf')
+                           ORDER BY s.date""" + (" LIMIT %s" % int(limit) if limit else ""), (SOURCE,)).fetchall()
+    n, size, problems = 0, 0, []
+    for sid, path in todo:
+        try:
+            raw = get(SITE + urllib.parse.quote(path))
+        except http.Gone as e:
+            problems.append(f"Парламент: сканираната стенограма на {sid}: {e}")
+            continue
+        if raw[:4] != b"%PDF":
+            problems.append(f"Парламент: сканираната стенограма на {sid} не е PDF")
+            continue
+        with conn.transaction():
+            save_raw(conn, f"sten/{sid}/pdf", path.rsplit("/", 1)[-1], raw)
+        n, size = n + 1, size + len(raw)
+    stats_.update(archived=n, bytes=size, left=len(todo) - n, problems=problems)
+    return stats_
