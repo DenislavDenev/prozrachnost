@@ -8,6 +8,8 @@ DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 
 USER_AGENT = "Prozrachnost/ikonomika (+https://github.com/DenislavDenev/prozrachnost)"
 EUROSTAT = os.environ.get("EUROSTAT_API", "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data")
+ECB = os.environ.get("ECB_API", "https://data-api.ecb.europa.eu/service/data")
+EGOV = os.environ.get("EGOV_API", "https://data.egov.bg/api")
 BNB = os.environ.get("BNB_FX", "https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm")
 PAUSE = float(os.environ.get("IKONOMIKA_PAUSE", "2"))  # seconds between two requests to the same source
 

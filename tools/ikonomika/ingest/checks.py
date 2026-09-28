@@ -113,13 +113,14 @@ def eurostat(parsed):
 
 
 def freshness(conn, indicators):
-    """[problems] now: an indicator not read in two days, not ok, held over a day, or without a new period
-    for longer than its stale_days; the exchange rates older than 5 days or their last read not ok."""
+    """[problems] now: an indicator not read in `read_days` (2 unless it says so), not ok, held over a day, or
+    without a new period for longer than its stale_days; the exchange rates older than 5 days or their last read
+    not ok. An indicator's state is under its source (`source`, Eurostat when not given)."""
     bad = []
-    st = {r[0]: r[1:] for r in conn.execute(
-        """SELECT ref, status, error, last_ok, last_new_period FROM ops.source_state WHERE source = 'eurostat'""")}
+    st = {(r[0], r[1]): r[2:] for r in conn.execute(
+        """SELECT source, ref, status, error, last_ok, last_new_period FROM ops.source_state""")}
     for ind in indicators:
-        s = st.get(ind["id"])
+        s = st.get((ind.get("source", "eurostat"), ind["id"]))
         if not s:
             bad.append(f"Икономика: {ind['id']} още не е четен")
             continue
@@ -129,7 +130,8 @@ def freshness(conn, indicators):
         stale = conn.execute("SELECT %s < now() - make_interval(days => %s)", (last_new, int(ind["stale_days"]))).fetchone()[0]
         if stale:
             bad.append(f"Икономика: {ind['id']} няма нов период от {last_new:%d.%m.%Y}")
-        late = conn.execute("SELECT %s IS NULL OR %s < now() - interval '2 days'", (last_ok, last_ok)).fetchone()[0]
+        late = conn.execute("SELECT %s IS NULL OR %s < now() - make_interval(days => %s)",
+                            (last_ok, last_ok, int(ind.get("read_days", 2)))).fetchone()[0]
         if late:
             bad.append(f"Икономика: {ind['id']} не е четен успешно от {last_ok:%d.%m.%Y}" if last_ok else
                        f"Икономика: {ind['id']} не е четен успешно")
