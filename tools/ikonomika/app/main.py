@@ -27,7 +27,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "6"
+ASSET_V = "7"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -248,12 +248,12 @@ def inflation_panels(month):
     return [
         bars("hicp_w", f"Какво движи инфлацията{', ' + fperiod(month) if month else ''}",
              "принос на всяка група към годишната инфлация, процентни пункта (теглото ѝ по промяната на цените ѝ)", items, digits=2,
-             note=note, cls="s12"),
+             note=note),
         chart("ppi", "Цени на производител", "промишленост, % спрямо година по-рано; идват преди цените в магазина",
               chips=("nace_r2", ["B-E36", "MIG_NRG", "MIG_ING", "MIG_COG", "C10-C12"]), picked=["B-E36", "MIG_NRG", "C10-C12"],
-              s_adj="NSA", unit="PCH_SM", zero=True, cls="s12"),
+              s_adj="NSA", unit="PCH_SM", zero=True),
         chart("elec", "Цена на тока за домакинствата", "€ за 1 kWh с данъците, 2 500-4 999 kWh на година, по полугодия", digits=4,
-              geo=f"BG,EU27_2020,{euro_area('elec')}", tax="I_TAX", currency="EUR", more=("В ЕС →", "/es?p=tok"), cls="s12"),
+              geo=f"BG,EU27_2020,{euro_area('elec')}", tax="I_TAX", currency="EUR", more=("В ЕС →", "/es?p=tok")),
     ]
 
 
@@ -457,9 +457,11 @@ def money(request: Request, code: str = "USD"):
 # ---------- the tabs made of panels (templates/_panels.html) ----------
 
 MAX_PICKED = 3   # on when a chart opens: at most 3 lines, the rest are buttons (AGENTS.md 7)
+# a panel is full width, one under another: a chart with buttons beside another looks cluttered (AGENTS.md 7); only
+# 2/3 + 1/3 (a chart and a list, as on Пари and Карта), the ranking beside its chart (ЕС) and Табло share a row
 
 
-def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s6", zero=False, tall=False, more=None, **dims):
+def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s12", zero=False, tall=False, more=None, **dims):
     """A line chart over /api/<ind>.json. chips=(dimension, [codes]): buttons that pick the series, `picked` on."""
     ch = None
     if chips:
@@ -477,7 +479,7 @@ def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s6"
             "chips": ch, "cls": cls, "zero": zero, "tall": tall, "more": more}
 
 
-def bars(ind, title, sub, items, digits=1, cls="s6", more=None, note=None):
+def bars(ind, title, sub, items, digits=1, cls="s12", more=None, note=None):
     """Horizontal bars of (name, value, css class): the longest first, a value that is missing is "няма данни"."""
     vals = [float(v) for _, v, _ in items if v is not None]
     lo, hi = (min(0.0, *vals), max(0.0, *vals)) if vals else (0.0, 1.0)
@@ -521,7 +523,7 @@ def growth(request: Request):
               chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G"],
               unit="CLV_PCH_PRE", zero=True),
         chart("gva", "Добавена стойност по отрасли", "% от общата добавена стойност, по текущи цени",
-              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "J"], unit="PC_TOT", cls="s12"),
+              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "J"], unit="PC_TOT"),
         chart("ind_prod", "Промишлено производство", "индекс, 2021 = 100, сезонно и календарно изгладен",
               geo=euro("ind_prod"), nace_r2="B-D", s_adj="SCA", unit="I21"),
         chart("ind_prod", "Промишленост по вид продукция", "% спрямо година по-рано, календарно изгладено",
@@ -540,7 +542,7 @@ def growth(request: Request):
               chips=("indic", ["BS-ICI-BAL", "BS-SCI-BAL", "BS-RCI-BAL", "BS-CCI-BAL", "BS-CSMCI-BAL"]),
               picked=["BS-ICI-BAL", "BS-RCI-BAL", "BS-CSMCI-BAL"], zero=True),
         chart("tourism", "Нощувки в хотелите и другите места за настаняване", "брой нощувки на месец",
-              chips=("c_resid", ["TOTAL", "DOM", "FOR"]), picked=["DOM", "FOR"], nace_r2="I551-I553", unit="NR", digits=0, cls="s12"),
+              chips=("c_resid", ["TOTAL", "DOM", "FOR"]), picked=["DOM", "FOR"], nace_r2="I551-I553", unit="NR", digits=0),
     ]
     return tab(request, "Растеж", "Растеж", lede, panels)
 
@@ -570,7 +572,7 @@ def jobs(request: Request):
         chart("unemp_bg", "Безработица при мъжете и жените", "% от работната сила, месечно, сезонно изгладена",
               chips=("sex", ["T", "M", "F"]), age="TOTAL", unit="PC_ACT"),
         chart("emp_ind", "Заети по отрасли", "хил. души, тримесечно, сезонно изгладено",
-              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "O-Q"], unit="THS_PER", cls="s12", tall=True),
+              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "O-Q"], unit="THS_PER", tall=True),
         region_bars("emp_reg", "Заетост по райони", "% от хората от 20 до 64 години", sex="T", age="Y20-64")
         | {"more": ("На картата →", "/karta?m=EMP&o=bg&l=rayoni")},
         region_bars("unemp_reg", "Безработица по райони", "% от работната сила", age="Y15-74")
@@ -668,7 +670,7 @@ def external(request: Request):
                     ca and f"Текущата сметка за {fperiod(ca[0])} е {fnum(ca[1], 0)} млн. € (минусът е дефицит).") or "Още няма данни."
     panels = [
         chart("trade_m", "Износ и внос на стоки", "млн. € на месец", chips=("stk_flow", ["EXP", "IMP", "BAL_RT"]), picked=["EXP", "IMP"],
-              partner="WORLD", bclas_bec="TOTAL", indic_et="TRD_VAL", digits=0, cls="s12"),
+              partner="WORLD", bclas_bec="TOTAL", indic_et="TRD_VAL", digits=0),
         chart("trade_m", "Износ към ЕС и извън ЕС", "млн. € на месец", chips=("partner", ["EU27_2020", "EXT_EU27_2020"]),
               stk_flow="EXP", bclas_bec="TOTAL", indic_et="TRD_VAL", digits=0),
         chart("trade_m", "Внос по вид стоки", "млн. € на месец", chips=("bclas_bec", ["INT", "CAP", "CONS"]),
@@ -676,9 +678,9 @@ def external(request: Request):
         sitc_bars("MIO_EXP_VAL", "Износ по стокови групи"),
         sitc_bars("MIO_IMP_VAL", "Внос по стокови групи"),
         chart("bop", "Текуща сметка", "млн. € на тримесечие; минусът е дефицит",
-              chips=("bop_item", ["CA", "G", "S", "IN1", "IN2", "KA"]), picked=["CA", "G", "S"], stk_flow="BAL", digits=0, zero=True, cls="s12"),
+              chips=("bop_item", ["CA", "G", "S", "IN1", "IN2", "KA"]), picked=["CA", "G", "S"], stk_flow="BAL", digits=0, zero=True),
         chart("bop", "Преки инвестиции, потоци", "млн. € на тримесечие: в България (пасиви) и от България (активи)",
-              chips=("stk_flow", ["LIAB", "ASS"]), bop_item="FA__D__F", digits=0, zero=True, cls="s12"),
+              chips=("stk_flow", ["LIAB", "ASS"]), bop_item="FA__D__F", digits=0, zero=True),
         # the positions: in Bulgaria is a liability of the country, abroad an asset; the other two are reverse investment
         chart("fdi", "Натрупани преки инвестиции в България", "млн. € в края на годината", nace_r2="FDI", fdi_item="DI__D__F",
               stk_flow="LIAB", digits=0),
@@ -698,7 +700,7 @@ def money_panels():
         chart("bank", "Кредити и депозити в банките", "млн. €, в края на месеца", digits=0,
               chips=("series", ["loans_hh", "loans_nfc", "dep_hh", "dep_nfc"]), picked=["loans_hh", "loans_nfc", "dep_hh"]),
         chart("mm_rate", "Лихви на междубанковия пазар", "% годишно, 3 месеца", digits=2,
-              geo=f"BG,{euro_area('mm_rate')}", int_rt="IRT_M3", cls="s12"),
+              geo=f"BG,{euro_area('mm_rate')}", int_rt="IRT_M3"),
     ]
 
 
