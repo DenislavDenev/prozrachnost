@@ -5,9 +5,9 @@
 {% block main %}
 <h1>Икономиката на България в числа</h1>
 <p class="lede">
-{% if k.hicp %}През {{ k.hicp[0] | period }} цените са с <b>{{ k.hicp[1] | num }}%</b> по-високи от година по-рано{% if k.hicp_eu is not none %} (в ЕС: {{ k.hicp_eu | num }}%){% endif %}.{% endif %}
-{% if k.gdp %}БВП за {{ k.gdp[0] }} г. е <b>{{ (k.gdp[1] / 1000) | num }} млрд. €</b>{% if k.gdp_growth[0] is not none %}, реален ръст {{ k.gdp_growth[0] | num }}%{% endif %}{% if k.gdp[2] %} ({{ k.gdp[2] | flag }}){% endif %}.{% endif %}
-{% if k.unemp %}Безработицата е {{ k.unemp[1] | num }}% ({{ k.unemp[0] | period }}){% endif %}{% if k.debt %}, а държавният дълг {{ k.debt[1] | num }}% от БВП ({{ k.debt[0] }}){% endif %}.
+{% if k.hicp %}През {{ k.hicp[0] | period }} цените са с <b>{{ k.hicp[1] | num }}%</b> по-високи от година по-рано{% if k.hicp_eu is not none %} (в ЕС: <b>{{ k.hicp_eu | num }}%</b>){% endif %}.{% endif %}
+{% if k.gdp %}БВП за {{ k.gdp[0] }} г. е <b>{{ k.gdp[1] | money }}</b>{% if k.gdp_growth[0] is not none %}, реален ръст <b>{{ k.gdp_growth[0] | num }}%</b>{% endif %}{% if k.gdp[2] %} ({{ k.gdp[2] | flag }}){% endif %}.{% endif %}
+{% if k.unemp %}Безработицата е <b>{{ k.unemp[1] | num }}%</b> ({{ k.unemp[0] | period }}){% endif %}{% if k.debt %}, а държавният дълг <b>{{ k.debt[1] | num }}% от БВП</b> ({{ k.debt[0] }}){% endif %}.
 </p>
 <p class="asof">Всяко число е от Eurostat (данните на НСИ, изпратени по общите правила на ЕС) или от БНБ, с дата и връзка към източника.</p>
 
