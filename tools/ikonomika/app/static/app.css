@@ -106,23 +106,31 @@ th.n .sort { flex-direction: row-reverse; }
 .hb .r.bg .tr i { background: var(--accent); } .hb .r.eu .tr i { background: var(--eu); } .hb .r.ea .tr i { background: var(--ea); }
 .hb .v { text-align: right; white-space: nowrap; }
 
-/* map */
-.map svg { width: 100%; height: auto; display: block; }
-.map path { stroke: #fff; stroke-width: 1.2; }
-.map path.none { fill: var(--line-2); }
-.map.eu path { stroke-width: .35; } .map.eu path.bg { stroke: var(--ink); stroke-width: .9; }   /* Europe: fine borders, Bulgaria outlined */
-/* the list beside the map fits its panel: headers and names wrap */
+/* the interactive map (static/karta.js, AGENTS.md 7): lines keep their width at any zoom */
+.mapbox { position: relative; margin-top: 10px; }
+.mapbox svg { display: block; width: 100%; height: auto; cursor: grab; user-select: none; touch-action: pan-x pan-y; }
+.mapbox svg.drag { cursor: grabbing; } .mapbox svg.flying { pointer-events: none; }
+.mapbox path { vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.world path { fill: var(--line-2); stroke: #fff; stroke-width: .6; } .world path.far { fill: #f4f5f7; }
+.world.inbg path[data-code="BG"] { fill: none; stroke: none; }
+.layers path { stroke: #fff; stroke-width: .6; transition: fill .4s; cursor: pointer; }
+.layers path:hover, .layers path.hov, .world path.ctx:hover { stroke: var(--ink); stroke-width: 1.6; }
+.layers path.bg { stroke: var(--ink-3); }
+.borders path { fill: none; stroke: rgba(18, 20, 23, .42); stroke-width: .8; pointer-events: none; }
+.borders path.bgline { stroke: var(--ink-2); stroke-width: 1.2; }
+/* the selection: its borders drawn clearly on top of everything, a white halo under a dark line */
+.top path { fill: none; pointer-events: none; } .top .halo { stroke: #fff; stroke-width: 5; } .top .line { stroke: var(--ink); stroke-width: 2.4; }
+.zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.zoom button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; color: var(--ink-2);
+  font: 600 18px/1 var(--font-body); cursor: pointer; } .zoom button:hover { color: var(--ink); border-color: var(--ink-4); }
+.tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 6px 10px; font-size: 13px; line-height: 1.4; max-width: 280px; }
+/* the list beside the map: as tall as it, scrolled inside; headers and names wrap; the selected row is marked */
 .places th.n { white-space: normal; } .places th, .places td { padding-right: 8px; } .places td:first-child { overflow-wrap: anywhere; }
-.map a:focus-visible path, .map a:hover path { stroke: var(--ink); stroke-width: 2; }
-/* the map's scale: one continuous gradient from the lowest to the highest value (as on the Тендер map) */
-.mkey { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 28px; margin: 14px 0 6px; font-size: 13px; color: var(--ink-2); }
-.mkey .grad { position: relative; width: min(360px, 100%); height: 34px; }
-.mkey .grad .bar { height: 10px; border-radius: 2px; }
-.mkey .grad span { position: absolute; top: 14px; transform: translateX(-50%); white-space: nowrap; }
-.mkey .grad span.a { transform: none; } .mkey .grad span.z { transform: translateX(-100%); }
-.mkey .grad span::before { content: ""; position: absolute; top: -6px; left: 50%; width: 1px; height: 5px; background: var(--ink-3); }
-.mkey .grad span.a::before { left: 0; } .mkey .grad span.z::before { left: auto; right: 0; }
-.mkey div { display: flex; align-items: center; gap: 6px; } .mkey em { width: 14px; height: 10px; border-radius: 2px; }
+.places thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.places tr[data-code] { cursor: pointer; } .places tr[data-code]:hover td { background: var(--surface-2); }
+.places tr.sel td { background: var(--accent-soft); box-shadow: inset 0 -1px var(--accent); }
+@media (max-width: 1080px) { .places .box { min-height: 420px; } }
 
 .prose { max-width: 72ch; font-size: 16.5px; } .prose h2 { margin: 28px 0 8px; } .prose li { margin: 4px 0; }
 .dl { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 6px 16px; margin: 0; font-size: 14.5px; }

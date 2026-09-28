@@ -1,34 +1,33 @@
 {% extends "base.html" %}
 {% block title %}Карта{% endblock %}
 {% block main %}
-<h1>{{ title }} по {{ plural | lower }}{% if o == 'eu' %} в Европа{% endif %}</h1>
-<p class="lede">{% if y %}През {{ y }} г.{% if bg is not none %} за България: <b>{{ bg | num(digits) }} {{ unit }}</b>.{% endif %}
-  {% if src.updated %}Регионалните сметки излизат около 14 месеца след края на годината: данните за {{ y }} г. са публикувани от Eurostat на {{ src.updated | date }}.{% endif %}{% else %}Още няма данни.{% endif %}</p>
+<h1 id="k-title">{{ d.title }} по {{ d.plural | lower }}{% if d.o == 'eu' %} в Европа{% endif %}</h1>
+<p class="lede" id="k-lede"></p>
 
-<form class="ctl" method="get">
-  <div class="tabs" role="group" aria-label="Обхват">{% for k, sc in scopes.items() %}<a href="/karta?m={{ m }}&o={{ k }}" {% if k == o %}aria-current="page"{% endif %}>{{ sc[0] }}</a>{% endfor %}</div>
-  <div class="tabs" role="group" aria-label="Ниво">{% for k, lv in levels.items() %}<a href="/karta?m={{ m }}&o={{ o }}&l={{ k }}" {% if k == l %}aria-current="page"{% endif %}>{{ lv[0] }}</a>{% endfor %}</div>
-  <div class="tabs" role="group" aria-label="Показател">{% for k, mm in measures.items() %}<a href="/karta?m={{ k }}&o={{ o }}&l={{ l }}" {% if k == m %}aria-current="page"{% endif %}>{{ mm[1] }}</a>{% endfor %}</div>
-  <input type="hidden" name="m" value="{{ m }}"><input type="hidden" name="o" value="{{ o }}"><input type="hidden" name="l" value="{{ l }}">
-  <label>Година <select name="y" onchange="this.form.submit()">{% for yy in years %}<option {{ 'selected' if yy == y }}>{{ yy }}</option>{% endfor %}</select></label>
-  <noscript><button type="submit">Покажи</button></noscript>
-</form>
+<div class="ctl" id="k-ctl">
+  <div class="tabs" role="group" aria-label="Обхват" id="k-scope">{% for k, sc in scopes.items() %}<a href="/karta?m={{ d.m }}&o={{ k }}" data-o="{{ k }}" {% if k == d.o %}aria-current="page"{% endif %}>{{ sc[0] }}</a>{% endfor %}</div>
+  <div class="tabs" role="group" aria-label="Ниво" id="k-level">{% for k, lv in scopes[d.o][1].items() %}<a href="/karta?m={{ d.m }}&o={{ d.o }}&l={{ k }}" data-l="{{ k }}" {% if k == d.l %}aria-current="page"{% endif %}>{{ lv[0] }}</a>{% endfor %}</div>
+  <div class="tabs" role="group" aria-label="Показател" id="k-measure">{% for k, mm in measures.items() %}<a href="/karta?m={{ k }}&o={{ d.o }}&l={{ d.l }}" data-m="{{ k }}" {% if k == d.m %}aria-current="page"{% endif %}>{{ mm[1] }}</a>{% endfor %}</div>
+  <label>Година <select id="k-year">{% for yy in d.years %}<option {{ 'selected' if yy == d.y }}>{{ yy }}</option>{% endfor %}</select></label>
+</div>
 
 <div class="grid">
-  <section class="p s8 map stick {{ o }}"><h2>{{ title }}{% if y %}, {{ y }}{% endif %}</h2><div class="sub">{{ unit }}</div>
-    <svg viewBox="-6 -6 1012 {{ h + 12 }}" role="img" aria-label="Карта по {{ plural | lower }}: {{ title }}{% if y %}, {{ y }}{% endif %}">
-    {% for r in table %}<a href="#a-{{ r.code }}"><path d="{{ shapes[r.code] }}" class="{{ 'none' if r.fill is none }}{{ ' bg' if r.bg }}"{% if r.fill is not none %} style="fill:{{ r.fill }}"{% endif %}><title>{{ r.name }}: {{ r.v | num(digits) }} {{ unit }}</title></path></a>{% endfor %}
-    </svg>
-    <div class="mkey">{% if ticks %}<div class="grad"><div class="bar" style="background:linear-gradient(90deg, {{ grad[0] }}, {{ grad[1] }})"></div>
-      {% for v, c in ticks %}<span class="{{ c }}" style="left:{{ 0 if c == 'a' else 100 }}%">{{ v | num(digits) }}</span>{% endfor %}</div>{% endif %}
-      <div><em style="background:var(--line-2)"></em>няма данни</div></div>
-    <div class="src">Eurostat · <a href="{{ src.url }}" rel="noopener">{{ src.dataset }}</a> · <a href="/csv/{{ 'pop_nuts' if m == 'THS' else 'gdp_nuts' }}.csv">CSV</a> ·
-      {% if o == 'eu' %}© EuroGeographics за административните граници (Eurostat GISCO){% else %}граници: geoBoundaries, обществено достояние{% endif %}</div></section>
+  <section class="p s8 map" id="k-map"><h2 id="k-h2">{{ d.title }}{% if d.y %}, {{ d.y }}{% endif %}</h2><div class="sub" id="k-unit">{{ d.unit }}</div>
+    <div class="mapbox">
+      <svg id="k-svg" role="img" aria-label="Карта: {{ d.title }}"><g class="world"></g><g class="layers"></g><g class="borders"></g><g class="top"></g></svg>
+      <div class="zoom" role="group" aria-label="Мащаб"><button type="button" data-z="in" title="Приближи" aria-label="Приближи">+</button><button type="button" data-z="out" title="Отдалечи" aria-label="Отдалечи">−</button><button type="button" data-z="home" title="Цялата карта" aria-label="Цялата карта">⤢</button></div>
+      <div class="tip" id="k-tip" hidden></div>
+      <noscript><p class="mut">Картата има нужда от JavaScript; данните са в <a class="l" href="{{ d.csv }}">CSV</a>.</p></noscript>
+    </div>
+    <div class="src">Eurostat · <a id="k-ds" href="{{ d.url }}" rel="noopener">{{ d.dataset }}</a> · <a id="k-csv" href="{{ d.csv }}">CSV</a> · © EuroGeographics за административните граници (Eurostat GISCO) · влачи, за да местиш; Ctrl + колелото или два пръста приближават</div></section>
 
-  <section class="p s4 places"><h2>{{ plural }}</h2>
-    <table class="sortable" style="margin-top:12px"><thead><tr><th>{{ single }}</th><th class="n">{{ y or "" }}</th><th class="n">Промяна от {{ base or "" }}, %</th><th class="n">Място</th></tr></thead><tbody>
-    {% for r in table %}<tr id="a-{{ r.code }}"{% if r.bg %} class="hl"{% endif %}><td>{{ r.name }}</td><td class="n" data-v="{{ r.v if r.v is not none else '' }}">{{ r.v | num(digits) }}</td>
-      <td class="n" data-v="{{ r.change if r.change is not none else '' }}">{{ r.change | num }}</td><td class="n">{{ r.rank or '' }}</td></tr>{% endfor %}
-    </tbody></table></section>
+  <section class="p s4 fill places"><div class="tools"><h2 id="k-plural">{{ d.plural }}</h2>
+    <input type="search" placeholder="Търси" aria-label="Търси място" data-filter="k-list"></div>
+    <div class="box"><div class="scroll" id="k-box" tabindex="0" aria-label="Списък на местата">
+    <table class="sortable" id="k-list"><thead><tr><th><span id="k-h-name">{{ d.single }}</span></th><th class="n"><span id="k-h-y">{{ d.y or "" }}</span></th>
+      <th class="n"><span id="k-h-base">Промяна от {{ d.base or "" }}, %</span></th><th class="n">Място</th></tr></thead><tbody></tbody></table>
+    </div></div></section>
 </div>
+<script id="k-data" type="application/json">{{ d | tojson }}</script>
 {% endblock %}
+{% block scripts %}<script src="/static/karta.js?v={{ v }}"></script>{% endblock %}

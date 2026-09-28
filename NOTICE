@@ -34,6 +34,7 @@ SOFTWARE.
 
 Bundled fonts and libraries keep their own licenses, next to them in each static/ folder.
 
-tools/ikonomika/app/static/europe.json holds the NUTS 2024 outlines of Eurostat GISCO: © EuroGeographics for the
-administrative boundaries. They are not covered by the licences above: GISCO allows their use only for
-non-commercial purposes and with that credit, which applies also to the maps of Europe drawn from them.
+tools/ikonomika/app/static/europe.json holds the outlines of Eurostat GISCO (NUTS 2024 and the countries of 2024):
+© EuroGeographics for the administrative boundaries. They are not covered by the licences above: GISCO allows
+their use only for non-commercial purposes and with that credit, which applies also to every map of Икономика
+(Bulgaria and Europe) drawn from them.
