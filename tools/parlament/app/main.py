@@ -222,6 +222,9 @@ def vote_page(request: Request, sitting: int, no: int):
     seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
                  JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
                  WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""", sitting, no)
+    rank = {g: i for i, (g, _) in enumerate(seats_at(sitting))}
+    seats.sort(key=lambda r: (rank.get(r[2], len(rank)), r[2]))   # the groups in the Assembly's order, as in the hall
+    groups.sort(key=lambda r: (rank.get(r[0], len(rank)), r[0]))
     return page(request, "vote.html", "Гласувания", v=v, s=s, groups=groups, against=against, names=group_names(v["assembly"]), seats=seats,
                 prev=next((n for n, in nav if n < no), None), next=next((n for n, in nav if n > no), None), same_day=same_day)
 

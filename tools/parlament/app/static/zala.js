@@ -3,8 +3,9 @@
 const VOTE = { '+': '#0b7a5e', '-': '#b0413e', '=': '#6b7a8c', '0': '#d5d9de' };
 const VNAME = { '+': 'за', '-': 'против', '=': 'въздържал се', '0': 'не гласувал' };
 const ORDER = ['+', '=', '-', '0'];
-// the groups in quiet tones, never a party's colour: the hall shows who sits where, the vote shows how they voted
-const TONES = ['#2f3b4a', '#9aa4b0', '#56637a', '#c5cbd3', '#434e5e', '#7d8896', '#b0b8c2', '#687587'];
+// the groups in the order the Assembly lists them, in the palette of every tool: never a party's colour, never
+// blue or yellow (the EU and the euro area), never green or red (for and against in a vote)
+const TONES = ['#121417', '#8a5cb8', '#c2587a', '#7a8b2c', '#5b6b7f', '#2a9d8f', '#8d6e63', '#9aa1aa'];
 const EMPTY = '#eceef1';
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fmt = (v) => v.toLocaleString('bg-BG');
@@ -32,12 +33,14 @@ function layout(n) {
   return { seats, size: gap * 0.42 };
 }
 
-function svgHall(el, n) {
+// labels: [[first seat, last seat, text]] written outside the arc over the wedge of those seats
+function svgHall(el, n, labels = []) {
   const { seats, size } = layout(n);
-  const pad = size * 1.3, W = 2 + 2 * pad, H = 1 + 2 * pad;
+  const pad = size * 1.3, top = labels.length ? 0.16 : pad, side = labels.length ? 0.34 : pad;
+  const W = 2 + 2 * side, H = 1 + top + pad;
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', `${-1 - pad} ${-1 - pad} ${W} ${H}`);
+  svg.setAttribute('viewBox', `${-1 - side} ${-1 - top} ${W} ${H}`);
   const circles = seats.map((s) => {
     const c = document.createElementNS(ns, 'circle');
     c.setAttribute('cx', s.x.toFixed(4)); c.setAttribute('cy', (-s.y).toFixed(4)); c.setAttribute('r', size.toFixed(4));
@@ -45,12 +48,23 @@ function svgHall(el, n) {
     svg.append(c);
     return c;
   });
-  const center = document.createElementNS(ns, 'text');
-  center.setAttribute('class', 'center'); center.setAttribute('text-anchor', 'middle'); center.setAttribute('y', '-0.04');
-  center.setAttribute('font-size', '0.2');
-  svg.append(center);
+  // in the middle: the number, and under it what it counts
+  const text = (y, size, cls) => {
+    const t = document.createElementNS(ns, 'text');
+    t.setAttribute('class', cls); t.setAttribute('text-anchor', 'middle'); t.setAttribute('y', y); t.setAttribute('font-size', size);
+    svg.append(t);
+    return t;
+  };
+  const num = text('-0.1', '0.15', 'center'), what = text('-0.02', '0.052', 'center-t');
+  labels.forEach(([a, b, t]) => {
+    const mid = (seats[a].a + seats[b].a) / 2, r = 1 + pad + 0.03;
+    const l = text((-(r * Math.sin(mid))).toFixed(3), '0.045', 'glabel');
+    l.setAttribute('x', (r * Math.cos(mid)).toFixed(3));
+    l.setAttribute('text-anchor', Math.cos(mid) > 0.3 ? 'start' : Math.cos(mid) < -0.3 ? 'end' : 'middle');
+    l.textContent = t;
+  });
   el.prepend(svg);
-  return { svg, circles, center };
+  return { svg, circles, center: { set textContent(v) { const [a, ...b] = v.split(' '); num.textContent = a; what.textContent = b.join(' '); } } };
 }
 
 function tip(el) {
@@ -85,7 +99,7 @@ function play(circles, colors, counts) {
 
 function whenSeen(el, fn) {
   if (!('IntersectionObserver' in window)) { fn(); return; }
-  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fn(); } }, { threshold: 0.3 });
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fn(); } }, { threshold: 0.12 });
   io.observe(el);
 }
 
@@ -94,7 +108,9 @@ async function voteHall(el) {
   const j = await (await fetch(el.dataset.vote)).json();
   const rank = new Map(j.groups.map((g, i) => [g, i]));
   const seats = [...j.seats].sort((a, b) => (rank.get(a.grp) - rank.get(b.grp)) || (ORDER.indexOf(a.code) - ORDER.indexOf(b.code)) || a.name.localeCompare(b.name, 'bg'));
-  const { circles, center } = svgHall(el, seats.length);
+  const labels = [];
+  seats.forEach((s, i) => { if (!i || seats[i - 1].grp !== s.grp) labels.push([i, i, s.grp]); else labels[labels.length - 1][1] = i; });
+  const { circles, center } = svgHall(el, seats.length, labels);
   center.textContent = `${fmt(j.totals.voted)} гласували`;
   const tp = tip(el);
   circles.forEach((c, i) => {
