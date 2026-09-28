@@ -174,6 +174,8 @@ def test_an_empty_code_is_an_mp_not_on_the_list_for_that_item():
     ("ЧЕТИРИДЕСЕТ И СЕДМО НАРОДНО СЪБРАНИЕ\r\n\r\nЧЕТВЪРТО ИЗВЪНРЕДНО ЗАСЕДАНИЕ", 47),
     ("ПЕТДЕСЕТО НАРОДНО СЪБРАНИЕ", 50),
     ("Чeтиридесет и шесто Народно събрание", 46),                              # a Latin e, as on the site
+    ("Тридесет и девето Народно събрание", 39),        # fn-assembly/bg names the 39th and 40th so
+    ("Четиридесето Народно събрание", 40),
     ("ЗАСЕДАНИЕ", None),
 ])
 def test_the_assembly_is_read_from_the_heading(heading, no):
