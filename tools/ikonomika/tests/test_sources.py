@@ -253,6 +253,19 @@ def test_ecb_refuses_a_page_another_series_and_text():
         ecb.parse(ecb_raw(key).replace(b",2.46,", b",n/a,", 1), key)
 
 
+def test_ecb_weighted_average_of_the_parts_is_the_published_total():
+    query, total_key = "M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N", "MIR.M.BG.B.A2C.A.R.A.2250.BGN.N"
+    parts = ecb.parse_many(ecb_raw(f"MIR.{query}"))
+    assert len(parts) == 8 and all(ecb.matches(k, query) for k in parts) and not ecb.matches(total_key, query)
+    avg = ecb.weighted(parts)
+    total = {t: v for t, v, _ in ecb.parse(ecb_raw(total_key), total_key)}
+    assert min(avg) == "2007-01" and avg["2007-01"] == 8.5
+    assert len(total) == 101 and max(abs(avg[t] - v) for t, v in total.items()) < 0.011    # 2017-08..2025-12
+    fr = "MIR.M.BG.B.A2C.F.R.A.2250.BGN.N"
+    with pytest.raises(jsonstat.ShapeError, match="F 2010-01: an amount without its rate"):
+        ecb.weighted({**parts, fr: [p for p in parts[fr] if p[0] != "2010-01"]})
+
+
 def test_ecb_series_have_no_gaps_and_overnight_is_part_of_all_deposits():
     rows = []
     for code, key in (("dep_hh", "BSI.M.BG.N.A.L20.A.1.U2.2250.Z01.E"), ("dep_hh_on", "BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E")):

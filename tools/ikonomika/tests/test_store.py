@@ -6,6 +6,7 @@ Runs only when IKONOMIKA_TEST_DSN points at a disposable database (it is wiped):
 import datetime as dt
 import hashlib
 import os
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -221,7 +222,7 @@ def test_ecb_step_writes_both_places_checks_and_keeps_what_fails(conn, monkeypat
     monkeypatch.setattr(ecb, "SERIES", [s for s in ecb.SERIES if s[3] == "housing" and s[0] == "rates"]
                         + [s for s in ecb.SERIES if s[0] == "bank" and s[3] in ("dep_hh", "dep_hh_on")])
     files = {k: ecb_fixture(k) for k in ("MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N", "MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N",
-                                         "MIR.M.BG.B.A2C.A.R.A.2250.BGN.N",
+                                         "MIR.M.BG.B.A2C.A.R.A.2250.BGN.N", "MIR.M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N",
                                          "BSI.M.BG.N.A.L20.A.1.U2.2250.Z01.E", "BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E")}
     # a month before the euro, as the ECB has it for some series: euro loans only, so it must not be kept
     head, first, *rest = files["MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N"].decode("utf-8").splitlines(keepends=True)
@@ -237,15 +238,24 @@ def test_ecb_step_writes_both_places_checks_and_keeps_what_fails(conn, monkeypat
     stats = ecb.load(conn, {}, get=get)
     assert stats["indicators"] == {"rates": "stored", "bank": "stored"} and stats["problems"] == []
     assert conn.execute("SELECT count(DISTINCT geo) FROM live.series WHERE indicator = 'rates'").fetchone()[0] == 2   # BG and EA
-    # Bulgaria: in leva until 2025-12 (from 2017-08), in euro from 2026-01; the euro series' 2025-12 (euro loans only) is dropped
+    # Bulgaria: in euro from 2026-01; in leva until 2025-12, the published total from 2017-08 and before it the average
+    # of its parts weighted by the amounts (from 2007); the euro series' 2025-12 (euro loans only) is dropped
     q = "SELECT value::float8 FROM live.series WHERE indicator = 'rates' AND geo = 'BG' AND time = %s"
-    assert conn.execute("SELECT min(time) FROM live.series WHERE indicator = 'rates' AND geo = 'BG'").fetchone()[0] == "2017-08"
+    assert conn.execute("SELECT min(time) FROM live.series WHERE indicator = 'rates' AND geo = 'BG'").fetchone()[0] == "2007-01"
+    assert conn.execute(q, ("2007-01",)).fetchone()[0] == 8.5 and conn.execute(q, ("2017-07",)).fetchone()[0] == 3.82
+    assert conn.execute(q, ("2017-08",)).fetchone()[0] == 3.85                       # published, the average is 3.84
     assert conn.execute(q, ("2025-12",)).fetchone()[0] == 2.48 and conn.execute(q, ("2026-01",)).fetchone()[0] == 2.46
     assert conn.execute("""SELECT value::float8 FROM live.series WHERE indicator = 'rates' AND geo = 'BG'
                            AND time = '2026-01'""").fetchone()[0] == 2.46
     first = table_hash(conn)
     assert ecb.load(conn, {}, get=get)["indicators"] == {"rates": "unchanged", "bank": "unchanged"}
     assert table_hash(conn) == first and log(conn) == []
+    parts = files["MIR.M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N"]    # the average far from the published total: rates stay
+    files["MIR.M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N"] = re.sub(rb"(A2C,F,R,A,2250,BGN,N,2020-01,)", rb"\g<1>9", parts)
+    stats = ecb.load(conn, {}, get=get)
+    assert stats["indicators"]["rates"] == "invalid" and any("средното по срочност" in p for p in stats["problems"])
+    assert table_hash(conn) == first
+    files["MIR.M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N"] = parts
     files["BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E"] = http.Gone("404")   # a series is gone: bank stays as it was
     stats = ecb.load(conn, {}, get=get)
     assert stats["indicators"]["bank"] == "invalid" and stats["indicators"]["rates"] == "unchanged"

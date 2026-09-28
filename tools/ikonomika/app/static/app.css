@@ -107,10 +107,10 @@ th.n .sort { flex-direction: row-reverse; }
 .hb .tr i { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--slate) 55%, #fff); border-radius: 3px; }
 .hb .r.bg .tr i { background: var(--accent); } .hb .r.eu .tr i { background: var(--eu); } .hb .r.ea .tr i { background: var(--ea); }
 .hb .v { text-align: right; white-space: nowrap; }
-/* full width: the names on one line, the bars shorter and thinner (a full-width track is too long to read across) */
+/* full width: the names on one line, the bars thin, the track to the value at the right edge */
 @media (min-width: 721px) {
   .s12 .hb { gap: 6px; }
-  .s12 .hb .r { grid-template-columns: 360px minmax(0, 520px) 80px; }
+  .s12 .hb .r { grid-template-columns: 360px minmax(0, 1fr) 80px; }
   .s12 .hb .tr { height: 9px; }
 }
 
