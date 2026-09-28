@@ -37,7 +37,7 @@ def migrate(conn):
     return applied
 
 
-LOCKS = {"eurostat": 7_250_001, "bnb": 7_250_002}
+LOCKS = {"eurostat": 7_250_001, "bnb": 7_250_002, "ecb": 7_250_003, "mf": 7_250_004}   # one per step that writes
 
 
 class Busy(RuntimeError):

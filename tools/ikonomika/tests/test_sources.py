@@ -302,3 +302,10 @@ def test_a_forecast_that_does_not_say_its_forecast_years_is_refused():
         mf.parse(body)
     with pytest.raises(jsonstat.ShapeError):
         mf.parse(b'{"success": false, "errors": "limit"}')
+
+
+def test_every_step_that_writes_has_its_own_lock():
+    """A step without a lock fails before it reads anything (KeyError at db.job, seen 28.09.2026)."""
+    from ingest import db, run
+    writers = [s for s in run.STEPS if s not in ("migrate", "freshness")]
+    assert set(writers) <= db.LOCKS.keys() and len(set(db.LOCKS.values())) == len(db.LOCKS)
