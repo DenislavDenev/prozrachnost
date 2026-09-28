@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Гласувания{% endblock %}
+{% block main %}
+<h1>Гласувания</h1>
+{% if ns %}
+<p class="lede">В {{ ordinal(ns) }} Народно събрание има <b>{{ total | num }} гласувания</b>{% if q %} с „{{ q }}“ в темата{% endif %}.
+  Всяко води до залата: кой как е гласувал.</p>
+<form class="ctl" method="get" action="/glasuvaniya">
+  {{ m.assemblies(all, ns, "/glasuvaniya", ("&q=" ~ (q | urlencode)) if q else "") }}
+  <input type="hidden" name="ns" value="{{ ns }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Търси в темата, напр. бюджет" aria-label="Търси в темата" style="min-width:280px">
+</form>
+<div class="grid"><section class="p s12">
+  <div class="tools"><span class="mut">{% if more %}Показани са последните {{ rows | length }}; всички са в CSV.{% else %}{{ rows | length }} гласувания{% endif %}</span>
+    <a class="l" href="/csv/glasuvaniya-{{ ns }}.csv">CSV</a></div>
+  {% if rows %}<table class="sortable"><thead><tr><th>Дата</th><th>Тема</th><th data-nosort>Резултат</th><th class="n">За</th><th class="n">Против</th><th class="n">Въздържали се</th></tr></thead><tbody>
+  {% for v in rows %}<tr><td class="mut" data-v="{{ v.at.isoformat() }}" style="white-space:nowrap">{{ v.at | date }}</td><td class="topic"><a href="{{ v.url }}">{{ v.topic }}</a></td>
+    <td style="width:18%">{{ m.rbar(v) }}</td><td class="n k-yes">{{ v.yes }}</td><td class="n k-no">{{ v.no_ }}</td><td class="n k-abs">{{ v.abstain }}</td></tr>{% endfor %}
+  </tbody></table>{% else %}<p class="nodata">Няма гласувания с тази тема.</p>{% endif %}
+  {{ m.src() }}</section></div>
+{% else %}<p class="lede">Още няма прочетени заседания.</p>{% endif %}
+{% endblock %}

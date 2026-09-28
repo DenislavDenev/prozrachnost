@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ v.topic[:80] }}{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/glasuvaniya?ns={{ v.assembly }}">{{ ordinal(v.assembly) }} Народно събрание</a> · заседание от {{ s[0] | long }} г., точка {{ v.no }}, {{ v.at.strftime('%H:%M') }} ч.</div>
+<h1>{{ v.topic }}</h1>
+<p class="lede"><b>{{ v.yes }} за</b>, <b>{{ v.no_ }} против</b> и <b>{{ v.abstain }} въздържали се</b>: гласуваха <b>{{ v.voted }} от {{ v.listed }} депутати</b>.
+  {% if against %}<b>{{ against | length }} {{ 'депутат' if against | length == 1 else 'депутати' }}</b> гласуваха различно от групата си.{% endif %}</p>
+{% if v.mismatch %}<p class="asof"><span class="warn">Двата файла на Народното събрание се разминават:</span> {{ v.mismatch }}.
+  Резултатът горе е от гласуването по групи, залата и списъкът долу са от поименното гласуване.</p>{% endif %}
+
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Залата</h2><div class="sub">всеки кръг е депутат; групите са в реда на Народното събрание</div></div>
+    <button type="button" class="replay">Пусни отново</button></div>
+    <div class="hall" data-vote="/api/glasuvane/{{ v.sitting }}/{{ v.no }}.json" role="img"
+         aria-label="за {{ v.yes }}, против {{ v.no_ }}, въздържали се {{ v.abstain }}, не гласували {{ seats | length - v.voted }}"></div>
+    <div class="counts">
+      <div class="yes"><div class="n">{{ v.yes }}</div><div class="t">за</div></div>
+      <div class="no"><div class="n">{{ v.no_ }}</div><div class="t">против</div></div>
+      <div class="abs"><div class="n">{{ v.abstain }}</div><div class="t">въздържали се</div></div>
+      <div class="none"><div class="n">{{ seats | length - v.voted }}</div><div class="t">не гласуваха</div></div></div>
+    {{ m.src(v.sitting, v.assembly) }}</section>
+
+  <section class="p s4 stick"><div class="ph"><div><h2>По групи</h2><div class="sub">за · против · въздържали се от депутатите на групата</div></div></div>
+    <div class="gb">{% for g, y, n, a, voted, line, voters, with_line, members in groups %}
+      <div class="r"><div><b>{{ m.grp(g, names) }}</b><small>{{ members }} депутати{% if line %} · {{ CODE[line] }}{% endif %}</small></div>
+        <div>{{ m.rbar({"yes": y, "no_": n, "abstain": a, "voted": voted, "listed": members}) }}
+          <div class="res" style="margin-top:3px"><b class="k-yes">{{ y }}</b> · <b class="k-no">{{ n }}</b> · <b class="k-abs">{{ a }}</b></div></div></div>
+    {% endfor %}</div></section>
+
+  {% if against %}<section class="p s12"><div class="ph"><div><h2>Гласуваха различно от групата си</h2>
+    <div class="sub">линията на групата е изборът на повечето ѝ депутати, които гласуваха</div></div></div>
+    <table><thead><tr><th>Депутат</th><th>Група</th><th>Гласува</th><th>Групата</th></tr></thead><tbody>
+    {% for mp, name, g, code, line in against %}<tr><td><a class="l" href="/deputati/{{ v.assembly }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names) }}</td>
+      <td>{{ CODE[code] }}</td><td class="mut">{{ CODE[line] }}</td></tr>{% endfor %}
+    </tbody></table></section>{% endif %}
+
+  <section class="p s12"><div class="ph"><div><h2>Всички депутати</h2><div class="sub">как гласува всеки</div></div></div>
+    <div class="tools"><input type="search" data-filter="all-mps" placeholder="Търси депутат или група" aria-label="Търси депутат или група">
+      <a class="l" href="/csv/glasuvane/{{ v.sitting }}/{{ v.no }}.csv">CSV</a></div>
+    <table class="sortable" id="all-mps"><thead><tr><th>Депутат</th><th>Група</th><th>Вот</th></tr></thead><tbody>
+    {% for mp, name, g, code in seats %}<tr><td><a class="l" href="/deputati/{{ v.assembly }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names) }}</td>
+      <td><span class="dotc" style="background:var(--{{ {'+': 'yes', '-': 'no', '=': 'abs', '0': 'none'}[code] }})"></span>{{ CODE[code] }}</td></tr>{% endfor %}
+    </tbody></table>{{ m.src(v.sitting, v.assembly) }}</section>
+</div>
+
+<nav class="pn" aria-label="Гласуванията от заседанието">
+  <span>{% if prev %}<a href="/glasuvane/{{ v.sitting }}/{{ prev }}">← предишното гласуване</a>{% endif %}</span>
+  <span>{% if next %}<a href="/glasuvane/{{ v.sitting }}/{{ next }}">следващото гласуване →</a>{% endif %}</span>
+</nav>
+{% if same_day | length > 1 %}<details class="why" style="margin-top:14px"><summary>Всички {{ same_day | length }} гласувания от заседанието</summary><ul>
+  {% for n, t in same_day %}<li>{% if n == v.no %}<b>{{ t or 'без тема' }}</b>{% else %}<a class="l" href="/glasuvane/{{ v.sitting }}/{{ n }}">{{ t or 'без тема' }}</a>{% endif %}</li>{% endfor %}
+</ul></details>{% endif %}
+{% endblock %}

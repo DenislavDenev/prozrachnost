@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Източници{% endblock %}
+{% macro problem(status, error) %}<span class="{{ 'warn' if status not in ('ok', 'no-files') }}">{{ status | status }}</span>{% if status not in ('ok', 'no-files') and error %}{% set all = error.split('; ') %}
+  <details class="why"><summary>{{ all | length }} {{ 'проблем' if all | length == 1 else 'проблема' }}</summary><ul>{% for e in all %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}{% endmacro %}
+{% block main %}
+<h1>Източници и свежест</h1>
+<p class="lede">Всичко е от сайта на Народното събрание: списъкът на заседанията, всяко заседание и двата му файла с
+  гласуванията. Заседание се публикува тук само ако поименното гласуване, преброено по групи, е точно гласуването по групи.</p>
+
+<div class="grid">
+  <section class="p s6"><h2>Народно събрание</h2><dl class="dl" style="margin-top:12px">
+    <dt>Сайт</dt><dd><a class="l" href="{{ SITE }}/bg/plenaryst" rel="noopener">parliament.bg, стенограми</a> (JSON и CSV, без ключ)</dd>
+    <dt>Заседания</dt><dd>{{ counts[0] | num }} прочетени, {{ counts[1] | num }} с поименно гласуване{% if counts[2] %}, от {{ counts[2] | date }}{% endif %}</dd>
+    <dt>Преди 12.2021</dt><dd>гласуванията са само в XLSX и PDF; още не се четат</dd>
+    <dt>Проблеми сега</dt><dd>{% if problems %}<span class="warn">{{ problems | length }}</span><details class="why"><summary>виж</summary><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></details>{% else %}няма{% endif %}</dd>
+  </dl></section>
+
+  <section class="p s6"><h2>Последни прочити</h2>
+    <table style="margin-top:12px"><thead><tr><th>Какво</th><th class="n">Редове</th><th>Прочетено</th><th>Състояние</th></tr></thead><tbody>
+    {% for ref, read, ok, status, error, rows in reads %}<tr><td>{{ 'списък на депутатите' if ref == 'roster' else 'заседания ' ~ ref[6:] if ref.startswith('month/') else ref }}</td>
+      <td class="n">{{ rows | num if rows is not none }}</td><td class="mut">{{ read | date }}</td><td>{{ problem(status, error) }}</td></tr>{% endfor %}
+    </tbody></table></section>
+
+  {% if bad %}<section class="p s12"><h2>Заседания с проблем</h2>
+    <table style="margin-top:12px"><thead><tr><th>Заседание</th><th>Дата</th><th>Състояние</th></tr></thead><tbody>
+    {% for ref, date, status, error in bad %}<tr><td>{{ ref[5:] }}</td><td>{{ date | date }}</td><td>{{ problem(status, error) }}</td></tr>{% endfor %}
+    </tbody></table></section>{% endif %}
+</div>
+{% endblock %}
