@@ -97,9 +97,20 @@ jobs:
       # each rule that guards the data is broken on purpose; the tests must notice every one
       - run: python tests/mutations.py
 
+  nablyudatel:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/nablyudatel } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install pytest   # the archive itself needs only the standard library
+      - run: python -m pytest -q
+      - run: python tests/mutations.py
+
   ci-ok:
     if: always()
-    needs: [shared, hub, patna-obstanovka, tender, ikonomika]
+    needs: [shared, hub, patna-obstanovka, tender, ikonomika, nablyudatel]
     runs-on: ubuntu-latest
     steps:
       - run: |

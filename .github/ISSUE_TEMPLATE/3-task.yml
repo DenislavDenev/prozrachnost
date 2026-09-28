@@ -23,6 +23,7 @@ body:
         - Тендер
         - Пътна обстановка
         - Икономика
+        - Наблюдател
     validations:
       required: true
   - type: textarea
