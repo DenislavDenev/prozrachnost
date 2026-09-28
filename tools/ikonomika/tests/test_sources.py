@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ingest import bnb, checks, eurostat, jsonstat
+from ingest import bnb, checks, ecb, eurostat, jsonstat, mf
 
 FX = Path(__file__).parent / "fixtures"
 
@@ -228,3 +228,77 @@ def test_bnb_currency_list_and_windows():
     assert w == [(dt.date(2025, 11, 20), dt.date(2025, 12, 31)), (dt.date(2026, 1, 1), dt.date(2026, 2, 3))]
     assert len(list(bnb.windows(bnb.FIRST_DAY, dt.date(2025, 12, 31)))) == 35 * 4
     assert "valutes=USD&valutes=GBP" in bnb.url(dt.date(2025, 10, 1), dt.date(2025, 12, 31), ["USD", "GBP"])
+
+
+# ---------- ECB ----------
+
+def ecb_raw(key):
+    return raw(f"ecb/{key}.csv")
+
+
+def test_ecb_csv_months_values_and_flags():
+    key = "MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N"
+    pts = ecb.parse(ecb_raw(key), key)
+    assert pts[0] == ("2026-01", 2.46, None) and len(pts) >= 7          # Bulgaria's rates start with the euro
+    assert all(len(t) == 7 and isinstance(v, float) for t, v, _ in pts)
+
+
+def test_ecb_refuses_a_page_another_series_and_text():
+    key = "MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N"
+    with pytest.raises(jsonstat.ShapeError):
+        ecb.parse(b"<!DOCTYPE html><html>maintenance</html>", key)
+    with pytest.raises(jsonstat.ShapeError, match="another series"):
+        ecb.parse(ecb_raw(key), "MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N")
+    with pytest.raises(jsonstat.ShapeError, match="not a number"):
+        ecb.parse(ecb_raw(key).replace(b",2.46,", b",n/a,", 1), key)
+
+
+def test_ecb_series_have_no_gaps_and_overnight_is_part_of_all_deposits():
+    rows = []
+    for code, key in (("dep_hh", "BSI.M.BG.N.A.L20.A.1.U2.2250.Z01.E"), ("dep_hh_on", "BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E")):
+        rows += [({"series": code}, "BG", t, v, f) for t, v, f in ecb.parse(ecb_raw(key), key)]
+    assert ecb.check(rows) == []
+    assert len([r for r in rows if r[0]["series"] == "dep_hh"]) >= 56          # 2022-01 to 2026-08
+    gap = [r for r in rows if not (r[0]["series"] == "dep_hh" and r[2] == "2023-05")]
+    bad = ecb.check(gap)
+    assert len(bad) == 1 and bad[0].startswith("dep_hh BG:") and bad[0].endswith("с дупки")
+    more = [(d, g, t, v * 10 if d["series"] == "dep_hh_on" and t == "2024-01" else v, f) for d, g, t, v, f in rows]
+    assert ecb.check(more)[0].startswith("2024-01: dep_hh_on")
+
+
+# ---------- the Ministry of Finance's forecasts ----------
+
+MF_FIRST_FORECAST = {"2020-11-24": 2020, "2021-06-24": 2021, "2021-10-06": 2021, "2022-01-24": 2021, "2022-04-05": 2022,
+                     "2022-06-27": 2022, "2023-04-05": 2023, "2023-11-02": 2023, "2024-04-01": 2024, "2024-12-03": 2024,
+                     "2025-04-30": 2025, "2025-10-30": 2025, "2026-04-03": 2026}
+
+
+@pytest.mark.parametrize("vintage", sorted(MF_FIRST_FORECAST))
+def test_every_forecast_since_2020_is_read_with_its_forecast_years(vintage):
+    """Four layouts of the note that says which years are forecast; every item known; GDP adds up."""
+    items, first, unknown = mf.parse(raw(f"mf/{vintage}.json"))
+    assert first == MF_FIRST_FORECAST[vintage] and unknown == []
+    assert len(items) >= mf.MIN_ITEMS and "gdp_growth" in items and "hicp" in items
+    assert mf.growth_check(vintage, items) == []
+
+
+def test_the_spring_2026_forecast_values():
+    items, first, _ = mf.parse(raw("mf/2026-04-03.json"))
+    assert items["gdp_eur"][2025] == 116018 and items["gdp_eur"][2024] == 104767          # "116 018": a space inside
+    assert items["gdp_growth"] == {2024: 3.4, 2025: 3.1, 2026: 2.6, 2027: 2.5, 2028: 2.5, 2029: 2.6}
+    assert items["hicp"][2025] == 3.5 and items["current_account"][2026] == -6.2          # 3.5: Eurostat's too
+
+
+def test_nominal_gdp_must_follow_real_growth_and_the_deflator():
+    items, _, _ = mf.parse(raw("mf/2026-04-03.json"))
+    items["gdp_growth"][2025] += 1
+    bad = mf.growth_check("2026-04-03", items)
+    assert len(bad) == 1 and bad[0].startswith("2026-04-03 2025: номиналният ръст")
+
+
+def test_a_forecast_that_does_not_say_its_forecast_years_is_refused():
+    body = raw("mf/2026-04-03.json").replace("прогноза".encode("unicode_escape"), b"x").replace("прогноза".encode(), b"x")
+    with pytest.raises(jsonstat.ShapeError, match="forecast"):
+        mf.parse(body)
+    with pytest.raises(jsonstat.ShapeError):
+        mf.parse(b'{"success": false, "errors": "limit"}')

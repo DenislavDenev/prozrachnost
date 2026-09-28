@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from ingest.config import BGN_PER_EUR
+from ingest import ecb, mf
 from ingest.eurostat import EURO_AREA, MEMBERS, indicators
 
 from . import feedback
@@ -33,7 +34,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)   # the map of Europe is ~
 T = Jinja2Templates(directory=HERE / "templates")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("STATE_DIRECTORY", ROOT / ".data"), "Икономика"))
 
-IND = {i["id"]: i for i in indicators()}
+IND = {i["id"]: i for i in indicators() + ecb.INDICATORS + mf.INDICATORS}
 MONTHS = "януари февруари март април май юни юли август септември октомври ноември декември".split()
 ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
 
@@ -142,13 +143,19 @@ def at(indicator, time, geo="BG", **dims):
     return r[0] if r else (None, None)
 
 
+# the other sources: (name, the page of the data set)
+SOURCE_PAGE = {"ecb": ("ЕЦБ", "https://data.ecb.europa.eu/data/datasets/{dataset}"),
+               "mf": ("Министерство на финансите, data.egov.bg", "https://data.egov.bg/data/view/{dataset}")}
+
+
 def source(indicator):
-    """What a panel says under its chart: dataset, link, the source's update, our last read."""
-    ind = IND.get(indicator)
-    st = q("SELECT updated, last_ok FROM ops.source_state WHERE source = 'eurostat' AND ref = %s", indicator)
+    """What a panel says under its chart: source, dataset, link, the source's update, our last read."""
+    ind = IND.get(indicator) or {}
+    src = ind.get("source", "eurostat")
+    st = q("SELECT updated, last_ok FROM ops.source_state WHERE source = %s AND ref = %s", src, indicator)
     updated, read = st[0] if st else (None, None)
-    return {"name": "Eurostat", "dataset": ind["dataset"] if ind else indicator,
-            "url": f"https://ec.europa.eu/eurostat/databrowser/view/{ind['dataset']}/default/table" if ind else "",
+    name, page = SOURCE_PAGE.get(src, ("Eurostat", "https://ec.europa.eu/eurostat/databrowser/view/{dataset}/default/table"))
+    return {"name": name, "dataset": ind.get("dataset", indicator), "url": page.format(dataset=ind["dataset"]) if ind else "",
             "updated": updated[:10] if updated else None, "read": read}
 
 
@@ -366,7 +373,7 @@ def rates(request: Request, code: str = "USD"):
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
     st = {r[0]: r for r in q("""SELECT ref, status, error, last_read, last_ok, last_change, updated, rows
-                                FROM ops.source_state WHERE source = 'eurostat'""")}
+                                FROM ops.source_state WHERE source IN ('eurostat', 'ecb', 'mf')""")}
     span = {r[0]: r[1:] for r in q("SELECT indicator, min(time), max(time), count(*) FROM live.series GROUP BY 1")}
     items = [{"ind": i, "st": st.get(i["id"]), "span": span.get(i["id"])} for i in IND.values()]
     fx = q("SELECT status, error, last_read, last_ok FROM ops.source_state WHERE source = 'bnb' AND ref = 'fx'")

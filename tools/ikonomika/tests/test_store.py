@@ -210,3 +210,60 @@ def test_bnb_step_reads_windows_holds_and_reconciles(conn, monkeypatch):
     stats = bnb.load(conn, {}, get=get2, today=today)
     assert any("USD 2026-09-25" in p for p in stats["problems"])
     assert conn.execute("SELECT status FROM ops.source_state WHERE source = 'bnb' AND ref = 'fx'").fetchone()[0] == "invalid"
+
+
+def ecb_fixture(key):
+    return (FX / "ecb" / f"{key}.csv").read_bytes()
+
+
+def test_ecb_step_writes_both_places_checks_and_keeps_what_fails(conn, monkeypatch):
+    from ingest import ecb, http
+    monkeypatch.setattr(ecb, "SERIES", [s for s in ecb.SERIES if s[3] == "housing" and s[0] == "rates"]
+                        + [s for s in ecb.SERIES if s[0] == "bank" and s[3] in ("dep_hh", "dep_hh_on")])
+    files = {k: ecb_fixture(k) for k in ("MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N", "MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N",
+                                         "BSI.M.BG.N.A.L20.A.1.U2.2250.Z01.E", "BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E")}
+
+    def get(url):
+        flow, key = url.split("/data/")[1].split("?")[0].split("/")
+        got = files[f"{flow}.{key}"]
+        if isinstance(got, Exception):
+            raise got
+        return got
+    stats = ecb.load(conn, {}, get=get)
+    assert stats["indicators"] == {"rates": "stored", "bank": "stored"} and stats["problems"] == []
+    assert conn.execute("SELECT count(DISTINCT geo) FROM live.series WHERE indicator = 'rates'").fetchone()[0] == 2   # BG and EA
+    assert conn.execute("""SELECT value::float8 FROM live.series WHERE indicator = 'rates' AND geo = 'BG'
+                           AND time = '2026-01'""").fetchone()[0] == 2.46
+    first = table_hash(conn)
+    assert ecb.load(conn, {}, get=get)["indicators"] == {"rates": "unchanged", "bank": "unchanged"}
+    assert table_hash(conn) == first and log(conn) == []
+    files["BSI.M.BG.N.A.L21.A.1.U2.2250.Z01.E"] = http.Gone("404")   # a series is gone: bank stays as it was
+    stats = ecb.load(conn, {}, get=get)
+    assert stats["indicators"]["bank"] == "invalid" and stats["indicators"]["rates"] == "unchanged"
+    assert table_hash(conn) == first and any("ЕЦБ BSI" in p for p in stats["problems"])
+
+
+def test_mf_step_reads_every_forecast_once_and_flags_the_forecast_years(conn):
+    import json
+    from ingest import mf
+    lst = (FX / "mf" / "list.json").read_bytes()
+    by_uri = {r["uri"]: (FX / "mf" / f"{r['created_at'][:10]}.json").read_bytes() for r in json.loads(lst)["resources"]}
+    calls = []
+
+    def call(method, body):
+        calls.append(method)
+        return lst if method == "listResources" else by_uri[body["resource_uri"]]
+    stats = mf.load(conn, {}, call=call, pause=0)
+    assert stats["forecasts"] == 13 and stats["problems"] == [] and stats["indicators"] == {"mf_forecast": "stored"}
+    assert calls.count("getResourceData") == 13
+    q = """SELECT value::float8, flag FROM live.series WHERE indicator = 'mf_forecast'
+           AND dims->>'vintage' = '2026-04-03' AND dims->>'item' = 'gdp_growth' AND time = %s"""
+    assert conn.execute(q, ("2025",)).fetchone() == (3.1, None) and conn.execute(q, ("2026",)).fetchone() == (2.6, "f")
+    first = table_hash(conn)
+    assert mf.load(conn, {}, call=call, pause=0)["indicators"] == {"mf_forecast": "unchanged"} and table_hash(conn) == first
+
+
+def test_freshness_knows_the_other_sources(conn):
+    from ingest import checks, ecb, mf
+    probs = checks.freshness(conn, ecb.INDICATORS + mf.INDICATORS)
+    assert any("rates още не е четен" in p for p in probs) and any("mf_forecast още не е четен" in p for p in probs)
