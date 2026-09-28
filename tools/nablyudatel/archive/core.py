@@ -113,10 +113,11 @@ class Store:
 
 class Http:
     """One connection's manners: at most one request per `pause` seconds, Retry-After on 429 and 5xx, a few
-    retries on a dropped connection; 404 is an answer (status 404, empty body), not an error."""
+    retries on a dropped connection; 404 and 410 (and what `absent` adds) are an answer with an empty body, not an
+    error."""
 
-    def __init__(self, pause=1.0, ua=UA, cookies=False, tries=3):
-        self.pause, self.ua, self.tries, self.last = pause, ua, tries, 0.0
+    def __init__(self, pause=1.0, ua=UA, cookies=False, tries=3, absent=(404, 410)):
+        self.pause, self.ua, self.tries, self.last, self.absent = pause, ua, tries, 0.0, absent
         handlers = [urllib.request.HTTPCookieProcessor(CookieJar())] if cookies else []
         self.opener = urllib.request.build_opener(*handlers)
 
@@ -138,7 +139,7 @@ class Http:
                 return r.status, body
             except urllib.error.HTTPError as e:
                 self.last = time.monotonic()
-                if e.code in (404, 410):
+                if e.code in self.absent:
                     return e.code, b""
                 retry = e.headers.get("Retry-After") if e.headers else None
                 if e.code == 403 or (e.code == 429 and not retry):

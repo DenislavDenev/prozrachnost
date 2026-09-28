@@ -41,7 +41,7 @@ def run(store, names, full=False, budget=3000):
         cfg, s, t = SOURCES[name], store.src(name), time.monotonic()
         s["run_at"] = now()
         try:
-            out = cfg["fn"](store, Http(pause=cfg["pause"], cookies=cfg.get("cookies", False)), full, t + budget)
+            out = cfg["fn"](store, Http(pause=cfg["pause"], cookies=cfg.get("cookies", False), absent=cfg.get("absent", (404, 410))), full, t + budget)
             s.update(last_ok=now(), last=out)
             print(json.dumps({"source": name, "ok": True, "sec": round(time.monotonic() - t), **out}, ensure_ascii=False))
         except Exception as e:   # every failure is recorded in the state, where the freshness check finds it

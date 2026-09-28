@@ -125,13 +125,13 @@ $('#a').DataTable({ ajax: { url: "/Reports/GetAgencies", type: "POST",
 
 
 def test_the_tables_of_an_erik_page_are_found_with_their_parameters():
-    calls = ajax_calls(REPORT, "90")
+    calls = [c[:3] for c in ajax_calls(REPORT, "90")]
     assert calls == [
         ("POST", "/Reports/GetParticipantsByElectionId",
          {"draw": "1", "start": "0", "length": "-1", "electionId": "90", "electionCommissionType": "3"}),
         ("POST", "/Reports/GetAgencies", {"draw": "1", "start": "0", "length": "-1", "electionId": "90"}),
     ]
-    links = row_links(REPORT)
+    links = [parts for parts, _ in row_links(REPORT)]
     assert links == [["/Reports/ItemOikReport?id=", ("row", "id")]]   # the dead branch (ItemOik) is gone
     assert link(links[0], {"id": 118007}) == "/Reports/ItemOikReport?id=118007"
     assert link(links[0], {"id": None}) is None
@@ -147,15 +147,17 @@ def test_erik_follows_pages_tables_rows_and_files(tmp_path, monkeypatch):
         B + "/Reports/AfterElection?electionId=90": (200, REPORT.encode()),
         B + "/Reports/AfterElection?electionId=91": (200, b"<html>91</html>"),
         ("POST", B + "/Reports/GetParticipantsByElectionId"): (200, rows),
-        ("POST", B + "/Reports/GetAgencies"): (200, b'{"data":[]}'),
+        ("POST", B + "/Reports/GetAgencies"): (200, b'{"data":[{"id":999}]}'),   # another table: not a participant
         B + "/Reports/ItemOikReport?id=118007": (200, b'<html><a href="/Home/Download/?documentId=7&amp;idE=90">f</a></html>'),
         B + "/Reports/ItemOikReport?id=5": (200, home),   # an unknown report: the site gives its home page
         B + "/Home/Download/?documentId=7&idE=90": (200, b"%PDF-1.4 report"),
         B + "/Reports/AfterElectionExportList?ElectionId=90": (200, b"<html>export</html>"),
     }
-    st = Store(tmp_path)
-    out = sources.erik(st, FakeHttp(answers), True, FAR)
+    answers[B + "/Reports/AfterElectionExportList?ElectionId=91"] = (403, b"")   # ЕРИК's "no such report"
+    st, http = Store(tmp_path), FakeHttp(answers)
+    out = sources.erik(st, http, True, FAR)
     assert out["errors"] == 0 and out["absent"] == 1 and out["elections"] == 2
+    assert not any("id=999" in c[1] for c in http.calls)   # links are built from the rows of their own table only
     names = sorted(p.name.split(".")[0] for p in (tmp_path / "erik" / "90").iterdir())
     assert "Reports_ItemOikReport_id=118007" in names and any(n.startswith("Home_Download") for n in names)
     assert any(p.suffix == ".pdf" for p in (tmp_path / "erik" / "90").iterdir())
