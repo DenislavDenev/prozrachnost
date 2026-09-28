@@ -71,6 +71,16 @@ async function lineChart(el) {
 }
 document.querySelectorAll('.chart[data-src]').forEach(lineChart);
 
+// the buttons stand on one row when they fit; two rows that scroll sideways only when they do not (AGENTS.md 7)
+document.querySelectorAll('.chips').forEach((box) => {
+  const rows = [...box.querySelectorAll('.row')];
+  if (rows.length < 2) return;
+  const gap = parseFloat(getComputedStyle(rows[0]).columnGap) || 6;
+  const btns = rows.flatMap((r) => [...r.children]);
+  const need = btns.reduce((w, b) => w + b.getBoundingClientRect().width, 0) + gap * (btns.length - 1);
+  if (need <= box.clientWidth) { rows[0].append(...btns.filter((b) => b.parentElement !== rows[0])); rows.slice(1).forEach((r) => r.remove()); }
+});
+
 // buttons that pick what one chart shows (green when on): data-for = the chart's id, data-param = the query parameter;
 // the last one on stays on
 document.querySelectorAll('.chips[data-for]').forEach((box) => {

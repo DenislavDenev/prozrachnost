@@ -27,7 +27,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "7"
+ASSET_V = "8"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
