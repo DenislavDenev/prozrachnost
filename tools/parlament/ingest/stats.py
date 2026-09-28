@@ -98,3 +98,20 @@ def link_speakers(conn, sitting=None, assemblies=None):
         UPDATE live.speech sp SET profile = keys.id FROM live.sitting s, keys
         WHERE s.id = sp.sitting AND {where} AND keys.assembly = s.assembly AND keys.key = sp.name
           AND (sp.role IS NULL OR sp.role = ANY(%s)) AND sp.profile IS DISTINCT FROM keys.id""", (*args, *args, list(MP_ROLES)))
+
+
+def link_bodies(conn):
+    """live.body.grp of every group body: the group its members were in at the registrations of their time in it, the
+    most common one. Only where the roll call exists (07.2009-); older groups keep their name only."""
+    conn.execute("""
+        UPDATE live.body b SET grp = x.grp FROM (
+            SELECT DISTINCT ON (ms.body) ms.body, v.grp
+            FROM live.membership ms JOIN live.body bb ON bb.id = ms.body
+            JOIN live.mp m ON m.profile = ms.profile AND m.assembly = bb.assembly
+            JOIN live.sitting s ON s.assembly = m.assembly
+                 AND s.date BETWEEN coalesce(ms.since, s.date) AND coalesce(ms.until, s.date)
+            JOIN live.item i ON i.sitting = s.id AND i.kind = 'registration'
+            JOIN live.vote v ON v.sitting = i.sitting AND v.item = i.no AND v.mp = m.no
+            WHERE ms.body_kind = 2
+            GROUP BY ms.body, v.grp ORDER BY ms.body, count(*) DESC) x
+        WHERE x.body = b.id AND b.grp IS DISTINCT FROM x.grp""")

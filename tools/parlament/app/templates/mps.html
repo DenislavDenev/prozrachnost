@@ -13,7 +13,7 @@
   <table class="sortable" id="mps"><thead><tr><th>Депутат</th><th>Група</th>{% if current %}<th>Избирателен район</th>{% endif %}
     <th class="n">Гласувания</th><th class="n">Участвал</th><th class="n">С групата</th><th class="n">Срещу групата</th><th class="n">Регистриран</th></tr></thead><tbody>
   {% for mp, name, g, votes, voted, with_line, against, regs, present, first, last, district in rows %}
-  <tr><td><a class="l" href="/deputati/{{ ns }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names) }}</td>
+  <tr><td><a class="l" href="/deputati/{{ ns }}/{{ mp }}">{{ name | name }}</a></td><td>{{ m.grp(g, names, ns) }}</td>
     {% if current %}<td class="mut">{{ district | district }}</td>{% endif %}
     <td class="n">{{ votes | num }}</td><td class="n">{{ pct(voted, votes) }}</td><td class="n">{{ pct(with_line, with_line + against) }}</td>
     <td class="n" data-v="{{ against }}">{{ against | num }}</td><td class="n">{{ pct(present, regs) }}</td></tr>{% endfor %}

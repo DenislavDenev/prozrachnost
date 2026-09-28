@@ -74,6 +74,7 @@ def people(conn, stats_, get=None, everyone=False):
     voted = [n for n, in conn.execute("SELECT DISTINCT assembly FROM live.sitting WHERE iv_sha IS NOT NULL")]
     if voted:
         stats.rebuild(conn, voted)
+    stats.link_bodies(conn)
     stats_.update(assemblies=len(known), profiles=read, people=linked, problems=problems)
     return stats_
 

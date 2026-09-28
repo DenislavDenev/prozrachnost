@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Заседания{% endblock %}
+{% block main %}
+<h1>Заседания</h1>
+{% if years %}
+<p class="lede">Всяко заседание на Народното събрание от 1879 г.: <b>{{ years | map(attribute=1) | sum | num }} заседания</b>.
+  Стенограмата е текст от 1992 г. (сканирана преди това), видеото е от 2010 г., поименните гласувания от юли 2009 г.
+  <a class="l" href="/sabraniya">Всички събрания →</a></p>
+<form class="ctl yearpick" method="get" action="/zasedaniya">
+  {% if ns is not none %}<span class="chip-on">{{ aname(ns) }}</span> <a class="l" href="/zasedaniya">по години</a>
+  {% else %}<label for="g">Година</label>
+  <select id="g" name="g" data-autosubmit>{% for y, n in years %}<option value="{{ y }}" {% if y == year %}selected{% endif %}>{{ y }} ({{ n }})</option>{% endfor %}</select>
+  <noscript><button type="submit">Покажи</button></noscript>
+  {% set ys = years | map(attribute=0) | list %}{% set i = ys.index(year) %}
+  {% if i + 1 < ys | length %}<a class="l" href="/zasedaniya?g={{ ys[i + 1] }}">← {{ ys[i + 1] }}</a>{% endif %}
+  {% if i > 0 %}<a class="l" href="/zasedaniya?g={{ ys[i - 1] }}">{{ ys[i - 1] }} →</a>{% endif %}{% endif %}
+</form>
+<div class="grid"><section class="p s12">
+  <div class="tools"><input type="search" data-filter="sittings" placeholder="Търси по дата или събрание" aria-label="Търси по дата или събрание"></div>
+  <table class="sortable" id="sittings"><thead><tr><th>Дата</th><th>Събрание</th><th class="n">Гласувания</th><th class="n">Изказвания</th><th>Видео</th><th>Стенограма</th></tr></thead><tbody>
+  {% for sid, d, a, votes, speeches, video, pdf, steno in rows %}
+  <tr><td data-v="{{ d.isoformat() }}" style="white-space:nowrap"><a class="l" href="/zasedanie/{{ sid }}">{{ d | long }}</a></td>
+    <td class="mut">{{ aname(a, true) }}</td>
+    <td class="n">{{ votes | num if votes else '' }}</td><td class="n">{{ speeches | num if speeches else '' }}</td>
+    <td>{% if video %}{{ video }} {{ 'част' if video == 1 else 'части' }}{% endif %}</td>
+    <td>{% if steno %}текст{% elif pdf %}сканирана{% elif d.year >= 1992 %}<span class="mut">още няма</span>{% endif %}</td></tr>
+  {% endfor %}</tbody></table>
+  {{ m.src() }}</section></div>
+{% else %}<p class="lede">Още няма прочетени заседания.</p>{% endif %}
+{% endblock %}

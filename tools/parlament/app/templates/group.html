@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ gname }}, {{ aname(ns, true) }}{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/grupi?ns={{ ns }}">Групи в {{ aname(ns) }}</a></div>
+<h1><span class="gdot" style="background:{{ color }}"></span>{{ gname }}</h1>
+<p class="lede">В {{ aname(ns) }} от {{ first | long }} до {{ last | long }} г.: общо <b>{{ members | length }} депутати</b>
+  {% if joined %}, <b>{{ joined | length }}</b> влезли по-късно{% endif %}{% if left %}, <b>{{ left | length }}</b> излезли преди края{% endif %}.
+  {% if unity and unity[1] %}Гласовете на депутатите ѝ са като линията на групата в <b>{{ pct(unity[0], unity[1], 1) }}</b>.{% endif %}</p>
+
+<div class="grid">
+  <section class="p s8"><div class="ph"><div><h2>Колко депутати във времето</h2><div class="sub">по списъка при първата регистрация на всяко заседание</div></div></div>
+    <div class="chart" data-src="/api/grupa/{{ ns }}/{{ code | urlencode }}.json" data-digits="0" data-zero></div>{{ m.src() }}</section>
+
+  <section class="p s4"><div class="ph"><div><h2>С кои групи гласува</h2><div class="sub">% от гласуванията със същата линия</div></div></div>
+    {% if pairs %}<div class="hb">{% for g, n, same in pairs %}<div class="r"><span><a class="l" href="/grupa/{{ ns }}/{{ g | urlencode }}">{{ names.get(g) or g }}</a></span>
+      <div class="tr"><i style="left:0;width:{{ 100 * same / n }}%;background:{{ gcolor(g) }}"></i></div><span class="v">{{ pct(same, n) }}</span></div>{% endfor %}</div>
+    {% else %}<p class="mut">Няма достатъчно общи гласувания.</p>{% endif %}{{ m.src() }}</section>
+
+  {% if leaders %}<section class="p s12"><div class="ph"><div><h2>Ръководство</h2><div class="sub">по профилите на Народното събрание</div></div></div>
+    <table><thead><tr><th>Депутат</th><th>Длъжност</th><th>От</th><th>До</th></tr></thead><tbody>
+    {% for person, name, role, since, until in leaders %}<tr><td><a class="l" href="/chovek/{{ person }}">{{ name | name }}</a></td><td>{{ role }}</td>
+      <td>{{ since | date }}</td><td>{{ until | date if until else 'сега' }}</td></tr>{% endfor %}</tbody></table>{{ m.src() }}</section>{% endif %}
+
+  <section class="p s12"><div class="ph"><div><h2>Депутатите</h2><div class="sub">кога са гласували с групата: първото и последното гласуване</div></div></div>
+    <div class="tools"><input type="search" data-filter="members" placeholder="Търси депутат" aria-label="Търси депутат"></div>
+    <table class="sortable" id="members"><thead><tr><th>Депутат</th><th>От</th><th>До</th><th class="n">Гласувания</th><th></th></tr></thead><tbody>
+    {% for mp, name, person, a, b, n in members %}<tr>
+      <td><a class="l" href="/deputati/{{ ns }}/{{ mp }}">{{ name | name }}</a>{% if person %} <a class="mut" href="/chovek/{{ person }}" title="Профил през всички събрания">профил</a>{% endif %}</td>
+      <td data-v="{{ a.isoformat() }}">{{ a | date }}</td><td data-v="{{ b.isoformat() }}">{{ b | date }}</td><td class="n">{{ n | num }}</td>
+      <td class="mut">{% if a > first %}влязъл{% endif %}{% if a > first and b < last %}, {% endif %}{% if b < last %}излязъл{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="mut">Датите са от поименните гласувания: първото и последното, в които депутатът е в тази група.</p>{{ m.src() }}</section>
+</div>
+{% endblock %}

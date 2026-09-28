@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Търсене{% endblock %}
+{% block main %}
+<h1>Търсене в стенограмите</h1>
+<p class="lede">Всяко изказване в пленарната зала от 1992 г. насам. Търси всички думи, по началото им („бюджет“ намира и
+  „бюджета“, „бюджетът“).{% if who %} Само изказванията на <b><a class="l" href="/chovek/{{ chovek }}">{{ who | name }}</a></b>.{% endif %}</p>
+<form class="search" method="get" action="/tarsene" role="search">
+  <input type="search" name="q" value="{{ text }}" placeholder="Например: съдебна реформа" aria-label="Думи за търсене" autofocus>
+  <select name="ns" aria-label="Народно събрание"><option value="">всички събрания</option>
+    {% for r in all %}<option value="{{ r[0] }}" {% if r[0] == ns %}selected{% endif %}>{{ aname(r[0], true) }}</option>{% endfor %}</select>
+  {% if chovek %}<input type="hidden" name="chovek" value="{{ chovek }}">{% endif %}
+  <button type="submit">Търси</button>
+</form>
+{% if text or chovek %}
+<div class="grid"><section class="p s12"><div class="ph"><div><h2>{% if rows %}{{ rows | length }}{% if more %}+{% endif %} изказвания{% else %}Няма изказвания{% endif %}</h2>
+  <div class="sub">най-новите първи{% if more %}; показани са първите {{ rows | length }}, стеснете търсенето{% endif %}</div></div></div>
+  <ol class="hits">{% for sid, no, d, a, name, grp, person, snip in rows %}
+    <li><div class="hit-h"><a class="l" href="/izkazvane/{{ sid }}/{{ no }}">{{ d | date }}</a> ·
+      {% if person %}<a class="l" href="/chovek/{{ person }}">{{ (name or '') | name }}</a>{% else %}{{ (name or 'от залата') | name }}{% endif %}
+      {% if grp %}{{ m.grp(grp, {}) }}{% endif %}<span class="mut"> · {{ aname(a, true) }}</span></div>
+      <p class="snip">{{ snip }}</p></li>{% endfor %}</ol>
+  {{ m.src() }}</section></div>
+{% endif %}
+{% endblock %}
