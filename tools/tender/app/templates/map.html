@@ -22,8 +22,9 @@
     <label class="chk"><input type="checkbox" name="clean" value="1"> без рамкови и съмнителни стойности</label></div>
 </form>
 <div class="grid" style="margin-top:18px">
-  <section class="p s8 mapbox"><svg id="bgmap" role="img" aria-label="Карта на България по общини"><g class="mu"></g></svg>
-    <div class="mkey" id="mkey"></div><p class="mut" id="cover"></p></section>
+  <section class="p s8 mapbox"><div class="mapwrap"><svg id="bgmap" role="img" aria-label="Карта на България по общини"><g class="mu"></g><g class="selg"></g></svg>
+    <div class="zoom" role="group" aria-label="Мащаб"><button type="button" data-z="in" title="Приближи" aria-label="Приближи">+</button><button type="button" data-z="out" title="Отдалечи" aria-label="Отдалечи">−</button><button type="button" data-z="home" title="Цялата карта" aria-label="Цялата карта">⤢</button></div></div>
+    <p class="mut" id="cover"></p><p class="mut hint">Влачи, за да местиш; Ctrl + колелото, двойно щракване или два пръста приближават.</p></section>
   <section class="p s4" id="side" aria-live="polite"></section>
 </div>
 <p class="mut" style="margin-top:14px">Граници на общините и областите: geoBoundaries (BGR ADM2, ADM1), обществено достояние. Сърница няма отделен контур в източника и е показана заедно с Велинград. Райони (за планиране) и макрорайони по NUTS 2024.</p>
@@ -32,8 +33,11 @@
 <script>
 (async () => {
   const geo = await (await fetch('/static/bg-municipalities.json?v={{ v }}')).json();
-  const svg = $('bgmap'), g = svg.querySelector('g.mu'), side = $('side'), form = $('mf');
-  svg.setAttribute('viewBox', `-6 -6 1012 ${geo.h + 12}`);
+  const svg = $('bgmap'), g = svg.querySelector('g.mu'), selg = svg.querySelector('g.selg'), side = $('side'), form = $('mf');
+  const HOME = { x: -6, y: -6, w: 1012, h: geo.h + 12 }, ASPECT = HOME.w / HOME.h;
+  let view;
+  const setView = (v) => { view = v; svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`); };
+  setView(HOME);
   const st = { k: 'eur', level: 'muni', sel: null, data: null };
   const fmt = { eur: (v) => big(+v), n: (v) => nf.format(v) + ' дог.', single_pct: (v) => pct(v) };
   const LV = { muni: 'общини', oblast: 'области', region: 'райони', macro: 'макрорайони' };
@@ -53,9 +57,9 @@
   // one continuous scale: log for money and counts (a few areas dwarf the rest), linear 0-100 for the share
   function scale(vals) {
     const v = vals.filter((x) => x != null && x > 0).sort((a, b) => a - b);
-    if (st.k === 'single_pct') return { t: (x) => x / 100, ticks: [0, 100] };
+    if (st.k === 'single_pct') return { t: (x) => x / 100 };
     const lo = v[0] || 1, hi = v[v.length - 1] || 1, L = Math.log(hi / lo) || 1;
-    return { t: (x) => Math.log(Math.max(x, lo) / lo) / L, ticks: [lo, hi] };   // the two ends only (AGENTS.md 7)
+    return { t: (x) => Math.log(Math.max(x, lo) / lo) / L };   // no legend under the map (AGENTS.md 7): hover and the side say the values
   }
   const MIN = 8, shade = (tone, t) => `color-mix(in srgb, ${tone} ${Math.round(MIN + t * (100 - MIN))}%, #fff)`;
   function draw() {
@@ -67,9 +71,14 @@
       p.querySelector('title').textContent = `${nameOf(a)}: ${m ? fmt[st.k](m[st.k] ?? 0) : 'няма договори'}`;
       p.classList.toggle('sel', a === st.sel);
     });
-    $('mkey').innerHTML = `<div class="grad"><div class="bar" style="background:linear-gradient(90deg, ${shade(tone, 0)}, ${shade(tone, 1)})"></div>
-      ${sc.ticks.map((x, i) => `<span style="left:${sc.t(x) * 100}%" class="${['a', 'z'][i]}">${fmt[st.k](x)}</span>`).join('')}</div>
-      <div><em style="background:var(--line-2)"></em>няма договори</div>`;
+    // the selection's borders on top of everything: a white halo under a dark line (AGENTS.md 7)
+    selg.replaceChildren();
+    const on = st.sel && g.querySelector(`path[data-id="${st.sel}"]`);
+    if (on) for (const cls of ['halo', 'line']) {
+      const c = on.cloneNode(false);
+      ['tabindex', 'role', 'aria-label', 'style'].forEach((a) => c.removeAttribute(a));
+      c.setAttribute('class', cls); selg.append(c);
+    }
     const c = st.data.cover; $('cover').textContent = c && c.eur ? `На картата са ${Math.round((100 * c.placed) / c.eur)}% от стойността на договорите по тези филтри (${big(+c.placed)} от ${big(+c.eur)}).` : '';
   }
   function top() {
@@ -95,7 +104,7 @@
     $('back').onclick = (e) => { e.preventDefault(); st.sel = null; draw(); top(); };
   }
   const hit = (p) => p && pick(p.dataset.id);
-  g.addEventListener('click', (e) => hit(e.target.closest('path')));
+  g.addEventListener('click', (e) => { if (!moved) hit(e.target.closest('path')); });
   g.addEventListener('keydown', (e) => { if (e.key === 'Enter') hit(e.target.closest('path')); });
   const tabs = (el, on) => el.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', x === b)); on(b.dataset.k); };
   tabs($('metric'), (k) => { st.k = k; draw(); if (!st.sel) top(); });
@@ -105,6 +114,42 @@
     e.preventDefault(); const y = a.dataset.year, d = a.dataset.days;
     form.from.value = y ? y + '-01-01' : d ? new Date(Date.now() - d * 864e5).toISOString().slice(0, 10) : '';
     form.to.value = y ? y + '-12-31' : ''; load(); });
+  // zoom and move (AGENTS.md 7): the buttons, Ctrl + wheel, double click, two fingers; drag with the mouse.
+  // The wheel alone and one finger scroll the page. Lines keep their width (vector-effect in the CSS).
+  function clamp(v) {
+    const w = Math.min(HOME.w, Math.max(HOME.w / 12, v.w)), h = w / ASPECT;
+    return { x: Math.min(HOME.x + HOME.w - w / 2, Math.max(HOME.x - w / 2, v.x)), y: Math.min(HOME.y + HOME.h - h / 2, Math.max(HOME.y - h / 2, v.y)), w, h };
+  }
+  const toMap = (cx, cy) => { const r = svg.getBoundingClientRect(); return [view.x + ((cx - r.left) / r.width) * view.w, view.y + ((cy - r.top) / r.height) * view.h]; };
+  const zoomAt = (f, mx, my) => { const w = view.w / f, h = w / ASPECT; setView(clamp({ x: mx - ((mx - view.x) / view.w) * w, y: my - ((my - view.y) / view.h) * h, w, h })); };
+  svg.parentElement.querySelector('.zoom').addEventListener('click', (e) => {
+    const z = e.target.closest('button')?.dataset.z;
+    if (z === 'home') setView(HOME); else if (z) zoomAt(z === 'in' ? 2 : 0.5, view.x + view.w / 2, view.y + view.h / 2);
+  });
+  svg.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0025), ...toMap(e.clientX, e.clientY)); }, { passive: false });
+  svg.addEventListener('dblclick', (e) => { e.preventDefault(); zoomAt(2, ...toMap(e.clientX, e.clientY)); });
+  let drag = null, moved = false;
+  svg.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, v: view }; moved = false; });
+  addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!moved && Math.hypot(dx, dy) < 4) return;
+    moved = true; svg.classList.add('drag');
+    const r = svg.getBoundingClientRect();
+    setView(clamp({ ...drag.v, x: drag.v.x - (dx / r.width) * drag.v.w, y: drag.v.y - (dy / r.height) * drag.v.h }));
+  });
+  addEventListener('pointerup', () => { drag = null; svg.classList.remove('drag'); setTimeout(() => { moved = false; }, 0); });
+  let pinch = null;
+  const two = (t) => ({ d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+  svg.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { e.preventDefault(); pinch = { ...two(e.touches), v: view }; } }, { passive: false });
+  svg.addEventListener('touchmove', (e) => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const n = two(e.touches), r = svg.getBoundingClientRect(), v = pinch.v, w = v.w / (n.d / pinch.d), h = w / ASPECT;
+    const mx = v.x + ((pinch.x - r.left) / r.width) * v.w, my = v.y + ((pinch.y - r.top) / r.height) * v.h;
+    setView(clamp({ x: mx - ((n.x - r.left) / r.width) * w, y: my - ((n.y - r.top) / r.height) * h, w, h }));
+  }, { passive: false });
+  svg.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; });
   shapes(); load();
 })();
 </script>

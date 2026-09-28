@@ -232,17 +232,19 @@ details.more[open] > summary { margin-bottom: 14px; }
 @media (max-width: 900px) { .dl.rec { grid-template-columns: minmax(0, 1fr); gap: 2px; } .dl.rec dd { margin-bottom: 8px; } }
 
 /* municipality map */
-.mapbox svg { width: 100%; height: auto; display: block; }
-.mapbox path { stroke: #fff; stroke-width: .8; cursor: pointer; transition: fill .15s; }
+.mapbox svg { width: 100%; height: auto; display: block; cursor: grab; user-select: none; touch-action: pan-x pan-y; }
+.mapbox svg.drag { cursor: grabbing; }
+.mapbox path { stroke: #fff; stroke-width: .8; cursor: pointer; transition: fill .15s; vector-effect: non-scaling-stroke; }
 .mapbox path:hover, .mapbox path:focus-visible { stroke: var(--ink); stroke-width: 1.4; outline: none; }
 .mapbox path.sel { stroke: var(--ink); stroke-width: 2; }
-.mkey { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 28px; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
-.mkey .grad { position: relative; width: min(360px, 100%); height: 34px; }
-.mkey .grad .bar { height: 10px; border-radius: 2px; }
-.mkey .grad span { position: absolute; top: 14px; transform: translateX(-50%); white-space: nowrap; }
-.mkey .grad span.a { transform: none; } .mkey .grad span.z { transform: translateX(-100%); }
-.mkey .grad span::before { content: ""; position: absolute; top: -6px; left: 50%; width: 1px; height: 5px; background: var(--ink-3); }
-.mkey .grad span.a::before { left: 0; } .mkey .grad span.z::before { left: auto; right: 0; }
+/* the selection: its borders on top of everything, a white halo under a dark line (AGENTS.md 7) */
+.mapbox .selg path { pointer-events: none; fill: none; } .mapbox .selg .halo { stroke: #fff; stroke-width: 5; }
+.mapbox .selg .line { stroke: var(--ink); stroke-width: 2.4; }
+.mapwrap { position: relative; }
+.mapbox .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.mapbox .zoom button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; color: var(--ink-2);
+  font: 600 18px/1 var(--font-body); cursor: pointer; } .mapbox .zoom button:hover { color: var(--ink); border-color: var(--ink-4); }
+.mapbox .hint { font-size: 12px; color: var(--ink-4); margin-top: 4px; }
 .mapbox { position: sticky; top: 16px; align-self: start; }
 .hb.st { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
 .hb.st .r { grid-column: 1 / -1; grid-template-columns: subgrid; }
@@ -250,7 +252,6 @@ details.more[open] > summary { margin-bottom: 14px; }
 .hb.st .tr { grid-column: 1; grid-row: 2; align-self: center; } .hb.st .val { grid-column: 2; grid-row: 2; white-space: nowrap; text-align: right; }
 .hb.few .r:nth-child(n+6) { display: none; }
 button.l.more { background: none; border: 0; padding: 8px 0 0; font: inherit; font-size: 14px; color: var(--accent-ink); cursor: pointer; }
-.mkey div { display: flex; align-items: center; gap: 6px; } .mkey em { width: 14px; height: 10px; border-radius: 2px; }
 .h3s { font-size: 15px; margin: 18px 0 10px; }
 .mapctl .tabs { height: 38px; align-items: center; }
 .mapbox path { fill: var(--line-2); }
