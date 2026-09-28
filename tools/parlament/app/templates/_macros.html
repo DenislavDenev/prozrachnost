@@ -8,7 +8,8 @@
   {% for a in all %}<a href="{{ path }}?ns={{ a[0] }}{{ extra }}" {% if a[0] == ns %}aria-current="page"{% endif %}>{{ ordinal(a[0]) }} НС</a>{% endfor %}
 </nav>{% endif %}{% endmacro %}
 
-{% macro grp(code, names) %}{% if names.get(code) %}<span title="{{ names[code] }}">{{ code }}</span>{% else %}{{ code }}{% endif %}{% endmacro %}
+{# a group: its party's colour and its code, the full name on hover (ingest/groups.py) #}
+{% macro grp(code, names) %}<span class="grp" title="{{ names.get(code, code) }}"><i style="background:{{ gcolor(code) }}"></i>{{ code }}</span>{% endmacro %}
 
 {# the site numbers the assemblies its own way: the 52nd is 62 (the 47th to the 52nd checked 28.09.2026) #}
 {% macro src(sitting=none, ns=none) %}<div class="src">Народно събрание · {% if sitting %}<a href="{{ SITE }}/bg/plenaryst/ns/{{ ns + 10 }}/ID/{{ sitting }}" rel="noopener">стенограма и файлове</a>{% else %}<a href="{{ SITE }}/bg/plenaryst" rel="noopener">стенограми</a>{% endif %}</div>{% endmacro %}

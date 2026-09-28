@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from ingest import checks
+from ingest import checks, groups as gref
 from ingest.config import SITE
 
 from . import feedback
@@ -22,7 +22,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("PARLAMENT_DSN", "dbname=parlament")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "1"
+ASSET_V = "2"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -93,7 +93,7 @@ STATUS = {"ok": "наред", "held": "задържан до второ чете
           None: "не е четен"}
 
 T.env.filters.update(num=fnum, date=fdate, long=flong, name=fname, district=fdistrict, status=lambda s: STATUS.get(s, s))
-T.env.globals.update(asset_v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback.BUTTON), pct=fpct, CODE=CODE,
+T.env.globals.update(gcolor=lambda code: gref.info(code)[1], asset_v=ASSET_V, hub_url=HUB_URL, feedback_button=Markup(feedback.BUTTON), pct=fpct, CODE=CODE,
                      support_link=Markup(feedback.support_link(HUB_URL)), ordinal=ordinal, SITE=SITE)
 
 
@@ -121,13 +121,9 @@ def pick_assembly(ns):
 
 
 def group_names(assembly):
-    """{code: full name} from the roster (only the current assembly has one): the name most of the group's MPs have."""
-    names = {}
-    for g, name, _ in q("""SELECT m.grp, r.grp_name, count(*) FROM live.mp_stat m JOIN live.roster r
-                           ON r.assembly = m.assembly AND r.profile = m.profile
-                           WHERE m.assembly = %s AND r.grp_name IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC""", assembly):
-        names.setdefault(g, name)
-    return names
+    """{code: full name} of the groups of an assembly (db/ref/groups.csv; the code itself for one not there)."""
+    return {g: gref.info(g)[0] for g, in q("""SELECT DISTINCT g.grp FROM live.item_group g JOIN live.sitting s ON s.id = g.sitting
+                                                 WHERE s.assembly = %s""", assembly)}
 
 
 def seats_now(assembly):
@@ -207,7 +203,7 @@ def the_vote(sitting, no):
 @app.get("/glasuvane/{sitting}/{no}", response_class=HTMLResponse)
 def vote_page(request: Request, sitting: int, no: int):
     v = the_vote(sitting, no)
-    s = one("SELECT date, heading, iv, gv FROM live.sitting WHERE id = %s", sitting)
+    s = one("SELECT date, heading, iv, gv, note FROM live.sitting WHERE id = %s", sitting)
     groups = q("""SELECT g.grp, g.yes, g.no_, g.abstain, g.voted, l.line, l.voters, l.with_line,
                          (SELECT count(*) FROM live.vote x WHERE x.sitting = g.sitting AND x.item = g.no AND x.grp = g.grp)
                   FROM live.item_group g LEFT JOIN live.line l ON l.sitting = g.sitting AND l.item = g.no AND l.grp = g.grp
@@ -225,7 +221,10 @@ def vote_page(request: Request, sitting: int, no: int):
     rank = {g: i for i, (g, _) in enumerate(seats_at(sitting))}
     seats.sort(key=lambda r: (rank.get(r[2], len(rank)), r[2]))   # the groups in the Assembly's order, as in the hall
     groups.sort(key=lambda r: (rank.get(r[0], len(rank)), r[0]))
-    return page(request, "vote.html", "Гласувания", v=v, s=s, groups=groups, against=against, names=group_names(v["assembly"]), seats=seats,
+    by_group = {}                                                   # each group's MPs: for, abstain, against, did not vote
+    for mp, name, g, code in sorted(seats, key=lambda r: ("+=-0".index(r[3]), r[1])):
+        by_group.setdefault(g, []).append((mp, name, code))
+    return page(request, "vote.html", "Гласувания", v=v, s=s, groups=groups, against=against, names=group_names(v["assembly"]), seats=seats, by_group=by_group,
                 prev=next((n for n, in nav if n < no), None), next=next((n for n, in nav if n > no), None), same_day=same_day)
 
 
@@ -237,7 +236,9 @@ def vote_api(sitting: int, no: int):
                  JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
                  WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""", sitting, no)
     order = [g for g, _ in seats_at(sitting)]
-    return JSONResponse({"assembly": v["assembly"], "groups": order + sorted({s[2] for s in seats} - set(order)),
+    order = order + sorted({s[2] for s in seats} - set(order))
+    return JSONResponse({"assembly": v["assembly"],
+                         "groups": [{"grp": g, "name": gref.info(g)[0], "color": gref.info(g)[1]} for g in order],
                          "totals": {"yes": v["yes"], "no": v["no_"], "abstain": v["abstain"], "voted": v["voted"]},
                          "seats": [{"mp": mp, "name": fname(n), "grp": g, "code": c} for mp, n, g, c in seats]},
                         headers={"Cache-Control": "public, max-age=3600"})
@@ -252,7 +253,8 @@ def seats_at(sitting):
 def hall_api(assembly: int):
     """The hall of the assembly by group, at its latest registration."""
     pick_assembly(assembly)
-    return JSONResponse({"groups": [{"grp": g, "n": n} for g, n in seats_now(assembly)]}, headers={"Cache-Control": "public, max-age=3600"})
+    return JSONResponse({"groups": [{"grp": g, "n": n, "name": gref.info(g)[0], "color": gref.info(g)[1]} for g, n in seats_now(assembly)]},
+                        headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/deputati", response_class=HTMLResponse)

@@ -161,7 +161,7 @@ td.topic a:hover { color: var(--accent-ink); text-decoration: underline; text-un
 .hall svg { display: block; width: 100%; height: auto; overflow: visible; }
 .hall circle { transition: fill .35s ease; cursor: pointer; }
 .hall circle:hover, .hall circle.hov { stroke: var(--ink); stroke-width: 1.5; }
-.hall .center { font-family: var(--font-head); font-weight: 700; fill: var(--ink); } .hall .center-t { fill: var(--ink-3); } .hall .glabel { fill: var(--ink-2); font-weight: 600; }
+.hall .center { font-family: var(--font-head); font-weight: 700; fill: var(--ink); } .hall .center-t { fill: var(--ink-3); }
 .counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 .counts div { border-top: 3px solid var(--line); padding-top: 6px; }
 .counts .n { font-family: var(--font-head); font-weight: 700; font-size: 30px; line-height: 1.1; }
@@ -193,3 +193,15 @@ td.topic a:hover { color: var(--accent-ink); text-decoration: underline; text-un
 @media (max-width: 720px) { .counts .n { font-size: 24px; } .gb .r { grid-template-columns: minmax(0, 96px) minmax(0, 1fr); } }
 .tip { position: absolute; z-index: 5; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
   padding: 6px 10px; font-size: 13px; line-height: 1.4; max-width: 300px; }
+
+/* a group: its party's colour and its code (ingest/groups.py) */
+.grp { white-space: nowrap; } .grp i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+/* how each group voted: a dot per MP, for / abstain / against / did not vote, each a link to the MP */
+.parties { display: grid; gap: 14px; }
+.party .pname { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 14px; margin-bottom: 5px; }
+.party .pname b { font-weight: 650; }
+.dots { display: flex; flex-wrap: wrap; gap: 3px; }
+.dots a { width: 10px; height: 10px; border-radius: 50%; }
+.dots a:hover, .dots a:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.dots .v0 { background: var(--yes); } .dots .v1 { background: var(--abs); } .dots .v2 { background: var(--no); } .dots .v3 { background: var(--none); }
+.hall .glabel { font-weight: 700; }

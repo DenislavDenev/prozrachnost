@@ -1,14 +1,13 @@
-// Парламент: the hall (a seat per MP, groups in the Assembly's order, each a wedge) and the MP's strip of votes.
-// A vote fills the hall seat by seat from left to right while the counts run up; "намалено движение" shows it at once.
+// Парламент: the hall (a seat per MP, the groups in the Assembly's order, each a wedge under an arc in its party's
+// colour) and the MP's strip of votes. A vote fills the hall seat by seat from left to right while the counts run up;
+// "намалено движение" shows it at once.
 const VOTE = { '+': '#0b7a5e', '-': '#b0413e', '=': '#6b7a8c', '0': '#d5d9de' };
 const VNAME = { '+': 'за', '-': 'против', '=': 'въздържал се', '0': 'не гласувал' };
 const ORDER = ['+', '=', '-', '0'];
-// the groups in the order the Assembly lists them, in the palette of every tool: never a party's colour, never
-// blue or yellow (the EU and the euro area), never green or red (for and against in a vote)
-const TONES = ['#121417', '#8a5cb8', '#c2587a', '#7a8b2c', '#5b6b7f', '#2a9d8f', '#8d6e63', '#9aa1aa'];
 const EMPTY = '#eceef1';
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fmt = (v) => v.toLocaleString('bg-BG');
+const NS = 'http://www.w3.org/2000/svg';
 
 // rows of seats on half circles, each row with seats in proportion to its length; read left to right by angle,
 // the seats of one group make a wedge
@@ -33,38 +32,33 @@ function layout(n) {
   return { seats, size: gap * 0.42 };
 }
 
-// labels: [[first seat, last seat, text]] written outside the arc over the wedge of those seats
-function svgHall(el, n, labels = []) {
+const make = (tag, attrs, parent) => {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  if (parent) parent.append(e);
+  return e;
+};
+
+// wedges: [[first seat, last seat, code, colour]]: an arc in the group's colour over its seats and its code beyond
+function svgHall(el, n, wedges = []) {
   const { seats, size } = layout(n);
-  const pad = size * 1.3, top = labels.length ? 0.16 : pad, side = labels.length ? 0.34 : pad;
-  const W = 2 + 2 * side, H = 1 + top + pad;
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', `${-1 - side} ${-1 - top} ${W} ${H}`);
-  const circles = seats.map((s) => {
-    const c = document.createElementNS(ns, 'circle');
-    c.setAttribute('cx', s.x.toFixed(4)); c.setAttribute('cy', (-s.y).toFixed(4)); c.setAttribute('r', size.toFixed(4));
-    c.setAttribute('fill', EMPTY); c.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.append(c);
-    return c;
+  const pad = size * 1.3, top = wedges.length ? 0.2 : pad, side = wedges.length ? 0.36 : pad;
+  const svg = make('svg', { viewBox: `${-1 - side} ${-1 - top} ${2 + 2 * side} ${1 + top + pad}` });
+  const circles = seats.map((s) => make('circle', { cx: s.x.toFixed(4), cy: (-s.y).toFixed(4), r: size.toFixed(4), fill: EMPTY }, svg));
+  const R = 1 + pad + 0.035, step = Math.PI / Math.max(1, n) * 0.9;
+  const pt = (t, r) => `${(r * Math.cos(t)).toFixed(4)} ${(-r * Math.sin(t)).toFixed(4)}`;
+  wedges.forEach(([a, b, code, color]) => {
+    const a0 = Math.min(Math.PI, seats[a].a + step), a1 = Math.max(0, seats[b].a - step);
+    make('path', { d: `M ${pt(a0, R)} A ${R} ${R} 0 0 1 ${pt(a1, R)}`, stroke: color, 'stroke-width': '0.035', fill: 'none' }, svg);
+    const mid = (a0 + a1) / 2, r = R + 0.06;
+    const t = make('text', { x: (r * Math.cos(mid)).toFixed(3), y: (-(r * Math.sin(mid))).toFixed(3), 'font-size': '0.05', class: 'glabel',
+      'text-anchor': Math.cos(mid) > 0.3 ? 'start' : Math.cos(mid) < -0.3 ? 'end' : 'middle', fill: color }, svg);
+    t.textContent = code;
   });
-  // in the middle: the number, and under it what it counts
-  const text = (y, size, cls) => {
-    const t = document.createElementNS(ns, 'text');
-    t.setAttribute('class', cls); t.setAttribute('text-anchor', 'middle'); t.setAttribute('y', y); t.setAttribute('font-size', size);
-    svg.append(t);
-    return t;
-  };
-  const num = text('-0.1', '0.15', 'center'), what = text('-0.02', '0.052', 'center-t');
-  labels.forEach(([a, b, t]) => {
-    const mid = (seats[a].a + seats[b].a) / 2, r = 1 + pad + 0.03;
-    const l = text((-(r * Math.sin(mid))).toFixed(3), '0.045', 'glabel');
-    l.setAttribute('x', (r * Math.cos(mid)).toFixed(3));
-    l.setAttribute('text-anchor', Math.cos(mid) > 0.3 ? 'start' : Math.cos(mid) < -0.3 ? 'end' : 'middle');
-    l.textContent = t;
-  });
+  const num = make('text', { class: 'center', 'text-anchor': 'middle', y: '-0.1', 'font-size': '0.15' }, svg);
+  const what = make('text', { class: 'center-t', 'text-anchor': 'middle', y: '-0.02', 'font-size': '0.052' }, svg);
   el.prepend(svg);
-  return { svg, circles, center: { set textContent(v) { const [a, ...b] = v.split(' '); num.textContent = a; what.textContent = b.join(' '); } } };
+  return { circles, center: (a, b) => { num.textContent = a; what.textContent = b; } };
 }
 
 function tip(el) {
@@ -103,20 +97,30 @@ function whenSeen(el, fn) {
   io.observe(el);
 }
 
+// the seats of each group in a row: [[first, last, code, colour]]
+function wedgesOf(list, groups) {
+  const by = new Map(groups.map((g) => [g.grp, g]));
+  const out = [];
+  list.forEach((s, i) => {
+    if (!i || list[i - 1].grp !== s.grp) out.push([i, i, s.grp, by.get(s.grp)?.color || '#9aa1aa']);
+    else out[out.length - 1][1] = i;
+  });
+  return out;
+}
+
 // data-vote="/api/glasuvane/<sitting>/<no>.json": the vote in the hall
 async function voteHall(el) {
   const j = await (await fetch(el.dataset.vote)).json();
-  const rank = new Map(j.groups.map((g, i) => [g, i]));
+  const rank = new Map(j.groups.map((g, i) => [g.grp, i]));
+  const names = new Map(j.groups.map((g) => [g.grp, g.name]));
   const seats = [...j.seats].sort((a, b) => (rank.get(a.grp) - rank.get(b.grp)) || (ORDER.indexOf(a.code) - ORDER.indexOf(b.code)) || a.name.localeCompare(b.name, 'bg'));
-  const labels = [];
-  seats.forEach((s, i) => { if (!i || seats[i - 1].grp !== s.grp) labels.push([i, i, s.grp]); else labels[labels.length - 1][1] = i; });
-  const { circles, center } = svgHall(el, seats.length, labels);
-  center.textContent = `${fmt(j.totals.voted)} гласували`;
+  const { circles, center } = svgHall(el, seats.length, wedgesOf(seats, j.groups));
+  center(fmt(j.totals.voted), 'гласували');
   const tp = tip(el);
   circles.forEach((c, i) => {
     const s = seats[i];
     c.setAttribute('aria-label', `${s.name}, ${s.grp}: ${VNAME[s.code]}`);
-    c.addEventListener('mousemove', (ev) => tp.show(ev, `<b>${s.name}</b><br>${s.grp} · ${VNAME[s.code]}`));
+    c.addEventListener('mousemove', (ev) => tp.show(ev, `<b>${s.name}</b><br>${names.get(s.grp) || s.grp}<br>${VNAME[s.code]}`));
     c.addEventListener('mouseleave', () => tp.hide());
     c.addEventListener('click', () => { location.href = `/deputati/${j.assembly}/${s.mp}`; });
   });
@@ -128,25 +132,24 @@ async function voteHall(el) {
   box.querySelector('.replay')?.addEventListener('click', () => play(circles, colors, counts));
 }
 
-// data-hall="/api/zala/<assembly>.json": the groups of the assembly
+// data-hall="/api/zala/<assembly>.json": the groups of the assembly, each in its party's colour
 async function groupHall(el) {
   const j = await (await fetch(el.dataset.hall)).json();
-  const names = JSON.parse(el.dataset.names || '{}');
   const n = j.groups.reduce((a, g) => a + g.n, 0);
   if (!n) return;
-  const { circles, center } = svgHall(el, n);
-  center.textContent = `${fmt(n)} депутати`;
-  const tp = tip(el), colors = [], who = [];
-  j.groups.forEach((g, gi) => { for (let k = 0; k < g.n; k++) { colors.push(TONES[gi % TONES.length]); who.push(g); } });
+  const list = j.groups.flatMap((g) => Array(g.n).fill(g));
+  const { circles, center } = svgHall(el, n, wedgesOf(list, j.groups));
+  center(fmt(n), 'депутати');
+  const tp = tip(el);
   circles.forEach((c, i) => {
-    const g = who[i];
+    const g = list[i];
     c.style.cursor = 'default';
-    c.addEventListener('mousemove', (ev) => tp.show(ev, `<b>${names[g.grp] || g.grp}</b><br>${fmt(g.n)} депутати`));
+    c.addEventListener('mousemove', (ev) => tp.show(ev, `<b>${g.name}</b><br>${fmt(g.n)} депутати`));
     c.addEventListener('mouseleave', () => tp.hide());
   });
   const leg = el.parentElement.querySelector('.glegend');
-  if (leg) leg.innerHTML = j.groups.map((g, gi) => `<span><i style="background:${TONES[gi % TONES.length]}"></i>${names[g.grp] || g.grp} · <b>${g.n}</b></span>`).join('');
-  whenSeen(el, () => play(circles, colors, []));
+  if (leg) leg.innerHTML = j.groups.map((g) => `<span><i style="background:${g.color}"></i>${g.name} · <b>${g.n}</b></span>`).join('');
+  whenSeen(el, () => play(circles, list.map((g) => g.color), []));
 }
 
 // data-strip="/api/deputat/<ns>/<mp>.json": every vote of the MP in time, a thin column each; a mark above the

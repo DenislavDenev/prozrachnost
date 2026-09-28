@@ -3,6 +3,7 @@
   migrate                     apply db/migrations
   roster                      the current assembly's MPs (profile, group, constituency)
   sittings [--from YYYY-MM]   every sitting from that month (default: from the month before the last one we hold)
+  recheck                     read again the sittings refused or without files; rebuild every assembly
   freshness                   what is late, held or broken
 
 Prints one JSON line with the stats. Exit code 1 on a failure or when `problems` is not empty: that is what the n8n
@@ -15,7 +16,7 @@ import sys
 
 from . import checks, db, load, stats
 
-STEPS = ["migrate", "roster", "sittings", "freshness"]
+STEPS = ["migrate", "roster", "sittings", "recheck", "freshness"]
 
 
 def main():
@@ -41,6 +42,10 @@ def main():
                 first = (d.year, d.month)
             with db.job("sittings", {"from": a.first}) as (conn, st):
                 load.load(conn, st, first=first)
+                out.update(st)
+        elif a.step == "recheck":
+            with db.job("sittings", {"recheck": True}) as (conn, st):
+                load.recheck(conn, st)
                 out.update(st)
         elif a.step == "freshness":
             with db.connect(autocommit=True) as conn:

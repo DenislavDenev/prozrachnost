@@ -6,6 +6,7 @@
 <h1>{{ v.topic }}</h1>
 <p class="lede"><b>{{ v.yes }} за</b>, <b>{{ v.no_ }} против</b> и <b>{{ v.abstain }} въздържали се</b>: гласуваха <b>{{ v.voted }} от {{ v.listed }} депутати</b>.
   {% if against %}<b>{{ against | length }} {{ 'депутат' if against | length == 1 else 'депутати' }}</b> гласуваха различно от групата си.{% endif %}</p>
+{% if s[4] %}<p class="asof"><span class="warn">Внимание:</span> {{ s[4] }}</p>{% endif %}
 {% if v.mismatch %}<p class="asof"><span class="warn">Двата файла на Народното събрание се разминават:</span> {{ v.mismatch }}.
   Резултатът горе е от гласуването по групи, залата и списъкът долу са от поименното гласуване.</p>{% endif %}
 
@@ -21,11 +22,13 @@
       <div class="none"><div class="n">{{ seats | length - v.voted }}</div><div class="t">не гласуваха</div></div></div>
     {{ m.src(v.sitting, v.assembly) }}</section>
 
-  <section class="p s4 stick"><div class="ph"><div><h2>По групи</h2><div class="sub">за · против · въздържали се от депутатите на групата</div></div></div>
-    <div class="gb">{% for g, y, n, a, voted, line, voters, with_line, members in groups %}
-      <div class="r"><div><b>{{ m.grp(g, names) }}</b><small>{{ members }} депутати{% if line %} · {{ CODE[line] }}{% endif %}</small></div>
-        <div>{{ m.rbar({"yes": y, "no_": n, "abstain": a, "voted": voted, "listed": members}) }}
-          <div class="res" style="margin-top:3px"><b class="k-yes">{{ y }}</b> · <b class="k-no">{{ n }}</b> · <b class="k-abs">{{ a }}</b></div></div></div>
+  <section class="p s4"><div class="ph"><div><h2>Как гласува всяка група</h2><div class="sub">всяка точка е депутат:
+    <span class="k-yes">за</span>, <span class="k-abs">въздържал се</span>, <span class="k-no">против</span>, светлосиво не гласува</div></div></div>
+    <div class="parties">{% for g, y, n, a, voted, line, voters, with_line, members in groups %}
+      <div class="party"><div class="pname"><span class="grp"><i style="background:{{ gcolor(g) }}"></i><b>{{ names.get(g, g) }}</b></span>
+        <span class="res"><b class="k-yes">{{ y }}</b> · <b class="k-abs">{{ a }}</b> · <b class="k-no">{{ n }}</b></span></div>
+        <div class="dots">{% for mp, name, code in by_group.get(g, []) %}<a href="/deputati/{{ v.assembly }}/{{ mp }}" class="v{{ '+=-0'.index(code) }}"
+          title="{{ name | name }}: {{ CODE[code] }}" aria-label="{{ name | name }}: {{ CODE[code] }}"></a>{% endfor %}</div></div>
     {% endfor %}</div></section>
 
   {% if against %}<section class="p s12"><div class="ph"><div><h2>Гласуваха различно от групата си</h2>
