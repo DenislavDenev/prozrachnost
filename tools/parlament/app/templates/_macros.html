@@ -9,7 +9,17 @@
 </nav>{% endif %}{% endmacro %}
 
 {# a group: its party's colour and its code, the full name on hover (ingest/groups.py) #}
-{% macro grp(code, names) %}<span class="grp" title="{{ names.get(code, code) }}"><i style="background:{{ gcolor(code) }}"></i>{{ code }}</span>{% endmacro %}
+{% macro grp(code, names, ns=none) %}{% if ns %}<a class="grp" href="/grupa/{{ ns }}/{{ code | urlencode }}" title="{{ names.get(code, code) }}"><i style="background:{{ gcolor(code) }}"></i>{{ code }}</a>{% else %}<span class="grp" title="{{ names.get(code, code) }}"><i style="background:{{ gcolor(code) }}"></i>{{ code }}</span>{% endif %}{% endmacro %}
 
-{# the site numbers the assemblies its own way: the 52nd is 62 (the 47th to the 52nd checked 28.09.2026) #}
-{% macro src(sitting=none, ns=none) %}<div class="src">Народно събрание · {% if sitting %}<a href="{{ SITE }}/bg/plenaryst/ns/{{ ns + 10 }}/ID/{{ sitting }}" rel="noopener">стенограма и файлове</a>{% else %}<a href="{{ SITE }}/bg/plenaryst" rel="noopener">стенограми</a>{% endif %}</div>{% endmacro %}
+{# a speech of the stenogram: who (a link to the person where known), their role and group, the text; its own address #}
+{% macro speech(x) %}<article class="sp{{ ' chair' if x.role_s in ('председател', 'зам.-председател') }}{{ ' hall-v' if x.role == 'реплика' }}" id="i{{ x.no }}">
+  {% if x.no %}<div class="who">{% if x.person %}<a href="/chovek/{{ x.person }}">{{ x.name | name }}</a>{% elif x.name %}<span>{{ x.name | name }}</span>{% else %}<span>Реплика от залата</span>{% endif %}
+    {% if x.role_s and x.role != 'реплика' %}<span class="role">{{ x.role_s }}</span>{% endif %}
+    {% if x.grp %}<span class="grp"><i style="background:{{ gcolor(x.code) if x.code else '#9aa1aa' }}"></i>{{ x.grp }}</span>{% endif %}
+    {% if x.note and x.note != x.grp %}<span class="mut">{{ x.note[(x.grp | length) + 2 if x.grp and x.note.startswith(x.grp) else 0:] }}</span>{% endif %}
+    <a class="anchor" href="/izkazvane/{{ x.sitting }}/{{ x.no }}" title="Адресът на това изказване" aria-label="Адресът на това изказване">#</a></div>{% endif %}
+  <div class="txt">{% for p in x.paras %}<p>{{ p | para }}</p>{% endfor %}</div>
+</article>{% endmacro %}
+
+{# the sitting on parliament.bg (the page reads only the sitting's number) #}
+{% macro src(sitting=none, ns=none) %}<div class="src">Народно събрание · {% if sitting %}<a href="{{ sten_url(sitting) }}" rel="noopener">стенограма и файлове</a>{% else %}<a href="{{ SITE }}/bg/plenaryst" rel="noopener">стенограми</a>{% endif %}</div>{% endmacro %}

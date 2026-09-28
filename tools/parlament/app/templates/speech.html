@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ (x.name or 'Изказване') | name }}, {{ s.date | date }}{% endblock %}
+{% block main %}
+<div class="reading">
+<div class="crumbs"><a href="/zasedanie/{{ s.id }}">Заседание от {{ s.date | long }} г.</a> · {{ aname(s.assembly) }}</div>
+<h1>{% if x.name %}{{ x.name | name }}{% else %}Изказване{% endif %}</h1>
+<p class="asof">Изказване №{{ x.no }} в стенограмата. <a class="l" href="/zasedanie/{{ s.id }}/stenograma#i{{ x.no }}">В цялата стенограма →</a></p>
+<div class="steno">
+  {% if before %}<div class="ctx">{{ m.speech(before) }}</div>{% endif %}
+  <div class="this">{{ m.speech(x) }}</div>
+  {% if after %}<div class="ctx">{{ m.speech(after) }}</div>{% endif %}
+</div>
+<nav class="pn" aria-label="Съседните изказвания">
+  <span>{% if before %}<a href="/izkazvane/{{ s.id }}/{{ before.no }}">← предишното</a>{% endif %}</span>
+  <span>{% if after %}<a href="/izkazvane/{{ s.id }}/{{ after.no }}">следващото →</a>{% endif %}</span>
+</nav>
+{{ m.src(s.id, s.assembly) }}
+</div>
+{% endblock %}

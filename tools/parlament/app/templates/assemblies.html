@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Народните събрания{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/zasedaniya">Заседания</a></div>
+<h1>Народните събрания от 1879 г.</h1>
+<p class="lede"><b>{{ rows | length }} събрания</b>: обикновените, великите и Учредителното. За всяко: колко заседания пазим, с
+  каква стенограма, с поименно гласуване и с профили на депутатите.</p>
+<div class="grid"><section class="p s12">
+  <table class="sortable"><thead><tr><th>Събрание</th><th>От</th><th>До</th><th class="n">Заседания</th><th class="n">Стенограма текст</th>
+    <th class="n">Сканирана</th><th class="n">Поименно</th><th class="n">Профили</th></tr></thead><tbody>
+  {% for no, a, b, n, text, pdf, iv, profiles in rows %}<tr>
+    <td>{% if n %}<a class="l" href="/zasedaniya?ns={{ no }}">{{ aname(no) }}</a>{% else %}{{ aname(no) }}{% endif %}</td>
+    <td data-v="{{ a.isoformat() }}">{{ a | date }}</td><td>{{ b | date if b else 'сега' }}</td>
+    <td class="n">{{ n | num if n else '' }}</td><td class="n">{{ text | num if text else '' }}</td><td class="n">{{ pdf | num if pdf else '' }}</td>
+    <td class="n">{{ iv | num if iv else '' }}</td><td class="n">{{ profiles | num if profiles else '' }}</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="mut">Събранията и датите им до 2001 г. са от Уикипедия; от 39-о събрание нататък от Народното събрание. Номерата
+    от 1950 до 1990 г. продължават обикновените: I Народно събрание от 1950 г. е 27-о.</p>
+  {{ m.src() }}</section></div>
+{% endblock %}

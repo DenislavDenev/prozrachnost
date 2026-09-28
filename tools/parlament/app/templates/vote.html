@@ -2,7 +2,7 @@
 {% import "_macros.html" as m with context %}
 {% block title %}{{ v.topic[:80] }}{% endblock %}
 {% block main %}
-<div class="crumbs"><a href="/glasuvaniya?ns={{ v.assembly }}">{{ ordinal(v.assembly) }} Народно събрание</a> · заседание от {{ s[0] | long }} г., точка {{ v.no }}, {{ v.at.strftime('%H:%M') }} ч.</div>
+<div class="crumbs"><a href="/glasuvaniya?ns={{ v.assembly }}">{{ ordinal(v.assembly) }} Народно събрание</a> · <a href="/zasedanie/{{ v.sitting }}">заседание от {{ s[0] | long }} г.</a>, точка {{ v.no }}, {{ v.at.strftime('%H:%M') }} ч.</div>
 <h1>{{ v.topic }}</h1>
 <p class="lede"><b>{{ v.yes }} за</b>, <b>{{ v.no_ }} против</b> и <b>{{ v.abstain }} въздържали се</b>: гласуваха <b>{{ v.voted }} от {{ v.listed }} депутати</b>.
   {% if against %}<b>{{ against | length }} {{ 'депутат' if against | length == 1 else 'депутати' }}</b> гласуваха различно от групата си.{% endif %}</p>
@@ -27,7 +27,7 @@
   <section class="p s4"><div class="ph"><div><h2>Как гласува всяка група</h2><div class="sub">всяка точка е депутат:
     <span class="k-yes">за</span>, <span class="k-abs">въздържал се</span>, <span class="k-no">против</span>, светлосиво не гласува</div></div></div>
     <div class="parties">{% for g, y, n, a, voted, line, voters, with_line, members in groups %}
-      <div class="party"><div class="pname"><span class="grp"><i style="background:{{ gcolor(g) }}"></i><b>{{ names.get(g, g) }}</b></span>
+      <div class="party"><div class="pname"><a class="grp" href="/grupa/{{ v.assembly }}/{{ g | urlencode }}"><i style="background:{{ gcolor(g) }}"></i><b>{{ names.get(g, g) }}</b></a>
         <span class="res"><b class="k-yes">{{ y }}</b> · <b class="k-abs">{{ a }}</b> · <b class="k-no">{{ n }}</b></span></div>
         <div class="dots">{% for mp, name, code in by_group.get(g, []) %}<a href="/deputati/{{ v.assembly }}/{{ mp }}" class="v{{ '+=-0'.index(code) }}"
           title="{{ name | name }}: {{ CODE[code] }}" aria-label="{{ name | name }}: {{ CODE[code] }}"></a>{% endfor %}</div></div>

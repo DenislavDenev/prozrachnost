@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Стенограма от {{ s.date | date }}{% endblock %}
+{% block main %}
+<div class="reading">
+<div class="crumbs"><a href="/zasedanie/{{ s.id }}">Заседанието</a> · {{ aname(s.assembly) }}</div>
+<h1>Стенограма от {{ s.date | long }} г.</h1>
+<p class="asof">{{ s.heading | replace('\n', ' ') }}</p>
+<div class="tools"><input type="search" data-find="steno" placeholder="Търси в стенограмата" aria-label="Търси в стенограмата"><span class="mut" data-find-count></span></div>
+<div class="steno" id="steno">{% for x in speeches %}{{ m.speech(x) }}{% endfor %}</div>
+{{ m.src(s.id, s.assembly) }}
+</div>
+{% endblock %}

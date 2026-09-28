@@ -132,3 +132,36 @@ document.querySelectorAll('input[data-filter]').forEach((inp) => {
     if (chips) chips.querySelectorAll('button').forEach((b) => { b.hidden = !has(b.textContent + ' ' + b.title) && b.getAttribute('aria-pressed') !== 'true'; });
   });
 });
+
+// a select or date field with data-autosubmit sends its form when it changes
+document.querySelectorAll('[data-autosubmit]').forEach((el) => el.addEventListener('change', () => el.form.submit()));
+
+// the video of a sitting: the buttons switch the part
+document.querySelectorAll('[data-video]').forEach((box) => {
+  const v = box.querySelector('video');
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-src]');
+    if (!b) return;
+    box.querySelectorAll('button[data-src]').forEach((x) => x.setAttribute('aria-pressed', x === b));
+    v.src = b.dataset.src; v.play().catch(() => {});
+  });
+});
+
+// <input data-find="id">: finds the text in a stenogram, keeps only the speeches with it, counts them
+document.querySelectorAll('input[data-find]').forEach((inp) => {
+  const box = document.getElementById(inp.dataset.find), out = inp.parentElement.querySelector('[data-find-count]');
+  const items = [...box.querySelectorAll('.sp')];
+  let t;
+  inp.addEventListener('input', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const s = inp.value.trim().toLowerCase();
+      let n = 0;
+      items.forEach((x) => { const hit = !s || x.textContent.toLowerCase().includes(s); x.hidden = !hit; n += hit && s ? 1 : 0; });
+      if (out) out.textContent = s ? `${n} ${n === 1 ? 'изказване' : 'изказвания'}` : '';
+    }, 150);
+  });
+});
+
+// a speech asked for by its address (#i12) is marked
+if (/^#i\d+$/.test(location.hash)) document.querySelector(location.hash)?.classList.add('on');

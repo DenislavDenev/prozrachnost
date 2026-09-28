@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ pname | name }}{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/deputati">Депутати</a></div>
+<h1>{{ pname | name }}</h1>
+{% set n = lines | length %}
+<p class="lede">Народен представител в <b>{{ n }} {{ 'събрание' if n == 1 else 'събрания' }}</b>
+  ({% for l in lines %}{{ aname(l.assembly, true) }}{{ ', ' if not loop.last }}{% endfor %}).
+  {% set sp = lines | selectattr('said') | map(attribute='said') | list %}{% if sp %}В пленарната зала е говорил
+  <b>{{ sp | map(attribute=0) | sum | num }} пъти</b>.{% endif %}
+  {% if absences %}Официални отсъствия: <b>{{ absences | length }}</b>.{% endif %}
+  {% if penalties %}Наказания: <b>{{ penalties | length }}</b>.{% endif %}</p>
+{% if profession or languages %}<p class="asof">{% if profession %}Професия: {{ profession }}.{% endif %} {% if languages %}Езици: {{ languages }}.{% endif %}</p>{% endif %}
+
+<div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>Във времето</h2>
+    <div class="sub">всяко събрание е ред; цветните ленти са парламентарните групи, в цвета на партията</div></div></div>
+    <div class="tl">{% for l in lines %}
+      <div class="tl-r"><div class="tl-h"><b>{{ aname(l.assembly, true) }}</b><span class="mut">{{ l.start | date }} – {{ l.end | date }}</span></div>
+        <div class="tl-t" role="img" aria-label="{% for b in l.bars %}{{ b.name }} от {{ b.since | date }}{% if b.until %} до {{ b.until | date }}{% endif %}; {% endfor %}">
+          {% for b in l.bars %}<i style="left:{{ '%.2f' % b.left }}%;width:{{ '%.2f' % b.width }}%;background:{{ b.color }}" title="{{ b.name }}: {{ b.since | date }} – {{ b.until | date if b.until else 'сега' }}"></i>{% endfor %}</div>
+        <div class="tl-d">{% if l.district %}{{ l.district | district }}{% endif %}{% if l.list %}{{ ' · ' if l.district }}листа {{ l.list }}{% endif %}</div>
+      </div>{% endfor %}</div>
+    {{ m.src() }}</section>
+
+  <section class="p s12"><div class="ph"><div><h2>По събрания</h2><div class="sub">групи и длъжности, гласуване, изказвания</div></div></div>
+    <table><thead><tr><th>Събрание</th><th>Групи и длъжности</th><th class="n">Участвал</th><th class="n">Срещу групата</th><th class="n">Изказвания</th></tr></thead><tbody>
+    {% for l in lines | reverse %}<tr>
+      <td style="white-space:nowrap"><b>{{ aname(l.assembly, true) }}</b></td>
+      <td>{% for b in l.bars %}<div><span class="grp"><i style="background:{{ b.color }}"></i>{{ b.name }}</span>
+          <span class="mut">{{ b.since | date }} – {{ b.until | date if b.until else 'сега' }}</span></div>{% endfor %}
+        {% for r in l.roles %}<div class="mut">{{ r[3] }} ({{ r[1] }}), {{ r[4] | date }} – {{ r[5] | date if r[5] else 'сега' }}</div>{% endfor %}
+        {% if l.bodies %}<details class="why"><summary>{{ l.bodies | length }} комисии и други</summary><ul>
+          {% for b in l.bodies %}<li>{{ b[1] }}{% if b[3] %}, {{ b[3] }}{% endif %} <span class="mut">{{ b[4] | date }} – {{ b[5] | date if b[5] else 'сега' }}</span></li>{% endfor %}</ul></details>{% endif %}</td>
+      {% set v = l.votes %}
+      <td class="n">{% if v %}<a class="l" href="/deputati/{{ v[0] }}/{{ v[1] }}">{{ pct(v[3], v[2]) }}</a>{% else %}<span class="mut">няма поименно</span>{% endif %}</td>
+      <td class="n">{% if v %}{{ v[5] | num }}{% endif %}</td>
+      <td class="n">{% if l.said %}<a class="l" href="/tarsene?chovek={{ person }}&amp;ns={{ l.assembly }}">{{ l.said[0] | num }}</a>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="mut">„Участвал“: гласувал за, против или въздържал се (поименно гласуване има от юли 2009 г.). Събранията са свързани
+      така: Народното събрание изброява в профила предишните събрания на депутата, а там профилът е този със същите три имена,
+      само ако името е веднъж.</p>{{ m.src() }}</section>
+
+  {% if latest %}<section class="p s12"><div class="ph"><div><h2>Последните изказвания</h2><div class="sub">в пленарната зала</div></div>
+    <a class="more" href="/tarsene?chovek={{ person }}">Всички и търсене →</a></div>
+    <ol class="hits">{% for sid, no, d, a, g, text in latest %}
+      <li><div class="hit-h"><a class="l" href="/izkazvane/{{ sid }}/{{ no }}">{{ d | date }}</a>{% if g %} {{ m.grp(g, {}) }}{% endif %}<span class="mut"> · {{ aname(a, true) }}</span></div>
+        <p class="snip">{{ text }}{% if text | length >= 260 %}…{% endif %}</p></li>{% endfor %}</ol>{{ m.src() }}</section>{% endif %}
+
+  {% if absences or penalties %}
+  <section class="p s6"><div class="ph"><div><h2>Официални отсъствия</h2><div class="sub">както ги обявява Народното събрание; пазим ги от 29.09.2026</div></div></div>
+    {% if absences %}<table class="sortable"><thead><tr><th>Дата</th><th>Къде</th></tr></thead><tbody>
+    {% for d, body, kind in absences %}<tr><td data-v="{{ d.isoformat() }}">{{ d | date }}</td><td>{{ 'пленарна зала' if kind == 1 else body }}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="mut">Няма.</p>{% endif %}</section>
+  <section class="p s6"><div class="ph"><div><h2>Наказания</h2><div class="sub">от председателстващия заседанието</div></div></div>
+    {% if penalties %}<table><thead><tr><th>Дата</th><th>Наказание</th><th>За</th></tr></thead><tbody>
+    {% for d, kind, note, by, what in penalties %}<tr><td>{{ d | date }}</td><td>{{ kind }}{% if by %}<div class="mut">от {{ by | name }}</div>{% endif %}</td>
+      <td>{{ what or '' }}{% if note %}<div class="mut">{{ note }}</div>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p class="mut">Няма.</p>{% endif %}</section>
+  {% endif %}
+</div>
+{% endblock %}

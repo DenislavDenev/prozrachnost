@@ -5,9 +5,10 @@
 {% set mp, name, g, votes, voted, yes, no_, abstain, regs, present, with_line, against_n, first, last, district, profile = s %}
 <div class="crumbs"><a href="/deputati?ns={{ ns }}">{{ ordinal(ns) }} Народно събрание</a>{% if district %} · {{ district | district }}{% endif %}</div>
 <h1>{{ name | name }}</h1>
+{% if person %}<p class="asof"><a class="l" href="/chovek/{{ person }}">Профил през всички събрания: групи и длъжности, изказвания, отсъствия →</a></p>{% endif %}
 <p class="lede">От {{ first | date }} до {{ last | date }} гласува в <b>{{ pct(voted, votes) }}</b> от гласуванията
   (средно за депутатите: <b>{{ pct(avg[0] or 0, 1) }}</b>) и <b>{{ against_n | num }} {{ 'път' if against_n == 1 else 'пъти' }}</b> различно от групата си.
-  Група: {% for gr, a, b in groups %}{{ m.grp(gr, names) }}{% if groups | length > 1 %} ({{ a | date }} – {{ b | date }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
+  Група: {% for gr, a, b in groups %}{{ m.grp(gr, names, ns) }}{% if groups | length > 1 %} ({{ a | date }} – {{ b | date }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}.</p>
 
 <div class="grid">
   <section class="p s3 kpi"><div class="n">{{ pct(voted, votes) }}</div><div class="t">участвал в гласуванията</div><div class="w">{{ voted | num }} от {{ votes | num }}</div></section>

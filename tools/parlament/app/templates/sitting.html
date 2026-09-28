@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Заседание от {{ s.date | date }}{% endblock %}
+{% block main %}
+<div class="crumbs"><a href="/zasedaniya?g={{ s.date.year }}">Заседания {{ s.date.year }}</a> ·
+  {% if s.assembly %}<a href="/zasedaniya?ns={{ s.assembly }}">{{ aname(s.assembly) }}</a>{% endif %}</div>
+<h1>Заседание от {{ s.date | long }} г.</h1>
+<p class="lede">{% if votes %}<b>{{ votes | length }} {{ 'гласуване' if votes | length == 1 else 'гласувания' }}</b>{% endif %}
+  {% if votes and speeches %} и {% endif %}{% if speeches %}<b>{{ (speeches | length) - (1 if speeches[0].no == 0 else 0) }} изказвания</b>
+  на <b>{{ speakers | length }} души</b>{% endif %}{% if not votes and not speeches %}{{ s.heading.split('\n')[0] }}{% endif %}.
+  {% if s.video %}Видеозапис: <b>{{ s.video | length }} {{ 'част' if s.video | length == 1 else 'части' }}</b>.{% endif %}</p>
+{% if s.note %}<p class="asof"><span class="warn">Внимание:</span> {{ s.note }}</p>{% endif %}
+
+<div class="grid">
+  {% if s.video %}<section class="p s8" id="video"><div class="ph"><div><h2>Видеозапис</h2>
+    <div class="sub">от сайта на Народното събрание; всяка част е около 3 часа</div></div></div>
+    <div class="player" data-video>
+      <video controls preload="none" playsinline src="{{ s.video[0] }}"></video>
+      {% if s.video | length > 1 %}<div class="parts" role="group" aria-label="Част на записа">{% for v in s.video %}
+        <button type="button" data-src="{{ v }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">Част {{ loop.index }}</button>{% endfor %}</div>{% endif %}
+    </div>
+    <div class="src">Народно събрание · {% for v in s.video %}<a href="{{ v }}" rel="noopener">част {{ loop.index }} (mp4)</a>{{ ' · ' if not loop.last }}{% endfor %}</div></section>{% endif %}
+
+  {% if speakers %}<section class="p {{ 's4' if s.video else 's12' }}"><div class="ph"><div><h2>Кой говори</h2>
+    <div class="sub">по брой думи; без председателстващия</div></div></div>
+    <ol class="who-list">{% for name, person, g, n, w in speakers[:14] %}
+      <li>{% if person %}<a class="l" href="/chovek/{{ person }}">{{ name | name }}</a>{% else %}{{ name | name }}{% endif %}
+        {% if g %}{{ m.grp(g, {}) }}{% endif %}<span class="mut"> · {{ n }} {{ 'изказване' if n == 1 else 'изказвания' }}, {{ w | num }} думи</span></li>{% endfor %}</ol>
+    {% if speakers | length > 14 %}<p class="mut">и още {{ speakers | length - 14 }}</p>{% endif %}</section>{% endif %}
+
+  {% if votes %}<section class="p s12" id="glasuvaniya"><div class="ph"><div><h2>Гласувания</h2><div class="sub">за · против · въздържали се</div></div></div>
+    <table><thead><tr><th>Час</th><th>Тема</th><th>Резултат</th><th class="n">Гласове</th></tr></thead><tbody>
+    {% for v in votes %}<tr><td class="mut">{{ v.at.strftime('%H:%M') }}</td><td class="topic"><a href="{{ v.url }}">{{ v.topic }}</a></td>
+      <td style="width:22%">{{ m.rbar(v) }}</td><td class="n">{{ m.res(v) }}</td></tr>{% endfor %}
+    </tbody></table>{{ m.src(s.id, s.assembly) }}</section>{% endif %}
+
+  <section class="p s12" id="stenograma"><div class="ph"><div><h2>Стенограма</h2>
+    <div class="sub">{% if speeches %}изказване по изказване, както я публикува Народното събрание{% elif s.pdf %}сканираното копие на Народното събрание{% else %}още не е публикувана{% endif %}</div></div>
+    {% if speeches %}<a class="more" href="/zasedanie/{{ s.id }}/stenograma" target="_blank" rel="noopener">Отвори в нов раздел ↗</a>{% endif %}</div>
+    {% if speeches %}
+    <div class="tools"><input type="search" data-find="steno" placeholder="Търси в стенограмата" aria-label="Търси в стенограмата"><span class="mut" data-find-count></span></div>
+    <div class="steno" id="steno">{% for x in speeches %}{{ m.speech(x) }}{% endfor %}</div>
+    {% elif s.pdf %}<p><a class="more" href="{{ SITE }}{{ s.pdf }}" rel="noopener">Сканираната стенограма (PDF) ↗</a></p>
+    <p class="mut">Преди 1992 г. стенограмите са сканирани страници, без текст; пазим копие на всяка.</p>
+    {% else %}<p class="mut">Народното събрание публикува стенограмата до 7 дни след заседанието.</p>{% endif %}
+    {{ m.src(s.id, s.assembly) }}</section>
+</div>
+
+<nav class="pn" aria-label="Заседанията">
+  <span>{% if prev %}<a href="/zasedanie/{{ prev[0] }}">← {{ prev[1] | date }}</a>{% endif %}</span>
+  <span>{% if next %}<a href="/zasedanie/{{ next[0] }}">{{ next[1] | date }} →</a>{% endif %}</span>
+</nav>
+{% endblock %}

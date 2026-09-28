@@ -9,8 +9,15 @@
   гласовете на депутатите ѝ са като линията на групата; най-малко е {{ m.grp(low[0], names) }} с <b>{{ pct(low[1], low[2], 1) }}</b>.</p>
 <div class="ctl">{{ m.assemblies(all, ns, "/grupi") }}</div>
 <div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>Съставът на ден</h2><div class="sub">депутатите по групи при регистрацията на този ден или последната преди него</div></div>
+    <form class="dayform" method="get" action="/grupi"><input type="hidden" name="ns" value="{{ ns }}">
+      <label for="date" class="mut">Ден</label><input type="date" id="date" name="date" value="{{ day or '' }}" min="{{ span[0] }}" max="{{ span[1] }}" data-autosubmit>
+      <noscript><button type="submit">Покажи</button></noscript></form></div>
+    <div class="hall" data-hall="/api/zala/{{ ns }}.json{% if day %}?date={{ day }}{% endif %}" role="img" aria-label="съставът по групи"></div>
+    <div class="glegend"></div>{{ m.src() }}</section>
+
   <section class="p s12"><div class="ph"><div><h2>Единство</h2><div class="sub">от гласовете на депутатите на групата, колко са като линията ѝ („за“ или „не подкрепя“, според повечето)</div></div></div>
-    <div class="hb">{% for g, w, n, c in unity %}<div class="r"><span>{{ names.get(g) or g }}</span>
+    <div class="hb">{% for g, w, n, c in unity %}<div class="r"><span><a class="l" href="/grupa/{{ ns }}/{{ g | urlencode }}">{{ names.get(g) or g }}</a></span>
       <div class="tr"><i style="left:0;width:{{ 100 * w / n }}%;background:{{ gcolor(g) }}"></i></div><span class="v">{{ pct(w, n, 1) }}</span></div>{% endfor %}</div>
     <p class="mut">Броят се гласуванията, в които групата има линия ({{ unity | map(attribute=3) | sum | num }} общо); равенство няма линия.</p>{{ m.src() }}</section>
 

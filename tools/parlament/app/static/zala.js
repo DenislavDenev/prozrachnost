@@ -47,7 +47,7 @@ const make = (tag, attrs, parent) => {
 // draw(g, i, x, y, size): what seat i is, in a <g class="seat">; without it a seat is a circle
 function svgHall(el, n, wedges = [], draw = null) {
   const { seats, size } = layout(n);
-  const pad = size * 1.3, top = wedges.length ? 0.2 : pad, side = wedges.length ? 0.36 : pad;
+  const pad = size * 1.3, top = wedges.length ? 0.2 : pad, side = wedges.length ? 0.46 : pad;   // room for "ВЪЗРАЖДАНЕ" at the side
   const svg = make('svg', { viewBox: `${-1 - side} ${-1 - top} ${2 + 2 * side} ${1 + top + pad}` });
   const circles = seats.map((s, i) => {
     if (!draw) return make('circle', { cx: s.x.toFixed(4), cy: (-s.y).toFixed(4), r: size.toFixed(4), fill: EMPTY }, svg);
@@ -182,7 +182,8 @@ async function groupHall(el) {
     c.addEventListener('mouseleave', () => tp.hide());
   });
   const leg = el.parentElement.querySelector('.glegend');
-  if (leg) leg.innerHTML = j.groups.map((g) => `<span><i style="background:${g.color}"></i>${g.name} · <b>${g.n}</b></span>`).join('');
+  if (leg) leg.innerHTML = j.groups.map((g) => `<span><i style="background:${g.color}"></i>${g.name} · <b>${g.n}</b></span>`).join('')
+    + (j.date ? `<span class="mut">към ${j.date.split('-').reverse().join('.')}</span>` : '');
   whenSeen(el, () => play(circles, list.map((g) => g.color), []));
 }
 
