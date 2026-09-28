@@ -74,7 +74,8 @@
 | районът само по уникално име | `test_the_roster_gives_the_constituency_only_by_a_unique_full_name` |
 | закъсняло заседание | `test_an_empty_file_is_no_roll_call_and_a_late_sitting_is_reported_for_a_week` |
 
-| видът на файла по съдържание, файл за друг ден | `test_the_files_are_told_apart_by_content_the_same_file_twice_is_one` |
+| видът на файла по съдържание | `test_the_files_are_told_apart_by_content_the_same_file_twice_is_one` |
+| денят по съдържанието, не по името | `test_the_day_is_the_contents_not_the_names` |
 | депутат с разместени знаци | `test_an_mp_with_codes_out_of_place_is_set_aside_and_named`, `test_an_mp_set_aside_is_said_on_the_sitting` |
 | преименувана група остава една | `test_the_groups_get_one_code_and_a_renamed_group_stays_one` |
 

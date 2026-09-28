@@ -141,9 +141,11 @@ def sitting(conn, sid, get):
     """Read one sitting and its files. -> (outcome, assembly): outcome is stored | unchanged | no-files | held |
     invalid (the files do not add up; the reason is in ops.source_state).
 
-    Every CSV of the sitting is read and told apart by its content (parse.kind), not its name; a file whose name is
-    for another day is not this sitting's (12.2023: the roll call of 1.12 under 11.12). The same file twice is one
-    file. When a kind has two different files, the first pair that adds up is taken."""
+    Every CSV of the sitting is read and told apart by its content (parse.kind), not its name. The day is the
+    content's too: the items of the file by group carry their date and must be of the sitting's day (a name can be
+    wrong: 17.09.2026 has "gv170626"); a roll call has no date, one of another day does not add up with the file by
+    group (12.2023: the roll call of 1.12 under 11.12), and the name of such a file is said in the reason. The same
+    file twice is one file. When a kind has two different files, the first pair that adds up is taken."""
     ref = f"sten/{sid}"
     raw = get(f"{API}/pl-sten/{sid}")
     s = parse.sitting(raw)
@@ -156,9 +158,9 @@ def sitting(conn, sid, get):
                     heading = EXCLUDED.heading""", (sid, s["date"], s["assembly"], s["heading"]))
     found, why = {"gv": {}, "iv": {}}, []
     for path in sorted(s["files"], reverse=True):              # the newest upload first (the name starts with its time)
-        if parse.file_date(path) not in (None, s["date"]):
-            why.append(f"{path.rsplit('/', 1)[-1]} е за друг ден")
-            continue
+        named = parse.file_date(path)
+        if named not in (None, s["date"]):
+            why.append(f"{path.rsplit('/', 1)[-1]}: името е за {named:%d.%m.%Y}")
         body = get(SITE + urllib.parse.quote(path))
         try:
             k = parse.kind(body) if body.strip() else None
@@ -169,6 +171,11 @@ def sitting(conn, sid, get):
         if k is None:
             why.append(f"{path.rsplit('/', 1)[-1]}: {reason}")
             continue
+        if k == "gv":
+            days = {it["at"].date() for it in parse.groups(body).values()}
+            if days != {s["date"]}:
+                why.append(f"{path.rsplit('/', 1)[-1]}: гласуванията в него са от {', '.join(f'{d:%d.%m.%Y}' for d in sorted(days))}")
+                continue
         found[k].setdefault(hashlib.sha256(body).hexdigest(), (path, body))
     if not (found["gv"] and found["iv"]):
         missing = " и ".join(x for x, k in (("по групи", "gv"), ("поименно", "iv")) if not found[k])
@@ -189,7 +196,7 @@ def sitting(conn, sid, get):
         if not tried[-1]:
             break
     if tried[-1]:
-        state(conn, ref, status="invalid", error="; ".join(tried[0][:5])[:2000])
+        state(conn, ref, status="invalid", error="; ".join([*tried[0][:5], *why])[:2000])
         return "invalid", s["assembly"]
     held_sha = f"{gsha}:{isha}"
     s["gv"], s["iv"] = gpath, ipath

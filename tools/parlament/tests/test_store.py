@@ -210,7 +210,24 @@ def test_the_files_are_told_apart_by_content_the_same_file_twice_is_one(conn):
     src.files["pl-sten/11174"] = json.dumps(s).encode()
     assert run(conn, src)["sittings"] == {"no-files": 1, "unchanged": 1}
     err = conn.execute("SELECT error FROM ops.source_state WHERE ref = 'sten/11174'").fetchone()[0]
-    assert err.startswith("няма файл по групи в CSV") and "iv230926.csv е за друг ден" in err
+    assert err.startswith("няма файл по групи в CSV") and "iv230926.csv: името е за 23.09.2026" in err
+
+
+def test_the_day_is_the_contents_not_the_names(conn):
+    """17.09.2026: the file by group named "gv170626" is of 17.09; a file by group of another day is not the sitting's."""
+    src = Source()
+    s = json.loads(src.files["pl-sten/11174"])
+    gv = next(f for f in s["files"] if "_gv" in f["Pl_StenDfile"] and f["Pl_StenDfile"].endswith(".csv"))
+    body = src.files[gv["Pl_StenDfile"].rsplit("/", 1)[-1]]
+    gv["Pl_StenDfile"] = gv["Pl_StenDfile"].replace("gv240926", "gv240626")
+    src.files[gv["Pl_StenDfile"].rsplit("/", 1)[-1]] = body
+    src.files["pl-sten/11174"] = json.dumps(s).encode()
+    assert run(conn, src)["sittings"] == {"stored": 2}
+    conn.execute("DELETE FROM live.sitting WHERE id = 11174")
+    src.files[gv["Pl_StenDfile"].rsplit("/", 1)[-1]] = (FX / "gv310726.csv").read_bytes()
+    assert run(conn, src)["sittings"] == {"no-files": 1, "unchanged": 1}
+    err = conn.execute("SELECT error FROM ops.source_state WHERE ref = 'sten/11174'").fetchone()[0]
+    assert "гласуванията в него са от 31.07.2026" in err
 
 
 def test_an_mp_set_aside_is_said_on_the_sitting(conn):
