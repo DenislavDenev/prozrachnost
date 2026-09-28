@@ -94,7 +94,11 @@ def test_two_sittings_are_written_checked_and_counted(conn):
     s = q("SELECT votes, voted, yes, abstain, regs, present FROM live.mp_stat WHERE mp = 3839")[0]
     assert s[0] == 11 + 4 and s[4] == 2
     lines = dict(q("SELECT item, line FROM live.line WHERE sitting = 11174 AND grp = 'ГЕРБ-СДС'"))
-    assert lines[2] == "+" and all(v in ("+", "-", "=", None) for v in lines.values())
+    assert lines[2] == "+" and all(v in ("+", "-", None) for v in lines.values())
+    # against and abstained are one side, not for: Възраждане abstained as a whole in items 3-5 and 7 of 24.09 and in
+    # item 3 of 31.07 (0 for, 0 against), its line there is "-", and Ангел Янчев, who abstained with it, is never against
+    assert q("SELECT line FROM live.line WHERE sitting = 11174 AND item = 3 AND grp = 'ВЪЗРАЖДАНЕ'") == [("-",)]
+    assert q("SELECT with_line, against_line FROM live.mp_stat WHERE mp = 3596")[0][1] == 0
     # every vote of a group with a line is with it or against it, never both
     assert q("""SELECT count(*) FROM live.mp_stat WHERE with_line + against_line > voted""") == [(0,)]
     assert q("SELECT sum(with_line) FROM live.line") == q("SELECT sum(with_line) FROM live.mp_stat")

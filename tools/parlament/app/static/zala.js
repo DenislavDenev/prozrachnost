@@ -1,9 +1,13 @@
 // Парламент: the hall (a seat per MP, the groups in the Assembly's order, each a wedge under an arc in its party's
-// colour) and the MP's strip of votes. A vote fills the hall seat by seat from left to right while the counts run up;
-// "намалено движение" shows it at once.
+// colour) and the MP's strip of votes. In a vote each seat is the party's colour with a badge in the vote's colour
+// (+ − =), faded without a badge when the MP did not vote; the seats come in from left to right while the counts run
+// up, "намалено движение" shows it at once.
 const VOTE = { '+': '#0b7a5e', '-': '#b0413e', '=': '#6b7a8c', '0': '#d5d9de' };
 const VNAME = { '+': 'за', '-': 'против', '=': 'въздържал се', '0': 'не гласувал' };
 const ORDER = ['+', '=', '-', '0'];
+// a group's line is a side: + for, - not for (against or abstained; ingest/stats.py); a vote against it is on the other side
+const LINE = { '+': 'за', '-': 'не подкрепя' };
+const against = (r) => r[4] && '+-='.includes(r[3]) && (r[3] === '+') !== (r[4] === '+');
 const EMPTY = '#eceef1';
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const fmt = (v) => v.toLocaleString('bg-BG');
@@ -39,12 +43,18 @@ const make = (tag, attrs, parent) => {
   return e;
 };
 
-// wedges: [[first seat, last seat, code, colour]]: an arc in the group's colour over its seats and its code beyond
-function svgHall(el, n, wedges = []) {
+// wedges: [[first seat, last seat, code, colour]]: an arc in the group's colour over its seats and its code beyond;
+// draw(g, i, x, y, size): what seat i is, in a <g class="seat">; without it a seat is a circle
+function svgHall(el, n, wedges = [], draw = null) {
   const { seats, size } = layout(n);
   const pad = size * 1.3, top = wedges.length ? 0.2 : pad, side = wedges.length ? 0.36 : pad;
   const svg = make('svg', { viewBox: `${-1 - side} ${-1 - top} ${2 + 2 * side} ${1 + top + pad}` });
-  const circles = seats.map((s) => make('circle', { cx: s.x.toFixed(4), cy: (-s.y).toFixed(4), r: size.toFixed(4), fill: EMPTY }, svg));
+  const circles = seats.map((s, i) => {
+    if (!draw) return make('circle', { cx: s.x.toFixed(4), cy: (-s.y).toFixed(4), r: size.toFixed(4), fill: EMPTY }, svg);
+    const g = make('g', { class: 'seat' }, svg);
+    draw(g, i, s.x, -s.y, size);
+    return g;
+  });
   const R = 1 + pad + 0.035, step = Math.PI / Math.max(1, n) * 0.9;
   const pt = (t, r) => `${(r * Math.cos(t)).toFixed(4)} ${(-r * Math.sin(t)).toFixed(4)}`;
   wedges.forEach(([a, b, code, color]) => {
@@ -75,13 +85,14 @@ function tip(el) {
   };
 }
 
-// the fill runs left to right in about 1.2 s; the counts run with it
+// the fill runs left to right in about 1.2 s (without colours the seats come in); the counts run with it
 function play(circles, colors, counts) {
   const n = circles.length;
-  circles.forEach((c) => { c.style.transition = 'none'; c.setAttribute('fill', EMPTY); });
-  if (still) { circles.forEach((c, i) => c.setAttribute('fill', colors[i])); counts.forEach(([e, v]) => { e.textContent = fmt(v); }); return; }
+  const show = colors ? (c, i) => c.setAttribute('fill', colors[i]) : (c) => { c.style.opacity = ''; };
+  circles.forEach((c) => { c.style.transition = 'none'; if (colors) c.setAttribute('fill', EMPTY); else c.style.opacity = 0; });
+  if (still) { circles.forEach(show); counts.forEach(([e, v]) => { e.textContent = fmt(v); }); return; }
   void circles[0]?.getBoundingClientRect();
-  circles.forEach((c, i) => { c.style.transition = ''; c.style.transitionDelay = `${(i / n) * 1.2}s`; c.setAttribute('fill', colors[i]); });
+  circles.forEach((c, i) => { c.style.transition = ''; c.style.transitionDelay = `${(i / n) * 1.2}s`; show(c, i); });
   const t0 = performance.now(), D = 1500;
   const step = (t) => {
     const k = Math.min(1, (t - t0) / D), e = 1 - (1 - k) ** 3;
@@ -114,7 +125,9 @@ async function voteHall(el) {
   const rank = new Map(j.groups.map((g, i) => [g.grp, i]));
   const names = new Map(j.groups.map((g) => [g.grp, g.name]));
   const seats = [...j.seats].sort((a, b) => (rank.get(a.grp) - rank.get(b.grp)) || (ORDER.indexOf(a.code) - ORDER.indexOf(b.code)) || a.name.localeCompare(b.name, 'bg'));
-  const { circles, center } = svgHall(el, seats.length, wedgesOf(seats, j.groups));
+  const color = new Map(j.groups.map((g) => [g.grp, g.color]));
+  const { circles, center } = svgHall(el, seats.length, wedgesOf(seats, j.groups),
+    (g, i, x, y, size) => seat(g, color.get(seats[i].grp) || '#9aa1aa', seats[i].code, x, y, size));
   center(fmt(j.totals.voted), 'гласували');
   const tp = tip(el);
   circles.forEach((c, i) => {
@@ -127,9 +140,30 @@ async function voteHall(el) {
   const box = el.parentElement;
   const counts = [['yes', j.totals.yes], ['no', j.totals.no], ['abs', j.totals.abstain], ['none', seats.length - j.totals.voted]]
     .map(([k, v]) => [box.querySelector(`.counts .${k} .n`), v]).filter(([e]) => e);
-  const colors = seats.map((s) => VOTE[s.code]);
-  whenSeen(el, () => play(circles, colors, counts));
-  box.querySelector('.replay')?.addEventListener('click', () => play(circles, colors, counts));
+  whenSeen(el, () => play(circles, null, counts));
+  box.querySelector('.replay')?.addEventListener('click', () => play(circles, null, counts));
+  // a count pressed keeps only its MPs in sight; pressed again, all
+  const bar = box.querySelector('.counts');
+  bar?.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-c]');
+    if (!b) return;
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    bar.querySelectorAll('button[data-c]').forEach((x) => x.setAttribute('aria-pressed', on && x === b));
+    bar.classList.toggle('on', on);
+    circles.forEach((c, i) => { c.style.transitionDelay = '0s'; c.classList.toggle('dim', on && seats[i].code !== b.dataset.c); });
+  });
+}
+
+// a seat of a vote: a circle in the party's colour and a badge in the vote's colour with its sign; not voted, the
+// circle faded and no badge
+function seat(g, color, code, x, y, s) {
+  make('circle', { cx: x, cy: y, r: s * 0.95, fill: color, 'fill-opacity': code === '0' ? 0.25 : 1 }, g);
+  if (code === '0') return;
+  const bx = x + s * 0.6, by = y + s * 0.6, br = s * 0.5;
+  make('circle', { cx: bx, cy: by, r: br, fill: VOTE[code], stroke: '#fff', 'stroke-width': s * 0.12 }, g);
+  if (code === '=') { make('rect', { x: bx - br * 0.45, y: by - br * 0.1, width: br * 0.9, height: br * 0.2, fill: '#fff' }, g); return; }
+  make('text', { x: bx, y: by + br * 0.4, 'font-size': br * 1.1, 'text-anchor': 'middle', fill: '#fff', 'font-weight': 700 }, g)
+    .textContent = code === '+' ? '+' : '−';
 }
 
 // data-hall="/api/zala/<assembly>.json": the groups of the assembly, each in its party's colour
@@ -166,7 +200,7 @@ async function strip(el) {
     const w = W / v.length;
     v.forEach((r, i) => {
       x.fillStyle = VOTE[r[3]] || EMPTY; x.fillRect(i * w, 14, Math.max(w, 0.6), H - 14);
-      if (r[4] && '+-='.includes(r[3]) && r[3] !== r[4]) { x.fillStyle = '#121417'; x.fillRect(i * w, 2, Math.max(w, 1.5), 8); }
+      if (against(r)) { x.fillStyle = '#121417'; x.fillRect(i * w, 2, Math.max(w, 1.5), 8); }
     });
   };
   draw();
@@ -174,8 +208,8 @@ async function strip(el) {
   const at = (ev) => Math.min(v.length - 1, Math.max(0, Math.floor((ev.clientX - cv.getBoundingClientRect().left) / cv.clientWidth * v.length)));
   cv.addEventListener('mousemove', (ev) => {
     const r = v[at(ev)], d = r[2].split('-').reverse().join('.');
-    const against = r[4] && '+-='.includes(r[3]) && r[3] !== r[4] ? `<br><span class="k-no">групата: ${VNAME[r[4]]}</span>` : '';
-    tp.show(ev, `${d}<br><b>${r[5]}</b><br>${VNAME[r[3]]}${against}`);
+    const other = against(r) ? `<br><span class="k-no">групата: ${LINE[r[4]]}</span>` : '';
+    tp.show(ev, `${d}<br><b>${r[5]}</b><br>${VNAME[r[3]]}${other}`);
   });
   cv.addEventListener('mouseleave', () => tp.hide());
   cv.addEventListener('click', (ev) => { const r = v[at(ev)]; location.href = `/glasuvane/${r[0]}/${r[1]}`; });
@@ -196,7 +230,7 @@ async function strip(el) {
       xAxis: { type: 'category', data: months, axisTick: { show: false }, axisLine: { lineStyle: { color: '#e1e4e8' } },
         axisLabel: { color: '#69707a', formatter: (t) => t.split('-').reverse().join('.') } },
       yAxis: { type: 'value', max: 100, splitLine: { lineStyle: { color: '#eceef1' } }, axisLabel: { color: '#69707a', formatter: '{value}%' } },
-      series: [{ type: 'bar', data: months.map((k) => Math.round(1000 * by.get(k)[0] / by.get(k)[1]) / 10), itemStyle: { color: '#0b7a5e', borderRadius: [2, 2, 0, 0] }, barMaxWidth: 18 }],
+      series: [{ type: 'bar', data: months.map((k) => Math.round(1000 * by.get(k)[0] / by.get(k)[1]) / 10), itemStyle: { color: m.dataset.color || '#0b7a5e', borderRadius: [2, 2, 0, 0] }, barMaxWidth: 18 }],
     });
     addEventListener('resize', () => ch.resize());
   }

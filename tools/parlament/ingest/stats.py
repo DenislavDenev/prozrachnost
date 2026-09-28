@@ -2,8 +2,9 @@
 
 - First every group gets its one code (ingest/groups.py): "ГЕРБ - СДС" is "ГЕРБ-СДС", "ДПС - Ново начало" is
   "ДПС-НН" and so on, in live.vote and live.item_group, so a renamed group stays one group.
-- live.line: a group's line in a vote is the choice (+, -, =) of most of its MPs who voted; a tie has no line.
-  MPs outside a group (INDEPENDENT) have none.
+- live.line: a group's line in a vote is the side of most of its MPs who voted: + for, or - not for (against or
+  abstained: a decision needs more than half of the MPs present, so an abstention does not support it either); a
+  tie has no line. MPs outside a group (INDEPENDENT) have none.
 - live.mp_stat: per MP and assembly, how often they voted, how, how often with and against their group's line
   (the group of that vote), how often present at the registration.
 - The constituency and profile come from the current assembly's roster, joined by the full name only where the
@@ -29,9 +30,9 @@ def rebuild(conn, assemblies):
         conn.execute("""
             INSERT INTO live.line (sitting, item, grp, line, voters, with_line)
             SELECT sitting, item, grp,
-                   CASE WHEN y > n AND y > a THEN '+' WHEN n > y AND n > a THEN '-' WHEN a > y AND a > n THEN '=' END,
+                   CASE WHEN y > n + a THEN '+' WHEN n + a > y THEN '-' END,
                    y + n + a,
-                   CASE WHEN y > n AND y > a THEN y WHEN n > y AND n > a THEN n WHEN a > y AND a > n THEN a ELSE 0 END
+                   CASE WHEN y > n + a THEN y WHEN n + a > y THEN n + a ELSE 0 END
             FROM (SELECT v.sitting, v.item, v.grp, count(*) FILTER (WHERE v.code = '+') y,
                          count(*) FILTER (WHERE v.code = '-') n, count(*) FILTER (WHERE v.code = '=') a
                   FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
@@ -47,8 +48,8 @@ def rebuild(conn, assemblies):
                    count(*) FILTER (WHERE i.kind = 'vote' AND v.code IN ('+', '-', '=')),
                    count(*) FILTER (WHERE v.code = '+'), count(*) FILTER (WHERE v.code = '-'), count(*) FILTER (WHERE v.code = '='),
                    count(*) FILTER (WHERE i.kind = 'registration'), count(*) FILTER (WHERE v.code = 'П'),
-                   count(*) FILTER (WHERE l.line IS NOT NULL AND v.code = l.line),
-                   count(*) FILTER (WHERE l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND v.code <> l.line),
+                   count(*) FILTER (WHERE l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') = (l.line = '+')),
+                   count(*) FILTER (WHERE l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')),
                    min(s.date), max(s.date)
             FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
             JOIN live.item i ON i.sitting = v.sitting AND i.no = v.item
