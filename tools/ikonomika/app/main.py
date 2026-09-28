@@ -27,7 +27,7 @@ HERE = Path(__file__).parent
 ROOT = HERE.parent
 DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
-ASSET_V = "5"
+ASSET_V = "6"
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
@@ -202,8 +202,8 @@ def home(request: Request):
 
 INFL_MAIN = ["TOTAL", "CP01", "CP02", "CP03", "CP04", "CP05", "CP06", "CP07", "CP08", "CP09", "CP10", "CP11", "CP12", "CP13",
              "GD", "SERV", "FOOD", "FOOD_NP", "NRG", "ELC_GAS", "FUEL", "IGD_NNRG", "TOT_X_NRG_FOOD", "AP"]
-INFL_PICKED = ["TOTAL", "CP01", "NRG", "SERV"]          # drawn when the page opens
-INFL_SUB = ["CP01113", "CP01122", "CP0451", "CP07221"]  # bread, meat, electricity, diesel
+INFL_PICKED = ["TOTAL", "CP01", "NRG"]                  # drawn when the page opens: at most 3, the chart stays readable
+INFL_SUB = ["CP01113", "CP0451", "CP07221"]             # bread, electricity, diesel
 
 
 @app.get("/inflaciya", response_class=HTMLResponse)
@@ -248,10 +248,10 @@ def inflation_panels(month):
     return [
         bars("hicp_w", f"Какво движи инфлацията{', ' + fperiod(month) if month else ''}",
              "принос на всяка група към годишната инфлация, процентни пункта (теглото ѝ по промяната на цените ѝ)", items, digits=2,
-             note=note),
+             note=note, cls="s12"),
         chart("ppi", "Цени на производител", "промишленост, % спрямо година по-рано; идват преди цените в магазина",
               chips=("nace_r2", ["B-E36", "MIG_NRG", "MIG_ING", "MIG_COG", "C10-C12"]), picked=["B-E36", "MIG_NRG", "C10-C12"],
-              s_adj="NSA", unit="PCH_SM", zero=True),
+              s_adj="NSA", unit="PCH_SM", zero=True, cls="s12"),
         chart("elec", "Цена на тока за домакинствата", "€ за 1 kWh с данъците, 2 500-4 999 kWh на година, по полугодия", digits=4,
               geo=f"BG,EU27_2020,{euro_area('elec')}", tax="I_TAX", currency="EUR", more=("В ЕС →", "/es?p=tok"), cls="s12"),
     ]
@@ -456,6 +456,9 @@ def money(request: Request, code: str = "USD"):
 
 # ---------- the tabs made of panels (templates/_panels.html) ----------
 
+MAX_PICKED = 3   # on when a chart opens: at most 3 lines, the rest are buttons (AGENTS.md 7)
+
+
 def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s6", zero=False, tall=False, more=None, **dims):
     """A line chart over /api/<ind>.json. chips=(dimension, [codes]): buttons that pick the series, `picked` on."""
     ch = None
@@ -466,7 +469,7 @@ def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s6"
         have = {r[0] for r in q(f"""SELECT DISTINCT dims->>%s FROM live.series WHERE indicator = %s AND geo = ANY(%s)
                                     AND value IS NOT NULL {w}""", dim, ind, geo.split(","), *a)}
         codes = [c for c in codes if c in have] or codes   # an empty database keeps them all
-        picked = [c for c in (picked or codes) if c in codes] or codes
+        picked = ([c for c in (picked or codes) if c in codes] or codes)[:MAX_PICKED]
         ch = {"param": dim, "items": [(c, label(dim, c, ind)) for c in codes], "picked": picked}
         dims = {**dims, dim: picked}
     query = "&".join(f"{k}={','.join(v) if isinstance(v, (list, tuple)) else v}" for k, v in {"geo": geo, **dims}.items())
@@ -512,13 +515,13 @@ def growth(request: Request):
     euro = lambda ind: f"BG,EU27_2020,{euro_area(ind)}"   # noqa: E731
     panels = [
         chart("gdp_full", "Ръстът на БВП и откъде идва", "принос към реалния ръст, процентни пункта; сборът на частите е ръстът на БВП",
-              chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P52_P53", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G", "P6", "P7"],
+              chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P52_P53", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G"],
               unit="CON_PPCH_PRE", zero=True),
         chart("gdp_full", "Реален ръст по компоненти", "% спрямо предходната година",
               chips=("na_item", ["B1GQ", "P31_S14", "P3_S13", "P51G", "P6", "P7"]), picked=["B1GQ", "P31_S14", "P51G"],
               unit="CLV_PCH_PRE", zero=True),
         chart("gva", "Добавена стойност по отрасли", "% от общата добавена стойност, по текущи цени",
-              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "J", "L", "O-Q"], unit="PC_TOT", cls="s12"),
+              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "J"], unit="PC_TOT", cls="s12"),
         chart("ind_prod", "Промишлено производство", "индекс, 2021 = 100, сезонно и календарно изгладен",
               geo=euro("ind_prod"), nace_r2="B-D", s_adj="SCA", unit="I21"),
         chart("ind_prod", "Промишленост по вид продукция", "% спрямо година по-рано, календарно изгладено",
@@ -567,7 +570,7 @@ def jobs(request: Request):
         chart("unemp_bg", "Безработица при мъжете и жените", "% от работната сила, месечно, сезонно изгладена",
               chips=("sex", ["T", "M", "F"]), age="TOTAL", unit="PC_ACT"),
         chart("emp_ind", "Заети по отрасли", "хил. души, тримесечно, сезонно изгладено",
-              chips=("nace_r2", GVA10), picked=["A", "B-E", "F", "G-I", "O-Q"], unit="THS_PER", cls="s12", tall=True),
+              chips=("nace_r2", GVA10), picked=["B-E", "G-I", "O-Q"], unit="THS_PER", cls="s12", tall=True),
         region_bars("emp_reg", "Заетост по райони", "% от хората от 20 до 64 години", sex="T", age="Y20-64")
         | {"more": ("На картата →", "/karta?m=EMP&o=bg&l=rayoni")},
         region_bars("unemp_reg", "Безработица по райони", "% от работната сила", age="Y15-74")
@@ -605,7 +608,7 @@ def api_forecast(item: str, v: str = ""):
                                                       AND value IS NOT NULL AND time >= '2015' {w} ORDER BY time""", ind, *a)]
     # reality in Bulgaria's green, each forecast in its own colour (none of them green, so the two never mix)
     series = [{"name": "Какво стана (Eurostat)", "geo": "BG", "points": actual, "color": "#0b7a5e"}]
-    for i, vin in enumerate(v.split(",") if v else vintages()[:4]):
+    for i, vin in enumerate(v.split(",") if v else vintages()[:MAX_PICKED]):
         pts = [[t, None if val is None else float(val), f] for t, val, f in q(
             """SELECT time, value, flag FROM live.series WHERE indicator = 'mf_forecast' AND dims->>'vintage' = %s
                AND dims->>'item' = %s ORDER BY time""", vin, item)]
@@ -618,8 +621,8 @@ def api_forecast(item: str, v: str = ""):
 
 def forecast_panel(item, title, sub):
     vs = vintages()
-    return {"kind": "chart", "ind": "mf_forecast", "title": title, "sub": sub, "api": f"/api/prognoza/{item}.json?v={','.join(vs[:4])}",
-            "digits": 1, "chips": {"param": "v", "items": [(x, label("vintage", x, "mf_forecast")) for x in vs], "picked": vs[:4]},
+    return {"kind": "chart", "ind": "mf_forecast", "title": title, "sub": sub, "api": f"/api/prognoza/{item}.json?v={','.join(vs[:MAX_PICKED])}",
+            "digits": 1, "chips": {"param": "v", "items": [(x, label("vintage", x, "mf_forecast")) for x in vs], "picked": vs[:MAX_PICKED]},
             "cls": "s12", "zero": item == "gdp_growth", "tall": True, "more": None}
 
 
@@ -633,7 +636,7 @@ def finance(request: Request):
                     lt and f"Държавата взима заем за 10 години при {fnum(lt[1], 2)}% ({fperiod(lt[0])}).") or "Още няма данни."
     panels = [
         chart("govt", "Салдо по подсектори", "% от БВП; минусът е дефицит",
-              chips=("sector", ["S13", "S1311", "S1313", "S1314"]), na_item="B9", unit="PC_GDP", zero=True),
+              chips=("sector", ["S13", "S1311", "S1313", "S1314"]), picked=["S13", "S1311", "S1313"], na_item="B9", unit="PC_GDP", zero=True),
         chart("govt", "Дълг по инструменти", "% от БВП, в края на годината",
               chips=("na_item", ["GD", "GD_F3", "GD_F4", "GD_F2"]), picked=["GD", "GD_F3", "GD_F4"], sector="S13", unit="PC_GDP", zero=True),
         chart("govt", "Разходи за лихви", "% от БВП", sector="S13", na_item="D41PAY", unit="PC_GDP", zero=True),
@@ -693,7 +696,7 @@ def money_panels():
               geo="BG,EA", series="housing"),
         chart("rates", "Лихви по депозити", "% годишно", digits=2, chips=("series", ["dep_hh", "dep_nfc", "dep_hh_on"])),
         chart("bank", "Кредити и депозити в банките", "млн. €, в края на месеца", digits=0,
-              chips=("series", ["loans_hh", "loans_nfc", "dep_hh", "dep_nfc"])),
+              chips=("series", ["loans_hh", "loans_nfc", "dep_hh", "dep_nfc"]), picked=["loans_hh", "loans_nfc", "dep_hh"]),
         chart("mm_rate", "Лихви на междубанковия пазар", "% годишно, 3 месеца", digits=2,
               geo=f"BG,{euro_area('mm_rate')}", int_rt="IRT_M3", cls="s12"),
     ]

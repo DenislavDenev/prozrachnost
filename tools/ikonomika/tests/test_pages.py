@@ -97,6 +97,12 @@ def test_pages_on_real_answers(client):
     infl = client.get("/inflaciya").text
     assert "Хранителни продукти и безалкохолни напитки" in infl and "август 2026" in infl
     assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
+    assert 'value="SERV" aria-pressed="false"' in infl
+    import re as _re
+    for path in ("/inflaciya", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari"):   # at most 3 lines on per chart
+        html = client.get(path).text
+        for box in _re.findall(r'<div class="chips".*?</div>\s*</div>', html, _re.S):
+            assert box.count('aria-pressed="true"') <= 3, (path, box[:200])
     page = client.get("/karta?m=MIO_EUR&y=2024").text                    # the page: a shell, drawn by karta.js
     assert 'id="k-svg"' in page and "/static/karta.js" in page and 'id="k-data"' in page and "EuroGeographics" in page
     assert "медиана" not in page and "mkey" not in page                     # no legend under any map (AGENTS 7)
