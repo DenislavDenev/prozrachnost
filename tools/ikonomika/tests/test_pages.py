@@ -99,6 +99,9 @@ def test_pages_on_real_answers(client):
     assert 'value="CP01" aria-pressed="true"' in infl and 'value="CP02" aria-pressed="false"' in infl   # the picked groups are on
     assert 'value="SERV" aria-pressed="false"' in infl
     import re as _re
+    for path in ("/inflaciya", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari"):   # a chart is full width, or 2/3
+        for size, body in _re.findall(r'<section class="p (s\d+)[^"]*"[^>]*>(.*?)</section>', client.get(path).text, _re.S):
+            assert size in ("s12", "s8") or ('class="chart' not in body and 'class="hb"' not in body), (path, size, body[:120])
     for path in ("/inflaciya", "/rastezh", "/zaetost", "/finansi", "/vanshen", "/pari"):   # at most 3 lines on per chart
         html = client.get(path).text
         for box in _re.findall(r'<div class="chips".*?</div>\s*</div>', html, _re.S):
