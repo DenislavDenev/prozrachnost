@@ -72,18 +72,29 @@ def school_history(code, before_year):
     """Only published and code-reconciled NVO VII years can appear in a profile."""
     years = {}
     with connect() as conn:
-        for year, resource, subject, takers, score, scale, matched in conn.execute("""
-            SELECT p.school_year,p.exam_resource,e.subject,e.takers,e.score,e.scale,s.matched
+        for year, resource, updated, subject, takers, score, scale, matched, verification in conn.execute("""
+            SELECT p.school_year,p.exam_resource,p.exam_updated_at,e.subject,e.takers,e.score,e.scale,s.matched,p.verification
             FROM live.publication p JOIN live.school s ON s.school_year=p.school_year
             JOIN live.exam_result e ON e.school_year=s.school_year AND e.neispuo=s.neispuo
             WHERE s.neispuo=%s AND p.school_year<%s ORDER BY p.school_year DESC,e.subject
         """, (code, before_year)):
-            item = years.setdefault(year, dict(year=year, resource=resource, scale=scale,
-                                               matched=matched, subjects={}))
+            item = years.setdefault(year, dict(year=year, resource=resource, updated=updated[:10], scale=scale,
+                                               matched=matched, verification=verification, subjects={}))
             if item["scale"] != scale:
                 raise ValueError(f"Mixed NVO VII scales in {year}")
             item["subjects"][subject] = dict(takers=takers, score=score)
     return list(years.values())
+
+
+def source_history():
+    with connect() as conn:
+        return [dict(year=year, exam_resource=exam, exam_updated=exam_updated[:10],
+                     register_resource=register, register_updated=register_updated[:10],
+                     school_count=school_count, matched_count=matched_count, verification=verification)
+                for year, exam, exam_updated, register, register_updated, school_count, matched_count, verification
+                in conn.execute("""SELECT school_year,exam_resource,exam_updated_at,register_resource,
+                    register_updated_at,school_count,matched_count,verification
+                    FROM live.publication ORDER BY school_year DESC""")]
 
 
 def render(request, page, data=None, **context):
@@ -167,7 +178,7 @@ def school_csv(q: str = "", oblast: str = "", municipality: str = ""):
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
-    return render(request, "sources.html", snapshot(), nav="Източници")
+    return render(request, "sources.html", snapshot(), nav="Източници", publications=source_history())
 
 
 @app.get("/how", response_class=HTMLResponse)

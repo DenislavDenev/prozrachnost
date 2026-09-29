@@ -31,6 +31,7 @@ def sample_snapshot():
 def test_pages_render_with_real_sample(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     monkeypatch.setattr(main, "school_history", lambda code, before: [])
+    monkeypatch.setattr(main, "source_history", lambda: [])
     client = TestClient(main.app)
     for path in ("/", "/uchilishta", "/uchilishta/105201", "/sources", "/how"):
         response = client.get(path)
@@ -81,10 +82,10 @@ def test_weighted_average_excludes_no_takers():
 def test_history_separates_point_scales(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     monkeypatch.setattr(main, "school_history", lambda code, before: [
-        dict(year="2024/2025", resource="new-resource", scale="points100", matched=True,
+        dict(year="2024/2025", resource="new-resource", updated="2025-07-01", scale="points100", matched=True, verification="code",
              subjects={"БЕЛ": dict(score=Decimal("57.50"), takers=80),
                        "МАТ": dict(score=Decimal("42.00"), takers=80)}),
-        dict(year="2017/2018", resource="old-resource", scale="points65", matched=False,
+        dict(year="2017/2018", resource="old-resource", updated="2018-07-01", scale="points65", matched=False, verification="no-code",
              subjects={"БЕЛ": dict(score=Decimal("45.00"), takers=70),
                        "МАТ": dict(score=Decimal("35.00"), takers=70)})])
     page = TestClient(main.app).get("/uchilishta/105201")
@@ -92,3 +93,4 @@ def test_history_separates_point_scales(monkeypatch):
     assert "Скала до 100 точки" in page.text
     assert "Скала до 65 точки" in page.text
     assert "2024/2025" in page.text and "2017/2018" in page.text
+    assert "Без сверка с регистъра" in page.text

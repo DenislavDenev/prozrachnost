@@ -58,16 +58,19 @@ def needs_hold(old_codes, new_codes, old_count, new_count):
     return bool(old_codes - new_codes or new_count < old_count)
 
 
-def publish(conn, year, exam, register, exam_sha, register_sha, results, schools, checks, now=None):
+def publish(conn, year, exam, register, exam_sha, register_sha, results, schools, checks, now=None,
+            verification="code"):
     """Atomically replace one academic year after matching and the 24-hour hold check."""
     now = now or datetime.now(timezone.utc)
     records = {r.neispuo: r for r in results}
     new_codes = set(records)
     if len(results) != 2 * len(new_codes) or len(new_codes) != checks["schools"]:
         raise ShapeError("Result count does not reconcile")
+    if verification not in {"code", "no-code"} or (verification == "no-code" and schools):
+        raise ShapeError("Invalid register verification status")
     with conn.transaction():
-        old = conn.execute("SELECT exam_sha,register_sha,school_count FROM live.publication WHERE school_year=%s", (year,)).fetchone()
-        if old and old[:2] == (exam_sha, register_sha):
+        old = conn.execute("SELECT exam_sha,register_sha,school_count,verification FROM live.publication WHERE school_year=%s", (year,)).fetchone()
+        if old and old[:2] == (exam_sha, register_sha) and old[3] == verification:
             state(conn, exam.uri, "ok", rows=len(new_codes))
             state(conn, register.uri, "ok", rows=len(schools))
             return "unchanged"
@@ -122,15 +125,15 @@ def publish(conn, year, exam, register, exam_sha, register_sha, results, schools
                 VALUES ('mon',%s,'result',%s,NULL,'removed')""",
                 (f"{year}/{code}/{subject}", json.dumps(before, ensure_ascii=False)))
         conn.execute("""INSERT INTO live.publication(school_year,exam_resource,register_resource,exam_sha,register_sha,
-            exam_updated_at,register_updated_at,school_count,matched_count,unmatched)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            exam_updated_at,register_updated_at,school_count,matched_count,unmatched,verification)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(school_year) DO UPDATE SET exam_resource=EXCLUDED.exam_resource,
             register_resource=EXCLUDED.register_resource,exam_sha=EXCLUDED.exam_sha,register_sha=EXCLUDED.register_sha,
             exam_updated_at=EXCLUDED.exam_updated_at,register_updated_at=EXCLUDED.register_updated_at,
             school_count=EXCLUDED.school_count,matched_count=EXCLUDED.matched_count,
-            unmatched=EXCLUDED.unmatched,published_at=now()""",
+            unmatched=EXCLUDED.unmatched,verification=EXCLUDED.verification,published_at=now()""",
             (year, exam.uri, register.uri, exam_sha, register_sha, exam.updated_at, register.updated_at,
-             checks["schools"], checks["matched"], Jsonb(checks["unmatched"])))
+             checks["schools"], checks["matched"], Jsonb(checks["unmatched"]), verification))
         conn.execute("DELETE FROM ops.held WHERE school_year=%s", (year,))
         state(conn, exam.uri, "ok", rows=len(new_codes))
         state(conn, register.uri, "ok", rows=len(schools))
