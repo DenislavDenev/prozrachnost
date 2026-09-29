@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ school.name }}{% endblock %}
+{% block main %}
+<p class="asof"><a class="l" href="/uchilishta">← Всички училища</a></p>
+<h1>{{ school.name }}</h1>
+<p class="lede">{{ school.town }}, община {{ school.municipality }}, област {{ school.oblast }}. Код по НЕИСПУО <b>{{ school.code }}</b>.</p>
+<p class="asof">{% if school.matched %}Съпоставено с регистъра на МОН.{% else %}Кодът не е намерен в използвания регистър; името и мястото са от таблицата с резултати.{% endif %} <a class="l" href="{{ register_url }}">Регистър ↗</a></p>
+<h2 class="sec">НВО VII клас · {{ d.year }}</h2>
+<p class="asof">Точки от 0 до 100. <a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a></p>
+<div class="grid">
+{% for subject, title in [('БЕЛ', 'Български език и литература'), ('МАТ', 'Математика')] %}
+{% set result = school.subjects[subject] %}
+<section class="p s6 kpi"><div class="ph"><h2>{{ title }}</h2></div>
+  <div class="n"><a href="{{ exam_url }}">{{ result.score | num(2) }}</a><small>точки</small></div>
+  <div class="t">{{ result.takers | num }} явили се</div>
+  {% if result.takers is not none and result.takers < 5 %}<p class="warn">Под 5 явили се: средният резултат е нестабилен.</p>{% endif %}
+  <div class="w"><a class="l" href="{{ exam_url }}">Източник: МОН ↗</a></div>
+</section>
+{% endfor %}
+</div>
+<section class="p space-top"><div class="ph"><div><h2>Сравнение</h2><p class="sub">Среден резултат, претеглен по явилите се. Разликите не са оценка на училището.</p></div></div>
+<div class="compare-head"><span></span><span>БЕЛ · точки</span><span>МАТ · точки</span></div>
+{% for label, bel, math in comparison %}
+<div class="compare-row"><strong>{{ label }}</strong><span><a class="l" href="{{ exam_url }}">{{ bel | num(2) }}</a></span><span><a class="l" href="{{ exam_url }}">{{ math | num(2) }}</a></span></div>
+{% endfor %}
+<p class="src"><a href="{{ exam_url }}">Източник · МОН · {{ d.year }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · <a href="/uchilishta.csv?q={{ school.code }}">CSV</a></p>
+</section>
+<p class="asof space-top">Показани са само проверените резултати за тази учебна година. <a class="l" href="/how">Ограничения на сравнението ↗</a></p>
+{% endblock %}

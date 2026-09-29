@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Източници{% endblock %}
+{% block main %}
+<h1>Източници</h1>
+<p class="lede">Резултатите и данните за училищата идват от два отделни набора на МОН.</p>
+{% if d %}
+<div class="grid">
+<section class="p s6"><h2>НВО VII клас</h2><p>Учебна {{ d.year }} година · {{ d.school_count | num }} училища.</p>
+<p class="sub">Ресурс {{ d.exam_resource }} · публикуван {{ d.exam_updated }}</p><a class="l" href="{{ exam_url }}">Виж набора при МОН ↗</a></section>
+<section class="p s6"><h2>Регистър на училищата</h2><p>{{ d.matched | num }} от {{ d.school_count | num }} кода са съпоставени.</p>
+<p class="sub">Ресурс {{ d.register_resource }} · актуализиран {{ d.register_updated }}</p><a class="l" href="{{ register_url }}">Виж набора при МОН ↗</a></section>
+</div>
+{% if d.unmatched %}<section class="p space-top"><h2>Несъпоставени кодове</h2><p>Тези резултати остават видими с името от изпитния файл. Не свързваме училища по сходство на имена.</p>
+<ul>{% for code in d.unmatched %}<li><a class="l" href="/uchilishta/{{ code }}">{{ code }}</a></li>{% endfor %}</ul></section>{% endif %}
+{% else %}<p>Още няма публикувани проверени данни.</p>{% endif %}
+<p class="space-top"><a class="l" href="/how">Как проверяваме данните ↗</a></p>
+{% endblock %}

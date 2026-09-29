@@ -1,0 +1,136 @@
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+
+import psycopg
+from psycopg.types.json import Jsonb
+
+from .config import DSN, RAW, ROOT
+from .parse import ShapeError
+
+
+def connect(**kwargs):
+    return psycopg.connect(DSN, **kwargs)
+
+
+def migrate(conn):
+    conn.execute("CREATE TABLE IF NOT EXISTS public.schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())")
+    conn.commit()
+    done = {row[0] for row in conn.execute("SELECT name FROM public.schema_migrations")}
+    applied = []
+    for file in sorted((ROOT / "db/migrations").glob("*.sql")):
+        if file.name in done:
+            continue
+        with conn.transaction():
+            conn.execute(file.read_text(encoding="utf-8"))
+            conn.execute("INSERT INTO public.schema_migrations (name) VALUES (%s)", (file.name,))
+        applied.append(file.name)
+    return applied
+
+
+def save_raw(conn, uri, raw):
+    sha = hashlib.sha256(raw).hexdigest()
+    folder = RAW / datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"{sha[:12]}-{uri}"
+    if not path.exists():
+        try:
+            with path.open("xb") as stream:
+                stream.write(raw)
+        except FileExistsError:
+            pass
+    conn.execute("INSERT INTO ops.raw_file(url, sha, path) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING",
+                 (uri, sha, str(path)))
+    return sha
+
+
+def state(conn, uri, status, error=None, rows=None):
+    conn.execute("""INSERT INTO ops.source_state(url,last_read,last_ok,status,error,rows)
+      VALUES (%s,now(),CASE WHEN %s='ok' THEN now() END,%s,%s,%s)
+      ON CONFLICT(url) DO UPDATE SET last_read=now(),
+      last_ok=CASE WHEN EXCLUDED.status='ok' THEN now() ELSE ops.source_state.last_ok END,
+      status=EXCLUDED.status,error=EXCLUDED.error,rows=EXCLUDED.rows""",
+      (uri, status, status, error, rows))
+
+
+def needs_hold(old_codes, new_codes, old_count, new_count):
+    return bool(old_codes - new_codes or new_count < old_count)
+
+
+def publish(conn, year, exam, register, exam_sha, register_sha, results, schools, checks, now=None):
+    """Atomically replace one academic year after matching and the 24-hour hold check."""
+    now = now or datetime.now(timezone.utc)
+    records = {r.neispuo: r for r in results}
+    new_codes = set(records)
+    if len(results) != 2 * len(new_codes) or len(new_codes) != checks["schools"]:
+        raise ShapeError("Result count does not reconcile")
+    with conn.transaction():
+        old = conn.execute("SELECT exam_sha,register_sha,school_count FROM live.publication WHERE school_year=%s", (year,)).fetchone()
+        if old and old[:2] == (exam_sha, register_sha):
+            state(conn, exam.uri, "ok", rows=len(new_codes))
+            state(conn, register.uri, "ok", rows=len(schools))
+            return "unchanged"
+        old_codes = {row[0] for row in conn.execute("SELECT neispuo FROM live.school WHERE school_year=%s", (year,))}
+        combined_sha = hashlib.sha256((exam_sha + register_sha).encode()).hexdigest()
+        if old and needs_hold(old_codes, new_codes, old[2], len(new_codes)):
+            held = conn.execute("SELECT sha,first_at FROM ops.held WHERE school_year=%s", (year,)).fetchone()
+            if not held or held[0] != combined_sha:
+                conn.execute("""INSERT INTO ops.held(school_year,sha,first_at) VALUES (%s,%s,%s)
+                    ON CONFLICT(school_year) DO UPDATE SET sha=EXCLUDED.sha,first_at=EXCLUDED.first_at""",
+                    (year, combined_sha, now))
+            if not held or held[0] != combined_sha or now - held[1] < timedelta(days=1):
+                state(conn, exam.uri, "held", "По-малък отговор, чака второ четене", len(new_codes))
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon',%s,'schools',%s,%s,'held')""", (year, str(old[2]), str(len(new_codes))))
+                return "held"
+            conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                VALUES ('mon',%s,'schools',%s,%s,'confirmed')""", (year, str(old[2]), str(len(new_codes))))
+
+        previous = {}
+        for row in conn.execute("""SELECT s.neispuo,s.name,s.oblast,s.municipality,s.town,s.matched,
+                e.subject,e.takers,e.score,e.scale FROM live.school s JOIN live.exam_result e
+                ON s.school_year=e.school_year AND s.neispuo=e.neispuo WHERE s.school_year=%s""", (year,)):
+            previous[(row[0], row[6])] = tuple(str(x) if x is not None else None for x in row[1:6] + row[7:])
+
+        conn.execute("DELETE FROM live.exam_result WHERE school_year=%s", (year,))
+        conn.execute("DELETE FROM live.school WHERE school_year=%s", (year,))
+        for code, row in records.items():
+            school = schools.get(code)
+            conn.execute("""INSERT INTO live.school
+                (school_year,neispuo,name,oblast,municipality,town,matched)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                (year, code, school.name if school else row.school, school.oblast if school else row.oblast,
+                 school.municipality if school else row.municipality, school.town if school else row.town, bool(school)))
+        for row in results:
+            conn.execute("""INSERT INTO live.exam_result(school_year,neispuo,subject,takers,score,scale)
+                VALUES (%s,%s,%s,%s,%s,%s)""",
+                (year, row.neispuo, row.subject, row.takers, row.score, row.scale))
+            school = schools.get(row.neispuo)
+            current = (school.name if school else row.school, school.oblast if school else row.oblast,
+                       school.municipality if school else row.municipality, school.town if school else row.town,
+                       str(bool(school)), str(row.takers) if row.takers is not None else None,
+                       str(row.score) if row.score is not None else None, row.scale)
+            before = previous.pop((row.neispuo, row.subject), None)
+            if before != current:
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon',%s,%s,%s,%s,%s)""",
+                    (f"{year}/{row.neispuo}/{row.subject}", "result", json.dumps(before, ensure_ascii=False),
+                     json.dumps(current, ensure_ascii=False), "new-record" if before is None else "rewritten"))
+        for (code, subject), before in previous.items():
+            conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                VALUES ('mon',%s,'result',%s,NULL,'removed')""",
+                (f"{year}/{code}/{subject}", json.dumps(before, ensure_ascii=False)))
+        conn.execute("""INSERT INTO live.publication(school_year,exam_resource,register_resource,exam_sha,register_sha,
+            exam_updated_at,register_updated_at,school_count,matched_count,unmatched)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(school_year) DO UPDATE SET exam_resource=EXCLUDED.exam_resource,
+            register_resource=EXCLUDED.register_resource,exam_sha=EXCLUDED.exam_sha,register_sha=EXCLUDED.register_sha,
+            exam_updated_at=EXCLUDED.exam_updated_at,register_updated_at=EXCLUDED.register_updated_at,
+            school_count=EXCLUDED.school_count,matched_count=EXCLUDED.matched_count,
+            unmatched=EXCLUDED.unmatched,published_at=now()""",
+            (year, exam.uri, register.uri, exam_sha, register_sha, exam.updated_at, register.updated_at,
+             checks["schools"], checks["matched"], Jsonb(checks["unmatched"])))
+        conn.execute("DELETE FROM ops.held WHERE school_year=%s", (year,))
+        state(conn, exam.uri, "ok", rows=len(new_codes))
+        state(conn, register.uri, "ok", rows=len(schools))
+    return "stored"

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Всички училища{% endblock %}
+{% block main %}
+<h1>Училища</h1>
+{% if d %}
+<p class="lede">{{ rows | length | num }} училища за учебната {{ d.year }} година. Резултатите са в точки от 0 до 100.</p>
+<p class="asof"><a class="l" href="{{ exam_url }}">МОН · ресурс {{ d.exam_resource[:8] }} · {{ d.exam_updated }} ↗</a> · <a class="l" href="/how">Как да четем числата</a></p>
+<form class="filters" action="/uchilishta" method="get">
+  <label>Име, код или място <input name="q" type="search" value="{{ q }}"></label>
+  <label>Област <select name="oblast"><option value="">Всички области</option>{% for name in oblasts %}<option value="{{ name }}" {% if oblast == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+  <label>Община <select name="municipality"><option value="">Всички общини</option>{% for name in municipalities %}<option value="{{ name }}" {% if municipality == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+  <button type="submit">Покажи</button>
+  <a class="l" href="/uchilishta">Изчисти</a>
+</form>
+<section class="p"><div class="ph"><div><h2>Публикувани резултати</h2><p class="sub">Сортирай с бутоните в заглавията.</p></div>
+<a class="more" href="/uchilishta.csv?q={{ q | urlencode }}&oblast={{ oblast | urlencode }}&municipality={{ municipality | urlencode }}">CSV ↓</a></div>
+<div class="table-scroll"><table id="school-table"><thead><tr>
+  <th><button class="sort" type="button" data-col="0">Училище</button></th>
+  <th><button class="sort" type="button" data-col="1">Община</button></th>
+  <th class="n"><button class="sort" type="button" data-col="2">БЕЛ · точки</button></th>
+  <th class="n"><button class="sort" type="button" data-col="3">Явили се</button></th>
+  <th class="n"><button class="sort" type="button" data-col="4">МАТ · точки</button></th>
+  <th class="n"><button class="sort" type="button" data-col="5">Явили се</button></th>
+</tr></thead><tbody>
+{% for row in rows %}{% set bel = row.subjects['БЕЛ'] %}{% set math = row.subjects['МАТ'] %}
+<tr>
+  <td data-sort="{{ row.name | lower }}"><a class="l" href="/uchilishta/{{ row.code }}">{{ row.name }}</a><div class="mut">{{ row.town }} · {{ row.code }}{% if not row.matched %} · несъпоставено{% endif %}</div></td>
+  <td data-sort="{{ row.municipality | lower }}">{{ row.municipality }}</td>
+  <td class="n" data-sort="{{ bel.score if bel.score is not none else '' }}"><a class="l" href="{{ exam_url }}">{{ bel.score | num(2) }}</a></td>
+  <td class="n" data-sort="{{ bel.takers if bel.takers is not none else '' }}"><a class="l" href="{{ exam_url }}">{{ bel.takers | num }}</a></td>
+  <td class="n" data-sort="{{ math.score if math.score is not none else '' }}"><a class="l" href="{{ exam_url }}">{{ math.score | num(2) }}</a></td>
+  <td class="n" data-sort="{{ math.takers if math.takers is not none else '' }}"><a class="l" href="{{ exam_url }}">{{ math.takers | num }}</a></td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+{% if not rows %}<p>Няма училища за тези филтри.</p>{% endif %}
+</section>
+<p class="asof space-top">Под 5 явили се средният резултат е нестабилен. Този списък не оценява работата на учителите. <a class="l" href="/how">Методика</a>.</p>
+{% else %}<p class="lede">Още няма публикувани проверени резултати.</p>{% endif %}
+{% endblock %}
