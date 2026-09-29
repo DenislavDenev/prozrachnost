@@ -1,0 +1,3 @@
+<div class="scroll"><table id="municipalities" class="sortable"><thead><tr><th>Община</th><th class="n">Настоящ адрес</th></tr></thead><tbody>
+{% for r in d["items"] %}<tr><td><a class="l" href="/obshtini/{{ r.code }}">{{ r.name }}</a></td><td class="n" data-v="{{ r.v if r.v is not none else '' }}">{{ r.v|num }}</td></tr>{% endfor %}
+</tbody></table></div><div class="src">ГРАО · <a href="{{ d.url }}">{{ d.y|date }}</a> · <a href="/export.csv">CSV</a></div>

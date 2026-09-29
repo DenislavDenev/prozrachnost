@@ -25,6 +25,7 @@ body:
         - Икономика
         - Наблюдател
         - Парламент
+        - Население
     validations:
       required: true
   - type: textarea
