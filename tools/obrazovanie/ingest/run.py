@@ -14,16 +14,16 @@ def freshness(conn, today=None):
     problems = []
     for url, status, error, last_ok in conn.execute("SELECT url,status,error,last_ok FROM ops.source_state"):
         if status != "ok":
-            problems.append(f"Училища: {url}: {error or status}")
+            problems.append(f"Образование: {url}: {error or status}")
         elif not last_ok or (dt.datetime.now(dt.timezone.utc) - last_ok).days > 8:
-            problems.append(f"Училища: източникът {url} не е проверяван от 8 дни")
+            problems.append(f"Образование: източникът {url} не е проверяван от 8 дни")
     latest = conn.execute("SELECT max(school_year) FROM live.publication").fetchone()[0]
     expected_start = today.year - (1 if today.month >= 9 else 2)
     if not latest or int(latest[:4]) < expected_start:
-        problems.append("Училища: няма резултати от НВО VII за очакваната учебна година")
+        problems.append("Образование: няма резултати от НВО VII за очакваната учебна година")
     for year, first_at in conn.execute("SELECT school_year,first_at FROM ops.held"):
         if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
-            problems.append(f"Училища: {year} е задържана над ден")
+            problems.append(f"Образование: {year} е задържана над ден")
     return problems
 
 
@@ -52,9 +52,9 @@ def refresh(conn, post=http.post):
         for uri in catalog_urls.values():
             db.state(conn, uri, "ok")
         if status == "held":
-            report["problems"].append(f"Училища: {exam.year} чака второ четене")
+            report["problems"].append(f"Образование: {exam.year} чака второ четене")
     except Exception as exc:
-        report["problems"].append(f"Училища: {exc}")
+        report["problems"].append(f"Образование: {exc}")
         for uri in catalog_urls.values():
             db.state(conn, uri, "error", str(exc)[:1000])
     finally:

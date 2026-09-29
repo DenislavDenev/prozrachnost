@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Училища{% endblock %} · Прозрачност</title>
+  <title>{% block title %}Образование{% endblock %} · Прозрачност</title>
   <meta name="description" content="Резултати от НВО VII клас по училища, с брой явили се и връзка към данните на МОН.">
   <link rel="stylesheet" href="/static/fonts.css">
   <link rel="stylesheet" href="/static/app.css">
@@ -13,7 +13,7 @@
 <a class="skip" href="#main">Към съдържанието</a>
 {% set menu = [("Табло", "/"), ("Училища", "/uchilishta"), ("Източници", "/sources")] %}
 <header class="bar"><div class="bar-in">
-  <a class="word" href="/">училища<span class="dot">.</span></a>
+  <a class="word" href="/">образование<span class="dot">.</span></a>
   <nav class="menu" aria-label="Основна навигация">
     {% for label, href in menu %}<a href="{{ href }}" class="{{ 'on' if nav == label else '' }}" {% if nav == label %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
@@ -25,7 +25,7 @@
 </nav>
 <main id="main" class="wrap">{% block main %}{% endblock %}</main>
 <footer class="foot"><div class="wrap-f">
-  <span><b>Училища</b> · част от Прозрачност</span>
+  <span><b>Образование</b> · част от Прозрачност</span>
   <span>{% if d %}НВО VII · учебна {{ d.year }} година{% else %}Данните се подготвят{% endif %}</span>
   <a class="l" href="/how">Как работи</a>
   <a class="l" href="/sources">Източници</a>

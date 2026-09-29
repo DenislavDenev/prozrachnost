@@ -16,8 +16,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: the shared copies are the same everywhere (feedback.py and its test, the outlines of Europe)
         run: |
-          for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py tools/ikonomika/app/feedback.py tools/parlament/app/feedback.py tools/naselenie/app/feedback.py tools/uchilishta/app/feedback.py; do cmp hub/feedback.py "$f"; done
-          for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py tools/ikonomika/tests/test_feedback.py tools/parlament/tests/test_feedback.py tools/naselenie/tests/test_feedback.py tools/uchilishta/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
+          for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py tools/ikonomika/app/feedback.py tools/parlament/app/feedback.py tools/naselenie/app/feedback.py tools/obrazovanie/app/feedback.py; do cmp hub/feedback.py "$f"; done
+          for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py tools/ikonomika/tests/test_feedback.py tools/parlament/tests/test_feedback.py tools/naselenie/tests/test_feedback.py tools/obrazovanie/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
           cmp tools/ikonomika/app/static/europe.json tools/tender/app/static/europe.json   # the outlines of Europe: Икономика builds, Тендер copies
 
   hub:
@@ -163,20 +163,20 @@ jobs:
           ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
       - run: python tests/mutations.py
 
-  uchilishta:
+  obrazovanie:
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: tools/uchilishta } }
+    defaults: { run: { working-directory: tools/obrazovanie } }
     services:
       postgres:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: uchilishta_test
+          POSTGRES_DB: obrazovanie_test
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      UCHILISHTA_TEST_DSN: host=localhost user=postgres password=postgres dbname=uchilishta_test
+      OBRAZOVANIE_TEST_DSN: host=localhost user=postgres password=postgres dbname=obrazovanie_test
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -190,7 +190,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, uchilishta]
+    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, obrazovanie]
     runs-on: ubuntu-latest
     steps:
       - run: |

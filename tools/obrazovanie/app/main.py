@@ -21,10 +21,10 @@ from . import feedback
 ROOT = Path(__file__).resolve().parent
 EXAM_URL = f"https://data.egov.bg/data/view/{NVO7_DATASET}"
 REGISTER_URL = f"https://data.egov.bg/data/view/{SCHOOLS_DATASET}"
-app = FastAPI(title="Училища", docs_url=None, redoc_url=None)
+app = FastAPI(title="Образование", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
-    Path(os.environ.get("UCHILISHTA_FEEDBACK", str(DATA / "feedback"))), "Училища"))
+    Path(os.environ.get("OBRAZOVANIE_FEEDBACK", str(DATA / "feedback"))), "Образование"))
 templates = Jinja2Templates(directory=ROOT / "templates")
 
 

@@ -32,7 +32,7 @@ def test_retry_after_on_429(monkeypatch):
     monkeypatch.setattr(http.urllib.request, "urlopen", answer)
     assert http.post("getResourceData", {"resource_uri": "abc"}).startswith(b'{"success":true')
     assert len(calls) == 2 and 17 in waits
-    assert calls[0].get_header("User-agent").startswith("Prozrachnost/uchilishta")
+    assert calls[0].get_header("User-agent").startswith("Prozrachnost/obrazovanie")
 
 
 def test_403_is_not_empty_data_or_retried(monkeypatch):
