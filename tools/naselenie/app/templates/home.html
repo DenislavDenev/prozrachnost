@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Население</h1>
+<p class="lede">Към {{ d.y|date }} в ГРАО има <b>{{ d.bg|num }} регистрации по настоящ адрес</b>. Това е адресна регистрация, а не преброяване на живеещите в България.</p>
+<section class="p"><h2>Постоянен и настоящ адрес</h2><p class="sub">Годишни наблюдения и публикуваните месечни таблици. Всяка точка е към посочената дата.</p><div class="chart" data-src="/api/series.json" data-digits="0"></div>
+<div class="src">ГРАО · <a href="https://www.grao.bg/tables.html">Адресни регистрации</a> · <a href="/history.csv">CSV</a></div></section>
+<section class="p"><div class="tools"><h2>По общини</h2><a class="l" href="/karta">Виж на картата ↗</a><input type="search" data-filter="municipalities" aria-label="Търси община" placeholder="Търси община"></div>{% include "_table.html" %}</section>
+{% endblock %}
