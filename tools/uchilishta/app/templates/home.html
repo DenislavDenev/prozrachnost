@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Резултатите от НВО VII клас</h1>
+{% if d %}
+<p class="lede">През учебната {{ d.year }} година претегленият резултат от училищния файл е <b>{{ scores['БЕЛ'] | num(2) }} точки по БЕЛ</b> и <b>{{ scores['МАТ'] | num(2) }} точки по математика</b>.</p>
+<p class="asof">Претеглено по броя явили се · <a class="l" href="/how">Как е изчислено и защо се различава от по-ранното съобщение на МОН</a> · <a class="l" href="{{ exam_url }}">МОН, ресурс {{ d.exam_resource[:8] }} ↗</a> · публикуван {{ d.exam_updated }}</p>
+<div class="grid">
+  <section class="p s4 kpi"><div class="n">{{ d.school_count | num }}</div><div class="t">училища с публикувани резултати</div></section>
+  <section class="p s4 kpi"><div class="n">{{ scores['БЕЛ'] | num(2) }}<small>точки</small></div><div class="t">БЕЛ, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
+  <section class="p s4 kpi"><div class="n">{{ scores['МАТ'] | num(2) }}<small>точки</small></div><div class="t">Математика, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
+</div>
+<section class="p space-top"><div class="ph"><div><h2>Намери училище</h2><p class="sub">Търси по име, населено място или код по НЕИСПУО.</p></div></div>
+<form action="/uchilishta" method="get" class="lookup"><label for="home-q">Име или код</label><input id="home-q" name="q" type="search" required><button type="submit">Търси</button></form>
+<p class="sub"><a class="l" href="/uchilishta">Всички училища ↗</a></p></section>
+<p class="asof space-top">{{ d.matched | num }} от {{ d.school_count | num }} кода съвпадат с регистъра на МОН. <a class="l" href="/sources">Виж несъпоставените</a>.</p>
+{% else %}
+<p class="lede">Проверените данни за училищата още се подготвят.</p>
+<p><a class="l" href="/sources">Виж източниците ↗</a></p>
+{% endif %}
+{% endblock %}

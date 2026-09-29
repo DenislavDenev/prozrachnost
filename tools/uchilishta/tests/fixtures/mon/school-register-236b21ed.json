@@ -1,0 +1,33 @@
+{
+  "success": true,
+  "data": [
+    {
+      "InstRegName": "Благоевград",
+      "InstMunName": "Банско",
+      "InstTownName": "Банско",
+      "InstId": 105201,
+      "InstName": "Средно училище \"Неофит Рилски\""
+    },
+    {
+      "InstRegName": "Бургас",
+      "InstMunName": "Бургас",
+      "InstTownName": "Бургас",
+      "InstId": 2902103,
+      "InstName": "Национално училище за музикално и сценично изкуство \" Проф. Панчо Владигеров\""
+    },
+    {
+      "InstRegName": "Кърджали",
+      "InstMunName": "Момчилград",
+      "InstTownName": "Равен",
+      "InstId": 909612,
+      "InstName": "Основно училище \"Васил Левски\""
+    },
+    {
+      "InstRegName": "Ямбол",
+      "InstMunName": "Ямбол",
+      "InstTownName": "Ямбол",
+      "InstId": 2811518,
+      "InstName": "Спортно училище \"Пиер дьо Кубертен\""
+    }
+  ]
+}

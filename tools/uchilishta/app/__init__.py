@@ -1,0 +1,1 @@
+"""School results web application."""
