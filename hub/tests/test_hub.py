@@ -40,6 +40,8 @@ def test_home_lists_every_tool_by_category():
 def test_live_cards_link_out():
     html = client.get("/").text
     assert 'href="https://tender.denev.work"' in html
+    assert 'href="http://localhost:8016"' in html
+    assert hub.TOOLS["uchilishta"]["status"] == "new"
 
 
 def test_tool_page_and_404():
