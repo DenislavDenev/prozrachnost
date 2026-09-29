@@ -32,7 +32,8 @@ def save_raw(conn, uri, raw):
     sha = hashlib.sha256(raw).hexdigest()
     folder = RAW / datetime.now(timezone.utc).strftime("%Y-%m-%d")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{sha[:12]}-{uri}"
+    # Catalog identifiers are full URLs; keep them in the database, not in a filename.
+    path = folder / f"{sha[:12]}-{hashlib.sha256(uri.encode()).hexdigest()[:12]}.json"
     if not path.exists():
         try:
             with path.open("xb") as stream:
