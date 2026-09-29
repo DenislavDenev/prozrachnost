@@ -25,5 +25,24 @@
 {% endfor %}
 <p class="src"><a href="{{ exam_url }}">Източник · МОН · {{ d.year }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · <a href="/uchilishta.csv?q={{ school.code }}">CSV</a></p>
 </section>
-<p class="asof space-top">Показани са само проверените резултати за тази учебна година. <a class="l" href="/how">Ограничения на сравнението ↗</a></p>
+{% if history %}
+<h2 class="sec">Предишни години · НВО VII клас</h2>
+<p class="asof">Резултатите са по един и същ код по НЕИСПУО. Скалите 65 и 100 точки са показани отделно.</p>
+{% for scale, maximum in [('points100', 100), ('points65', 65)] %}
+{% set years = history | selectattr('scale', 'equalto', scale) | list %}
+{% if years %}
+<section class="p space-top"><div class="ph"><h2>Скала до {{ maximum }} точки</h2></div>
+<div class="compare-head"><span>Учебна година</span><span>БЕЛ · точки</span><span>МАТ · точки</span></div>
+{% for item in years %}
+<div class="compare-row"><strong>{{ item.year }}</strong>
+  <span>{{ item.subjects['БЕЛ'].score | num(2) }}</span>
+  <span>{{ item.subjects['МАТ'].score | num(2) }}</span></div>
+<p class="src"><a href="{{ exam_url }}">МОН · ресурс {{ item.resource[:8] }} ↗</a>{% if not item.matched %} · Кодът не е намерен в регистъра за годината.{% endif %}
+ · БЕЛ: {{ item.subjects['БЕЛ'].takers | num }} явили се; МАТ: {{ item.subjects['МАТ'].takers | num }} явили се</p>
+{% endfor %}
+</section>
+{% endif %}
+{% endfor %}
+{% endif %}
+<p class="asof space-top">Показани са само публикувани резултати с проверена структура и ясно посочен източник. <a class="l" href="/how">Ограничения на сравнението ↗</a></p>
 {% endblock %}

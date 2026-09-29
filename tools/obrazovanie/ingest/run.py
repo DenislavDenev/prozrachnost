@@ -5,8 +5,10 @@ import datetime as dt
 import json
 
 from . import db, http
+from .history import parse_nvo7_year
 from .parse import parse_nvo7
-from .sources import NVO7_DATASET, SCHOOLS_DATASET, current_pair, parse_schools, reconcile
+from .registry import parse_schools_year
+from .sources import NVO7_DATASET, SCHOOLS_DATASET, catalog, current_pair, parse_schools, reconcile
 
 
 def freshness(conn, today=None):
@@ -62,15 +64,63 @@ def refresh(conn, post=http.post):
     return report
 
 
+def refresh_history(conn, post=http.post):
+    """Refresh code-reconciled historical NVO VII years independently of the latest year."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"years": {}, "problems": []}
+    try:
+        catalogs = {}
+        for dataset in (NVO7_DATASET, SCHOOLS_DATASET):
+            uri = "https://data.egov.bg/api/listResources?dataset=" + dataset
+            raw = post("listResources", {"criteria": {"dataset_uri": dataset}, "records_per_page": 100, "page_number": 1})
+            db.save_raw(conn, uri, raw)
+            catalogs[dataset] = catalog(raw, dataset)
+            db.state(conn, uri, "ok")
+        exams = {item.year: item for item in catalogs[NVO7_DATASET]}
+        registers = {}
+        for item in catalogs[SCHOOLS_DATASET]:
+            if item.year not in registers or item.updated_at > registers[item.year].updated_at:
+                registers[item.year] = item
+        latest = max(exams)
+        # Earlier official register tables have no NEISPUO code. Their display policy is separate.
+        for year in sorted(set(exams) & registers):
+            if year < "2021/2022" or year == latest:
+                continue
+            exam, register = exams[year], registers[year]
+            try:
+                exam_raw = post("getResourceData", {"resource_uri": exam.uri})
+                exam_sha = db.save_raw(conn, exam.uri, exam_raw)
+                register_raw = post("getResourceData", {"resource_uri": register.uri})
+                register_sha = db.save_raw(conn, register.uri, register_raw)
+                results = parse_nvo7_year(exam_raw, year)
+                schools = parse_schools_year(register_raw)
+                checks = reconcile(results, schools)
+                status = db.publish(conn, year, exam, register, exam_sha, register_sha, results, schools, checks)
+                report["years"][year] = {"status": status, **checks}
+                if status == "held":
+                    report["problems"].append(f"Образование: {year} чака второ четене")
+            except Exception as exc:
+                db.state(conn, exam.uri, "error", str(exc)[:1000])
+                report["problems"].append(f"Образование: {year}: {exc}")
+    except Exception as exc:
+        report["problems"].append(f"Образование: исторически каталог: {exc}")
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
             report = {"migrations": db.migrate(conn)}
         elif args.step == "mon":
             report = refresh(conn)
+        elif args.step == "history":
+            report = refresh_history(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))

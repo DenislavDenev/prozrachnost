@@ -68,6 +68,24 @@ def weighted(rows, subject):
     return (sum(score * takers for score, takers in pairs) / total).quantize(Decimal("0.01")) if total else None
 
 
+def school_history(code, before_year):
+    """Only published and code-reconciled NVO VII years can appear in a profile."""
+    years = {}
+    with connect() as conn:
+        for year, resource, subject, takers, score, scale, matched in conn.execute("""
+            SELECT p.school_year,p.exam_resource,e.subject,e.takers,e.score,e.scale,s.matched
+            FROM live.publication p JOIN live.school s ON s.school_year=p.school_year
+            JOIN live.exam_result e ON e.school_year=s.school_year AND e.neispuo=s.neispuo
+            WHERE s.neispuo=%s AND p.school_year<%s ORDER BY p.school_year DESC,e.subject
+        """, (code, before_year)):
+            item = years.setdefault(year, dict(year=year, resource=resource, scale=scale,
+                                               matched=matched, subjects={}))
+            if item["scale"] != scale:
+                raise ValueError(f"Mixed NVO VII scales in {year}")
+            item["subjects"][subject] = dict(takers=takers, score=score)
+    return list(years.values())
+
+
 def render(request, page, data=None, **context):
     hub = os.environ.get("HUB_URL", "/")
     return templates.TemplateResponse(request=request, name=page, context=dict(
@@ -128,7 +146,8 @@ def school_detail(request: Request, code: str):
                   ("Общината", weighted(municipality, "БЕЛ"), weighted(municipality, "МАТ")),
                   ("Областта", weighted(oblast, "БЕЛ"), weighted(oblast, "МАТ")),
                   ("Страната, по училищния файл", weighted(data["schools"], "БЕЛ"), weighted(data["schools"], "МАТ"))]
-    return render(request, "school.html", data, nav="Училища", school=school, comparison=comparison)
+    return render(request, "school.html", data, nav="Училища", school=school, comparison=comparison,
+                  history=school_history(code, data["year"]))
 
 
 @app.get("/uchilishta.csv")
