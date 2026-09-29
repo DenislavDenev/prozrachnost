@@ -55,6 +55,11 @@ class Source:
             self.files[f"mp-profile/bg/{f.stem.rsplit('-', 1)[1]}"] = f.read_bytes()
         self.files["mp-absense/bg"] = (FX / "mp-absense.json").read_bytes()
         self.files["mp-penalty"] = (FX / "mp-penalty.json").read_bytes()
+        # the bills: of the month of 09.2026 only the one voted on 24.09 (first reading, sitting 11174)
+        sept = [x for x in json.loads((FX / "bills-2026-09.json").read_bytes()) if x["t_id"] == 167546]
+        self.files["archive-period/bg/L_Acts/2026/9/1/0"] = json.dumps(sept).encode()
+        self.files["archive-period/bg/L_Acts/2026/8/1/0"] = b"[]"
+        self.files["bill/167546"] = (FX / "bill-167546.json").read_bytes()
         self.calls = []
 
     def get(self, url, data=None):
@@ -76,11 +81,12 @@ def run(conn, src, first=(2026, 7), today=TODAY):
 
 def everyone(conn, src):
     """What n8n runs besides the sittings: the roster, the people, the absences."""
-    from ingest import load, people
+    from ingest import bills, load, people
     load.roster(conn, {}, get=src.get)
     people.assemblies(conn)
     people.people(conn, {}, get=src.get)
     people.absences(conn, {}, get=src.get)
+    bills.load(conn, {}, get=src.get, today=TODAY)
 
 
 def table_hash(conn):
@@ -397,3 +403,26 @@ def test_a_sitting_the_source_cannot_answer_is_reported_and_the_rest_go_on(conn)
     src.files["pl-sten/11174"] = http.Failed("източникът не отговаря: pl-sten/11174 след 5 опита")
     st = run(conn, src)
     assert st["sittings"] == {"stored": 1, "invalid": 1} and any("11174" in p and "не отговаря" in p for p in st["problems"])
+
+
+def test_a_bill_its_steps_and_its_votes(conn):
+    from ingest import bills
+    src = Source()
+    run(conn, src)
+    everyone(conn, src)
+    q = lambda sql, *a: conn.execute(sql, a).fetchall()   # noqa: E731
+    assert q("SELECT sign, government, assembly FROM live.bill WHERE id = 167546") == [("52-602-01-43", True, 52)]
+    assert q("SELECT count(*) FROM live.bill_step WHERE bill = 167546")[0][0] == 5
+    # the first reading on 24.09.2026: "ЗИД на Наказателния кодекс – първо гласуване" is item 2 of sitting 11174
+    got = q("SELECT sitting, item, reading FROM live.bill_item WHERE bill = 167546 ORDER BY item")
+    assert (11174, 2, 1) in got and all(r[0] == 11174 for r in got)
+    topics = [t for t, in q("SELECT i.topic FROM live.bill_item b JOIN live.item i ON i.sitting = b.sitting AND i.no = b.item WHERE b.bill = 167546")]
+    assert all(bills.key(t) == "зид на наказателния кодекс" for t in topics)
+    # the same answer again changes nothing; one with fewer steps waits for a second read
+    assert bills.load(conn, {}, get=src.get, today=TODAY)["bills"] == {"unchanged": 1}
+    b = json.loads(src.files["bill/167546"])
+    b["activity"] = b["activity"][:1]
+    b["steno_hall"] = []
+    src.files["bill/167546"] = json.dumps(b).encode()
+    assert bills.load(conn, {}, get=src.get, today=TODAY)["bills"] == {"held": 1}
+    assert q("SELECT count(*) FROM live.bill_step WHERE bill = 167546")[0][0] == 5

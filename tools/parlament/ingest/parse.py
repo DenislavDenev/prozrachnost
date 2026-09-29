@@ -608,3 +608,49 @@ def penalties(raw):
                     "kind": (a.get("A_ns_MP_PenT_name") or "").strip(), "note": (a.get("A_ns_MP_Pen_note") or "").strip() or None,
                     "by": by, "what": ", ".join(x.get("A_ns_MP_PenS_name") or "" for x in a.get("activity") or []) or None})
     return out
+
+
+# ---------- the bills ----------
+
+def acts(raw):
+    """archive-period/bg/L_Acts/<y>/<m>/1/0 -> [(bill id, title, date)] of the bills brought in that month."""
+    got = _json(raw)
+    if not isinstance(got, list):
+        raise ShapeError(f"not a list of bills: {str(got)[:120]}")
+    out = []
+    for x in got:
+        if not isinstance(x, dict) or not isinstance(x.get("t_id"), int):
+            raise ShapeError(f"not a bill: {str(x)[:120]}")
+        out.append((x["t_id"], (x.get("t_label") or "").strip(), _day(str(x.get("t_date") or ""))))
+    return out
+
+
+def bill(raw):
+    """bill/<id> -> {id, sign, date, title, final, assembly, session, withdrawn, adopted, dv_issue, dv_year, government,
+    sponsors: [(profile, name)], committees: [(id, name, role)], steps: [{id, date, sitting, committee, committee_name,
+    what, stage}]}. government: brought by the Council of Ministers (imp_list_min), not by MPs."""
+    b = _json(raw)
+    if not isinstance(b, dict) or not isinstance(b.get("L_Act_id"), int) or not b.get("L_ActL_title"):
+        raise ShapeError(f"not a bill: {str(b)[:120]}")
+    folder = str(b.get("A_ns_folder") or "")
+    steps = {}
+    for s in (b.get("activity") or []) + (b.get("steno_hall") or []) + (b.get("steno_com") or []):
+        if not isinstance(s.get("L_Act_A_id"), int):
+            raise ShapeError(f"not a step: {str(s)[:120]}")
+        prev = steps.get(s["L_Act_A_id"], {})
+        steps[s["L_Act_A_id"]] = {"id": s["L_Act_A_id"], "date": _day(s.get("L_Act_St_date")),
+                                  "sitting": s.get("Pl_Sten_id") or prev.get("sitting") or None,
+                                  "committee": s.get("A_ns_C_id") or prev.get("committee"),
+                                  "committee_name": s.get("A_ns_CL_value") or prev.get("committee_name"),
+                                  "what": (s.get("L_Act_St_name") or "").strip() or None, "stage": (s.get("L_Act_St2_name") or "").strip() or None}
+    adopted = _day((b.get("L_Act_date2") or "")[:10])
+    return {"id": b["L_Act_id"], "sign": b.get("L_Act_sign"), "date": _day((b.get("L_Act_date") or "")[:10]),
+            "title": " ".join(b["L_ActL_title"].split()), "final": " ".join((b.get("L_ActL_final") or "").split()) or None,
+            "assembly": int(folder) if folder.isdigit() else None, "session": b.get("L_SesL_value") or None,
+            "withdrawn": bool(b.get("withdrawn")), "adopted": adopted,
+            "dv_issue": (b.get("L_Act_dv_iss") or "").strip() or None, "dv_year": b.get("L_Act_dv_year"),
+            "government": bool(b.get("imp_list_min")),
+            "sponsors": [(x.get("A_ns_MP_id"), full_name(x)) for x in b.get("imp_list") or []],
+            "committees": [(x.get("A_ns_C_id"), (x.get("A_ns_CL_value") or "").strip(), (x.get("L_Act_DTL_value") or "").strip() or None)
+                           for x in b.get("dist_list") or [] if x.get("A_ns_C_id")],
+            "steps": sorted(steps.values(), key=lambda s: (s["date"] or dt.date.min, s["id"]))}

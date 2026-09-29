@@ -259,3 +259,4 @@ a.grp { color: inherit; } a.grp:hover { color: var(--accent-ink); text-decoratio
 .dayform { display: flex; align-items: center; gap: 8px; }
 .dayform input[type=date] { font: 500 14.5px var(--font-body); height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; }
 @media (max-width: 720px) { .s6 { grid-column: span 12; } .ph { flex-wrap: wrap; } }
+.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 14.5px; }

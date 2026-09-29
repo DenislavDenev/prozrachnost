@@ -12,11 +12,12 @@ DSN = os.environ.get("PARLAMENT_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="PARLAMENT_TEST_DSN not set")
 
 PAGES = ["/", "/glasuvaniya", "/glasuvaniya?q=кодекс", "/glasuvaniya?ns=52", "/deputati", "/grupi", "/sources", "/how",
-         "/zasedaniya", "/tarsene", "/sabraniya"]
+         "/zasedaniya", "/tarsene", "/sabraniya", "/zakonoproekti"]
 # the pages of the sittings, the stenogram and the people, on the two real sittings (31.07.2026 with its stenogram)
 MORE = ["/zasedaniya?g=2026", "/zasedaniya?ns=52", "/zasedanie/11159", "/zasedanie/11174", "/zasedanie/11159/stenograma",
         "/izkazvane/11159/3", "/tarsene?q=заседание", "/tarsene?q=заседание&ns=52", "/tarsene?q=нищо-такова", "/grupa/52/ПБ",
-        "/grupi?ns=52&date=2026-08-01", "/chovek/5237", "/chovek/4842"]
+        "/grupi?ns=52&date=2026-08-01", "/chovek/5237", "/chovek/4842", "/zakonoproekti", "/zakonoproekti?q=кодекс&st=neprieti",
+        "/zakonoproekt/167546"]
 
 
 def wipe():
@@ -73,7 +74,7 @@ def test_every_page_renders_on_real_sittings(client, loaded):
 
 def test_the_lede_says_every_value_in_bold(client, loaded):
     for path in ("/", "/glasuvaniya", "/deputati", "/grupi", "/glasuvane/11174/2", "/deputati/52/3839", "/zasedaniya",
-                 "/zasedanie/11159", "/grupa/52/ПБ", "/chovek/5237", "/chovek/4842"):
+                 "/zasedanie/11159", "/grupa/52/ПБ", "/chovek/5237", "/chovek/4842", "/zakonoproekti", "/zakonoproekt/167546"):
         lede = re.search(r'<p class="lede">(.*?)</p>', client.get(path).text, re.S).group(1)
         # what is not a value: the dates, the years, the assembly's number
         rest = re.sub(r"<b>.*?</b>|\b\d\d\.\d\d\.\d{4}\b|\b\d{1,2} [а-я]+ (18|19|20)\d\d\b|\b(18|19|20)\d\d\b|\d+-(во|ро|о) ", "",
@@ -140,3 +141,10 @@ def test_the_search_the_person_and_the_group(client, loaded):
     j = client.get("/api/grupa/52/ПБ.json").json()["series"][0]
     assert j["color"] == "#034A3F" and [x[0] for x in j["points"]] == ["2026-07-31", "2026-09-24"]
     assert client.get("/api/zala/52.json?date=2026-08-01").json()["date"] == "2026-08-01"
+
+
+def test_the_bill_page_and_its_link_from_the_vote(client, loaded):
+    html = client.get("/zakonoproekt/167546").text
+    assert "Министерския съвет" in html and "Позицията на групите" in html and "/glasuvane/11174/2" in html
+    assert 'href="/zakonoproekt/167546"' in client.get("/glasuvane/11174/2").text
+    assert client.get("/zakonoproekt/1").status_code == 404

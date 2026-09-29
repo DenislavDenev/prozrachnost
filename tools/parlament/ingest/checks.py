@@ -24,6 +24,7 @@ def freshness(conn, today=None):
     month = f"month/{today.year}-{today.month:02d}"
     for ref, days, what in ((month, LIST_STALE, "списъкът на заседанията за месеца"), ("roster", ROSTER_STALE, "списъкът на депутатите"),
                             ("absences", LISTS_STALE, "официалните отсъствия"), ("penalties", LISTS_STALE, "наказанията"),
+                            (f"bills/{today.year}-{today.month:02d}", LISTS_STALE, "законопроектите за месеца"),
                             (f"assembly/{current(conn)}", PEOPLE_STALE, "профилите на депутатите")):
         r = conn.execute("SELECT last_ok FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, ref)).fetchone()
         if not r or not r[0] or r[0].date() < today - dt.timedelta(days=days):

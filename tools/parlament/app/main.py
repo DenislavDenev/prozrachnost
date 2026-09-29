@@ -262,6 +262,8 @@ def vote_page(request: Request, sitting: int, no: int):
                    ORDER BY v.grp, m.name""", sitting, no)
     nav = q("""SELECT no FROM live.item WHERE sitting = %s AND kind = 'vote' AND no IN (%s, %s) ORDER BY no""", sitting, no - 1, no + 1)
     same_day = q("SELECT no, topic FROM live.item WHERE sitting = %s AND kind = 'vote' ORDER BY no", sitting)
+    of_bills = q("""SELECT b.id, b.sign, b.title, bi.reading FROM live.bill_item bi JOIN live.bill b ON b.id = bi.bill
+                    WHERE bi.sitting = %s AND bi.item = %s ORDER BY b.id""", sitting, no)
     seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
                  JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
                  WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""", sitting, no)
@@ -272,7 +274,8 @@ def vote_page(request: Request, sitting: int, no: int):
     for mp, name, g, code in sorted(seats, key=lambda r: ("+=-0".index(r[3]), r[1])):
         by_group.setdefault(g, []).append((mp, name, code))
     return page(request, "vote.html", "Гласувания", v=v, s=s, groups=groups, against=against, names=group_names(v["assembly"]), seats=seats, by_group=by_group,
-                prev=next((n for n, in nav if n < no), None), next=next((n for n, in nav if n > no), None), same_day=same_day)
+                prev=next((n for n, in nav if n < no), None), next=next((n for n, in nav if n > no), None), same_day=same_day,
+                of_bills=of_bills)
 
 
 @app.get("/api/glasuvane/{sitting}/{no}.json")
@@ -597,6 +600,8 @@ def person_page(request: Request, person: int):
     latest = q("""SELECT sp.sitting, sp.no, s.date, s.assembly, sp.grp, left(sp.text, 260) FROM live.speech sp
                   JOIN live.sitting s ON s.id = sp.sitting WHERE sp.profile = ANY(%s) ORDER BY s.date DESC, sp.no DESC LIMIT 12""", ids)
     absences = q("SELECT date, body_name, kind FROM live.absence WHERE profile = ANY(%s) ORDER BY date DESC", ids)
+    brought = q("""SELECT b.id, b.date, b.sign, b.title, b.adopted, b.withdrawn, b.dv_issue, b.dv_year FROM live.bill_sponsor x
+                   JOIN live.bill b ON b.id = x.bill WHERE x.profile = ANY(%s) ORDER BY b.date DESC, b.id DESC""", ids)
     penalties = q("SELECT date, kind, note, by_name, what FROM live.penalty WHERE profile = ANY(%s) ORDER BY date DESC", ids)
     # the timeline: per assembly, its span and the groups inside it, as shares of the span
     lines = []
@@ -614,7 +619,8 @@ def person_page(request: Request, person: int):
                       "roles": [m for m in ms if m[0] == pid and m[2] in (1, 2) and m[3] and not m[3].startswith("член")],
                       "bodies": [m for m in ms if m[0] == pid and m[2] not in (1, 2)], "votes": votes.get(a), "said": said.get(a)})
     return page(request, "person.html", "Депутати", person=person, pname=profs[-1][2], profs=profs, lines=lines, latest=latest,
-                absences=absences, penalties=penalties, profession=profs[-1][5], languages=profs[-1][6])
+                absences=absences, penalties=penalties, profession=profs[-1][5], languages=profs[-1][6], brought=brought,
+                status=bill_status)
 
 
 @app.get("/grupa/{ns}/{code}", response_class=HTMLResponse)
@@ -667,6 +673,81 @@ def assemblies_page(request: Request):
                        (SELECT count(*) FROM live.profile p WHERE p.assembly = a.no)
                 FROM live.assembly a LEFT JOIN live.sitting s ON s.assembly = a.no GROUP BY 1, 2, 3 ORDER BY a.start DESC""")
     return page(request, "assemblies.html", "Заседания", rows=rows)
+
+
+# ---------- the bills ----------
+
+BILL_LIMIT = 300
+
+
+def bill_status(adopted, withdrawn, dv_issue, dv_year):
+    if adopted:
+        return "приет" + (f", ДВ бр. {dv_issue}/{dv_year}" if dv_issue else "")
+    return "оттеглен" if withdrawn else "не е приет"
+
+
+@app.get("/zakonoproekti", response_class=HTMLResponse)
+def bills_page(request: Request, ns: int | None = None, st: str | None = None):
+    """The bills of an assembly (the newest first), searchable by title and sponsor; adopted, withdrawn or not yet."""
+    text = (request.query_params.get("q") or "").strip()
+    have = [a for a, in q("SELECT DISTINCT assembly FROM live.bill WHERE assembly IS NOT NULL ORDER BY 1 DESC")]
+    if not have:
+        return page(request, "bills.html", "Законопроекти", rows=[], all=[], ns=None, text=text, st=st, total=0, more=False)
+    ns = ns if ns is not None else have[0]
+    if ns not in have:
+        raise HTTPException(404)
+    where, args = ["b.assembly = %s"], [ns]
+    if text:
+        where.append("(b.title ILIKE %s OR b.sign ILIKE %s OR EXISTS (SELECT 1 FROM live.bill_sponsor x WHERE x.bill = b.id AND x.name ILIKE %s))")
+        args += [f"%{text}%"] * 3
+    if st == "priet":
+        where.append("b.adopted IS NOT NULL")
+    elif st == "otteglen":
+        where.append("b.withdrawn")
+    elif st == "neprieti":
+        where.append("b.adopted IS NULL AND NOT b.withdrawn")
+    rows = q(f"""SELECT b.id, b.date, b.sign, b.title, b.government, b.adopted, b.withdrawn, b.dv_issue, b.dv_year,
+                        (SELECT string_agg(x.name, ', ' ORDER BY x.pos) FROM (SELECT * FROM live.bill_sponsor WHERE bill = b.id ORDER BY pos LIMIT 3) x),
+                        (SELECT count(*) FROM live.bill_sponsor x WHERE x.bill = b.id),
+                        (SELECT count(*) FROM live.bill_item i WHERE i.bill = b.id)
+                 FROM live.bill b WHERE {' AND '.join(where)} ORDER BY b.date DESC NULLS LAST, b.id DESC LIMIT {BILL_LIMIT + 1}""", *args)
+    counts = one("""SELECT count(*), count(*) FILTER (WHERE adopted IS NOT NULL), count(*) FILTER (WHERE withdrawn),
+                           count(*) FILTER (WHERE government) FROM live.bill WHERE assembly = %s""", ns)
+    return page(request, "bills.html", "Законопроекти", rows=rows[:BILL_LIMIT], more=len(rows) > BILL_LIMIT, all=have, ns=ns,
+                text=text, st=st, counts=counts, status=bill_status)
+
+
+@app.get("/zakonoproekt/{bid}", response_class=HTMLResponse)
+def bill_page(request: Request, bid: int):
+    """A bill: who brought it, the committees, every step, its votes in the hall, and each group's side on the first and
+    the second reading, where it changed."""
+    b = one("""SELECT id, sign, date, title, final_title, assembly, session, withdrawn, adopted, dv_issue, dv_year, government
+               FROM live.bill WHERE id = %s""", bid)
+    if not b:
+        raise HTTPException(404)
+    b = dict(zip(("id", "sign", "date", "title", "final", "assembly", "session", "withdrawn", "adopted", "dv_issue", "dv_year",
+                  "government"), b))
+    sponsors = q("""SELECT x.name, x.profile, p.person FROM live.bill_sponsor x LEFT JOIN live.profile p ON p.id = x.profile
+                    WHERE x.bill = %s ORDER BY x.pos""", bid)
+    committees = q("SELECT name, role FROM live.bill_committee WHERE bill = %s ORDER BY role = 'водеща' DESC, name", bid)
+    steps = q("""SELECT DISTINCT ON (st.date, st.stage, st.what) st.date, st.what, st.stage, st.committee_name,
+                        coalesce(st.sitting, (SELECT s.id FROM live.sitting s WHERE s.date = st.date AND st.stage LIKE 'зала%%' LIMIT 1))
+                 FROM live.bill_step st WHERE st.bill = %s ORDER BY st.date, st.stage, st.what, st.sitting NULLS LAST""", bid)
+    votes = [dict(as_vote(r[:-1]), reading=r[-1]) for r in q("""
+        SELECT i.sitting, i.no, i.at, i.topic, i.yes, i.no_, i.abstain, i.voted, s.assembly,
+               (SELECT listed FROM live.item r WHERE r.sitting = i.sitting AND r.kind = 'registration' ORDER BY r.no LIMIT 1), i.mismatch, bi.reading
+        FROM live.bill_item bi JOIN live.item i ON i.sitting = bi.sitting AND i.no = bi.item JOIN live.sitting s ON s.id = i.sitting
+        WHERE bi.bill = %s ORDER BY i.at, i.no""", bid)]
+    # each group's side per reading: + where all its lines were for, - where all were not, ± where they differ
+    sides = {}
+    for reading, g, yes, no in q("""SELECT bi.reading, l.grp, count(*) FILTER (WHERE l.line = '+'), count(*) FILTER (WHERE l.line = '-')
+                                    FROM live.bill_item bi JOIN live.line l ON l.sitting = bi.sitting AND l.item = bi.item
+                                    WHERE bi.bill = %s AND bi.reading IS NOT NULL GROUP BY 1, 2""", bid):
+        sides.setdefault(g, {})[reading] = "+" if yes and not no else "-" if no and not yes else "±" if yes or no else None
+    others = q("""SELECT DISTINCT o.id, o.sign, o.title FROM live.bill_item a JOIN live.bill_item x ON x.sitting = a.sitting AND x.item = a.item AND x.bill <> a.bill
+                  JOIN live.bill o ON o.id = x.bill WHERE a.bill = %s ORDER BY o.id""", bid)
+    return page(request, "bill.html", "Законопроекти", b=b, sponsors=sponsors, committees=committees, steps=steps, votes=votes,
+                sides=sorted(sides.items(), key=lambda kv: kv[0]), others=others, status=bill_status, names=group_names(b["assembly"]) if b["assembly"] else {})
 
 
 @app.exception_handler(404)

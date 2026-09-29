@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Законопроекти{% endblock %}
+{% block main %}
+<h1>Законопроекти</h1>
+{% if ns %}
+<p class="lede">В {{ aname(ns) }} са внесени <b>{{ counts[0] | num }} законопроекта</b>, <b>{{ counts[3] | num }}</b> от тях от
+  Министерския съвет; приети са <b>{{ counts[1] | num }}</b>, оттеглени <b>{{ counts[2] | num }}</b>.</p>
+<form class="search" method="get" action="/zakonoproekti" role="search">
+  <input type="search" name="q" value="{{ text }}" placeholder="Заглавие, сигнатура или вносител" aria-label="Търси законопроект">
+  <select name="ns" aria-label="Народно събрание">{% for a in all %}<option value="{{ a }}" {% if a == ns %}selected{% endif %}>{{ aname(a, true) }}</option>{% endfor %}</select>
+  <select name="st" aria-label="Докъде стигна"><option value="">всички</option>
+    {% for k, t in (("priet", "приети"), ("neprieti", "не са приети"), ("otteglen", "оттеглени")) %}<option value="{{ k }}" {% if st == k %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+  <button type="submit">Покажи</button>
+</form>
+<div class="grid"><section class="p s12">
+  <table class="sortable"><thead><tr><th>Внесен</th><th>Законопроект</th><th>Вносител</th><th>Докъде стигна</th><th class="n">Гласувания</th></tr></thead><tbody>
+  {% for bid, d, sign, title, gov, adopted, withdrawn, dv_issue, dv_year, sponsors, n_sp, n_votes in rows %}
+  <tr><td data-v="{{ d.isoformat() if d else '' }}" style="white-space:nowrap">{{ d | date }}</td>
+    <td class="topic"><a href="/zakonoproekt/{{ bid }}">{{ title }}</a> <span class="mut">{{ sign or '' }}</span></td>
+    <td class="mut">{% if gov %}Министерски съвет{% elif sponsors %}{{ sponsors | name }}{% if n_sp > 3 %} и още {{ n_sp - 3 }}{% endif %}{% endif %}</td>
+    <td>{{ status(adopted, withdrawn, dv_issue, dv_year) }}</td><td class="n">{{ n_votes or '' }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% if more %}<p class="mut">Показани са последните {{ rows | length }}; стеснете търсенето.</p>{% endif %}
+  <div class="src">Народно събрание · <a href="{{ SITE }}/bg/bills" rel="noopener">законопроекти</a></div></section></div>
+{% else %}<p class="lede">Още няма прочетени законопроекти.</p>{% endif %}
+{% endblock %}

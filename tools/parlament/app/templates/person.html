@@ -48,6 +48,12 @@
       <li><div class="hit-h"><a class="l" href="/izkazvane/{{ sid }}/{{ no }}">{{ d | date }}</a>{% if g %} {{ m.grp(g, {}) }}{% endif %}<span class="mut"> · {{ aname(a, true) }}</span></div>
         <p class="snip">{{ text }}{% if text | length >= 260 %}…{% endif %}</p></li>{% endfor %}</ol>{{ m.src() }}</section>{% endif %}
 
+  {% if brought %}<section class="p s12"><div class="ph"><div><h2>Внесени законопроекти</h2><div class="sub">{{ brought | length }}; като вносител или съвносител</div></div></div>
+    <table class="sortable"><thead><tr><th>Дата</th><th>Законопроект</th><th>Докъде стигна</th></tr></thead><tbody>
+    {% for bid, d, sign, title, adopted, withdrawn, dv_issue, dv_year in brought %}<tr><td data-v="{{ d.isoformat() if d else '' }}" style="white-space:nowrap">{{ d | date }}</td>
+      <td class="topic"><a href="/zakonoproekt/{{ bid }}">{{ title }}</a> <span class="mut">{{ sign or '' }}</span></td>
+      <td>{{ status(adopted, withdrawn, dv_issue, dv_year) }}</td></tr>{% endfor %}</tbody></table>{{ m.src() }}</section>{% endif %}
+
   {% if absences or penalties %}
   <section class="p s6"><div class="ph"><div><h2>Официални отсъствия</h2><div class="sub">както ги обявява Народното събрание; пазим ги от 29.09.2026</div></div></div>
     {% if absences %}<table class="sortable"><thead><tr><th>Дата</th><th>Къде</th></tr></thead><tbody>

@@ -283,3 +283,23 @@ def test_online_registration_is_read_and_counted_the_way_the_file_by_group_does(
         items, votes = parse.groups(parse.sheet(raw(f"gv{day}.xlsx"))), parse.rollcall(parse.sheet(raw(f"iv{day}.xlsx")))
         assert sum(1 for v in votes if v[3] == 1 and v[4] == "Д") == remote and items[1]["total"][0] == present
         assert parse.check(items, votes)[0] == []
+
+
+def test_a_bill_and_the_short_title_of_its_votes():
+    from ingest import bills
+    b = parse.bill(raw("bill-166636.json"))
+    assert (b["sign"], b["assembly"], str(b["adopted"]), b["dv_issue"], b["dv_year"], b["government"]) == ("51-554-01-169", 51, "2026-03-04", "27", 2026, False)
+    assert b["sponsors"][0] == (4927, "ИСКРА ДИМИТРОВА МИХАЙЛОВА-КОПАРОВА") and len(b["sponsors"]) == 4
+    assert b["committees"][0] == (3596, "Комисия по конституционни и правни въпроси", "водеща")
+    hall = [s for s in b["steps"] if s["sitting"]]
+    assert {(s["sitting"], s["stage"]) for s in hall} == {(11111, "зала второ гласуване")}
+    assert parse.bill(raw("bill-167546.json"))["government"] is True
+    assert len(parse.acts(raw("bills-2026-09.json"))) == 48
+    for title, topic in (("Законопроект за изменение и допълнение на Закона за държавния дълг", "ЗИД на Закона за държавния дълг - второ гласуване - параграф 3"),
+                         ("Законопроект за бюджета на държавното обществено осигуряване за 2026 г.", "Закон за бюджета на държавното обществено осигуряване за 2026 г. – първо гласуване"),
+                         ("Законопроект за изменение на Наказателния кодекс", "ЗИ на Наказателния кодекс – второ гласуване")):
+        assert bills.key(title) == bills.key(topic), (title, topic)
+    assert bills.key("ЗИД на Закона за здравето – първо гласуване") != bills.key("Законопроект за изменение и допълнение на Закона за храните")
+    assert bills.reading("ЗИД на Закона за държавния дълг - второ гласуване - параграф 3") == 2 and bills.reading("Решение за избиране") is None
+    with pytest.raises(parse.ShapeError):
+        parse.bill(b'{"L_Act_id": 1}')

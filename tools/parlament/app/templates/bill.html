@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}{{ b.title[:80] }}{% endblock %}
+{% block main %}
+{% set r1 = votes | selectattr('reading', 'equalto', 1) | list %}{% set r2 = votes | selectattr('reading', 'equalto', 2) | list %}
+<div class="crumbs"><a href="/zakonoproekti?ns={{ b.assembly }}">Законопроекти в {{ aname(b.assembly) }}</a>{% if b.sign %} · {{ b.sign }}{% endif %}</div>
+<h1>{{ b.title }}</h1>
+<p class="lede">Внесен на {{ b.date | long }} г. от {% if b.government %}<b>Министерския съвет</b>{% else %}<b>{{ sponsors | length }}
+  {{ 'депутат' if sponsors | length == 1 else 'депутати' }}</b>{% endif %}; {{ status(b.adopted, b.withdrawn, b.dv_issue, b.dv_year) }}{% if b.adopted %} на {{ b.adopted | long }} г.{% endif %}.
+  {% if votes %}В залата е гласуван <b>{{ votes | length }} {{ 'път' if votes | length == 1 else 'пъти' }}</b>{% if r1 %}, <b>{{ r1 | length }}</b> на първо четене{% endif %}{% if r2 %},
+  <b>{{ r2 | length }}</b> на второ{% endif %}.{% endif %}</p>
+{% if b.final and b.final != b.title %}<p class="asof">Приет като: {{ b.final }}.</p>{% endif %}
+{% if others %}<p class="asof">Гласуванията са общи с {% for oid, sign, title in others %}<a class="l" href="/zakonoproekt/{{ oid }}">{{ sign or title }}</a>{{ ', ' if not loop.last }}{% endfor %}
+  (законопроекти със същото заглавие в същото заседание).</p>{% endif %}
+
+<div class="grid">
+  {% if sides %}<section class="p s12"><div class="ph"><div><h2>Позицията на групите</h2>
+    <div class="sub">линията на групата във всички гласувания на четенето: за, не подкрепя (против или въздържал се), различно</div></div></div>
+    <table><thead><tr><th>Група</th><th>Първо четене</th><th>Второ четене</th><th></th></tr></thead><tbody>
+    {% for g, s in sides %}{% set a, z = s.get(1), s.get(2) %}<tr><td>{{ m.grp(g, names, b.assembly) }}</td>
+      {% for x in (a, z) %}<td>{% if x == '+' %}<span class="k-yes">за</span>{% elif x == '-' %}<span class="k-no">не подкрепя</span>{% elif x == '±' %}различно по точки{% else %}<span class="mut">няма линия</span>{% endif %}</td>{% endfor %}
+      <td>{% if a in ('+', '-') and z in ('+', '-') and a != z %}<b class="warn">сменена позиция</b>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="mut">На второ четене се гласува по текстове: „различно по точки“ значи, че групата е подкрепила едни и не е подкрепила
+      други. Смяна на позицията не е обвинение: законопроектът между четенията се променя.</p>{{ m.src() }}</section>{% endif %}
+
+  <section class="p s8"><div class="ph"><div><h2>Етапи</h2><div class="sub">както ги води Народното събрание</div></div></div>
+    <table><thead><tr><th>Дата</th><th>Етап</th><th>Какво</th></tr></thead><tbody>
+    {% for d, what, stage, committee, sid in steps %}<tr><td style="white-space:nowrap">{% if sid %}<a class="l" href="/zasedanie/{{ sid }}">{{ d | date }}</a>{% else %}{{ d | date }}{% endif %}</td>
+      <td>{{ stage or '' }}{% if committee %}<div class="mut">{{ committee }}</div>{% endif %}</td><td>{{ what or '' }}</td></tr>{% endfor %}
+    </tbody></table>
+    <div class="src">Народно събрание · <a href="{{ SITE }}/bg/bills/ID/{{ b.id }}" rel="noopener">законопроектът</a></div></section>
+
+  <section class="p s4"><div class="ph"><div><h2>Вносители</h2></div></div>
+    {% if b.government %}<p>Министерски съвет</p>{% endif %}
+    {% if sponsors %}<ul class="plain">{% for name, profile, person in sponsors %}<li>{% if person %}<a class="l" href="/chovek/{{ person }}">{{ name | name }}</a>{% else %}{{ name | name }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if committees %}<h2 style="margin-top:18px;font-size:16px">Комисии</h2><ul class="plain">{% for name, role in committees %}<li>{{ name }}{% if role %} <span class="mut">({{ role }})</span>{% endif %}</li>{% endfor %}</ul>{% endif %}</section>
+
+  {% if votes %}<section class="p s12"><div class="ph"><div><h2>Гласуванията в залата</h2><div class="sub">за · против · въздържали се</div></div></div>
+    <table><thead><tr><th>Дата</th><th>Четене</th><th>Тема</th><th>Резултат</th><th class="n">Гласове</th></tr></thead><tbody>
+    {% for v in votes %}<tr><td class="mut" style="white-space:nowrap">{{ v.at | date }}</td><td>{{ {1: 'първо', 2: 'второ'}.get(v.reading, '') }}</td>
+      <td class="topic"><a href="{{ v.url }}">{{ v.topic }}</a></td><td style="width:18%">{{ m.rbar(v) }}</td><td class="n">{{ m.res(v) }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="mut">Гласуванията са намерени в заседанията на етапите в залата, по краткото заглавие („ЗИД на …“).</p>{{ m.src() }}</section>{% endif %}
+</div>
+{% endblock %}
