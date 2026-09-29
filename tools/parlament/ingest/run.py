@@ -9,6 +9,8 @@
                               only the current assembly's, unless --all); the same person across assemblies
   absences                    the official absences and penalties the Assembly shows now, kept
   pdfs [--limit N]            archive the scanned stenograms (before 1992) not archived yet
+  bills [--from YYYY-MM]      the bills brought in since that month (default: the last two), the open ones of the
+                              current assembly not read for a week, and their votes (from 2001: --from 2001-07)
   freshness                   what is late, held or broken
 
 Prints one JSON line with the stats. Exit code 1 on a failure or when `problems` is not empty: that is what the n8n
@@ -19,9 +21,9 @@ import datetime as dt
 import json
 import sys
 
-from . import checks, db, load, people, stats
+from . import bills, checks, db, load, people, stats
 
-STEPS = ["migrate", "roster", "sittings", "recheck", "people", "absences", "pdfs", "freshness"]
+STEPS = ["migrate", "roster", "sittings", "recheck", "people", "absences", "pdfs", "bills", "freshness"]
 
 
 def main():
@@ -51,6 +53,9 @@ def main():
                 first = (d.year, d.month)
             with db.job("sittings", {"from": a.first}) as (conn, st):
                 load.load(conn, st, first=first)
+                # the bills of the last two months get their votes (a sitting's files come after the bill's step)
+                st["bill_votes"] = bills.link(conn, [b for b, in conn.execute(
+                    "SELECT DISTINCT bill FROM live.bill_step WHERE date >= current_date - 60")])
                 out.update(st)
         elif a.step == "recheck":
             with db.job("sittings", {"recheck": True}) as (conn, st):
@@ -63,6 +68,14 @@ def main():
         elif a.step == "absences":
             with db.job("absences") as (conn, st):
                 people.absences(conn, st)
+                out.update(st)
+        elif a.step == "bills":
+            first = None
+            if a.first:
+                d = dt.date.fromisoformat(a.first + "-01")
+                first = (d.year, d.month)
+            with db.job("bills", {"from": a.first}) as (conn, st):
+                bills.load(conn, st, first=first)
                 out.update(st)
         elif a.step == "pdfs":
             with db.job("pdfs", {"limit": a.limit}) as (conn, st):

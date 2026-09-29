@@ -6,6 +6,8 @@
 <h1>{{ v.topic }}</h1>
 <p class="lede"><b>{{ v.yes }} за</b>, <b>{{ v.no_ }} против</b> и <b>{{ v.abstain }} въздържали се</b>: гласуваха <b>{{ v.voted }} от {{ v.listed }} депутати</b>.
   {% if against %}<b>{{ against | length }} {{ 'депутат' if against | length == 1 else 'депутати' }}</b> гласуваха различно от групата си.{% endif %}</p>
+{% if of_bills %}<p class="asof">{% for bid, sign, title, reading in of_bills %}{{ 'Законопроект' if loop.first }}{{ ', ' if not loop.first }}
+  <a class="l" href="/zakonoproekt/{{ bid }}">{{ title }}{% if sign %} ({{ sign }}){% endif %}</a>{% endfor %}{% if of_bills | length > 1 %}: гласуването е общо за законопроектите с това заглавие в заседанието{% endif %}.</p>{% endif %}
 {% if s[4] %}<p class="asof"><span class="warn">Внимание:</span> {{ s[4] }}</p>{% endif %}
 {% if v.mismatch %}<p class="asof"><span class="warn">Двата файла на Народното събрание се разминават:</span> {{ v.mismatch }}.
   Резултатът горе е от гласуването по групи, залата и списъкът долу са от поименното гласуване.</p>{% endif %}
