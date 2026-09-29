@@ -64,6 +64,13 @@ def refresh(conn, post=http.post):
     return report
 
 
+def historical_years(exams, registers):
+    """Return only published code-bearing register years before the latest exam."""
+    latest = max(exams)
+    return [year for year in sorted(exams.keys() & registers.keys())
+            if "2021/2022" <= year < latest]
+
+
 def refresh_history(conn, post=http.post):
     """Refresh code-reconciled historical NVO VII years independently of the latest year."""
     if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
@@ -82,11 +89,8 @@ def refresh_history(conn, post=http.post):
         for item in catalogs[SCHOOLS_DATASET]:
             if item.year not in registers or item.updated_at > registers[item.year].updated_at:
                 registers[item.year] = item
-        latest = max(exams)
         # Earlier official register tables have no NEISPUO code. Their display policy is separate.
-        for year in sorted(set(exams) & registers):
-            if year < "2021/2022" or year == latest:
-                continue
+        for year in historical_years(exams, registers):
             exam, register = exams[year], registers[year]
             try:
                 exam_raw = post("getResourceData", {"resource_uri": exam.uri})
