@@ -10,6 +10,16 @@
 <section class="p s6"><h2>Регистър на училищата</h2><p>{{ d.matched | num }} от {{ d.school_count | num }} кода са съпоставени.</p>
 <p class="sub">Ресурс {{ d.register_resource }} · актуализиран {{ d.register_updated }}</p><a class="l" href="{{ register_url }}">Виж набора при МОН ↗</a></section>
 </div>
+{% if publications %}
+<section class="p space-top"><div class="ph"><h2>Всички публикувани години на НВО VII</h2></div>
+{% for item in publications %}
+<p><strong>{{ item.year }}</strong> · {{ item.school_count | num }} училища ·
+{% if item.verification == 'code' %}{{ item.matched_count | num }} кода са сверени с регистъра.
+{% else %}Без сверка с регистъра: той няма кодове по НЕИСПУО.{% endif %}<br>
+<span class="sub"><a class="l" href="{{ exam_url }}">МОН · резултати {{ item.exam_updated }} · {{ item.exam_resource[:8] }} ↗</a>
+ · <a class="l" href="{{ register_url }}">Регистър {{ item.register_updated }} · {{ item.register_resource[:8] }} ↗</a></span></p>
+{% endfor %}</section>
+{% endif %}
 {% if d.unmatched %}<section class="p space-top"><h2>Несъпоставени кодове</h2><p>Тези резултати остават видими с името от изпитния файл. Не свързваме училища по сходство на имена.</p>
 <ul>{% for code in d.unmatched %}<li><a class="l" href="/uchilishta/{{ code }}">{{ code }}</a></li>{% endfor %}</ul></section>{% endif %}
 {% else %}<p>Още няма публикувани проверени данни.</p>{% endif %}

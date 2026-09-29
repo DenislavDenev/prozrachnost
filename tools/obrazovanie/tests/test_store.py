@@ -7,8 +7,9 @@ import pytest
 
 from app import main
 from ingest import db
+from ingest.history import parse_nvo7_year
 from ingest.parse import parse_nvo7
-from ingest.sources import current_pair, parse_schools, reconcile
+from ingest.sources import Resource, current_pair, parse_schools, reconcile
 
 
 FIX = Path(__file__).parent / "fixtures/mon"
@@ -88,3 +89,15 @@ def test_raw_answers_are_kept_by_sha(conn):
     assert path.name.endswith(".json") and "/" not in path.name
     assert path.read_bytes() == b"real answer"
     assert conn.execute("SELECT count(*) FROM ops.raw_file").fetchone()[0] == 1
+
+
+def test_code_free_year_keeps_explicit_verification(conn):
+    results = parse_nvo7_year((FIX / "nvo7-2017-2018.json").read_bytes(), "2017/2018")
+    codes = sorted({row.neispuo for row in results})
+    exam = Resource("exam-2018", "2017/2018", "НВО VII 2018", "2018-07-01")
+    register = Resource("register-2018", "2017/2018", "Регистър 2018 без код", "2018-02-01")
+    checks = {"schools": len(codes), "matched": 0, "unmatched": codes}
+    assert db.publish(conn, exam.year, exam, register, "exam-a", "reg-a", results, {}, checks,
+                      verification="no-code") == "stored"
+    assert conn.execute("SELECT verification,matched_count FROM live.publication").fetchone() == ("no-code", 0)
+    assert conn.execute("SELECT count(*) FROM live.school WHERE matched=false").fetchone()[0] == len(codes)

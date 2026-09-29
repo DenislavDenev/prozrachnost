@@ -7,8 +7,36 @@ import json
 from . import db, http
 from .history import parse_nvo7_year
 from .parse import parse_nvo7
-from .registry import parse_schools_year
-from .sources import NVO7_DATASET, SCHOOLS_DATASET, catalog, current_pair, parse_schools, reconcile
+from .registry import parse_code_free_register, parse_schools_year
+from .sources import (NVO7_DATASET, SCHOOLS_DATASET, Resource, _payload, catalog, current_pair,
+                      parse_schools, reconcile)
+
+
+LEGACY = {
+    "2017/2018": (("025f06e2-5676-47d0-a08a-bc8bf56916a7", "2018г."),
+                  ("3a4cc873-0431-44ab-88bc-a227a78efd97", "2017/2018")),
+    "2018/2019": (("8198a9cf-01da-4f8f-b2f4-5095e33a9972", "2018/2019"),
+                  ("1fabe87d-d987-47ee-b2e5-86e8dfe029f7", "06.02.2019")),
+    "2019/2020": (("6a7a1a4f-bded-4f4f-9050-b29a653e9e2d", "2019/2020"),
+                  ("8067c6bc-115c-427d-a888-897130285d61", "06.02.2020")),
+    "2020/2021": (("ccb4db31-e5d0-4717-9476-4fb71dd98b1a", "2020/2021"),
+                  ("1f0b73bb-cbd1-40a9-808c-034d2a60e156", "25.02.2021")),
+}
+
+
+def legacy_resource(raw, dataset, uri, year, title_part):
+    value = _payload(raw, "legacy catalog")
+    rows = value.get("resources")
+    if (set(value) != {"success", "resources", "total_records"} or not isinstance(rows, list)
+            or type(value["total_records"]) is not int or len(rows) != value["total_records"]
+            or any(not isinstance(row, dict) for row in rows)):
+        raise ValueError("Incomplete legacy catalog")
+    found = [r for r in rows if r.get("uri") == uri and r.get("dataset_uri") == dataset]
+    if (len(found) != 1 or not isinstance(found[0].get("name"), str)
+            or not isinstance(found[0].get("updated_at"), str) or title_part not in found[0]["name"]):
+        raise ValueError(f"Legacy source missing or changed for {year}")
+    row = found[0]
+    return Resource(uri, year, row["name"], row["updated_at"])
 
 
 def freshness(conn, today=None):
@@ -114,9 +142,52 @@ def refresh_history(conn, post=http.post):
     return report
 
 
+def refresh_legacy(conn, post=http.post):
+    """Publish NVO VII's earlier years with an explicit no-code verification status."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"years": {}, "problems": []}
+    try:
+        catalogs = {}
+        for dataset in (NVO7_DATASET, SCHOOLS_DATASET):
+            uri = "https://data.egov.bg/api/listResources?dataset=" + dataset
+            raw = post("listResources", {"criteria": {"dataset_uri": dataset}, "records_per_page": 100, "page_number": 1})
+            db.save_raw(conn, uri, raw)
+            catalogs[dataset] = raw
+            db.state(conn, uri, "ok")
+        for year, ((exam_uri, exam_title), (register_uri, register_title)) in LEGACY.items():
+            try:
+                exam = legacy_resource(catalogs[NVO7_DATASET], NVO7_DATASET, exam_uri, year, exam_title)
+                register = legacy_resource(catalogs[SCHOOLS_DATASET], SCHOOLS_DATASET,
+                                           register_uri, year, register_title)
+                exam_raw = post("getResourceData", {"resource_uri": exam.uri})
+                exam_sha = db.save_raw(conn, exam.uri, exam_raw)
+                register_raw = post("getResourceData", {"resource_uri": register.uri})
+                register_sha = db.save_raw(conn, register.uri, register_raw)
+                results = parse_nvo7_year(exam_raw, year)
+                register_rows = parse_code_free_register(register_raw, year)
+                codes = sorted({r.neispuo for r in results})
+                checks = {"schools": len(codes), "matched": 0, "unmatched": codes}
+                status = db.publish(conn, year, exam, register, exam_sha, register_sha,
+                                    results, {}, checks, verification="no-code")
+                db.state(conn, register.uri, "ok", rows=register_rows)
+                report["years"][year] = {"status": status, "schools": len(codes),
+                                         "register_rows": register_rows, "verification": "no-code"}
+                if status == "held":
+                    report["problems"].append(f"Образование: {year} чака второ четене")
+            except Exception as exc:
+                db.state(conn, exam_uri, "error", str(exc)[:1000])
+                report["problems"].append(f"Образование: {year}: {exc}")
+    except Exception as exc:
+        report["problems"].append(f"Образование: стар каталог: {exc}")
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
@@ -125,6 +196,8 @@ def main():
             report = refresh(conn)
         elif args.step == "history":
             report = refresh_history(conn)
+        elif args.step == "legacy":
+            report = refresh_legacy(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))

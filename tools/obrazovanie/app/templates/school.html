@@ -37,7 +37,7 @@
 <div class="compare-row"><strong>{{ item.year }}</strong>
   <span>{{ item.subjects['БЕЛ'].score | num(2) }}</span>
   <span>{{ item.subjects['МАТ'].score | num(2) }}</span></div>
-<p class="src"><a href="{{ exam_url }}">МОН · ресурс {{ item.resource[:8] }} ↗</a>{% if not item.matched %} · Кодът не е намерен в регистъра за годината.{% endif %}
+<p class="src"><a href="{{ exam_url }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a>{% if item.verification == 'no-code' %} · Без сверка с регистъра: той няма кодове по НЕИСПУО.{% elif not item.matched %} · Кодът не е намерен в регистъра за годината.{% endif %}
  · БЕЛ: {{ item.subjects['БЕЛ'].takers | num }} явили се; МАТ: {{ item.subjects['МАТ'].takers | num }} явили се</p>
 {% endfor %}
 </section>

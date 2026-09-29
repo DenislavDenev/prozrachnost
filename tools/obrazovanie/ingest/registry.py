@@ -44,3 +44,47 @@ def parse_schools_year(raw: bytes) -> dict[str, School]:
     if not result:
         raise ShapeError("Empty historical school register")
     return result
+
+
+CODE_FREE_HEADERS = {
+    "2017/2018": ("№", "Област", "Община", "Населено място", "Име на училище/детска градина", "", "", "", ""),
+    "2018/2019": ("№", "Обаст", "Община", "Населено място", "Име на училище/детска градина"),
+    "2019/2020": ("№", "Област", "Община", "Населено място", "Име на училище/детска градина"),
+    "2020/2021": ("№", "Област", "Община", "Населено място", "Име на училище/детска градина"),
+}
+
+
+def parse_code_free_register(raw: bytes, year: str) -> int:
+    """Validate the matching year's official table and confirm it has no code column."""
+    if year not in CODE_FREE_HEADERS:
+        raise ShapeError("No observed code-free register for this year")
+    value = _payload(raw, "code-free school register")
+    if set(value) != {"success", "data"} or not isinstance(value["data"], list):
+        raise ShapeError("Unknown code-free school register")
+    width = len(CODE_FREE_HEADERS[year])
+    rows = []
+    for row in value["data"]:
+        if not isinstance(row, list) or len(row) != width or any(not isinstance(v, str) for v in row):
+            raise ShapeError("Changed code-free register row shape")
+        cleaned = tuple(v.replace("\ufeff", "").strip() for v in row)
+        rows.append((cleaned[0].strip('"'), *cleaned[1:]))
+    header_at = 1 if year in {"2017/2018", "2019/2020"} else 0
+    if len(rows) <= header_at + 1 or rows[header_at] != CODE_FREE_HEADERS[year]:
+        raise ShapeError("Unknown code-free register columns")
+    start = header_at + 1
+    if year == "2017/2018":
+        if rows[start] != ("", "1", "2", "3", "4", "", "", "", ""):
+            raise ShapeError("Unknown register numbering row")
+        start += 1
+    if header_at and not rows[0][0].startswith("Списък на училищата и детските градини"):
+        raise ShapeError("Unknown register title")
+    for number, row in enumerate(rows[start:], start + 1):
+        # The 2018 source has one malformed CSV quotation merging records 1058 and 1059.
+        if (year == "2017/2018" and row[0] == "1058" and row[4].strip('"').endswith("\n1059")
+                and row[5:8] == ("Добрич", "Балчик", "Сенокос") and row[8]):
+            continue
+        if not row[0].isdecimal() or any(not item for item in row[1:5]) or any(row[5:]):
+            raise ShapeError(f"Register row {number}: invalid code-free school identity")
+    if not rows[start:]:
+        raise ShapeError("Empty code-free register")
+    return len(rows) - start
