@@ -170,7 +170,7 @@ th.n .sort { flex-direction: row-reverse; }
 
 .map-pick{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-align:left}.notice{color:#b25b06;background:#fcefd9;padding:12px;border-radius:6px}.nowrap{white-space:nowrap}.p + .p{margin-top:16px}.chart{height:340px}.prose{max-width:900px}.prose p{line-height:1.6}
 
-/* Училища: the controls and comparison use the existing Sofia design tokens. */
+/* Образование: the controls and comparison use the existing Sofia design tokens. */
 .space-top { margin-top: 24px; }
 .lookup, .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0 24px; }
 .lookup label, .filters label { display: grid; gap: 5px; font-size: 13px; color: var(--ink-3); }

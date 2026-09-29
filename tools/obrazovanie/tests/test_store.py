@@ -16,9 +16,9 @@ FIX = Path(__file__).parent / "fixtures/mon"
 
 @pytest.fixture
 def conn(monkeypatch, tmp_path):
-    dsn = os.environ.get("UCHILISHTA_TEST_DSN")
+    dsn = os.environ.get("OBRAZOVANIE_TEST_DSN")
     if not dsn:
-        pytest.skip("UCHILISHTA_TEST_DSN is required for database tests")
+        pytest.skip("OBRAZOVANIE_TEST_DSN is required for database tests")
     assert "test" in dsn.lower(), "Only a test database may be used"
     monkeypatch.setattr(db, "DSN", dsn)
     monkeypatch.setattr(db, "RAW", tmp_path / "raw")

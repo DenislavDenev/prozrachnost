@@ -41,7 +41,7 @@ def test_live_cards_link_out():
     html = client.get("/").text
     assert 'href="https://tender.denev.work"' in html
     assert 'href="http://localhost:8016"' in html
-    assert hub.TOOLS["uchilishta"]["status"] == "new"
+    assert hub.TOOLS["obrazovanie"]["status"] == "new"
 
 
 def test_tool_page_and_404():

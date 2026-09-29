@@ -34,6 +34,7 @@ def test_pages_render_with_real_sample(monkeypatch):
     for path in ("/", "/uchilishta", "/uchilishta/105201", "/sources", "/how"):
         response = client.get(path)
         assert response.status_code == 200, path
+        assert "Образование" in response.text
         assert "Обратна връзка" in response.text
         assert "Подкрепи проекта" in response.text
         assert "\u2014" not in response.text
