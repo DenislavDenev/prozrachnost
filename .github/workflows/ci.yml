@@ -163,9 +163,20 @@ jobs:
           ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
       - run: python tests/mutations.py
 
+  uchilishta:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/uchilishta } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install pytest
+      - run: python -m pytest -q
+      - run: python tests/mutations.py
+
   ci-ok:
     if: always()
-    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie]
+    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, uchilishta]
     runs-on: ubuntu-latest
     steps:
       - run: |
