@@ -77,9 +77,14 @@ def test_smaller_response_waits_for_second_read_a_day_later(conn):
 
 
 def test_raw_answers_are_kept_by_sha(conn):
-    sha1 = db.save_raw(conn, "resource-id", b"real answer")
-    sha2 = db.save_raw(conn, "resource-id", b"real answer")
+    uri = "https://data.egov.bg/api/listResources?dataset=school-year"
+    sha1 = db.save_raw(conn, uri, b"real answer")
+    sha2 = db.save_raw(conn, uri, b"real answer")
     assert sha1 == sha2
-    path = Path(conn.execute("SELECT path FROM ops.raw_file").fetchone()[0])
+    saved_uri, saved_sha, saved_path = conn.execute("SELECT url,sha,path FROM ops.raw_file").fetchone()
+    assert (saved_uri, saved_sha) == (uri, sha1)
+    path = Path(saved_path)
+    assert path.parent.name == dt.date.today().isoformat()
+    assert path.name.endswith(".json") and "/" not in path.name
     assert path.read_bytes() == b"real answer"
     assert conn.execute("SELECT count(*) FROM ops.raw_file").fetchone()[0] == 1
