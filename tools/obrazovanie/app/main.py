@@ -19,7 +19,7 @@ from ingest.dzi import DZI_DATASET
 from ingest.nvo import DATASETS as NVO_DATASETS
 from ingest.sources import NVO7_DATASET, SCHOOLS_DATASET
 from ingest.status import DATASETS as STATUS_DATASETS
-from . import feedback
+from . import feedback, municipalities
 
 
 ROOT = Path(__file__).resolve().parent
@@ -317,10 +317,12 @@ def favicon():
 def home(request: Request):
     data = snapshot()
     scores = {subject: weighted(data["schools"], subject) for subject in ("БЕЛ", "МАТ")} if data else {}
+    places, unmapped = municipalities.scores(data)
     sources = nvo_sources()
     years = {exam: max((item["year"] for item in sources if item["exam"] == exam), default=None)
              for exam in NVO_DATASETS}
-    return render(request, "home.html", data, nav="Табло", scores=scores, nvo_years=years)
+    return render(request, "home.html", data, nav="Табло", scores=scores,
+                  places=places, unmapped=unmapped, nvo_years=years)
 
 
 def selected(data, q="", oblast="", municipality=""):

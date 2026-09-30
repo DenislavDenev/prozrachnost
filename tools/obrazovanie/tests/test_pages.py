@@ -59,6 +59,27 @@ def test_pages_render_with_real_sample(monkeypatch):
     assert client.get("/uchilishta/000000").status_code == 404
 
 
+def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypatch):
+    monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    rows, unmapped = main.municipalities.scores(sample_snapshot())
+    assert len(rows) == 265 and not unmapped
+    bansko = next(row for row in rows if row["name"] == "Банско")
+    assert bansko["bel"] == Decimal("56.38") and bansko["bel_takers"] == 84
+    page = TestClient(main.app).get("/")
+    assert page.status_code == 200
+    assert "Резултати по общини" in page.text
+    assert "© EuroGeographics" in page.text
+    assert 'data-bel="56.38"' in page.text
+    assert "municipality-map.js" in page.text
+
+
+def test_municipality_reference_has_exact_capital_and_region_aliases():
+    ref = main.municipalities.reference()
+    assert len(ref) == 265
+    assert ref[main.municipalities.key("СОФИЯ-ГРАД", "СТОЛИЧНА")]["name_bg"] == "Столична"
+    assert ref[main.municipalities.key("СОФИЯ-ОБЛАСТ", "АНТОН")]["name_bg"] == "Антон"
+
+
 def test_filters_and_csv(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     client = TestClient(main.app)
