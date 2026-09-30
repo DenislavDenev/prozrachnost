@@ -40,6 +40,10 @@
 {% endif %}
 {% if context_data %}<section class="p space-top"><h2>Национални справки по вид училище</h2><p>{{ context_data.year }} · {{ context_data.students | num }} ученици от I до XII клас в {{ context_data.kind_count }} вида училища. Справките нямат редове за отделни училища. <a class="l" href="/context">Виж националния контекст ↗</a></p>
 <p class="src"><a href="{{ context_urls.pupils }}">МОН · ученици · {{ context_data.pupils_updated }} · ресурс {{ context_data.pupils_resource[:8] }} ↗</a> · <a href="{{ context_urls.classes }}">МОН · групи и паралелки · {{ context_data.classes_updated }} · ресурс {{ context_data.classes_resource[:8] }} ↗</a></p></section>{% endif %}
+<section class="p space-top"><h2>Профили, професии и финансиране</h2>
+<p><a class="l" href="{{ profiles_url }}">МОН · списък на профили и професии ↗</a>: речник на направленията, без код на училище и без данни кои от тях предлага всяко училище. Затова не ги показваме като предложение на конкретно училище.</p>
+<p><a class="l" href="{{ budget_2026_url }}">МОН · разпределение по формули за 2026 г. · XLSX ↗</a>: редове за държавни училища и обслужващи звена с бюджетен идентификатор, различен от кода по НЕИСПУО. Някои институции имат повече от един ред за различни дейности. Файлът не обхваща бюджетите на всички общински училища и не позволява надеждно автоматично сравнение с резултатите по училище. <a class="l" href="{{ budget_url }}">Всички публикации за делегирани бюджети ↗</a></p>
+</section>
 {% if dzi_publications %}
 <section class="p space-top"><div class="ph"><h2>Матури по години и сесии</h2></div>
 {% for item in dzi_publications %}
