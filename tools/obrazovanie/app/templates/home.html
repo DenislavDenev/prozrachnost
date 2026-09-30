@@ -1,13 +1,18 @@
 {% extends "base.html" %}
 {% block main %}
-<h1>Резултатите от НВО VII клас</h1>
+<h1>Образованието в числа</h1>
 {% if d %}
-<p class="lede">През учебната {{ d.year }} година претегленият резултат от училищния файл е <b>{{ scores['БЕЛ'] | num(2) }} точки по БЕЛ</b> и <b>{{ scores['МАТ'] | num(2) }} точки по математика</b>.</p>
+<p class="lede">На НВО VII през учебната {{ d.year }} година претегленият резултат от училищния файл е <b>{{ scores['БЕЛ'] | num(2) }} точки по БЕЛ</b> и <b>{{ scores['МАТ'] | num(2) }} точки по математика</b>.</p>
 <p class="asof">Претеглено по броя явили се · <a class="l" href="/how">Как е изчислено и защо се различава от по-ранното съобщение на МОН</a> · <a class="l" href="{{ exam_url }}">МОН, ресурс {{ d.exam_resource[:8] }} ↗</a> · публикуван {{ d.exam_updated }}</p>
 <div class="grid">
   <section class="p s4 kpi"><div class="n">{{ d.school_count | num }}</div><div class="t">училища с публикувани резултати</div></section>
   <section class="p s4 kpi"><div class="n">{{ scores['БЕЛ'] | num(2) }}<small>точки</small></div><div class="t">БЕЛ, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ scores['МАТ'] | num(2) }}<small>точки</small></div><div class="t">Математика, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
+</div>
+<div class="grid space-top">
+  <section class="p s4"><h2>НВО IV клас</h2><p class="sub">БЕЛ, математика и старите предмети по години.</p>{% if nvo_years.nvo4 %}<a class="l" href="/nvo/4/{{ nvo_years.nvo4 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>
+  <section class="p s4"><h2>НВО X клас</h2><p class="sub">Резултати по училища в точки.</p>{% if nvo_years.nvo10 %}<a class="l" href="/nvo/10/{{ nvo_years.nvo10 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>
+  <section class="p s4"><h2>Матури</h2><p class="sub">Оценки по предмети, години и сесии.</p><a class="l" href="/matura">Разгледай резултатите ↗</a></section>
 </div>
 <section class="p space-top"><div class="ph"><div><h2>Намери училище</h2><p class="sub">Търси по име, населено място или код по НЕИСПУО.</p></div></div>
 <form action="/uchilishta" method="get" class="lookup"><label for="home-q">Име или код</label><input id="home-q" name="q" type="search" required><button type="submit">Търси</button></form>

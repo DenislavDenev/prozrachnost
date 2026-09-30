@@ -9,6 +9,7 @@ from app import main
 from ingest import db
 from ingest.dzi import parse_dzi
 from ingest.history import parse_nvo7_year
+from ingest.nvo import parse_nvo
 from ingest.parse import parse_nvo7
 from ingest.sources import Resource, current_pair, parse_schools, reconcile
 
@@ -26,7 +27,7 @@ def conn(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "RAW", tmp_path / "raw")
     with psycopg.connect(dsn, autocommit=True) as connection:
         db.migrate(connection)
-        connection.execute("TRUNCATE live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
+        connection.execute("TRUNCATE live.nvo_result,live.nvo_publication,ops.nvo_held,live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
         yield connection
 
 
@@ -120,3 +121,21 @@ def test_dzi_publication_is_atomic_and_keeps_suppressed_takers(conn):
     assert count == sum(1 for item in table.results if item.is_school)
     assert len(rows) == count
     assert main.matura_schools(uri, sort="score")[0] == count
+
+
+def test_nvo_publication_keeps_four_subjects_and_is_idempotent(conn):
+    uri = "af2a12fc-fc44-4eb3-a8d9-1798b987cf03"
+    table = parse_nvo((FIX / "nvo4-af2a12fc.json").read_bytes(), uri)
+    resource = Resource(uri, table.year, "НВО IV 2018", "2018-07-01")
+    assert db.publish_nvo(conn, resource, "nvo-a", table) == "stored"
+    assert conn.execute("SELECT exam,subject_count,result_count,verification FROM live.nvo_publication").fetchone() == (
+        "nvo4", 4, len(table.results), "no-code")
+    assert db.publish_nvo(conn, resource, "nvo-a", table) == "unchanged"
+    assert conn.execute("SELECT count(*) FROM live.nvo_result").fetchone()[0] == len(table.results)
+    view = main.nvo_snapshot(table.exam, table.year)
+    assert view["results"] == len(table.results)
+    count, rows = main.nvo_schools(uri, sort="score")
+    assert count == len(table.results) and len(rows) == count
+    code = table.results[0].neispuo
+    assert main.school_identity(code)["code"] == code
+    assert len(main.school_nvo(code)[0]["subjects"]) == 4

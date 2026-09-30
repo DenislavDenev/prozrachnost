@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app import main
@@ -10,6 +11,13 @@ from ingest.sources import parse_schools, reconcile
 
 
 FIX = Path(__file__).parent / "fixtures/mon"
+
+
+@pytest.fixture(autouse=True)
+def default_nvo_reads(monkeypatch):
+    monkeypatch.setattr(main, "nvo_sources", lambda: [])
+    monkeypatch.setattr(main, "school_nvo", lambda code: [])
+    monkeypatch.setattr(main, "school_identity", lambda code: None)
 
 
 def sample_snapshot():
@@ -147,3 +155,38 @@ def test_matura_school_search_and_csv(monkeypatch):
     assert csv_page.status_code == 200 and "Примерно училище" in csv_page.text
     assert seen[-1][-2] == 100000
     assert client.get("/matura/2025-2026/uchilishta?subject=НЕПОЗНАТ").status_code == 404
+
+
+def test_nvo_pages_school_search_and_elementary_profile(monkeypatch):
+    monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    monkeypatch.setattr(main, "school_history", lambda code, before: [])
+    monkeypatch.setattr(main, "school_dzi", lambda code: [])
+    monkeypatch.setattr(main, "nvo_sources", lambda: [dict(exam="nvo4", year="2025/2026",
+        resource="ff360c5a", updated="2026-07-07", schools=1738, subjects=2,
+        verification="code", matched=1736)])
+    monkeypatch.setattr(main, "nvo_snapshot", lambda exam, year: dict(
+        exam=exam, year=year, resource="ff360c5a", updated="2026-07-07", schools=1738,
+        subject_count=2, results=3476, verification="code", matched=1736,
+        unmatched=["2900001", "2900102"],
+        subjects=[dict(subject="БЕЛ", schools=1738, takers=50000, mean=Decimal("72.50"))]))
+    monkeypatch.setattr(main, "nvo_schools", lambda resource, subject="", q="", page=1,
+                        limit=50, sort="name": (1, [dict(code="105204", school="Начално училище",
+                        town="Банско", subject="БЕЛ", takers=50, score=Decimal("80.00"), matched=True)]))
+    monkeypatch.setattr(main, "school_identity", lambda code: dict(code=code, name="Начално училище",
+        oblast="Благоевград", municipality="Банско", town="Банско", matched=True, subjects={})
+                      if code == "105204" else None)
+    monkeypatch.setattr(main, "school_nvo", lambda code: [dict(exam="nvo4", year="2025/2026",
+        resource="ff360c5a", updated="2026-07-07", verification="code", matched=True,
+        subjects=[dict(subject="БЕЛ", takers=50, score=Decimal("80.00"))])]
+                      if code == "105204" else [])
+    client = TestClient(main.app)
+    assert client.get("/nvo", follow_redirects=False).status_code == 307
+    page = client.get("/nvo/4/2025-2026")
+    assert page.status_code == 200 and "72.50" in page.text
+    listing = client.get("/nvo/4/2025-2026/uchilishta?subject=БЕЛ")
+    assert listing.status_code == 200 and "Начално училище" in listing.text
+    profile = client.get("/uchilishta/105204")
+    assert profile.status_code == 200 and "НВО IV и X клас по години" in profile.text
+    csv_page = client.get("/nvo/4/2025-2026/uchilishta.csv?subject=БЕЛ")
+    assert csv_page.status_code == 200 and "105204" in csv_page.text
+    assert client.get("/nvo/4/2025-2026/uchilishta?subject=НЕПОЗНАТ").status_code == 404

@@ -1,0 +1,344 @@
+[
+  {
+    "uri": "a75c453d-2a9a-4f97-9ed6-96176a2092fa",
+    "exam": "nvo10",
+    "year": "2020/2021",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1000,
+    "header_sha": "08793844efacb959a3a2841d4f306ed0493db0b050f0f5dd06c37aa27c753783",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "2e8b46e1-114f-48b7-a4c5-49814bcc367b",
+    "exam": "nvo10",
+    "year": "2021/2022",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1008,
+    "header_sha": "010a0d75f5895ad5fb579d5576f7d54b7aad899a3ff4154e6f2274a337f233b5",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "244ebb61-c7b8-4296-a600-dc37f42d7817",
+    "exam": "nvo10",
+    "year": "2022/2023",
+    "header_rows": 6,
+    "width": 9,
+    "observed_rows": 1021,
+    "header_sha": "5eaabe5e0749e23ed43063f2ec97f42f36700275f04bb17ea640297512ad4a1e",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "c5199d50-9b9b-4c63-9468-c4e7a044a28f",
+    "exam": "nvo10",
+    "year": "2023/2024",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1025,
+    "header_sha": "68398a51b1fd8dda688ffb049d79c77795bee6799321bd96f060abeecdac1305",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "d85471ff-a58c-468a-a1d9-9de9d1efb4b8",
+    "exam": "nvo10",
+    "year": "2024/2025",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1023,
+    "header_sha": "68398a51b1fd8dda688ffb049d79c77795bee6799321bd96f060abeecdac1305",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "ce0ed1d8-6d64-49cc-9936-614072155db3",
+    "exam": "nvo10",
+    "year": "2025/2026",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1034,
+    "header_sha": "68398a51b1fd8dda688ffb049d79c77795bee6799321bd96f060abeecdac1305",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "af2a12fc-fc44-4eb3-a8d9-1798b987cf03",
+    "exam": "nvo4",
+    "year": "2017/2018",
+    "header_rows": 1,
+    "width": 13,
+    "observed_rows": 1788,
+    "header_sha": "3a4ab7d71a36253bf6ad8b3f1b6da2d0c568c4deb9dfc7e6c42b185a5d7b7204",
+    "code_col": 3,
+    "school_col": 4,
+    "columns": [
+      [
+        "МАТ",
+        5,
+        9
+      ],
+      [
+        "БЕЛ",
+        6,
+        10
+      ],
+      [
+        "ЧО",
+        7,
+        11
+      ],
+      [
+        "ЧП",
+        8,
+        12
+      ]
+    ]
+  },
+  {
+    "uri": "19aa3973-f788-4ac5-92fb-0e1cf52ed08a",
+    "exam": "nvo4",
+    "year": "2018/2019",
+    "header_rows": 1,
+    "width": 13,
+    "observed_rows": 1797,
+    "header_sha": "4f9b414b909def1dfa8bc993ed4925e5a2218b05b0f22983d275c8d82c02fc40",
+    "code_col": 3,
+    "school_col": 4,
+    "columns": [
+      [
+        "МАТ",
+        5,
+        9
+      ],
+      [
+        "БЕЛ",
+        6,
+        10
+      ],
+      [
+        "ЧО",
+        7,
+        11
+      ],
+      [
+        "ЧП",
+        8,
+        12
+      ]
+    ]
+  },
+  {
+    "uri": "4a29e792-a60b-4969-a54d-87a7ce36c8ef",
+    "exam": "nvo4",
+    "year": "2020/2021",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1768,
+    "header_sha": "552bef5e16c1f69585742b3ebc2bea5ecfe353d8fa88271b230ea92b748aade9",
+    "code_col": 3,
+    "school_col": 4,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "3774a01e-e781-4d4b-bb53-dc70476acb01",
+    "exam": "nvo4",
+    "year": "2021/2022",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1767,
+    "header_sha": "26c3319e957b663bc852663e4badc6053cd2895a114b31d28b1de7388aa46146",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "60eaaf20-9f06-4ac5-a08b-88e541b908a6",
+    "exam": "nvo4",
+    "year": "2022/2023",
+    "header_rows": 2,
+    "width": 9,
+    "observed_rows": 1759,
+    "header_sha": "e4c7b7235ca8a9ef6f294783f6a9f1dec26285e0aade27786826f4368aa85167",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "92570e77-adb9-4c4e-ba93-f43cddffda6c",
+    "exam": "nvo4",
+    "year": "2023/2024",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1757,
+    "header_sha": "cb58989ca32871bfbad9421aa0653d7d9bf4883eb91c5ba6a8433edbcffb00c2",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "af1c2e60-3f7e-4ad1-b393-979f8e56735c",
+    "exam": "nvo4",
+    "year": "2024/2025",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1745,
+    "header_sha": "cb58989ca32871bfbad9421aa0653d7d9bf4883eb91c5ba6a8433edbcffb00c2",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  },
+  {
+    "uri": "ff360c5a-cd91-4430-9b8f-f69ef44c6e79",
+    "exam": "nvo4",
+    "year": "2025/2026",
+    "header_rows": 1,
+    "width": 9,
+    "observed_rows": 1738,
+    "header_sha": "cb58989ca32871bfbad9421aa0653d7d9bf4883eb91c5ba6a8433edbcffb00c2",
+    "code_col": 4,
+    "school_col": 3,
+    "columns": [
+      [
+        "БЕЛ",
+        5,
+        6
+      ],
+      [
+        "МАТ",
+        7,
+        8
+      ]
+    ]
+  }
+]

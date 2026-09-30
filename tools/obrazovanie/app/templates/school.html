@@ -4,7 +4,8 @@
 <p class="asof"><a class="l" href="/uchilishta">← Всички училища</a></p>
 <h1>{{ school.name }}</h1>
 <p class="lede">{{ school.town }}, община {{ school.municipality }}, област {{ school.oblast }}. Код по НЕИСПУО <b>{{ school.code }}</b>.</p>
-<p class="asof">{% if school.matched %}Съпоставено с регистъра на МОН.{% else %}Кодът не е намерен в използвания регистър; името и мястото са от таблицата с резултати.{% endif %} <a class="l" href="{{ register_url }}">Регистър ↗</a></p>
+<p class="asof">{% if school.matched == true %}Съпоставено с регистъра на МОН.{% elif school.matched == false %}Кодът не е намерен в използвания регистър; името и мястото са от таблицата с резултати.{% else %}За използваната година няма сверка с регистър по код.{% endif %} <a class="l" href="{{ register_url }}">Регистър ↗</a></p>
+{% if comparison %}
 <h2 class="sec">НВО VII клас · {{ d.year }}</h2>
 <p class="asof">Точки от 0 до 100. <a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a></p>
 <div class="grid">
@@ -25,6 +26,7 @@
 {% endfor %}
 <p class="src"><a href="{{ exam_url }}">Източник · МОН · {{ d.year }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · <a href="/uchilishta.csv?q={{ school.code }}">CSV</a></p>
 </section>
+{% endif %}
 {% if history %}
 <h2 class="sec">Предишни години · НВО VII клас</h2>
 <p class="asof">Резултатите са по един и същ код по НЕИСПУО. Скалите 65 и 100 точки са показани отделно.</p>
@@ -42,6 +44,20 @@
 {% endfor %}
 </section>
 {% endif %}
+{% endfor %}
+{% endif %}
+{% if nvo %}
+<h2 class="sec">НВО IV и X клас по години</h2>
+<p class="asof">Резултатите са в точки от 0 до 100. Предметите в IV клас се променят по години.</p>
+{% for item in nvo %}
+<details class="p space-top exam-fold" {% if loop.first %}open{% endif %}>
+<summary><strong>НВО {{ 'IV' if item.exam == 'nvo4' else 'X' }} · {{ item.year }}</strong><span>{{ item.subjects | length }} предмета</span></summary>
+<div class="table-scroll"><table><thead><tr><th>Предмет</th><th class="n">Явили се</th><th class="n">Среден резултат</th></tr></thead><tbody>
+{% for result in item.subjects %}<tr><td>{{ result.subject | subject_name }}</td><td class="n">{{ result.takers | num }}</td><td class="n">{{ result.score | num(2) }} точки</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="src"><a href="{{ nvo_urls[item.exam] }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a>
+{% if item.verification == 'no-code' %} · Без сверка с регистъра за годината.{% elif item.matched == false %} · Кодът липсва в регистъра за годината.{% endif %}</p>
+</details>
 {% endfor %}
 {% endif %}
 {% if matura %}

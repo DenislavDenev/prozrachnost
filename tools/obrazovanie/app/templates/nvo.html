@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}НВО {{ 'IV' if grade == '4' else 'X' }} клас{% endblock %}
+{% block main %}
+<h1>НВО {{ 'IV' if grade == '4' else 'X' }} клас</h1>
+<p class="lede">Резултати по училища и предмети от таблиците на МОН, в точки от 0 до 100.</p>
+<div class="ctl"><div class="tabs" aria-label="Клас">
+<a href="/nvo/4/{{ selected_year | replace('/', '-') if selected_year in years and grade == '4' else '2025-2026' }}" {% if grade == '4' %}aria-current="page"{% endif %}>IV клас</a>
+<a href="/nvo/10/{{ selected_year | replace('/', '-') if selected_year in years and grade == '10' else '2025-2026' }}" {% if grade == '10' %}aria-current="page"{% endif %}>X клас</a>
+</div></div>
+{% if years %}
+<div class="year-strip scroll" aria-label="Учебна година">
+{% for year in years %}<a href="/nvo/{{ grade }}/{{ year | replace('/', '-') }}" class="{{ 'on' if year == selected_year else '' }}" {% if year == selected_year %}aria-current="page"{% endif %}>{{ year }}</a>{% endfor %}
+</div>
+{% if exam %}
+<p class="asof">Учебна {{ exam.year }} година · <a class="l" href="{{ nvo_urls[exam.exam] }}">МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a></p>
+<div class="grid">
+  <section class="p s4 kpi"><div class="n">{{ exam.schools | num }}</div><div class="t">училища в изходната таблица</div></section>
+  <section class="p s4 kpi"><div class="n">{{ exam.subject_count | num }}</div><div class="t">предмета</div></section>
+  <section class="p s4 kpi"><div class="n">{{ exam.results | num }}</div><div class="t">предметни резултата</div></section>
+</div>
+<section class="p space-top"><div class="ph"><div><h2>Предмети</h2><p class="sub">Среден резултат, претеглен по явилите се. Празните стойности не участват.</p></div></div>
+<div class="table-scroll"><table><thead><tr><th>Предмет</th><th class="n">Училища</th><th class="n">Явили се</th><th class="n">Среден резултат</th></tr></thead><tbody>
+{% for item in exam.subjects %}<tr><td><a class="l" href="/nvo/{{ grade }}/{{ exam.year | replace('/', '-') }}/uchilishta?subject={{ item.subject | urlencode }}">{{ item.subject | subject_name }}</a></td><td class="n">{{ item.schools | num }}</td><td class="n">{{ item.takers | num }}</td><td class="n">{{ item.mean | num(2) }} точки</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="src"><a href="{{ nvo_urls[exam.exam] }}">Източник · МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a></p>
+</section>
+<p class="space-top"><a class="l" href="/nvo/{{ grade }}/{{ exam.year | replace('/', '-') }}/uchilishta">Всички училищни резултати ↗</a></p>
+{% if exam.verification == 'no-code' %}<p class="asof space-top">За тази година няма регистър с кодове по НЕИСПУО за сверка. Не свързваме училища по сходни имена.</p>{% elif exam.unmatched %}<p class="asof space-top">{{ exam.matched | num }} от {{ exam.schools | num }} училища са съпоставени с регистъра по код. <a class="l" href="/sources">Виж източниците ↗</a></p>{% endif %}
+{% if grade == '4' %}<p class="asof">За 2019/2020 г. в този набор няма публикуван ресурс.</p>{% endif %}
+{% endif %}
+{% else %}<p class="lede">Данните за този клас още се подготвят.</p>{% endif %}
+{% endblock %}
