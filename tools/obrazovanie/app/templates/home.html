@@ -9,6 +9,7 @@
   <section class="p s4 kpi"><div class="n">{{ scores['БЕЛ'] | num(2) }}<small>точки</small></div><div class="t">БЕЛ, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ scores['МАТ'] | num(2) }}<small>точки</small></div><div class="t">Математика, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
 </div>
+{% if context_data %}<section class="p space-top context-callout"><div><h2>Колко ученици има?</h2><p class="sub">{{ context_data.students | num }} ученици от I до XII клас в националната справка на МОН за {{ context_data.year }} г. Данните са по вид училище.</p></div><a class="l" href="/context">Виж учениците и паралелките ↗</a></section>{% endif %}
 <div class="grid space-top">
   <section class="p s4"><h2>НВО IV клас</h2><p class="sub">БЕЛ, математика и старите предмети по години.</p>{% if nvo_years.nvo4 %}<a class="l" href="/nvo/4/{{ nvo_years.nvo4 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>
   <section class="p s4"><h2>НВО X клас</h2><p class="sub">Резултати по училища в точки.</p>{% if nvo_years.nvo10 %}<a class="l" href="/nvo/10/{{ nvo_years.nvo10 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>

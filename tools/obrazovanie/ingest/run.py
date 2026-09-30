@@ -13,6 +13,7 @@ from .registry import parse_code_free_register, parse_schools_year
 from .sources import (NVO7_DATASET, SCHOOLS_DATASET, Resource, _payload, catalog, current_pair,
                       parse_schools, reconcile)
 from .status import DATASETS as STATUS_DATASETS, parse_status, status_catalog
+from .context import DATASETS as CONTEXT_DATASETS, latest_pair, parse_context
 
 
 LEGACY = {
@@ -78,6 +79,12 @@ def freshness(conn, today=None):
     for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.status_held"):
         if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
             problems.append(f"Образование: списък {resource[:8]} е задържан над ден")
+    year = conn.execute("SELECT max(school_year) FROM live.context_publication").fetchone()[0]
+    if not year or int(year[:4]) < expected_start:
+        problems.append("Образование: няма актуални национални данни за ученици и паралелки")
+    for year, first_at in conn.execute("SELECT school_year,first_at FROM ops.context_held"):
+        if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
+            problems.append(f"Образование: националните данни за {year} са задържани над ден")
     return problems
 
 
@@ -358,9 +365,44 @@ def refresh_status(conn, post=http.post):
     return report
 
 
+def refresh_context(conn, post=http.post):
+    """Read only the latest common, code-free national school-type snapshot."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"problems": []}
+    try:
+        catalogs = {}
+        for kind, dataset in CONTEXT_DATASETS.items():
+            url = "https://data.egov.bg/api/listResources?dataset=" + dataset
+            raw = post("listResources", {"criteria": {"dataset_uri": dataset},
+                                         "records_per_page": 100, "page_number": 1})
+            db.save_raw(conn, url, raw)
+            catalogs[kind] = raw
+            db.state(conn, url, "ok")
+        pupils, classes = latest_pair(catalogs["pupils"], catalogs["classes"])
+        pupils_raw = post("getResourceData", {"resource_uri": pupils.uri})
+        pupils_sha = db.save_raw(conn, pupils.uri, pupils_raw)
+        classes_raw = post("getResourceData", {"resource_uri": classes.uri})
+        classes_sha = db.save_raw(conn, classes.uri, classes_raw)
+        rows = parse_context(pupils_raw, classes_raw, pupils.year)
+        status = db.publish_context(conn, pupils, classes, pupils_sha, classes_sha, rows)
+        report.update(status=status, year=pupils.year, school_types=len(rows),
+                      students=sum(sum(r.grades.get(g, 0) for g in range(1, 13)) for r in rows))
+        if status == "held":
+            report["problems"].append(f"Образование: националните данни за {pupils.year} чакат второ четене")
+    except Exception as exc:
+        report["problems"].append(f"Образование: национални данни: {exc}")
+        for kind, dataset in CONTEXT_DATASETS.items():
+            db.state(conn, "https://data.egov.bg/api/listResources?dataset=" + dataset,
+                     "error", str(exc)[:1000])
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "nvo", "status", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "nvo", "status", "context", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
@@ -377,6 +419,8 @@ def main():
             report = refresh_nvo(conn)
         elif args.step == "status":
             report = refresh_status(conn)
+        elif args.step == "context":
+            report = refresh_context(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))

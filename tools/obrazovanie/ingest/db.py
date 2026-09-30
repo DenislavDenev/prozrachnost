@@ -359,3 +359,66 @@ def publish_status(conn, kind, resource, sha, rows, now=None):
         conn.execute("DELETE FROM ops.status_held WHERE resource=%s", (resource.uri,))
         state(conn, resource.uri, "ok", rows=len(rows))
     return "stored"
+
+
+def publish_context(conn, pupils, classes, pupils_sha, classes_sha, rows, now=None):
+    """Publish a school-type national snapshot, holding falling counts for a second read."""
+    now = now or datetime.now(timezone.utc)
+    if pupils.year != classes.year or len(rows) != 15 or len({r.kind for r in rows}) != len(rows):
+        raise ShapeError("National context resources do not reconcile")
+    grade_count = sum(sum(r.grades.get(g, 0) for g in range(1, 13)) for r in rows)
+    group_count = sum((r.reported_groups for r in rows), 0)
+    sha = hashlib.sha256((pupils_sha + classes_sha).encode()).hexdigest()
+    with conn.transaction():
+        old = conn.execute("""SELECT pupils_sha,classes_sha,grade_1_12_students,reported_groups
+            FROM live.context_publication WHERE school_year=%s""", (pupils.year,)).fetchone()
+        if old and old[:2] == (pupils_sha, classes_sha):
+            state(conn, pupils.uri, "ok", rows=len(rows))
+            state(conn, classes.uri, "ok", rows=len(rows))
+            return "unchanged"
+        previous = {r[0]: (r[1], r[2], r[3], r[4], r[5]) for r in conn.execute("""
+            SELECT kind,institutions,grades,preschool,reported_pupils,reported_groups
+            FROM live.context_kind WHERE school_year=%s""", (pupils.year,))}
+        if old and (grade_count < old[2] or group_count < old[3]
+                    or any(r.institutions < previous[r.kind][0] for r in rows if r.kind in previous)):
+            held = conn.execute("SELECT sha,first_at FROM ops.context_held WHERE school_year=%s",
+                                (pupils.year,)).fetchone()
+            if not held or held[0] != sha:
+                conn.execute("""INSERT INTO ops.context_held(school_year,sha,first_at)
+                    VALUES (%s,%s,%s) ON CONFLICT(school_year) DO UPDATE
+                    SET sha=EXCLUDED.sha,first_at=EXCLUDED.first_at""", (pupils.year, sha, now))
+            if not held or held[0] != sha or now - held[1] < timedelta(days=1):
+                state(conn, pupils.uri, "held", "Националните бройки са намалели; чака второ четене", len(rows))
+                state(conn, classes.uri, "held", "Националните бройки са намалели; чака второ четене", len(rows))
+                return "held"
+        conn.execute("""INSERT INTO live.context_publication(school_year,pupils_resource,
+            classes_resource,pupils_sha,classes_sha,pupils_updated,classes_updated,kind_count,
+            grade_1_12_students,reported_groups) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(school_year) DO UPDATE SET pupils_resource=EXCLUDED.pupils_resource,
+            classes_resource=EXCLUDED.classes_resource,pupils_sha=EXCLUDED.pupils_sha,
+            classes_sha=EXCLUDED.classes_sha,pupils_updated=EXCLUDED.pupils_updated,
+            classes_updated=EXCLUDED.classes_updated,kind_count=EXCLUDED.kind_count,
+            grade_1_12_students=EXCLUDED.grade_1_12_students,
+            reported_groups=EXCLUDED.reported_groups,published_at=now()""",
+            (pupils.year, pupils.uri, classes.uri, pupils_sha, classes_sha,
+             pupils.updated_at, classes.updated_at, len(rows), grade_count, group_count))
+        conn.execute("DELETE FROM live.context_kind WHERE school_year=%s", (pupils.year,))
+        with conn.cursor() as cursor:
+            cursor.executemany("""INSERT INTO live.context_kind(school_year,kind,institutions,
+                grades,preschool,reported_pupils,reported_groups) VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                [(pupils.year, r.kind, r.institutions, Jsonb(r.grades), r.preschool,
+                  r.reported_pupils, r.reported_groups) for r in rows])
+        for r in rows:
+            before = previous.get(r.kind)
+            after = (r.institutions, {str(k): v for k, v in r.grades.items()}, r.preschool,
+                     r.reported_pupils, r.reported_groups)
+            if before != after:
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon-context',%s,'school-type',%s,%s,%s)""",
+                    (f"{pupils.year}/{r.kind}", json.dumps(before, ensure_ascii=False, default=str),
+                     json.dumps(after, ensure_ascii=False, default=str),
+                     "new-record" if before is None else "rewritten"))
+        conn.execute("DELETE FROM ops.context_held WHERE school_year=%s", (pupils.year,))
+        state(conn, pupils.uri, "ok", rows=len(rows))
+        state(conn, classes.uri, "ok", rows=len(rows))
+    return "stored"

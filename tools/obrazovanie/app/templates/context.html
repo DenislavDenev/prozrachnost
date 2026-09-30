@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Ученици и паралелки{% endblock %}
+{% block main %}
+<h1>Ученици и паралелки</h1>
+{% if context_data %}
+<p class="lede">През учебната {{ context_data.year }} година МОН отчита <b>{{ context_data.students | num }} ученици от I до XII клас</b> в училищата от справката.</p>
+<p class="asof">Национални сборове по вид училище към декември {{ context_data.year[:4] }} г. Таблиците не съдържат кодове на отделни училища. <a class="l" href="/how">Какво означават данните ↗</a></p>
+<div class="grid">
+  <section class="p s4 kpi"><div class="n">{{ context_data.students | num }}</div><div class="t">ученици от I до XII клас</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
+  <section class="p s4 kpi"><div class="n">{{ context_data.institutions | num }}</div><div class="t">училища в 15 вида</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
+  <section class="p s4 kpi"><div class="n">{{ context_data.groups | num(1) }}</div><div class="t">отчетени групи и паралелки, включително предучилищни</div><div class="w"><a class="l" href="{{ context_urls.classes }}">МОН · {{ context_data.classes_updated }} ↗</a></div></section>
+</div>
+<section class="p space-top"><div class="ph"><div><h2>По клас</h2><p class="sub">Брой ученици в училищата от справката, I–XII клас.</p></div></div>
+<div class="grade-bars" role="list">
+{% for item in context_data.grades %}<div class="grade-bar" role="listitem"><span>{{ item.grade }} клас</span><div class="grade-track" aria-hidden="true"><i style="width:{{ item.width }}%"></i></div><strong>{{ item.students | num }}</strong></div>{% endfor %}
+</div>
+<p class="src"><a href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} · ресурс {{ context_data.pupils_resource[:8] }} ↗</a></p></section>
+<section class="p space-top"><div class="ph"><div><h2>По вид училище</h2><p class="sub">Учениците са сбор за I–XII клас. МОН публикува отделно {{ context_data.special_students | num }} ученици в XIV и XV клас; те не са включени в тази колона.</p></div></div>
+<div class="table-scroll"><table class="context-types"><thead><tr><th>Вид училище</th><th class="n">Училища</th><th class="n">Ученици I–XII</th><th class="n">Групи и паралелки</th></tr></thead><tbody>
+{% for item in context_data.kinds %}<tr><td>{{ item.name }}</td><td class="n">{{ item.institutions | num }}</td><td class="n">{{ item.students | num }}</td><td class="n">{{ item.groups | num(1) }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="src"><a href="{{ context_urls.pupils }}">МОН · ученици · {{ context_data.pupils_updated }} · {{ context_data.pupils_resource[:8] }} ↗</a> · <a href="{{ context_urls.classes }}">МОН · групи и паралелки · {{ context_data.classes_updated }} · {{ context_data.classes_resource[:8] }} ↗</a></p>
+</section>
+<p class="asof space-top">Сборът от редовете на МОН включва и предучилищни деца; числото за I–XII клас ги изключва. Дробните групи/паралелки са запазени от източника. Справките са по <b>вид училище</b> и не описват конкретен училищен профил.</p>
+{% else %}<p class="lede">Националните справки още се проверяват.</p>{% endif %}
+{% endblock %}

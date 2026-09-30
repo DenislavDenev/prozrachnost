@@ -13,6 +13,7 @@ from ingest.nvo import parse_nvo
 from ingest.parse import parse_nvo7
 from ingest.sources import Resource, current_pair, parse_schools, reconcile
 from ingest.status import StatusRow
+from ingest.context import parse_context
 
 
 FIX = Path(__file__).parent / "fixtures/mon"
@@ -28,7 +29,7 @@ def conn(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "RAW", tmp_path / "raw")
     with psycopg.connect(dsn, autocommit=True) as connection:
         db.migrate(connection)
-        connection.execute("TRUNCATE live.status_row,live.status_publication,ops.status_held,live.nvo_result,live.nvo_publication,ops.nvo_held,live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
+        connection.execute("TRUNCATE live.context_kind,live.context_publication,ops.context_held,live.status_row,live.status_publication,ops.status_held,live.nvo_result,live.nvo_publication,ops.nvo_held,live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
         yield connection
 
 
@@ -58,6 +59,24 @@ def test_status_list_is_atomic_and_holds_shrink(conn):
     assert db.publish_status(conn, "protected", source, "sha-b", rows[:1],
                              now=start + dt.timedelta(days=1, seconds=1)) == "stored"
     assert conn.execute("SELECT count(*) FROM live.status_row").fetchone()[0] == 1
+
+
+def test_national_context_is_atomic_and_holds_falling_count(conn):
+    pupils = Resource("pupils-test", "2025/2026", "Pupils", "2026-02-25")
+    classes = Resource("classes-test", "2025/2026", "Classes", "2026-02-25")
+    rows = parse_context((FIX / "pupils-context-2025.json").read_bytes(),
+                         (FIX / "classes-context-2025.json").read_bytes(), "2025/2026")
+    start = dt.datetime(2026, 9, 29, tzinfo=dt.timezone.utc)
+    assert db.publish_context(conn, pupils, classes, "p-a", "c-a", rows, now=start) == "stored"
+    assert db.publish_context(conn, pupils, classes, "p-a", "c-a", rows, now=start) == "unchanged"
+    assert main.context_snapshot()["students"] == 709413
+    from dataclasses import replace
+    smaller = [replace(r, grades={**r.grades, 1: r.grades[1] - 1}) if r.kind == "основно" else r for r in rows]
+    assert db.publish_context(conn, pupils, classes, "p-b", "c-a", smaller, now=start) == "held"
+    assert main.context_snapshot()["students"] == 709413
+    assert db.publish_context(conn, pupils, classes, "p-b", "c-a", smaller,
+                              now=start + dt.timedelta(days=1, seconds=1)) == "stored"
+    assert main.context_snapshot()["students"] == 709412
 
 
 def test_publication_is_atomic_and_idempotent(conn):
