@@ -12,6 +12,7 @@ from .parse import parse_nvo7
 from .registry import parse_code_free_register, parse_schools_year
 from .sources import (NVO7_DATASET, SCHOOLS_DATASET, Resource, _payload, catalog, current_pair,
                       parse_schools, reconcile)
+from .status import DATASETS as STATUS_DATASETS, parse_status, status_catalog
 
 
 LEGACY = {
@@ -69,6 +70,14 @@ def freshness(conn, today=None):
     for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.nvo_held"):
         if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
             problems.append(f"Образование: НВО {resource[:8]} е задържан над ден")
+    for kind in STATUS_DATASETS:
+        year = conn.execute("SELECT max(school_year) FROM live.status_publication WHERE kind=%s",
+                            (kind,)).fetchone()[0]
+        if not year or int(year[:4]) < expected_start:
+            problems.append(f"Образование: няма актуален списък {kind}")
+    for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.status_held"):
+        if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
+            problems.append(f"Образование: списък {resource[:8]} е задържан над ден")
     return problems
 
 
@@ -314,9 +323,44 @@ def refresh_nvo(conn, post=http.post):
     return report
 
 
+def refresh_status(conn, post=http.post):
+    """Read all reviewed MON protected and central lists with NEISPUO codes."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"resources": {}, "problems": []}
+    try:
+        for kind, dataset in STATUS_DATASETS.items():
+            catalog_url = "https://data.egov.bg/api/listResources?dataset=" + dataset
+            try:
+                raw = post("listResources", {"criteria": {"dataset_uri": dataset},
+                                             "records_per_page": 100, "page_number": 1})
+                db.save_raw(conn, catalog_url, raw)
+                resources = status_catalog(raw, kind)
+                for resource in resources:
+                    try:
+                        answer = post("getResourceData", {"resource_uri": resource.uri})
+                        sha = db.save_raw(conn, resource.uri, answer)
+                        rows = parse_status(answer, resource.uri)
+                        status = db.publish_status(conn, kind, resource, sha, rows)
+                        report["resources"][resource.uri[:8]] = {
+                            "kind": kind, "year": resource.year, "rows": len(rows), "status": status}
+                        if status == "held":
+                            report["problems"].append(f"Образование: списък {resource.uri[:8]} чака второ четене")
+                    except Exception as exc:
+                        db.state(conn, resource.uri, "error", str(exc)[:1000])
+                        report["problems"].append(f"Образование: списък {resource.uri[:8]}: {exc}")
+                db.state(conn, catalog_url, "ok", rows=len(resources))
+            except Exception as exc:
+                db.state(conn, catalog_url, "error", str(exc)[:1000])
+                report["problems"].append(f"Образование: каталог {kind}: {exc}")
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "nvo", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "nvo", "status", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
@@ -331,6 +375,8 @@ def main():
             report = refresh_dzi(conn)
         elif args.step == "nvo":
             report = refresh_nvo(conn)
+        elif args.step == "status":
+            report = refresh_status(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))

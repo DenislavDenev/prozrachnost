@@ -308,3 +308,54 @@ def publish_nvo(conn, resource, exam_sha, table, register=None, register_sha=Non
         if register:
             state(conn, register.uri, "ok", rows=len(schools))
     return "stored"
+
+
+def publish_status(conn, kind, resource, sha, rows, now=None):
+    """Replace one official list, holding removals and shrinks for a second read."""
+    now = now or datetime.now(timezone.utc)
+    if not rows or len({r.number for r in rows}) != len(rows):
+        raise ShapeError("Invalid status list rows")
+    with conn.transaction():
+        old = conn.execute("SELECT sha,row_count FROM live.status_publication WHERE resource=%s",
+                           (resource.uri,)).fetchone()
+        if old and old[0] == sha:
+            state(conn, resource.uri, "ok", rows=len(rows))
+            return "unchanged"
+        previous = {r[0]: tuple(r[1:]) for r in conn.execute("""
+            SELECT row_number,neispuo,name,town,scope,is_school
+            FROM live.status_row WHERE resource=%s""", (resource.uri,))}
+        current = {r.number: (r.code, r.name, r.town, r.scope, r.is_school) for r in rows}
+        if old and (len(rows) < old[1] or previous.keys() - current.keys()):
+            held = conn.execute("SELECT sha,first_at FROM ops.status_held WHERE resource=%s",
+                                (resource.uri,)).fetchone()
+            if not held or held[0] != sha:
+                conn.execute("""INSERT INTO ops.status_held(resource,sha,first_at) VALUES (%s,%s,%s)
+                    ON CONFLICT(resource) DO UPDATE SET sha=EXCLUDED.sha,first_at=EXCLUDED.first_at""",
+                    (resource.uri, sha, now))
+            if not held or held[0] != sha or now - held[1] < timedelta(days=1):
+                state(conn, resource.uri, "held", "По-малък списък, чака второ четене", len(rows))
+                return "held"
+        conn.execute("""INSERT INTO live.status_publication
+            (resource,kind,school_year,sha,updated_at,row_count,school_rows)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(resource) DO UPDATE SET sha=EXCLUDED.sha,updated_at=EXCLUDED.updated_at,
+            row_count=EXCLUDED.row_count,school_rows=EXCLUDED.school_rows,published_at=now()""",
+            (resource.uri, kind, resource.year, sha, resource.updated_at, len(rows),
+             sum(r.is_school for r in rows)))
+        conn.execute("DELETE FROM live.status_row WHERE resource=%s", (resource.uri,))
+        with conn.cursor() as cursor:
+            cursor.executemany("""INSERT INTO live.status_row
+                (resource,row_number,neispuo,name,town,scope,is_school)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                [(resource.uri, r.number, r.code, r.name, r.town, r.scope, r.is_school) for r in rows])
+        for number in sorted(previous.keys() | current.keys()):
+            before, after = previous.get(number), current.get(number)
+            if before != after:
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon-status',%s,'row',%s,%s,%s)""",
+                    (f"{resource.uri}/{number}", json.dumps(before, ensure_ascii=False),
+                     json.dumps(after, ensure_ascii=False),
+                     "new-record" if before is None else "removed" if after is None else "rewritten"))
+        conn.execute("DELETE FROM ops.status_held WHERE resource=%s", (resource.uri,))
+        state(conn, resource.uri, "ok", rows=len(rows))
+    return "stored"
