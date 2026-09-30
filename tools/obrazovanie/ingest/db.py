@@ -138,3 +138,86 @@ def publish(conn, year, exam, register, exam_sha, register_sha, results, schools
         state(conn, exam.uri, "ok", rows=len(new_codes))
         state(conn, register.uri, "ok", rows=len(schools))
     return "stored"
+
+
+def publish_dzi(conn, resource, exam_sha, table, register=None, register_sha=None, schools=None, now=None):
+    """Atomically publish one DZI resource after code checks and the 24-hour shrink hold."""
+    now = now or datetime.now(timezone.utc)
+    if not table.results or table.rows != table.schools + table.aggregates:
+        raise ShapeError("DZI source row count does not reconcile")
+    verification = "code" if schools is not None else "no-code"
+    if verification == "code":
+        unmatched = sorted(table.codes - schools.keys())
+        if len(unmatched) / table.schools > 0.02:
+            raise ShapeError(f"Too many unmatched DZI school codes: {len(unmatched)} of {table.schools}")
+        matched_count = table.schools - len(unmatched)
+    else:
+        unmatched, matched_count = [], 0
+    keys = {(r.row_number, r.subject) for r in table.results}
+    if len(keys) != len(table.results):
+        raise ShapeError("Duplicate DZI result key")
+    with conn.transaction():
+        old = conn.execute("""SELECT sha,register_sha,verification,source_rows,result_count
+            FROM live.dzi_publication WHERE resource=%s""", (resource.uri,)).fetchone()
+        if old and old[:3] == (exam_sha, register_sha, verification):
+            state(conn, resource.uri, "ok", rows=table.rows)
+            return "unchanged"
+        previous = { (row[0], row[1]): tuple(str(x) if x is not None else None for x in row[2:])
+                     for row in conn.execute("""SELECT row_number,subject,neispuo,takers,score,matched
+                         FROM live.dzi_result WHERE resource=%s""", (resource.uri,)) }
+        combined_sha = hashlib.sha256((exam_sha + (register_sha or "")).encode()).hexdigest()
+        if old and (table.rows < old[3] or len(table.results) < old[4] or previous.keys() - keys):
+            held = conn.execute("SELECT sha,first_at FROM ops.dzi_held WHERE resource=%s", (resource.uri,)).fetchone()
+            if not held or held[0] != combined_sha:
+                conn.execute("""INSERT INTO ops.dzi_held(resource,sha,first_at) VALUES (%s,%s,%s)
+                    ON CONFLICT(resource) DO UPDATE SET sha=EXCLUDED.sha,first_at=EXCLUDED.first_at""",
+                    (resource.uri, combined_sha, now))
+            if not held or held[0] != combined_sha or now - held[1] < timedelta(days=1):
+                state(conn, resource.uri, "held", "По-малък отговор, чака второ четене", table.rows)
+                return "held"
+        conn.execute("""INSERT INTO live.dzi_publication(resource,school_year,session,kind,sha,updated_at,
+            register_resource,register_sha,verification,source_rows,school_count,aggregate_count,result_count,
+            matched_count,unmatched,anomalies)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(resource) DO UPDATE SET school_year=EXCLUDED.school_year,
+            session=EXCLUDED.session,kind=EXCLUDED.kind,sha=EXCLUDED.sha,updated_at=EXCLUDED.updated_at,
+            register_resource=EXCLUDED.register_resource,register_sha=EXCLUDED.register_sha,
+            verification=EXCLUDED.verification,source_rows=EXCLUDED.source_rows,
+            school_count=EXCLUDED.school_count,aggregate_count=EXCLUDED.aggregate_count,
+            result_count=EXCLUDED.result_count,matched_count=EXCLUDED.matched_count,
+            unmatched=EXCLUDED.unmatched,anomalies=EXCLUDED.anomalies,published_at=now()""",
+            (resource.uri, table.year, table.session, table.kind, exam_sha, resource.updated_at,
+             register.uri if register else None, register_sha, verification, table.rows, table.schools,
+             table.aggregates, len(table.results), matched_count, Jsonb(unmatched), Jsonb(table.anomalies)))
+        conn.execute("DELETE FROM live.dzi_result WHERE resource=%s", (resource.uri,))
+        values = [(resource.uri, r.row_number, r.neispuo, r.school, r.oblast, r.municipality,
+                   r.town, r.subject, r.takers, r.score, r.is_school,
+                   r.neispuo in schools if schools is not None and r.is_school else None)
+                  for r in table.results]
+        with conn.cursor() as cursor:
+            cursor.executemany("""INSERT INTO live.dzi_result
+                (resource,row_number,neispuo,school,oblast,municipality,town,subject,takers,score,is_school,matched)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", values)
+        if not old:
+            conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                VALUES ('mon-dzi',%s,'results',NULL,%s,'new-resource')""",
+                (resource.uri, str(len(values))))
+        else:
+            for r, row in zip(table.results, values):
+                key = (r.row_number, r.subject)
+                current = tuple(str(x) if x is not None else None for x in (r.neispuo, r.takers, r.score, row[-1]))
+                before = previous.pop(key, None)
+                if before != current:
+                    conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                        VALUES ('mon-dzi',%s,'result',%s,%s,%s)""",
+                        (f"{resource.uri}/{r.row_number}/{r.subject}", json.dumps(before, ensure_ascii=False),
+                         json.dumps(current, ensure_ascii=False), "new-record" if before is None else "rewritten"))
+            for (number, subject), before in previous.items():
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon-dzi',%s,'result',%s,NULL,'removed')""",
+                    (f"{resource.uri}/{number}/{subject}", json.dumps(before, ensure_ascii=False)))
+        conn.execute("DELETE FROM ops.dzi_held WHERE resource=%s", (resource.uri,))
+        state(conn, resource.uri, "ok", rows=table.rows)
+        if register:
+            state(conn, register.uri, "ok", rows=len(schools))
+    return "stored"

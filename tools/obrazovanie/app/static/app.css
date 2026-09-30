@@ -187,6 +187,15 @@ th.n .sort { flex-direction: row-reverse; }
 .compare-head span:not(:first-child), .compare-row span { text-align: right; }
 .compare-row strong { font-weight: 500; }
 .compare-row:first-of-type strong { font-weight: 700; }
+.year-strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 8px; margin-top: 18px; white-space: nowrap; }
+.year-strip a { border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; font-size: 13.5px; color: var(--ink-3); }
+.year-strip a:hover { border-color: var(--accent); color: var(--accent-ink); }
+.year-strip a.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.exam-fold summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; color: var(--ink-2); }
+.exam-fold summary strong { color: var(--ink); font-family: var(--font-head); font-size: 18px; }
+.exam-fold summary span { margin-left: auto; font-size: 13px; color: var(--ink-3); }
+.exam-fold[open] summary { margin-bottom: 16px; }
+.pager { display: flex; gap: 16px; align-items: center; justify-content: center; padding: 18px 0 4px; font-size: 14px; }
 @media (max-width: 520px) {
   .lookup input, .filters input, .filters select { width: 100%; min-width: 0; max-width: none; }
   .lookup label, .filters label { width: 100%; }

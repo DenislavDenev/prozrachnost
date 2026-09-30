@@ -44,5 +44,22 @@
 {% endif %}
 {% endfor %}
 {% endif %}
+{% if matura %}
+<h2 class="sec">Матури по години</h2>
+<p class="asof">Оценките са от 2 до 6. Изборът на предмети се мени по години; годините не са училищна класация.</p>
+{% for item in matura %}
+<details class="p space-top exam-fold" {% if loop.first %}open{% endif %}>
+<summary><strong>{{ item.year }}</strong> · {{ 'Май–юни' if item.session == 'may' else 'Август–септември' }} · {{ 'задължителни' if item.kind == 'mandatory' else 'по желание' }} <span>{{ item.subjects | length }} резултата</span></summary>
+<div class="table-scroll"><table><thead><tr><th>Предмет и вариант</th><th class="n">Явили се</th><th class="n">Средна оценка</th></tr></thead><tbody>
+{% for result in item.subjects %}
+<tr><td>{{ result.subject | subject_name }}</td><td class="n">{{ result.takers | num }}</td><td class="n">{{ result.score | num(2) }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p class="src"><a href="{{ dzi_url }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a>
+{% if item.verification == 'no-code' %} · Без сверка с регистъра за годината.{% elif item.matched == false %} · Кодът липсва в регистъра за годината.{% endif %}</p>
+</details>
+{% endfor %}
+<p class="asof space-top">При „няма данни“ броят може да е скрит от МОН с „–“ или оценката да липсва в изходния файл.</p>
+{% endif %}
 <p class="asof space-top">Показани са само публикувани резултати с проверена структура и ясно посочен източник. <a class="l" href="/how">Ограничения на сравнението ↗</a></p>
 {% endblock %}

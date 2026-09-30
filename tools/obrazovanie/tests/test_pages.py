@@ -31,7 +31,9 @@ def sample_snapshot():
 def test_pages_render_with_real_sample(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     monkeypatch.setattr(main, "school_history", lambda code, before: [])
+    monkeypatch.setattr(main, "school_dzi", lambda code: [])
     monkeypatch.setattr(main, "source_history", lambda: [])
+    monkeypatch.setattr(main, "dzi_sources", lambda: [])
     client = TestClient(main.app)
     for path in ("/", "/uchilishta", "/uchilishta/105201", "/sources", "/how"):
         response = client.get(path)
@@ -81,6 +83,7 @@ def test_weighted_average_excludes_no_takers():
 
 def test_history_separates_point_scales(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    monkeypatch.setattr(main, "school_dzi", lambda code: [])
     monkeypatch.setattr(main, "school_history", lambda code, before: [
         dict(year="2024/2025", resource="new-resource", updated="2025-07-01", scale="points100", matched=True, verification="code",
              subjects={"БЕЛ": dict(score=Decimal("57.50"), takers=80),
@@ -94,3 +97,53 @@ def test_history_separates_point_scales(monkeypatch):
     assert "Скала до 65 точки" in page.text
     assert "2024/2025" in page.text and "2017/2018" in page.text
     assert "Без сверка с регистъра" in page.text
+
+
+def test_matura_page_and_school_group_render(monkeypatch):
+    monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    monkeypatch.setattr(main, "school_history", lambda code, before: [])
+    monkeypatch.setattr(main, "dzi_sources", lambda: [dict(year="2025/2026", session="may",
+        kind="mandatory", resource="1387affe", updated="2026-07-01", schools=976,
+        verification="code", anomalies={})])
+    monkeypatch.setattr(main, "matura_snapshot", lambda year, session, kind: dict(
+        year=year, session=session, kind=kind, resource="1387affe", updated="2026-07-01",
+        schools=976, results=3614, matched=974, unmatched=["2900001", "2900102"],
+        verification="code", anomalies={"suppressed_takers": 0},
+        subjects=[dict(subject="БЕЛ(ООП) З", schools=975, takers=41000,
+                       mean=Decimal("4.12"), hidden=0, missing_grade=0)]))
+    monkeypatch.setattr(main, "school_dzi", lambda code: [dict(year="2025/2026", session="may",
+        kind="mandatory", resource="1387affe", updated="2026-07-01", verification="code",
+        matched=True, subjects=[dict(subject="БЕЛ(ООП) З", takers=50, score=Decimal("4.20"))])])
+    client = TestClient(main.app)
+    assert client.get("/matura", follow_redirects=False).status_code == 307
+    page = client.get("/matura/2025-2026")
+    assert page.status_code == 200
+    assert "Български език и литература" in page.text
+    assert "4.12" in page.text
+    profile = client.get("/uchilishta/105201")
+    assert profile.status_code == 200
+    assert "Матури по години" in profile.text
+    assert "4.20" in profile.text
+
+
+def test_matura_school_search_and_csv(monkeypatch):
+    monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    monkeypatch.setattr(main, "matura_snapshot", lambda year, session, kind: dict(
+        year=year, session=session, kind=kind, resource="test-resource", updated="2026-07-01",
+        verification="code", subjects=[dict(subject="БЕЛ(ООП) З", takers=None, hidden=1,
+             schools=1, mean=None, missing_grade=0)]))
+    seen = []
+    def school_rows(resource, subject="", q="", page=1, limit=50, sort="name"):
+        seen.append((resource, subject, q, page, limit, sort))
+        return 1, [dict(code="105201", school="Примерно училище", town="София",
+                        subject="БЕЛ(ООП) З", takers=None, score=Decimal("4.20"), matched=True)]
+    monkeypatch.setattr(main, "matura_schools", school_rows)
+    client = TestClient(main.app)
+    page = client.get("/matura/2025-2026/uchilishta?subject=БЕЛ(ООП)+З&q=105201")
+    assert page.status_code == 200
+    assert "Примерно училище" in page.text and "няма данни" in page.text
+    assert seen[0] == ("test-resource", "БЕЛ(ООП) З", "105201", 1, 50, "name")
+    csv_page = client.get("/matura/2025-2026/uchilishta.csv?subject=БЕЛ(ООП)+З")
+    assert csv_page.status_code == 200 and "Примерно училище" in csv_page.text
+    assert seen[-1][-2] == 100000
+    assert client.get("/matura/2025-2026/uchilishta?subject=НЕПОЗНАТ").status_code == 404
