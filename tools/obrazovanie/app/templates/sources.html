@@ -38,7 +38,7 @@
 <p class="src">Списъкът за защитени институции през 2022/2023 г. и този за средищни през 2021/2022 г. нямат кодове по НЕИСПУО и не се свързват с профили.</p>
 </section>
 {% endif %}
-{% if context_data %}<section class="p space-top"><h2>Национални справки по вид училище</h2><p>{{ context_data.year }} · {{ context_data.students | num }} ученици от I до XII клас в {{ context_data.kind_count }} вида училища. Справките нямат редове за отделни училища. <a class="l" href="/context">Виж националния контекст ↗</a></p>
+{% if context_data %}<section class="p space-top"><h2>Национални справки по вид училище</h2><p>{{ context_data.year }} · {{ context_data.students | num }} ученици от I до XII клас в {{ context_data.kind_count }} вида училища. Справките нямат редове за отделни училища. <a class="l" href="/#context">Виж националния контекст на таблото ↗</a></p>
 <p class="src"><a href="{{ context_urls.pupils }}">МОН · ученици · {{ context_data.pupils_updated }} · ресурс {{ context_data.pupils_resource[:8] }} ↗</a> · <a href="{{ context_urls.classes }}">МОН · групи и паралелки · {{ context_data.classes_updated }} · ресурс {{ context_data.classes_resource[:8] }} ↗</a></p></section>{% endif %}
 <section class="p space-top"><h2>Профили, професии и финансиране</h2>
 <p><a class="l" href="{{ profiles_url }}">МОН · списък на профили и професии ↗</a>: речник на направленията, без код на училище и без данни кои от тях предлага всяко училище. Затова не ги показваме като предложение на конкретно училище.</p>

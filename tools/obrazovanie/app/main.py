@@ -257,6 +257,7 @@ def context_snapshot():
     highest = max((row["students"] for row in grades), default=1)
     for row in grades:
         row["width"] = round(row["students"] / highest * 100, 1)
+        row["share"] = round(row["students"] / publication[6] * 100, 1) if publication[6] else 0
     kinds.sort(key=lambda row: (-row["students"], row["name"]))
     return dict(year=publication[0], pupils_resource=publication[1], classes_resource=publication[2],
                 pupils_updated=publication[3][:10], classes_updated=publication[4][:10],
@@ -350,17 +351,23 @@ def favicon():
 def home(request: Request):
     data = snapshot()
     scores = {subject: weighted(data["schools"], subject) for subject in ("БЕЛ", "МАТ")} if data else {}
-    places, unmapped = municipalities.scores(data)
     sources = nvo_sources()
     years = {exam: max((item["year"] for item in sources if item["exam"] == exam), default=None)
              for exam in NVO_DATASETS}
     return render(request, "home.html", data, nav="Табло", scores=scores,
-                  places=places, unmapped=unmapped, nvo_years=years, context_data=context_snapshot())
+                  nvo_years=years, context_data=context_snapshot())
+
+
+@app.get("/karta", response_class=HTMLResponse)
+def map_page(request: Request):
+    data = snapshot()
+    places, unmapped = municipalities.scores(data)
+    return render(request, "map.html", data, nav="Карта", places=places, unmapped=unmapped)
 
 
 @app.get("/context", response_class=HTMLResponse)
 def national_context(request: Request):
-    return render(request, "context.html", snapshot(), nav="Контекст", context_data=context_snapshot())
+    return RedirectResponse("/#context", status_code=302)
 
 
 def selected(data, q="", oblast="", municipality=""):

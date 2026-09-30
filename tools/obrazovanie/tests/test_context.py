@@ -42,15 +42,19 @@ def test_changed_columns_or_totals_stop_context_import():
 def test_national_page_explains_granularity(monkeypatch):
     from test_pages import sample_snapshot
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
+    monkeypatch.setattr(main, "nvo_sources", lambda: [])
     monkeypatch.setattr(main, "context_snapshot", lambda: dict(year="2025/2026", students=709413,
         institutions=2319, groups=Decimal("33955.5"), kind_count=15,
         pupils_updated="2026-02-25", classes_updated="2026-02-25",
         pupils_resource="a5ed412d", classes_resource="a08b426f", special_students=65,
         kinds=[dict(name="основно", institutions=1103, students=215176, groups=Decimal("11686"))],
-        grades=[dict(grade=1, students=58032, width=92)]))
-    page = TestClient(main.app).get("/context")
+        grades=[dict(grade=1, students=58032, width=92, share=8.2)]))
+    client = TestClient(main.app)
+    page = client.get("/")
     assert page.status_code == 200
     assert "709 413" in page.text
     assert "основно" in page.text
     assert "вид училище" in page.text
     assert "a5ed412d" in page.text and "a08b426f" in page.text
+    assert "58 032" in page.text and "8.2%" in page.text
+    assert client.get("/context", follow_redirects=False).headers["location"] == "/#context"
