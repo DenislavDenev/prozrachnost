@@ -18,6 +18,7 @@ from ingest.db import connect
 from ingest.dzi import DZI_DATASET
 from ingest.nvo import DATASETS as NVO_DATASETS
 from ingest.sources import NVO7_DATASET, SCHOOLS_DATASET
+from ingest.status import DATASETS as STATUS_DATASETS
 from . import feedback
 
 
@@ -26,6 +27,7 @@ EXAM_URL = f"https://data.egov.bg/data/view/{NVO7_DATASET}"
 REGISTER_URL = f"https://data.egov.bg/data/view/{SCHOOLS_DATASET}"
 DZI_URL = f"https://data.egov.bg/data/view/{DZI_DATASET}"
 NVO_URLS = {exam: f"https://data.egov.bg/data/view/{dataset}" for exam, dataset in NVO_DATASETS.items()}
+STATUS_URLS = {kind: f"https://data.egov.bg/data/view/{dataset}" for kind, dataset in STATUS_DATASETS.items()}
 app = FastAPI(title="Образование", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
@@ -215,6 +217,24 @@ def school_nvo(code):
     return list(groups.values())
 
 
+def school_status(code):
+    with connect() as conn:
+        return [dict(kind=r[0], year=r[1], resource=r[2], updated=r[3][:10],
+                     name=r[4], town=r[5], scope=r[6]) for r in conn.execute("""
+            SELECT p.kind,p.school_year,p.resource,p.updated_at,r.name,r.town,r.scope
+            FROM live.status_row r JOIN live.status_publication p ON p.resource=r.resource
+            WHERE r.neispuo=%s AND r.is_school
+            ORDER BY p.school_year DESC,p.kind,r.row_number""", (code,))]
+
+
+def status_sources():
+    with connect() as conn:
+        return [dict(kind=r[0], year=r[1], resource=r[2], updated=r[3][:10],
+                     rows=r[4], school_rows=r[5]) for r in conn.execute("""
+            SELECT kind,school_year,resource,updated_at,row_count,school_rows
+            FROM live.status_publication ORDER BY school_year DESC,kind""")]
+
+
 def school_identity(code):
     with connect() as conn:
         row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
@@ -278,7 +298,7 @@ def render(request, page, data=None, **context):
         feedback_button=Markup(feedback.BUTTON),
         support_link=Markup(feedback.support_link(hub)),
         exam_url=EXAM_URL, register_url=REGISTER_URL, dzi_url=DZI_URL,
-        nvo_urls=NVO_URLS, **context))
+        nvo_urls=NVO_URLS, status_urls=STATUS_URLS, **context))
 
 
 @app.get("/healthz")
@@ -342,7 +362,8 @@ def school_detail(request: Request, code: str):
                       ("Страната, по училищния файл", weighted(data["schools"], "БЕЛ"), weighted(data["schools"], "МАТ"))]
         history = school_history(code, data["year"])
     return render(request, "school.html", data, nav="Училища", school=school, comparison=comparison,
-                  history=history, matura=school_dzi(code), nvo=school_nvo(code))
+                  history=history, matura=school_dzi(code), nvo=school_nvo(code),
+                  statuses=school_status(code))
 
 
 @app.get("/uchilishta.csv")
@@ -363,7 +384,8 @@ def school_csv(q: str = "", oblast: str = "", municipality: str = ""):
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
     return render(request, "sources.html", snapshot(), nav="Източници", publications=source_history(),
-                  dzi_publications=dzi_sources(), nvo_publications=nvo_sources())
+                  dzi_publications=dzi_sources(), nvo_publications=nvo_sources(),
+                  status_publications=status_sources())
 
 
 @app.get("/matura", response_class=HTMLResponse)

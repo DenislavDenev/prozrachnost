@@ -5,6 +5,15 @@
 <h1>{{ school.name }}</h1>
 <p class="lede">{{ school.town }}, община {{ school.municipality }}, област {{ school.oblast }}. Код по НЕИСПУО <b>{{ school.code }}</b>.</p>
 <p class="asof">{% if school.matched == true %}Съпоставено с регистъра на МОН.{% elif school.matched == false %}Кодът не е намерен в използвания регистър; името и мястото са от таблицата с резултати.{% else %}За използваната година няма сверка с регистър по код.{% endif %} <a class="l" href="{{ register_url }}">Регистър ↗</a></p>
+{% if statuses %}
+<section class="p space-top"><div class="ph"><div><h2>Статут по учебни години</h2><p class="sub">Официалните списъци на МОН са свързани с този профил по код по НЕИСПУО.</p></div></div>
+{% for item in statuses %}
+<p><strong>{{ 'Защитено' if item.kind == 'protected' else 'Средищно' }} · {{ item.year }}</strong>{% if item.scope %} · {{ item.scope }}{% endif %}{% if item.town != school.town %} · {{ item.town }}{% endif %}<br>
+<span class="sub"><a class="l" href="{{ status_urls[item.kind] }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a></span></p>
+{% endfor %}
+<p class="src">Статутът важи за посочената година. Липсата на ред не доказва липса на статут. <a href="/how">Методика ↗</a></p>
+</section>
+{% endif %}
 {% if comparison %}
 <h2 class="sec">НВО VII клас · {{ d.year }}</h2>
 <p class="asof">Точки от 0 до 100. <a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a></p>

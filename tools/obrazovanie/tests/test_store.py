@@ -12,6 +12,7 @@ from ingest.history import parse_nvo7_year
 from ingest.nvo import parse_nvo
 from ingest.parse import parse_nvo7
 from ingest.sources import Resource, current_pair, parse_schools, reconcile
+from ingest.status import StatusRow
 
 
 FIX = Path(__file__).parent / "fixtures/mon"
@@ -27,7 +28,7 @@ def conn(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "RAW", tmp_path / "raw")
     with psycopg.connect(dsn, autocommit=True) as connection:
         db.migrate(connection)
-        connection.execute("TRUNCATE live.nvo_result,live.nvo_publication,ops.nvo_held,live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
+        connection.execute("TRUNCATE live.status_row,live.status_publication,ops.status_held,live.nvo_result,live.nvo_publication,ops.nvo_held,live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
         yield connection
 
 
@@ -42,6 +43,21 @@ def inputs():
 def test_replaced_code_is_held_even_when_count_is_unchanged():
     assert db.needs_hold({"105201", "909612"}, {"105201", "999999"}, 2, 2)
     assert not db.needs_hold({"105201"}, {"105201", "999999"}, 1, 2)
+
+
+def test_status_list_is_atomic_and_holds_shrink(conn):
+    source = Resource("status-test", "2025/2026", "Official list", "2025-12-16")
+    rows = [StatusRow(1, "102003", "Основно училище", "Места", "учениците от I до VII клас", True),
+            StatusRow(2, "100102", "Детска градина", "Места", "децата", False)]
+    start = dt.datetime(2026, 9, 29, tzinfo=dt.timezone.utc)
+    assert db.publish_status(conn, "protected", source, "sha-a", rows, now=start) == "stored"
+    assert db.publish_status(conn, "protected", source, "sha-a", rows, now=start) == "unchanged"
+    assert conn.execute("SELECT school_rows FROM live.status_publication").fetchone()[0] == 1
+    assert db.publish_status(conn, "protected", source, "sha-b", rows[:1], now=start) == "held"
+    assert conn.execute("SELECT count(*) FROM live.status_row").fetchone()[0] == 2
+    assert db.publish_status(conn, "protected", source, "sha-b", rows[:1],
+                             now=start + dt.timedelta(days=1, seconds=1)) == "stored"
+    assert conn.execute("SELECT count(*) FROM live.status_row").fetchone()[0] == 1
 
 
 def test_publication_is_atomic_and_idempotent(conn):

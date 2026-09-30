@@ -28,6 +28,16 @@
 <span class="sub"><a class="l" href="/nvo/{{ '4' if item.exam == 'nvo4' else '10' }}/{{ item.year | replace('/', '-') }}">Виж резултатите ↗</a> · <a class="l" href="{{ nvo_urls[item.exam] }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a></span></p>
 {% endfor %}</section>
 {% endif %}
+{% if status_publications %}
+<section class="p space-top"><div class="ph"><h2>Защитени и средищни институции</h2></div>
+<p class="sub">Списъците съдържат и детски градини. В профилите се показват само редовете за училища с код по НЕИСПУО.</p>
+{% for item in status_publications %}
+<p><strong>{{ 'Защитени' if item.kind == 'protected' else 'Средищни' }} · {{ item.year }}</strong> · {{ item.school_rows | num }} училищни реда от {{ item.rows | num }} общо.<br>
+<span class="sub"><a class="l" href="{{ status_urls[item.kind] }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a></span></p>
+{% endfor %}
+<p class="src">Списъкът за защитени институции през 2022/2023 г. и този за средищни през 2021/2022 г. нямат кодове по НЕИСПУО и не се свързват с профили.</p>
+</section>
+{% endif %}
 {% if dzi_publications %}
 <section class="p space-top"><div class="ph"><h2>Матури по години и сесии</h2></div>
 {% for item in dzi_publications %}
