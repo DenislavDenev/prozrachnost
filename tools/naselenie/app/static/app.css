@@ -168,4 +168,4 @@ th.n .sort { flex-direction: row-reverse; }
 @media (max-width: 1240px) { .menu-s { display: flex; gap: 16px; overflow-x: auto; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 14.5px; white-space: nowrap; }
   .menu-s a { color: var(--ink-3); } .menu-s a.on { color: var(--ink); font-weight: 600; } }
 
-.map-pick{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-align:left}.notice{color:#b25b06;background:#fcefd9;padding:12px;border-radius:6px}.nowrap{white-space:nowrap}.p + .p{margin-top:16px}.chart{height:340px}.prose{max-width:900px}.prose p{line-height:1.6}
+.map-pick{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-align:left}.notice{color:#b25b06;background:#fcefd9;padding:12px;border-radius:6px}.nowrap{white-space:nowrap}.wrap > .p + .p{margin-top:16px}.chart{height:340px}.prose{max-width:900px}.prose p{line-height:1.6}
