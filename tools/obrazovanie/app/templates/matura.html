@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Матури{% endblock %}
+{% block main %}
+<h1>Държавни зрелостни изпити</h1>
+<p class="lede">Резултати по предмет и училище от публикуваните таблици на МОН. Оценките са по скалата от 2 до 6.</p>
+{% if years %}
+<div class="year-strip scroll" aria-label="Учебна година">
+{% for year in years %}<a href="/matura/{{ year | replace('/', '-') }}" class="{{ 'on' if year == selected_year else '' }}" {% if year == selected_year %}aria-current="page"{% endif %}>{{ year }}</a>{% endfor %}
+</div>
+<div class="ctl"><div class="tabs" aria-label="Сесия и вид изпит">
+{% for option in available %}
+<a href="/matura/{{ selected_year | replace('/', '-') }}?session={{ option.session }}&kind={{ option.kind }}" {% if option.session == selected_session and option.kind == selected_kind %}aria-current="page"{% endif %}>
+{{ 'Май–юни' if option.session == 'may' else 'Август–септември' }} · {{ 'задължителни' if option.kind == 'mandatory' else 'по желание' }}</a>
+{% endfor %}
+</div></div>
+{% if exam %}
+<p class="asof">Учебна {{ exam.year }} година · {{ 'май–юни' if exam.session == 'may' else 'август–септември' }} · {{ 'задължителни' if exam.kind == 'mandatory' else 'по желание' }} · <a class="l" href="{{ dzi_url }}">МОН, ресурс {{ exam.resource[:8] }} ↗</a> · {{ exam.updated }}</p>
+<div class="grid">
+  <section class="p s4 kpi"><div class="n">{{ exam.schools | num }}</div><div class="t">училища в изходната таблица</div></section>
+  <section class="p s4 kpi"><div class="n">{{ exam.subjects | length | num }}</div><div class="t">предмета и варианта с резултати</div></section>
+  <section class="p s4 kpi"><div class="n">{{ exam.results | num }}</div><div class="t">училищни резултата</div></section>
+</div>
+<section class="p space-top"><div class="ph"><div><h2>Предмети</h2><p class="sub">Средна оценка, претеглена по явилите се. При скрит брой явили се няма изчислена обща оценка.</p></div></div>
+<div class="table-scroll"><table><thead><tr><th>Предмет и вариант</th><th class="n">Училища</th><th class="n">Явили се</th><th class="n">Средна оценка</th></tr></thead><tbody>
+{% for item in exam.subjects %}
+<tr><td>{{ item.subject | subject_name }}</td><td class="n">{{ item.schools | num }}</td><td class="n">{% if item.hidden and item.takers is not none %}поне {{ item.takers | num }}{% elif item.hidden %}скрит брой{% else %}{{ item.takers | num }}{% endif %}</td><td class="n">{{ item.mean | num(2) }}</td></tr>
+{% endfor %}
+</tbody></table></div>
+<p class="src"><a href="{{ dzi_url }}">Източник · МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a></p>
+</section>
+<p class="space-top"><a class="l" href="/matura/{{ selected_year | replace('/', '-') }}/uchilishta?session={{ selected_session }}&kind={{ selected_kind }}">Резултати по училища и предмети ↗</a></p>
+{% if exam.anomalies.suppressed_takers %}<p class="asof space-top">В {{ exam.anomalies.suppressed_takers | num }} клетки МОН е скрило броя явили се с „–“. Оценката остава видима, но общ среден резултат за засегнатия предмет не се изчислява.</p>{% endif %}
+{% if exam.verification == 'no-code' %}<p class="asof space-top">За тази година няма регистър с кодове по НЕИСПУО за сверка. Резултатите са от изпитния файл; училища не са свързвани по сходни имена.</p>{% elif exam.unmatched %}<p class="asof space-top">{{ exam.matched | num }} от {{ exam.schools | num }} училища са съпоставени с регистъра по код. <a class="l" href="/sources">Виж източниците ↗</a></p>{% endif %}
+{% else %}<p class="asof space-top">Няма публикувана таблица за този избор.</p>{% endif %}
+{% else %}<p class="lede">Данните за матурите още се подготвят.</p>{% endif %}
+{% endblock %}

@@ -7,6 +7,7 @@ import pytest
 
 from app import main
 from ingest import db
+from ingest.dzi import parse_dzi
 from ingest.history import parse_nvo7_year
 from ingest.parse import parse_nvo7
 from ingest.sources import Resource, current_pair, parse_schools, reconcile
@@ -25,7 +26,7 @@ def conn(monkeypatch, tmp_path):
     monkeypatch.setattr(db, "RAW", tmp_path / "raw")
     with psycopg.connect(dsn, autocommit=True) as connection:
         db.migrate(connection)
-        connection.execute("TRUNCATE live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
+        connection.execute("TRUNCATE live.dzi_result,live.dzi_publication,ops.dzi_held,live.exam_result,live.school,live.publication,ops.raw_file,ops.source_state,ops.held,ops.change_log RESTART IDENTITY CASCADE")
         yield connection
 
 
@@ -101,3 +102,21 @@ def test_code_free_year_keeps_explicit_verification(conn):
                       verification="no-code") == "stored"
     assert conn.execute("SELECT verification,matched_count FROM live.publication").fetchone() == ("no-code", 0)
     assert conn.execute("SELECT count(*) FROM live.school WHERE matched=false").fetchone()[0] == len(codes)
+
+
+def test_dzi_publication_is_atomic_and_keeps_suppressed_takers(conn):
+    uri = "e98e4650-d3fe-4bac-b3e4-941091190a40"
+    table = parse_dzi((FIX / "dzi-e98e4650.json").read_bytes(), uri)
+    resource = Resource(uri, table.year, "ДЗИ по желание", "2024-07-01")
+    assert db.publish_dzi(conn, resource, "dzi-a", table) == "stored"
+    assert conn.execute("SELECT source_rows,result_count,verification FROM live.dzi_publication").fetchone() == (
+        4, len(table.results), "no-code")
+    assert db.publish_dzi(conn, resource, "dzi-a", table) == "unchanged"
+    assert conn.execute("SELECT count(*) FROM live.dzi_result").fetchone()[0] == len(table.results)
+    view = main.matura_snapshot(table.year, table.session, table.kind)
+    assert view["results"] == len(table.results)
+    assert sum(item["schools"] for item in view["subjects"]) > 0
+    count, rows = main.matura_schools(uri)
+    assert count == sum(1 for item in table.results if item.is_school)
+    assert len(rows) == count
+    assert main.matura_schools(uri, sort="score")[0] == count

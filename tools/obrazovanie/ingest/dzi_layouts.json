@@ -1,0 +1,178 @@
+[
+  {
+    "uri": "036f7fed-dfdc-480b-9400-41bfa64022d6",
+    "year": "2025/2026",
+    "session": "may",
+    "kind": "optional",
+    "header_rows": 1,
+    "width": 155,
+    "header_sha": "3866c7b3fad039831a8a317ec3ada7bba0376f15897415435942f89cb0a9d698",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "1387affe-3ef8-42d3-bf0b-7033c4d6a30c",
+    "year": "2025/2026",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 75,
+    "header_sha": "ef9f95c2a49057fe2958a3b4a391f8be2eec2f035545db5f9fd7839ddacb197e",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "96dcb5f0-3591-42f4-accf-b1c953c7f81e",
+    "year": "2024/2025",
+    "session": "august",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 75,
+    "header_sha": "ef9f95c2a49057fe2958a3b4a391f8be2eec2f035545db5f9fd7839ddacb197e",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "e98e4650-d3fe-4bac-b3e4-941091190a40",
+    "year": "2023/2024",
+    "session": "may",
+    "kind": "optional",
+    "header_rows": 1,
+    "width": 155,
+    "header_sha": "3866c7b3fad039831a8a317ec3ada7bba0376f15897415435942f89cb0a9d698",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "f0a2a601-2152-4233-997e-afd1bf8de2b3",
+    "year": "2024/2025",
+    "session": "may",
+    "kind": "optional",
+    "header_rows": 1,
+    "width": 155,
+    "header_sha": "3866c7b3fad039831a8a317ec3ada7bba0376f15897415435942f89cb0a9d698",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "c19d7464-aff5-4091-8adf-0ec1d7d0a43a",
+    "year": "2024/2025",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 75,
+    "header_sha": "ef9f95c2a49057fe2958a3b4a391f8be2eec2f035545db5f9fd7839ddacb197e",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "6ab92656-98b6-4294-b29d-9be27d4048cd",
+    "year": "2023/2024",
+    "session": "august",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 75,
+    "header_sha": "ef9f95c2a49057fe2958a3b4a391f8be2eec2f035545db5f9fd7839ddacb197e",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "2eeeeadb-858c-4b40-a605-2b0b42d8643a",
+    "year": "2023/2024",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 75,
+    "header_sha": "ef9f95c2a49057fe2958a3b4a391f8be2eec2f035545db5f9fd7839ddacb197e",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "69a77062-c789-4df0-bde6-848ab2a2600a",
+    "year": "2022/2023",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 3,
+    "width": 75,
+    "header_sha": "fec5e12ce0deebbce66fb0f7a9185e319886e4e58de600fe56f4304090b69602",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "bd8b058b-d1c0-4396-bd05-e67d7fb65afa",
+    "year": "2021/2022",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 71,
+    "header_sha": "6815ecbd6aeba2fcd48d2bc605ee4abf4fd2e9553ec12133ea8ea9c93903d245",
+    "count_first": true,
+    "code_col": 4
+  },
+  {
+    "uri": "f1ae52dc-0d5e-4d53-aa7f-654a8579c07d",
+    "year": "2015/2016",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 37,
+    "header_sha": "87c4d980bf85417965858331b15206a8e149538d8c83f086b127ffe01de8d1e4",
+    "count_first": false,
+    "code_col": null
+  },
+  {
+    "uri": "ad482baf-1806-435b-8359-7caead9074e1",
+    "year": "2016/2017",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 37,
+    "header_sha": "c48d0deb8c591f10e6339231225af22fa1451fb05a5a5ad5a1715f01454b8626",
+    "count_first": false,
+    "code_col": 3
+  },
+  {
+    "uri": "1259ac13-6c38-4864-b80d-afcf944bbe0d",
+    "year": "2017/2018",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 37,
+    "header_sha": "33fbb186b39b2dbb92bb45ba3a635b105461c69a9e4182f3c566f7f8111317e0",
+    "count_first": true,
+    "code_col": 3
+  },
+  {
+    "uri": "af5bddb9-84b0-4239-a18a-e4aa4820880a",
+    "year": "2018/2019",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 33,
+    "header_sha": "36c9e4d03afde1fb4fe3eee78f570a387727e57f723eb027fe4ffb6aa26468e7",
+    "count_first": true,
+    "code_col": 3
+  },
+  {
+    "uri": "4570fbdf-decf-43be-a56f-b5516ebc0719",
+    "year": "2020/2021",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 2,
+    "width": 37,
+    "header_sha": "e1f6d9637346b60cf3f092c221159f33c7d8e11509475734446ed8ffe4fdada0",
+    "count_first": true,
+    "code_col": 3
+  },
+  {
+    "uri": "9b3480f2-1575-4bc5-8e6d-a579cc36a4e2",
+    "year": "2019/2020",
+    "session": "may",
+    "kind": "mandatory",
+    "header_rows": 2,
+    "width": 37,
+    "header_sha": "e1f6d9637346b60cf3f092c221159f33c7d8e11509475734446ed8ffe4fdada0",
+    "count_first": true,
+    "code_col": 3
+  }
+]

@@ -2,7 +2,7 @@
 {% block title %}Източници{% endblock %}
 {% block main %}
 <h1>Източници</h1>
-<p class="lede">Резултатите и данните за училищата идват от два отделни набора на МОН.</p>
+<p class="lede">НВО VII клас, матурите и регистърът на училищата са отделни публични набори на МОН. Показваме датата и ресурса за всяко число.</p>
 {% if d %}
 <div class="grid">
 <section class="p s6"><h2>НВО VII клас</h2><p>Учебна {{ d.year }} година · {{ d.school_count | num }} училища.</p>
@@ -18,6 +18,14 @@
 {% else %}Без сверка с регистъра: той няма кодове по НЕИСПУО.{% endif %}<br>
 <span class="sub"><a class="l" href="{{ exam_url }}">МОН · резултати {{ item.exam_updated }} · {{ item.exam_resource[:8] }} ↗</a>
  · <a class="l" href="{{ register_url }}">Регистър {{ item.register_updated }} · {{ item.register_resource[:8] }} ↗</a></span></p>
+{% endfor %}</section>
+{% endif %}
+{% if dzi_publications %}
+<section class="p space-top"><div class="ph"><h2>Матури по години и сесии</h2></div>
+{% for item in dzi_publications %}
+<p><strong>{{ item.year }}</strong> · {{ 'Май–юни' if item.session == 'may' else 'Август–септември' }} · {{ 'задължителни' if item.kind == 'mandatory' else 'по желание' }} · {{ item.schools | num }} училища.
+{% if item.verification == 'no-code' %}Без сверка с регистър по код.{% endif %}<br>
+<span class="sub"><a class="l" href="/matura/{{ item.year | replace('/', '-') }}?session={{ item.session }}&kind={{ item.kind }}">Виж резултатите ↗</a> · <a class="l" href="{{ dzi_url }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a></span></p>
 {% endfor %}</section>
 {% endif %}
 {% if d.unmatched %}<section class="p space-top"><h2>Несъпоставени кодове</h2><p>Тези резултати остават видими с името от изпитния файл. Не свързваме училища по сходство на имена.</p>

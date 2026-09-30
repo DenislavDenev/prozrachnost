@@ -5,6 +5,7 @@ import datetime as dt
 import json
 
 from . import db, http
+from .dzi import DZI_DATASET, dzi_catalog, parse_dzi
 from .history import parse_nvo7_year
 from .parse import parse_nvo7
 from .registry import parse_code_free_register, parse_schools_year
@@ -54,6 +55,12 @@ def freshness(conn, today=None):
     for year, first_at in conn.execute("SELECT school_year,first_at FROM ops.held"):
         if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
             problems.append(f"Образование: {year} е задържана над ден")
+    dzi = conn.execute("SELECT max(school_year),count(*) FROM live.dzi_publication").fetchone()
+    if not dzi[0] or int(dzi[0][:4]) < expected_start:
+        problems.append("Образование: няма резултати от ДЗИ за очакваната учебна година")
+    for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.dzi_held"):
+        if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
+            problems.append(f"Образование: ДЗИ {resource[:8]} е задържан над ден")
     return problems
 
 
@@ -185,9 +192,66 @@ def refresh_legacy(conn, post=http.post):
     return report
 
 
+def refresh_dzi(conn, post=http.post):
+    """Read all observed DZI resources, preserving session and optional-exam distinctions."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"resources": {}, "problems": []}
+    try:
+        dzi_url = "https://data.egov.bg/api/listResources?dataset=" + DZI_DATASET
+        registry_url = "https://data.egov.bg/api/listResources?dataset=" + SCHOOLS_DATASET
+        dzi_raw = post("listResources", {"criteria": {"dataset_uri": DZI_DATASET},
+                                         "records_per_page": 100, "page_number": 1})
+        db.save_raw(conn, dzi_url, dzi_raw)
+        resources = dzi_catalog(dzi_raw)
+        registry_raw = post("listResources", {"criteria": {"dataset_uri": SCHOOLS_DATASET},
+                                              "records_per_page": 100, "page_number": 1})
+        db.save_raw(conn, registry_url, registry_raw)
+        registers = {}
+        for item in catalog(registry_raw, SCHOOLS_DATASET):
+            if item.year not in registers or item.updated_at > registers[item.year].updated_at:
+                registers[item.year] = item
+        cache = {}
+        for resource in resources:
+            try:
+                raw = post("getResourceData", {"resource_uri": resource.uri})
+                sha = db.save_raw(conn, resource.uri, raw)
+                table = parse_dzi(raw, resource.uri)
+                if table.year != resource.year:
+                    raise ValueError("DZI catalog and table years differ")
+                register, register_sha, schools = None, None, None
+                if table.year >= "2021/2022":
+                    register = registers.get(table.year)
+                    if not register:
+                        raise ValueError(f"No same-year school register for {table.year}")
+                    if table.year not in cache:
+                        school_raw = post("getResourceData", {"resource_uri": register.uri})
+                        school_sha = db.save_raw(conn, register.uri, school_raw)
+                        school_rows = (parse_schools(school_raw) if table.year == "2025/2026"
+                                       else parse_schools_year(school_raw))
+                        cache[table.year] = (school_sha, school_rows)
+                    register_sha, schools = cache[table.year]
+                status = db.publish_dzi(conn, resource, sha, table, register, register_sha, schools)
+                report["resources"][resource.uri[:8]] = {"year": table.year, "session": table.session,
+                    "kind": table.kind, "status": status, "rows": table.rows,
+                    "results": len(table.results)}
+                if status == "held":
+                    report["problems"].append(f"Образование: ДЗИ {resource.name} чака второ четене")
+            except Exception as exc:
+                db.state(conn, resource.uri, "error", str(exc)[:1000])
+                report["problems"].append(f"Образование: ДЗИ {resource.uri[:8]}: {exc}")
+        db.state(conn, dzi_url, "ok", rows=len(resources))
+        db.state(conn, registry_url, "ok", rows=len(registers))
+    except Exception as exc:
+        report["problems"].append(f"Образование: каталог ДЗИ: {exc}")
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
@@ -198,6 +262,8 @@ def main():
             report = refresh_history(conn)
         elif args.step == "legacy":
             report = refresh_legacy(conn)
+        elif args.step == "dzi":
+            report = refresh_dzi(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))
