@@ -15,6 +15,10 @@ MUTATIONS = [
     ("leading-zero", "ingest/parse.py", "neispuo, subject, takers, score))", "str(int(neispuo)), subject, takers, score))", "test_sources.py::test_leading_zero_code_remains_text"),
     ("match-threshold", "ingest/sources.py", 'len(unmatched) / len(codes) > 0.02', 'len(unmatched) / len(codes) > 1', "test_registry.py::test_no_name_based_matching_and_threshold"),
     ("hold-removed-code", "ingest/db.py", 'old_codes - new_codes or new_count < old_count', 'new_count < old_count', "test_store.py::test_replaced_code_is_held_even_when_count_is_unchanged"),
+    ("nvo-header", "ingest/nvo.py", 'if digest != layout["header_sha"]:', 'if False:', "test_nvo.py::test_changed_scale_header_and_zero_vs_missing"),
+    ("nvo-duplicate", "ingest/nvo.py", 'or code in seen:', 'or False:', "test_nvo.py::test_duplicate_code_and_mismatch_threshold_hold"),
+    ("nvo-scale", "ingest/nvo.py", 'if score is not None and score > 100:', 'if False:', "test_nvo.py::test_invalid_code_and_score_hold"),
+    ("nvo-match-threshold", "ingest/db.py", 'len(unmatched) / table.rows > 0.02', 'len(unmatched) / table.rows > 1', "test_nvo.py::test_duplicate_code_and_mismatch_threshold_hold"),
 ]
 
 

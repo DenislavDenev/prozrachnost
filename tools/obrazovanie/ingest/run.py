@@ -7,6 +7,7 @@ import json
 from . import db, http
 from .dzi import DZI_DATASET, dzi_catalog, parse_dzi
 from .history import parse_nvo7_year
+from .nvo import DATASETS as NVO_DATASETS, LAYOUTS as NVO_LAYOUTS, nvo_catalog, parse_nvo
 from .parse import parse_nvo7
 from .registry import parse_code_free_register, parse_schools_year
 from .sources import (NVO7_DATASET, SCHOOLS_DATASET, Resource, _payload, catalog, current_pair,
@@ -61,6 +62,13 @@ def freshness(conn, today=None):
     for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.dzi_held"):
         if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
             problems.append(f"Образование: ДЗИ {resource[:8]} е задържан над ден")
+    for exam in ("nvo4", "nvo10"):
+        year = conn.execute("SELECT max(school_year) FROM live.nvo_publication WHERE exam=%s", (exam,)).fetchone()[0]
+        if not year or int(year[:4]) < expected_start:
+            problems.append(f"Образование: няма резултати от {exam} за очакваната учебна година")
+    for resource, first_at in conn.execute("SELECT resource,first_at FROM ops.nvo_held"):
+        if dt.datetime.now(dt.timezone.utc) - first_at > dt.timedelta(days=1):
+            problems.append(f"Образование: НВО {resource[:8]} е задържан над ден")
     return problems
 
 
@@ -249,9 +257,66 @@ def refresh_dzi(conn, post=http.post):
     return report
 
 
+def refresh_nvo(conn, post=http.post):
+    """Read all observed NVO IV/X years and reconcile code-bearing years."""
+    if not conn.execute("SELECT pg_try_advisory_lock(8016001)").fetchone()[0]:
+        return {"status": "skipped", "problems": []}
+    report = {"resources": {}, "problems": []}
+    try:
+        registry_url = "https://data.egov.bg/api/listResources?dataset=" + SCHOOLS_DATASET
+        registry_raw = post("listResources", {"criteria": {"dataset_uri": SCHOOLS_DATASET},
+                                              "records_per_page": 100, "page_number": 1})
+        db.save_raw(conn, registry_url, registry_raw)
+        registers = {}
+        for item in catalog(registry_raw, SCHOOLS_DATASET):
+            if item.year not in registers or item.updated_at > registers[item.year].updated_at:
+                registers[item.year] = item
+        cache = {}
+        for exam, dataset in NVO_DATASETS.items():
+            catalog_url = "https://data.egov.bg/api/listResources?dataset=" + dataset
+            raw = post("listResources", {"criteria": {"dataset_uri": dataset},
+                                         "records_per_page": 100, "page_number": 1})
+            db.save_raw(conn, catalog_url, raw)
+            resources = nvo_catalog(raw, exam)
+            for resource in resources:
+                try:
+                    answer = post("getResourceData", {"resource_uri": resource.uri})
+                    sha = db.save_raw(conn, resource.uri, answer)
+                    table = parse_nvo(answer, resource.uri)
+                    if table.rows < NVO_LAYOUTS[resource.uri]["observed_rows"] * 0.8:
+                        raise ValueError("NVO response has fewer than 80% of observed schools")
+                    register, register_sha, schools = None, None, None
+                    if table.year >= "2021/2022":
+                        register = registers.get(table.year)
+                        if not register:
+                            raise ValueError(f"No same-year school register for {table.year}")
+                        if table.year not in cache:
+                            reg_raw = post("getResourceData", {"resource_uri": register.uri})
+                            reg_sha = db.save_raw(conn, register.uri, reg_raw)
+                            reg_rows = (parse_schools(reg_raw) if table.year == "2025/2026"
+                                        else parse_schools_year(reg_raw))
+                            cache[table.year] = (reg_sha, reg_rows)
+                        register_sha, schools = cache[table.year]
+                    status = db.publish_nvo(conn, resource, sha, table, register, register_sha, schools)
+                    report["resources"][resource.uri[:8]] = {"exam": exam, "year": table.year,
+                        "status": status, "schools": table.rows, "results": len(table.results)}
+                    if status == "held":
+                        report["problems"].append(f"Образование: {exam} {table.year} чака второ четене")
+                except Exception as exc:
+                    db.state(conn, resource.uri, "error", str(exc)[:1000])
+                    report["problems"].append(f"Образование: {exam} {resource.uri[:8]}: {exc}")
+            db.state(conn, catalog_url, "ok", rows=len(resources))
+        db.state(conn, registry_url, "ok", rows=len(registers))
+    except Exception as exc:
+        report["problems"].append(f"Образование: каталог НВО IV/X: {exc}")
+    finally:
+        conn.execute("SELECT pg_advisory_unlock(8016001)")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "freshness"])
+    parser.add_argument("--step", required=True, choices=["migrate", "mon", "history", "legacy", "dzi", "nvo", "freshness"])
     args = parser.parse_args()
     with db.connect(autocommit=True) as conn:
         if args.step == "migrate":
@@ -264,6 +329,8 @@ def main():
             report = refresh_legacy(conn)
         elif args.step == "dzi":
             report = refresh_dzi(conn)
+        elif args.step == "nvo":
+            report = refresh_nvo(conn)
         else:
             report = {"problems": freshness(conn)}
     print(json.dumps(report, ensure_ascii=False, default=str))

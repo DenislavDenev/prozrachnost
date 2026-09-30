@@ -221,3 +221,90 @@ def publish_dzi(conn, resource, exam_sha, table, register=None, register_sha=Non
         if register:
             state(conn, register.uri, "ok", rows=len(schools))
     return "stored"
+
+
+def publish_nvo(conn, resource, exam_sha, table, register=None, register_sha=None, schools=None, now=None):
+    """Publish one NVO IV/X year atomically, with the established mismatch and shrink gates."""
+    now = now or datetime.now(timezone.utc)
+    if (table.year != resource.year or not table.results or table.rows != len(table.codes)
+            or len(table.results) != table.rows * len(table.subjects)):
+        raise ShapeError("NVO result count does not reconcile")
+    verification = "code" if schools is not None else "no-code"
+    if verification == "code":
+        unmatched = sorted(table.codes - schools.keys())
+        if len(unmatched) / table.rows > 0.02:
+            raise ShapeError(f"Too many unmatched NVO school codes: {len(unmatched)} of {table.rows}")
+        matched_count = table.rows - len(unmatched)
+    else:
+        unmatched, matched_count = [], 0
+    keys = {(row.neispuo, row.subject) for row in table.results}
+    if len(keys) != len(table.results):
+        raise ShapeError("Duplicate NVO result key")
+    with conn.transaction():
+        old = conn.execute("""SELECT sha,register_sha,verification,school_count,result_count
+            FROM live.nvo_publication WHERE resource=%s""", (resource.uri,)).fetchone()
+        if old and old[:3] == (exam_sha, register_sha, verification):
+            state(conn, resource.uri, "ok", rows=table.rows)
+            return "unchanged"
+        previous = {(row[0], row[1]): tuple(str(x) if x is not None else None for x in row[2:])
+                    for row in conn.execute("""SELECT neispuo,subject,school,oblast,municipality,
+                        town,takers,score,matched FROM live.nvo_result WHERE resource=%s""", (resource.uri,))}
+        combined_sha = hashlib.sha256((exam_sha + (register_sha or "")).encode()).hexdigest()
+        if old and (table.rows < old[3] or len(table.results) < old[4]
+                    or previous.keys() - keys):
+            held = conn.execute("SELECT sha,first_at FROM ops.nvo_held WHERE resource=%s",
+                                (resource.uri,)).fetchone()
+            if not held or held[0] != combined_sha:
+                conn.execute("""INSERT INTO ops.nvo_held(resource,sha,first_at) VALUES (%s,%s,%s)
+                    ON CONFLICT(resource) DO UPDATE SET sha=EXCLUDED.sha,first_at=EXCLUDED.first_at""",
+                    (resource.uri, combined_sha, now))
+            if not held or held[0] != combined_sha or now - held[1] < timedelta(days=1):
+                state(conn, resource.uri, "held", "По-малък отговор, чака второ четене", table.rows)
+                return "held"
+        conn.execute("""INSERT INTO live.nvo_publication(resource,exam,school_year,sha,updated_at,
+            register_resource,register_sha,verification,school_count,subject_count,result_count,
+            matched_count,unmatched) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(resource) DO UPDATE SET exam=EXCLUDED.exam,school_year=EXCLUDED.school_year,
+            sha=EXCLUDED.sha,updated_at=EXCLUDED.updated_at,register_resource=EXCLUDED.register_resource,
+            register_sha=EXCLUDED.register_sha,verification=EXCLUDED.verification,
+            school_count=EXCLUDED.school_count,subject_count=EXCLUDED.subject_count,
+            result_count=EXCLUDED.result_count,matched_count=EXCLUDED.matched_count,
+            unmatched=EXCLUDED.unmatched,published_at=now()""",
+            (resource.uri, table.exam, table.year, exam_sha, resource.updated_at,
+             register.uri if register else None, register_sha, verification, table.rows,
+             len(table.subjects), len(table.results), matched_count, Jsonb(unmatched)))
+        conn.execute("DELETE FROM live.nvo_result WHERE resource=%s", (resource.uri,))
+        values = [(resource.uri, row.neispuo, row.school, row.oblast, row.municipality,
+                   row.town, row.subject, row.takers, row.score,
+                   row.neispuo in schools if schools is not None else None)
+                  for row in table.results]
+        with conn.cursor() as cursor:
+            cursor.executemany("""INSERT INTO live.nvo_result(resource,neispuo,school,oblast,
+                municipality,town,subject,takers,score,matched)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", values)
+        if not old:
+            conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                VALUES ('mon-nvo',%s,'results',NULL,%s,'new-resource')""",
+                (resource.uri, str(len(values))))
+        else:
+            for row in table.results:
+                key = (row.neispuo, row.subject)
+                current = tuple(str(x) if x is not None else None for x in
+                                (row.school, row.oblast, row.municipality, row.town, row.takers,
+                                 row.score, row.neispuo in schools if schools is not None else None))
+                before = previous.pop(key, None)
+                if before != current:
+                    conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                        VALUES ('mon-nvo',%s,'result',%s,%s,%s)""",
+                        (f"{resource.uri}/{row.neispuo}/{row.subject}",
+                         json.dumps(before, ensure_ascii=False), json.dumps(current, ensure_ascii=False),
+                         "new-record" if before is None else "rewritten"))
+            for (code, subject), before in previous.items():
+                conn.execute("""INSERT INTO ops.change_log(source,ref,field,old,new,cause)
+                    VALUES ('mon-nvo',%s,'result',%s,NULL,'removed')""",
+                    (f"{resource.uri}/{code}/{subject}", json.dumps(before, ensure_ascii=False)))
+        conn.execute("DELETE FROM ops.nvo_held WHERE resource=%s", (resource.uri,))
+        state(conn, resource.uri, "ok", rows=table.rows)
+        if register:
+            state(conn, register.uri, "ok", rows=len(schools))
+    return "stored"

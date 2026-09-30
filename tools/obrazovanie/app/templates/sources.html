@@ -20,6 +20,14 @@
  · <a class="l" href="{{ register_url }}">Регистър {{ item.register_updated }} · {{ item.register_resource[:8] }} ↗</a></span></p>
 {% endfor %}</section>
 {% endif %}
+{% if nvo_publications %}
+<section class="p space-top"><div class="ph"><h2>НВО IV и X клас по години</h2></div>
+{% for item in nvo_publications %}
+<p><strong>НВО {{ 'IV' if item.exam == 'nvo4' else 'X' }} · {{ item.year }}</strong> · {{ item.schools | num }} училища · {{ item.subjects | num }} предмета.
+{% if item.verification == 'no-code' %}Без сверка с регистър по код.{% else %}{{ item.matched | num }} кода са сверени с регистъра.{% endif %}<br>
+<span class="sub"><a class="l" href="/nvo/{{ '4' if item.exam == 'nvo4' else '10' }}/{{ item.year | replace('/', '-') }}">Виж резултатите ↗</a> · <a class="l" href="{{ nvo_urls[item.exam] }}">МОН · {{ item.updated }} · ресурс {{ item.resource[:8] }} ↗</a></span></p>
+{% endfor %}</section>
+{% endif %}
 {% if dzi_publications %}
 <section class="p space-top"><div class="ph"><h2>Матури по години и сесии</h2></div>
 {% for item in dzi_publications %}

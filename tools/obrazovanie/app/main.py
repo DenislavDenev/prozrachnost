@@ -16,6 +16,7 @@ from markupsafe import Markup
 from ingest.config import DATA
 from ingest.db import connect
 from ingest.dzi import DZI_DATASET
+from ingest.nvo import DATASETS as NVO_DATASETS
 from ingest.sources import NVO7_DATASET, SCHOOLS_DATASET
 from . import feedback
 
@@ -24,6 +25,7 @@ ROOT = Path(__file__).resolve().parent
 EXAM_URL = f"https://data.egov.bg/data/view/{NVO7_DATASET}"
 REGISTER_URL = f"https://data.egov.bg/data/view/{SCHOOLS_DATASET}"
 DZI_URL = f"https://data.egov.bg/data/view/{DZI_DATASET}"
+NVO_URLS = {exam: f"https://data.egov.bg/data/view/{dataset}" for exam, dataset in NVO_DATASETS.items()}
 app = FastAPI(title="Образование", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
@@ -41,6 +43,7 @@ templates.env.filters["num"] = fmt
 
 
 SUBJECT_NAMES = {"БЕЛ": "Български език и литература", "МАТ": "Математика", "Мат": "Математика",
+    "ЧО": "Човекът и обществото", "ЧП": "Човекът и природата",
     "ИСТ": "История и цивилизации", "Ист": "История и цивилизации", "ФА": "Физика и астрономия",
     "ГИ": "География и икономика", "ГЕО": "География и икономика", "ХООС": "Химия и опазване на околната среда",
     "БЗО": "Биология и здравно образование", "Фил": "Философия", "ФИЛ": "Философия",
@@ -168,6 +171,84 @@ def school_dzi(code):
     return list(groups.values())
 
 
+def nvo_sources():
+    with connect() as conn:
+        return [dict(resource=r[0], exam=r[1], year=r[2], updated=r[3][:10],
+                     schools=r[4], subjects=r[5], verification=r[6], matched=r[7])
+                for r in conn.execute("""SELECT resource,exam,school_year,updated_at,school_count,
+                    subject_count,verification,matched_count FROM live.nvo_publication
+                    ORDER BY school_year DESC,exam""")]
+
+
+def nvo_snapshot(exam, year):
+    if exam not in NVO_DATASETS or not re.fullmatch(r"20\d{2}/20\d{2}", year):
+        return None
+    with connect() as conn:
+        row = conn.execute("""SELECT resource,updated_at,school_count,subject_count,result_count,
+            verification,matched_count,unmatched FROM live.nvo_publication
+            WHERE exam=%s AND school_year=%s""", (exam, year)).fetchone()
+        if not row:
+            return None
+        subjects = [dict(subject=r[0], schools=r[1], takers=r[2], mean=r[3])
+                    for r in conn.execute("""SELECT subject,count(*),
+                        sum(takers) FILTER (WHERE takers>0 AND score IS NOT NULL),
+                        round(sum(score*takers) FILTER (WHERE takers>0 AND score IS NOT NULL)
+                            / nullif(sum(takers) FILTER (WHERE takers>0 AND score IS NOT NULL),0),2)
+                        FROM live.nvo_result WHERE resource=%s GROUP BY subject
+                        ORDER BY subject""", (row[0],))]
+    return dict(exam=exam, year=year, resource=row[0], updated=row[1][:10],
+                schools=row[2], subject_count=row[3], results=row[4], verification=row[5],
+                matched=row[6], unmatched=row[7], subjects=subjects)
+
+
+def school_nvo(code):
+    groups = {}
+    with connect() as conn:
+        for exam, year, resource, updated, verification, matched, subject, takers, score in conn.execute("""
+            SELECT p.exam,p.school_year,p.resource,p.updated_at,p.verification,r.matched,
+                   r.subject,r.takers,r.score FROM live.nvo_result r
+            JOIN live.nvo_publication p ON p.resource=r.resource WHERE r.neispuo=%s
+            ORDER BY p.exam,p.school_year DESC,r.subject""", (code,)):
+            item = groups.setdefault(resource, dict(exam=exam, year=year, resource=resource,
+                updated=updated[:10], verification=verification, matched=matched, subjects=[]))
+            item["subjects"].append(dict(subject=subject, takers=takers, score=score))
+    return list(groups.values())
+
+
+def school_identity(code):
+    with connect() as conn:
+        row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
+            FROM live.nvo_result r JOIN live.nvo_publication p ON p.resource=r.resource
+            WHERE r.neispuo=%s ORDER BY p.school_year DESC LIMIT 1""", (code,)).fetchone()
+        if not row:
+            row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
+                FROM live.dzi_result r JOIN live.dzi_publication p ON p.resource=r.resource
+                WHERE r.neispuo=%s AND r.is_school ORDER BY p.school_year DESC LIMIT 1""",
+                (code,)).fetchone()
+    return dict(code=code, name=row[0], oblast=row[1], municipality=row[2], town=row[3],
+                matched=row[4], subjects={}) if row else None
+
+
+def nvo_schools(resource, subject="", q="", page=1, limit=50, sort="name"):
+    q = q.strip()[:120]
+    order = {"name": "lower(school),neispuo,subject",
+             "takers": "takers DESC NULLS LAST,lower(school),neispuo,subject",
+             "score": "CASE WHEN takers>=5 THEN score END DESC NULLS LAST,lower(school),neispuo,subject"}.get(sort)
+    if order is None:
+        raise HTTPException(400, "Непозната подредба")
+    where = """resource=%s AND (%s='' OR subject=%s) AND
+        (%s='' OR school ILIKE '%%'||%s||'%%' OR neispuo=%s OR town ILIKE '%%'||%s||'%%')"""
+    params = [resource, subject, subject, q, q, q, q]
+    with connect() as conn:
+        count = conn.execute("SELECT count(*) FROM live.nvo_result WHERE " + where, params).fetchone()[0]
+        rows = [dict(code=r[0], school=r[1], town=r[2], subject=r[3], takers=r[4],
+                     score=r[5], matched=r[6]) for r in conn.execute("""
+            SELECT neispuo,school,town,subject,takers,score,matched FROM live.nvo_result
+            WHERE """ + where + " ORDER BY " + order + " LIMIT %s OFFSET %s",
+            params + [limit, (page-1)*limit])]
+    return count, rows
+
+
 def matura_schools(resource, subject="", q="", page=1, limit=50, sort="name"):
     """School results for one publication; score order excludes small groups."""
     q = q.strip()[:120]
@@ -196,7 +277,8 @@ def render(request, page, data=None, **context):
         hub_url=hub, nav=context.pop("nav", ""), d=data,
         feedback_button=Markup(feedback.BUTTON),
         support_link=Markup(feedback.support_link(hub)),
-        exam_url=EXAM_URL, register_url=REGISTER_URL, dzi_url=DZI_URL, **context))
+        exam_url=EXAM_URL, register_url=REGISTER_URL, dzi_url=DZI_URL,
+        nvo_urls=NVO_URLS, **context))
 
 
 @app.get("/healthz")
@@ -215,7 +297,10 @@ def favicon():
 def home(request: Request):
     data = snapshot()
     scores = {subject: weighted(data["schools"], subject) for subject in ("БЕЛ", "МАТ")} if data else {}
-    return render(request, "home.html", data, nav="Табло", scores=scores)
+    sources = nvo_sources()
+    years = {exam: max((item["year"] for item in sources if item["exam"] == exam), default=None)
+             for exam in NVO_DATASETS}
+    return render(request, "home.html", data, nav="Табло", scores=scores, nvo_years=years)
 
 
 def selected(data, q="", oblast="", municipality=""):
@@ -243,15 +328,21 @@ def school_detail(request: Request, code: str):
     data = snapshot()
     school = next((row for row in data["schools"] if row["code"] == code), None) if data else None
     if school is None:
-        raise HTTPException(404, "Няма такова училище")
-    municipality = [r for r in data["schools"] if r["municipality"] == school["municipality"] and r["oblast"] == school["oblast"]]
-    oblast = [r for r in data["schools"] if r["oblast"] == school["oblast"]]
-    comparison = [("Училището", school["subjects"]["БЕЛ"]["score"], school["subjects"]["МАТ"]["score"]),
-                  ("Общината", weighted(municipality, "БЕЛ"), weighted(municipality, "МАТ")),
-                  ("Областта", weighted(oblast, "БЕЛ"), weighted(oblast, "МАТ")),
-                  ("Страната, по училищния файл", weighted(data["schools"], "БЕЛ"), weighted(data["schools"], "МАТ"))]
+        school = school_identity(code)
+        if school is None:
+            raise HTTPException(404, "Няма такова училище")
+        comparison = []
+        history = school_history(code, "9999/9999")
+    else:
+        municipality = [r for r in data["schools"] if r["municipality"] == school["municipality"] and r["oblast"] == school["oblast"]]
+        oblast = [r for r in data["schools"] if r["oblast"] == school["oblast"]]
+        comparison = [("Училището", school["subjects"]["БЕЛ"]["score"], school["subjects"]["МАТ"]["score"]),
+                      ("Общината", weighted(municipality, "БЕЛ"), weighted(municipality, "МАТ")),
+                      ("Областта", weighted(oblast, "БЕЛ"), weighted(oblast, "МАТ")),
+                      ("Страната, по училищния файл", weighted(data["schools"], "БЕЛ"), weighted(data["schools"], "МАТ"))]
+        history = school_history(code, data["year"])
     return render(request, "school.html", data, nav="Училища", school=school, comparison=comparison,
-                  history=school_history(code, data["year"]), matura=school_dzi(code))
+                  history=history, matura=school_dzi(code), nvo=school_nvo(code))
 
 
 @app.get("/uchilishta.csv")
@@ -272,7 +363,7 @@ def school_csv(q: str = "", oblast: str = "", municipality: str = ""):
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
     return render(request, "sources.html", snapshot(), nav="Източници", publications=source_history(),
-                  dzi_publications=dzi_sources())
+                  dzi_publications=dzi_sources(), nvo_publications=nvo_sources())
 
 
 @app.get("/matura", response_class=HTMLResponse)
@@ -327,6 +418,66 @@ def matura_school_csv(year: str, session: str = "may", kind: str = "mandatory",
                          row["town"], row["subject"], row["takers"], row["score"], row["matched"], exam["resource"]])
     return Response("\ufeff" + out.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="matura-uchilishta.csv"'})
+
+
+def nvo_exam(slug):
+    exam = {"4": "nvo4", "10": "nvo10"}.get(slug)
+    if exam is None:
+        raise HTTPException(404, "Няма такъв изпит")
+    return exam
+
+
+@app.get("/nvo", response_class=HTMLResponse)
+def nvo_latest():
+    sources = nvo_sources()
+    years = sorted((item["year"] for item in sources if item["exam"] == "nvo4"), reverse=True)
+    return RedirectResponse("/nvo/4/" + years[0].replace("/", "-") if years else "/nvo/4/none", status_code=307)
+
+
+@app.get("/nvo/{grade}/{year}", response_class=HTMLResponse)
+def nvo_year(request: Request, grade: str, year: str):
+    exam = nvo_exam(grade)
+    sources = nvo_sources()
+    years = sorted({item["year"] for item in sources if item["exam"] == exam}, reverse=True)
+    academic = year.replace("-", "/")
+    if years and academic not in years:
+        raise HTTPException(404, "Няма публикувано НВО за тази година")
+    data = nvo_snapshot(exam, academic) if academic in years else None
+    return render(request, "nvo.html", snapshot(), nav="НВО IV и X", exam=data,
+                  grade=grade, years=years, selected_year=academic)
+
+
+def selected_nvo(grade, year, subject):
+    exam = nvo_snapshot(nvo_exam(grade), year.replace("-", "/"))
+    if not exam or (subject and subject not in {item["subject"] for item in exam["subjects"]}):
+        raise HTTPException(404, "Няма публикувани резултати за този избор")
+    return exam
+
+
+@app.get("/nvo/{grade}/{year}/uchilishta", response_class=HTMLResponse)
+def nvo_school_list(request: Request, grade: str, year: str, subject: str = "", q: str = "",
+                    page: int = 1, sort: str = "name"):
+    exam = selected_nvo(grade, year, subject)
+    page = max(1, page)
+    count, rows = nvo_schools(exam["resource"], subject, q, page, sort=sort)
+    return render(request, "nvo_schools.html", snapshot(), nav="НВО IV и X", exam=exam,
+                  grade=grade, rows=rows, count=count, subject=subject, q=q.strip()[:120],
+                  page_number=page, sort=sort)
+
+
+@app.get("/nvo/{grade}/{year}/uchilishta.csv")
+def nvo_school_csv(grade: str, year: str, subject: str = "", q: str = "", sort: str = "name"):
+    exam = selected_nvo(grade, year, subject)
+    _, rows = nvo_schools(exam["resource"], subject, q, limit=100000, sort=sort)
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["Изпит", "Учебна година", "Код по НЕИСПУО", "Училище", "Населено място",
+                     "Предмет", "Явили се", "Среден резултат в точки", "Сверено с регистъра", "Ресурс на МОН"])
+    for row in rows:
+        writer.writerow(["НВО " + grade, exam["year"], row["code"], row["school"], row["town"],
+                         row["subject"], row["takers"], row["score"], row["matched"], exam["resource"]])
+    return Response("\ufeff" + out.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="nvo-uchilishta.csv"'})
 
 
 @app.get("/how", response_class=HTMLResponse)
