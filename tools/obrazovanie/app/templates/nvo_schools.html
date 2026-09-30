@@ -6,6 +6,8 @@
 <p class="lede">Учебна {{ exam.year }} година · среден резултат по предмет, в точки от 0 до 100.</p>
 <form class="filters" method="get">
   <label>Предмет<select name="subject"><option value="">Всички предмети</option>{% for item in exam.subjects %}<option value="{{ item.subject }}" {% if item.subject == subject %}selected{% endif %}>{{ item.subject | subject_name }}</option>{% endfor %}</select></label>
+  <label>Област<select name="oblast"><option value="">Всички области</option>{% for name in oblasts %}<option value="{{ name }}" {{ 'selected' if name == oblast }}>{{ name }}</option>{% endfor %}</select></label>
+  <label>Община<select name="municipality"><option value="">Всички общини</option>{% for area, name in places %}<option value="{{ name }}" data-oblast="{{ area }}" {{ 'selected' if name == municipality and (not oblast or area == oblast) }}>{{ name }}</option>{% endfor %}</select></label>
   <label>Училище, код или населено място<input name="q" value="{{ q }}" placeholder="Търси"></label>
   <label>Подредба<select name="sort"><option value="name" {% if sort == 'name' %}selected{% endif %}>По име</option><option value="takers" {% if sort == 'takers' %}selected{% endif %}>По брой явили се</option><option value="score" {% if sort == 'score' %}selected{% endif %}>По резултат (поне 5 явили се)</option></select></label>
   <button type="submit">Покажи</button>
@@ -15,8 +17,9 @@
 {% for row in rows %}<tr><td>{% if row.matched %}<a class="l" href="/uchilishta/{{ row.code }}">{{ row.school }}</a>{% else %}{{ row.school }}{% endif %}</td><td>{{ row.town }}</td><td>{{ row.subject | subject_name }}</td><td class="n">{{ row.takers | num }}</td><td class="n">{% if row.score is not none %}{{ row.score | num(2) }}{% else %}няма данни{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% if not rows %}<p class="sub">Няма резултати за избраното търсене.</p>{% endif %}
-{% if count > 50 %}<nav class="pager" aria-label="Страници">{% if page_number > 1 %}<a class="l" href="?subject={{ subject | urlencode }}&q={{ q | urlencode }}&sort={{ sort }}&page={{ page_number-1 }}">← Предишна</a>{% endif %}<span>Страница {{ page_number }} от {{ ((count-1)//50)+1 }}</span>{% if page_number*50 < count %}<a class="l" href="?subject={{ subject | urlencode }}&q={{ q | urlencode }}&sort={{ sort }}&page={{ page_number+1 }}">Следваща →</a>{% endif %}</nav>{% endif %}
-<p class="src"><a href="{{ nvo_urls[exam.exam] }}">Източник · МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a> · <a href="/nvo/{{ grade }}/{{ exam.year | replace('/', '-') }}/uchilishta.csv?subject={{ subject | urlencode }}&q={{ q | urlencode }}&sort={{ sort }}">CSV</a></p>
+{% set filter_query = 'subject=' + (subject | urlencode) + '&q=' + (q | urlencode) + '&oblast=' + (oblast | urlencode) + '&municipality=' + (municipality | urlencode) + '&sort=' + sort %}
+{% if count > 50 %}<nav class="pager" aria-label="Страници">{% if page_number > 1 %}<a class="l" href="?{{ filter_query }}&page={{ page_number-1 }}">← Предишна</a>{% endif %}<span>Страница {{ page_number }} от {{ ((count-1)//50)+1 }}</span>{% if page_number*50 < count %}<a class="l" href="?{{ filter_query }}&page={{ page_number+1 }}">Следваща →</a>{% endif %}</nav>{% endif %}
+<p class="src"><a href="{{ nvo_urls[exam.exam] }}">Източник · МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a> · <a href="/nvo/{{ grade }}/{{ exam.year | replace('/', '-') }}/uchilishta.csv?{{ filter_query }}">CSV</a></p>
 </section>
 <p class="asof space-top">Под 5 явили се средният резултат е нестабилен. Разликите не измерват сами по себе си качеството на преподаване.{% if exam.verification == 'no-code' %} За тази година няма сверка с регистър по код.{% endif %}</p>
 {% endblock %}

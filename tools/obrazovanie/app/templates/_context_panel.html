@@ -1,23 +1,24 @@
 <section class="space-top" id="context" aria-labelledby="context-title">
 <h2 class="sec" id="context-title">Ученици и паралелки</h2>
 {% if context_data %}
-<p class="asof">Национални сборове по вид училище за учебната {{ context_data.year }} година. Данните са за системата, не за отделно училище. <a class="l" href="/how">Какво означават ↗</a></p>
+<p class="asof">МОН · учебна {{ context_data.year }} година · национални сборове.</p>
 <div class="grid">
   <section class="p s4 kpi"><div class="n">{{ context_data.students | num }}</div><div class="t">ученици от I до XII клас</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ context_data.institutions | num }}</div><div class="t">училища в 15 вида</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ context_data.groups | num(1) }}</div><div class="t">отчетени групи и паралелки, включително предучилищни</div><div class="w"><a class="l" href="{{ context_urls.classes }}">МОН · {{ context_data.classes_updated }} ↗</a></div></section>
 </div>
-<section class="p space-top"><div class="ph"><div><h3>По клас</h3><p class="sub">Дял от {{ context_data.students | num }} ученици в I–XII клас. Дължината на лентата е спрямо най-многобройния клас.</p></div></div>
-<div class="grade-bars" role="list">
-{% for item in context_data.grades %}<div class="grade-bar" role="listitem"><span>{{ item.grade }} клас</span><div class="grade-track" aria-hidden="true"><i style="width:{{ item.width }}%"></i></div><strong>{{ item.students | num }}</strong><span class="grade-share">{{ item.share | num(1) }}%</span></div>{% endfor %}
+<section class="p space-top"><div class="ph"><div><h3>По клас</h3><p class="sub">Брой и дял от {{ context_data.students | num }} ученици в I–XII клас.</p></div></div>
+<div class="grade-grid">
+{% for item in context_data.grades %}<div class="grade-item"><span>{{ item.grade }} клас</span><strong>{{ item.students | num }}</strong><span>{{ item.share | num(1) }}%</span></div>{% endfor %}
 </div>
 <p class="src"><a href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} · ресурс {{ context_data.pupils_resource[:8] }} ↗</a></p></section>
-<section class="p space-top"><div class="ph"><div><h3>По вид училище</h3><p class="sub">Учениците са сбор за I–XII клас. МОН публикува отделно {{ context_data.special_students | num }} ученици в XIV и XV клас.</p></div></div>
-<div class="table-scroll"><table class="context-types"><thead><tr><th>Вид училище</th><th class="n">Училища</th><th class="n">Ученици I–XII</th><th class="n">Групи и паралелки</th></tr></thead><tbody>
-{% for item in context_data.kinds %}<tr><td>{{ item.name }}</td><td class="n">{{ item.institutions | num }}</td><td class="n">{{ item.students | num }}</td><td class="n">{{ item.groups | num(1) }}</td></tr>{% endfor %}
+<section class="p space-top"><div class="ph"><div><h3>По вид училище</h3><p class="sub">Учениците са сбор за I–XII клас. МОН публикува отделно {{ context_data.special_students | num }} ученици в XIV и XV клас.</p></div><a class="more" href="/context/types.csv">CSV ↓</a></div>
+<label class="municipality-search-label" for="context-kind-search">Търси вид училище</label><input id="context-kind-search" type="search" autocomplete="off" placeholder="Вид училище">
+<div class="table-scroll"><table class="context-types sortable-client" id="context-type-table"><thead><tr><th><button class="sort" type="button" data-col="0">Вид училище</button></th><th class="n"><button class="sort" type="button" data-col="1">Училища</button></th><th class="n"><button class="sort" type="button" data-col="2">Ученици I–XII</button></th><th class="n"><button class="sort" type="button" data-col="3">Групи и паралелки</button></th></tr></thead><tbody>
+{% for item in context_data.kinds %}<tr><td data-sort="{{ item.name | lower }}">{{ item.name }}</td><td class="n" data-sort="{{ item.institutions }}">{{ item.institutions | num }}</td><td class="n" data-sort="{{ item.students }}">{{ item.students | num }}</td><td class="n" data-sort="{{ item.groups }}">{{ item.groups | num(1) }}</td></tr>{% endfor %}
 </tbody></table></div>
 <p class="src"><a href="{{ context_urls.pupils }}">МОН · ученици · {{ context_data.pupils_updated }} · {{ context_data.pupils_resource[:8] }} ↗</a> · <a href="{{ context_urls.classes }}">МОН · групи и паралелки · {{ context_data.classes_updated }} · {{ context_data.classes_resource[:8] }} ↗</a></p>
 </section>
-<p class="asof space-top">Видовете училища не водят към списък на конкретни институции: справката има само национални сборове, а използваният училищен регистър няма поле за този вид. Не свързваме по предположение от името. Сборът на МОН включва и предучилищни деца; числото за I–XII клас ги изключва.</p>
+<p class="asof space-top">Справката няма кодове на отделните училища. Видовете не водят към профили.</p>
 {% else %}<p class="lede">Националните справки още се проверяват.</p>{% endif %}
 </section>

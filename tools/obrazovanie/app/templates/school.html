@@ -72,7 +72,6 @@
 {% if matura %}
 <h2 class="sec">Матури по години</h2>
 <p class="asof">Оценките са от 2 до 6. Изборът на предмети се мени по години; годините не са училищна класация.</p>
-{% include "_dzi_glossary.html" %}
 {% for item in matura %}
 <details class="p space-top exam-fold" {% if loop.first %}open{% endif %}>
 <summary><strong>{{ item.year }}</strong> · {{ 'Май–юни' if item.session == 'may' else 'Август–септември' }} · {{ 'задължителни' if item.kind == 'mandatory' else 'по желание' }} <span>{{ item.subjects | length }} резултата</span></summary>
@@ -88,4 +87,5 @@
 <p class="asof space-top">При „няма данни“ броят може да е скрит от МОН с „–“ или оценката да липсва в изходния файл.</p>
 {% endif %}
 <p class="asof space-top">Показани са само публикувани резултати с проверена структура и ясно посочен източник. Профилите, професиите и бюджетните суми не са свързани с този профил без надежден общ код. <a class="l" href="/sources">Достъпни източници ↗</a> · <a class="l" href="/how">Ограничения на сравнението ↗</a></p>
+{% if matura %}{% include "_dzi_glossary.html" %}{% endif %}
 {% endblock %}

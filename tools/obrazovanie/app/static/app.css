@@ -172,13 +172,12 @@ th.n .sort { flex-direction: row-reverse; }
 
 /* Образование: the controls and comparison use the existing Sofia design tokens. */
 .space-top { margin-top: 24px; }
-.lookup, .filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0 24px; }
-.lookup label, .filters label { display: grid; gap: 5px; font-size: 13px; color: var(--ink-3); }
-.lookup input { min-width: min(360px, 100%); }
+.filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0 24px; }
+.filters label { display: grid; gap: 5px; font-size: 13px; color: var(--ink-3); }
 .filters input { min-width: min(260px, 100%); }
 .filters select { max-width: 220px; }
-.lookup button, .filters button { height: 36px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent); color: #fff; padding: 0 18px; font: 600 14px var(--font-body); cursor: pointer; }
-.lookup button:hover, .filters button:hover { background: var(--accent-ink); }
+.filters button { height: 36px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent); color: #fff; padding: 0 18px; font: 600 14px var(--font-body); cursor: pointer; }
+.filters button:hover { background: var(--accent-ink); }
 .table-scroll { overflow-x: auto; scrollbar-color: var(--accent) var(--line-2); }
 .table-scroll table { min-width: 760px; }
 .compare-head, .compare-row { display: grid; grid-template-columns: minmax(120px, 1fr) repeat(2, minmax(90px, 140px)); gap: 12px; align-items: center; padding: 11px 0; }
@@ -198,8 +197,6 @@ th.n .sort { flex-direction: row-reverse; }
 .municipality-map path.municipality-selected { stroke: var(--ink); stroke-width: 1.8; }
 .municipality-loading { position: absolute; inset: 40% 10% auto; text-align: center; color: var(--ink-3); font-size: 14px; }
 .municipality-detail { min-height: 24px; font-size: 14px; font-weight: 600; margin: 6px 0 12px; }
-.municipality-legend { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12px; }
-.municipality-legend i { width: 130px; height: 9px; border-radius: 3px; background: linear-gradient(90deg, #eef7f3, #d2eadf, #a5d8c2, #70bf9f, #2d9874, #0b7a5e); }
 .municipality-list { display: flex; flex-direction: column; }
 .municipality-search-label { display: block; color: var(--ink-3); font-size: 13px; margin-bottom: 5px; }
 .municipality-list input { width: 100%; }
@@ -213,14 +210,7 @@ th.n .sort { flex-direction: row-reverse; }
 
 .context-callout { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .context-callout .sub { margin-bottom: 0; }
-.grade-bars { display: grid; gap: 7px; }
-.grade-bar { display: grid; grid-template-columns: 65px minmax(0, 1fr) 90px 54px; align-items: center; gap: 12px; font-size: 14px; }
-.grade-bar strong { text-align: right; font-weight: 600; }
-.grade-share { text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.grade-track { height: 12px; background: var(--line-2); border-radius: 3px; overflow: hidden; }
-.grade-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
 .context-types { min-width: 650px; }
-@media (max-width: 720px) { .grade-bar { grid-template-columns: 50px minmax(0, 1fr) 72px 39px; gap: 7px; font-size: 12px; } }
 .year-strip a { border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; font-size: 13.5px; color: var(--ink-3); }
 .year-strip a:hover { border-color: var(--accent); color: var(--accent-ink); }
 .year-strip a.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
@@ -230,8 +220,36 @@ th.n .sort { flex-direction: row-reverse; }
 .exam-fold[open] summary { margin-bottom: 16px; }
 .pager { display: flex; gap: 16px; align-items: center; justify-content: center; padding: 18px 0 4px; font-size: 14px; }
 @media (max-width: 520px) {
-  .lookup input, .filters input, .filters select { width: 100%; min-width: 0; max-width: none; }
-  .lookup label, .filters label { width: 100%; }
+  .filters input, .filters select { width: 100%; min-width: 0; max-width: none; }
+  .filters label { width: 100%; }
   .compare-head, .compare-row { grid-template-columns: minmax(100px, 1fr) repeat(2, minmax(75px, 1fr)); gap: 6px; font-size: 13px; }
   .hub { font-size: 13px; }
 }
+
+/* Aligned map panels, consistent controls, and literal grade counts. */
+.municipality-layout > .p { margin-top: 0; min-width: 0; }
+.municipality-layout .municipality-list { position: sticky; top: 76px; align-self: start; }
+.municipality-layout h2 { margin: 0; }
+.municipality-map path.map-neighbour { fill: #eceff3; stroke: #fff; stroke-width: .3; pointer-events: none; }
+.municipality-map svg { cursor: grab; user-select: none; touch-action: pan-x pan-y; }
+.municipality-map svg:active { cursor: grabbing; }
+.municipality-map path.map-selected-halo { fill: none; stroke: #fff; stroke-width: 4; pointer-events: none; }
+.municipality-map path.map-selected-line { fill: none; stroke: var(--ink); stroke-width: 1.8; pointer-events: none; }
+.map-zoom { position: absolute; right: 8px; top: 8px; display: grid; gap: 4px; }
+.map-zoom button { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; color: var(--ink-2); font: 600 18px/1 var(--font-body); cursor: pointer; }
+.municipality-layout .sub { min-height: 22px; margin: 4px 0 16px; }
+.map-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); margin: 18px 0 16px; }
+.map-controls label { display: grid; gap: 4px; font-size: 13px; color: var(--ink-3); }
+.map-controls select { min-width: 130px; max-width: 210px; }
+#map-subject { min-width: 260px; max-width: 310px; }
+.map-controls button { height: 36px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent); color: #fff; padding: 0 16px; font: 600 14px var(--font-body); cursor: pointer; }
+.municipality-scroll { height: 500px; max-height: 70vh; scrollbar-color: var(--accent) var(--line-2); }
+.grade-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(6, auto); grid-auto-flow: column; gap: 0 24px; }
+.grade-item { display: grid; grid-template-columns: 1fr 90px 55px; gap: 12px; border-bottom: 1px solid var(--line-2); padding: 8px 0; font-size: 14px; }
+.grade-item strong, .grade-item span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.grade-item span:last-child { color: var(--ink-3); }
+.exam-glossary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; margin: 0; }
+.exam-glossary > div { display: grid; grid-template-columns: 125px minmax(0, 1fr); gap: 10px; border-bottom: 1px solid var(--line-2); padding: 8px 0; font-size: 14px; }
+.exam-glossary dt { font-weight: 700; } .exam-glossary dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 1080px) { .municipality-layout .municipality-list { position: static; } }
+@media (max-width: 720px) { .grade-grid, .exam-glossary { grid-template-columns: 1fr; } .grade-grid { grid-template-rows: none; grid-auto-flow: row; } .map-controls label { flex: 1 1 140px; } .map-controls select { width: 100%; max-width: none; } }

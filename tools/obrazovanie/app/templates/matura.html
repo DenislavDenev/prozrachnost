@@ -4,7 +4,6 @@
 <h1>Държавни зрелостни изпити</h1>
 <p class="lede">Резултати по предмет и училище от публикуваните таблици на МОН. Оценките са по скалата от 2 до 6.</p>
 <p class="asof">Август–септември е втора изпитна сесия. Освен при предишна слаба оценка, на нея може да се явят и зрелостници, пропуснали или недопуснати на предишна сесия. <a class="l" href="https://www.mon.bg/news/v-435-uchilistha-sthe-se-provede-matura-po-balgarski-ezik-i-literatura/">МОН · 20.08.2026 ↗</a></p>
-{% include "_dzi_glossary.html" %}
 {% if years %}
 <div class="year-strip scroll" aria-label="Учебна година">
 {% for year in years %}<a href="/matura/{{ year | replace('/', '-') }}" class="{{ 'on' if year == selected_year else '' }}" {% if year == selected_year %}aria-current="page"{% endif %}>{{ year }}</a>{% endfor %}
@@ -35,4 +34,5 @@
 {% if exam.verification == 'no-code' %}<p class="asof space-top">За тази година няма регистър с кодове по НЕИСПУО за сверка. Резултатите са от изпитния файл; училища не са свързвани по сходни имена.</p>{% elif exam.unmatched %}<p class="asof space-top">{{ exam.matched | num }} от {{ exam.schools | num }} училища са съпоставени с регистъра по код. <a class="l" href="/sources">Виж източниците ↗</a></p>{% endif %}
 {% else %}<p class="asof space-top">Няма публикувана таблица за този избор.</p>{% endif %}
 {% else %}<p class="lede">Данните за матурите още се подготвят.</p>{% endif %}
+{% include "_dzi_glossary.html" %}
 {% endblock %}

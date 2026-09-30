@@ -1,6 +1,5 @@
 // Sort every row currently selected by the form, without changing the source data.
-const table = document.getElementById('school-table');
-if (table) {
+for (const table of document.querySelectorAll('table.sortable-client')) {
   for (const button of table.querySelectorAll('button.sort')) {
     button.addEventListener('click', () => {
       const index = Number(button.dataset.col);
@@ -14,7 +13,7 @@ if (table) {
         const right = b.cells[index].dataset.sort;
         if (left === '') return right === '' ? 0 : 1;
         if (right === '') return -1;
-        const order = index > 1
+        const order = header.classList.contains('n')
           ? Number(left) - Number(right)
           : left.localeCompare(right, 'bg');
         return (ascending ? 1 : -1) * order;
@@ -24,7 +23,26 @@ if (table) {
   }
 }
 
-const oblast = document.querySelector('select[name=oblast]');
-if (oblast) oblast.addEventListener('change', () => {
-  document.querySelector('select[name=municipality]').value = '';
+// A province limits the municipality choices before submitting any filter form.
+for (const form of document.querySelectorAll('form.filters')) {
+  const oblast = form.querySelector('select[name=oblast]');
+  const municipality = form.querySelector('select[name=municipality]');
+  if (!oblast || !municipality) continue;
+  const update = () => {
+    for (const option of municipality.options) {
+      option.hidden = !!option.dataset.oblast && !!oblast.value && option.dataset.oblast !== oblast.value;
+      option.disabled = option.hidden;
+    }
+    if (municipality.selectedOptions[0]?.hidden) municipality.value = '';
+  };
+  oblast.addEventListener('change', () => { municipality.value = ''; update(); });
+  update();
+}
+
+const kindSearch = document.getElementById('context-kind-search');
+if (kindSearch) kindSearch.addEventListener('input', () => {
+  const q = kindSearch.value.trim().toLocaleLowerCase('bg-BG');
+  for (const row of document.querySelectorAll('#context-type-table tbody tr')) {
+    row.hidden = !row.cells[0].textContent.toLocaleLowerCase('bg-BG').includes(q);
+  }
 });

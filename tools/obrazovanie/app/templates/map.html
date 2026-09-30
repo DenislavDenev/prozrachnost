@@ -2,26 +2,31 @@
 {% block title %}Карта{% endblock %}
 {% block main %}
 <h1>Карта на резултатите</h1>
-{% if d %}
-<p class="lede">НВО VII клас през учебната {{ d.year }} година: среден резултат по общини за БЕЛ и математика.</p>
-<p class="asof">Претеглено по броя явили се от училищния файл на МОН. Оцветяването е по една скала от 0 до 100 точки. Разликите между общините не измерват сами по себе си качеството на преподаване.</p>
-<div class="grid municipality-layout space-top">
-  <section class="p s8"><div class="ph"><div><h2>България</h2><p class="sub" id="municipality-subtitle">Български език и литература · точки</p></div>
-  <div class="tabs" role="group" aria-label="Предмет на картата"><button type="button" class="municipality-subject" data-subject="bel" aria-pressed="true">БЕЛ</button><button type="button" class="municipality-subject" data-subject="math" aria-pressed="false">Математика</button></div></div>
-  <div class="municipality-map"><svg id="municipality-svg" role="img" aria-label="Карта на общините в България. Списъкът вдясно съдържа същите стойности."></svg><p class="municipality-loading" id="municipality-loading">Картата се зарежда при показване. Стойностите са достъпни и в списъка.</p></div>
-  <p class="municipality-detail" id="municipality-detail" aria-live="polite">Избери община, за да видиш резултата и броя явили се.</p>
-  <div class="municipality-legend"><span>0 точки</span><i aria-hidden="true"></i><span>100 точки</span></div>
-  <p class="src"><a href="{{ exam_url }}">МОН · НВО VII · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · © EuroGeographics за административните граници (Eurostat GISCO, LAU 2024)</p>
+{% if mapped %}
+<p class="lede">{{ 'Матури' if mapped.exam == 'dzi' else 'НВО ' + ('VII' if mapped.exam == 'nvo7' else 'IV' if mapped.exam == 'nvo4' else 'X') + ' клас' }}, {{ mapped.year }}: <b>{{ mapped.subject | subject_name }}</b>, {{ mapped.scale }}.</p>
+<form class="map-controls" method="get" action="/karta">
+  <input type="hidden" name="level" value="{{ mapped.level }}">
+  <label>Изпит<select name="exam" id="map-exam"><option value="nvo7" {{ 'selected' if mapped.exam == 'nvo7' }}>НВО VII клас</option><option value="nvo4" {{ 'selected' if mapped.exam == 'nvo4' }}>НВО IV клас</option><option value="nvo10" {{ 'selected' if mapped.exam == 'nvo10' }}>НВО X клас</option><option value="dzi" {{ 'selected' if mapped.exam == 'dzi' }}>Матури</option></select></label>
+  <label>Година<select name="year" id="map-year">{% for year in mapped.years %}<option value="{{ year }}" {{ 'selected' if year == mapped.year }}>{{ year }}</option>{% endfor %}</select></label>
+  {% if mapped.exam == 'dzi' %}<label>Сесия<select name="session" id="map-session"><option value="may" {{ 'selected' if mapped.session == 'may' }}>Май–юни</option><option value="august" {{ 'selected' if mapped.session == 'august' }}>Август–септември</option></select></label><label>Вид<select name="kind" id="map-kind"><option value="mandatory" {{ 'selected' if mapped.kind == 'mandatory' }}>Задължителни</option>{% if mapped.session == 'may' %}<option value="optional" {{ 'selected' if mapped.kind == 'optional' }}>По желание</option>{% endif %}</select></label>{% endif %}
+  <label>Предмет<select name="subject" id="map-subject">{% for name in mapped.subjects %}<option value="{{ name }}" {{ 'selected' if name == mapped.subject }}>{{ name | subject_name }}</option>{% endfor %}</select></label>
+  <button type="submit">Покажи</button>
+</form>
+<div class="ctl"><div class="tabs scroll" role="group" aria-label="Териториално ниво">{% for slug, name, field in mapped.levels %}<a href="/karta?exam={{ mapped.exam }}&year={{ mapped.year | urlencode }}&session={{ mapped.session }}&kind={{ mapped.kind }}&subject={{ mapped.subject | urlencode }}&level={{ slug }}" {% if slug == mapped.level %}aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}</div></div>
+<div class="grid municipality-layout">
+  <section class="p s8 map-panel"><h2>България</h2><p class="sub">{{ mapped.level_name }} · {{ mapped.scale }}</p>
+    <div class="municipality-map"><svg id="municipality-svg" role="img" aria-label="Карта на {{ mapped.level_name | lower }} в България. Стойностите са и в списъка." data-level="{{ mapped.level }}" data-scale="{{ mapped.scale }}"></svg><div class="map-zoom" role="group" aria-label="Мащаб"><button type="button" data-zoom="in" aria-label="Приближи">+</button><button type="button" data-zoom="out" aria-label="Отдалечи">−</button><button type="button" data-zoom="home" aria-label="Цялата карта">⤢</button></div><p class="municipality-loading" id="municipality-loading">Картата се зарежда.</p></div>
+    <p class="municipality-detail" id="municipality-detail" aria-live="polite">Избери място на картата или в списъка.</p>
+    <p class="src"><a href="{{ mapped.source_url }}">МОН · {{ mapped.updated }} · ресурс {{ mapped.resource[:8] }} ↗</a> · <a href="/karta.csv?exam={{ mapped.exam }}&year={{ mapped.year | urlencode }}&session={{ mapped.session }}&kind={{ mapped.kind }}&subject={{ mapped.subject | urlencode }}&level={{ mapped.level }}">CSV</a> · © EuroGeographics за административните граници (Eurostat GISCO)</p>
   </section>
-  <section class="p s4 municipality-list"><div class="ph"><div><h2>Общини</h2><p class="sub">Избери община на картата или отвори училищата от списъка.</p></div></div>
-  <label class="municipality-search-label" for="municipality-search">Търси община</label><input id="municipality-search" type="search" autocomplete="off" placeholder="Име на община">
-  <div class="municipality-scroll scroll"><table><thead><tr><th>Община</th><th class="n">Точки</th></tr></thead><tbody id="municipality-list-body">
-  {% for item in places %}<tr data-code="{{ item.code }}" data-name="{{ item.name }}" data-oblast="{{ item.oblast }}" data-bel="{{ item.bel if item.bel is not none else '' }}" data-math="{{ item.math if item.math is not none else '' }}" data-bel-takers="{{ item.bel_takers }}" data-math-takers="{{ item.math_takers }}"><td>{% if item.href %}<a class="l" href="{{ item.href }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}<small>{{ item.oblast }}</small></td><td class="n municipality-value">{{ item.bel | num(2) }}</td></tr>{% endfor %}
-  </tbody></table></div>
+  <section class="p s4 municipality-list"><h2>{{ mapped.level_name }}</h2><p class="sub">{{ mapped.subject | subject_name }} · {{ mapped.scale }}</p>
+    <label class="municipality-search-label" for="municipality-search">Търси място</label><input id="municipality-search" type="search" autocomplete="off" placeholder="Име">
+    <div class="municipality-scroll scroll" tabindex="0"><table class="sortable-client"><thead><tr><th><button class="sort" type="button" data-col="0">Място</button></th><th class="n"><button class="sort" type="button" data-col="1">{{ 'Оценка' if mapped.exam == 'dzi' else 'Точки' }}</button></th></tr></thead><tbody id="municipality-list-body">
+      {% for item in mapped.places %}<tr data-code="{{ item.code }}" data-name="{{ item.name }}" data-oblast="{{ item.oblast }}" data-score="{{ item.score if item.score is not none else '' }}" data-takers="{{ item.takers if item.takers is not none else '' }}"><td data-sort="{{ item.name | lower }}"><button class="map-pick" type="button">{{ item.name }}</button>{% if item.href %} <a class="l" href="{{ item.href }}" aria-label="Училища в {{ item.name }}">↗</a>{% endif %}{% if item.oblast %}<small>{{ item.oblast }}</small>{% endif %}</td><td class="n municipality-value" data-sort="{{ item.score if item.score is not none else '' }}">{{ item.score | num(2) }}</td></tr>{% endfor %}
+    </tbody></table></div>
   </section>
 </div>
-{% if unmapped %}<p class="warn">{{ unmapped | length }} училища не могат да се свържат еднозначно с геометрията на община. Резултатите им остават в училищния списък.</p>{% endif %}
-<p class="asof space-top">Двете училища в чужбина от файла на МОН остават в училищния списък, но не участват в картата на българските общини.</p>
+{% if mapped.unmapped %}<p class="asof space-top">{{ mapped.unmapped }} съпоставени училища нямат еднозначна община в картографския справочник.</p>{% endif %}
 <script src="/static/municipality-map.js" defer></script>
-{% else %}<p class="lede">Проверените данни за картата още се подготвят.</p>{% endif %}
+{% else %}<p class="lede">Няма публикувани резултати за картата.</p>{% endif %}
 {% endblock %}
