@@ -20,6 +20,7 @@ def default_nvo_reads(monkeypatch):
     monkeypatch.setattr(main, "school_identity", lambda code: None)
     monkeypatch.setattr(main, "school_status", lambda code: [])
     monkeypatch.setattr(main, "status_sources", lambda: [])
+    monkeypatch.setattr(main, "context_snapshot", lambda: None)
 
 
 def sample_snapshot():

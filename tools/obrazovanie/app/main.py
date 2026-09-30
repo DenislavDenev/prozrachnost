@@ -19,6 +19,7 @@ from ingest.dzi import DZI_DATASET
 from ingest.nvo import DATASETS as NVO_DATASETS
 from ingest.sources import NVO7_DATASET, SCHOOLS_DATASET
 from ingest.status import DATASETS as STATUS_DATASETS
+from ingest.context import DATASETS as CONTEXT_DATASETS
 from . import feedback, municipalities
 
 
@@ -28,6 +29,7 @@ REGISTER_URL = f"https://data.egov.bg/data/view/{SCHOOLS_DATASET}"
 DZI_URL = f"https://data.egov.bg/data/view/{DZI_DATASET}"
 NVO_URLS = {exam: f"https://data.egov.bg/data/view/{dataset}" for exam, dataset in NVO_DATASETS.items()}
 STATUS_URLS = {kind: f"https://data.egov.bg/data/view/{dataset}" for kind, dataset in STATUS_DATASETS.items()}
+CONTEXT_URLS = {kind: f"https://data.egov.bg/data/view/{dataset}" for kind, dataset in CONTEXT_DATASETS.items()}
 app = FastAPI(title="Образование", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
@@ -235,6 +237,32 @@ def status_sources():
             FROM live.status_publication ORDER BY school_year DESC,kind""")]
 
 
+def context_snapshot():
+    with connect() as conn:
+        publication = conn.execute("""SELECT school_year,pupils_resource,classes_resource,
+            pupils_updated,classes_updated,kind_count,grade_1_12_students,reported_groups
+            FROM live.context_publication ORDER BY school_year DESC LIMIT 1""").fetchone()
+        if not publication:
+            return None
+        kinds = [dict(name=r[0], institutions=r[1], grades=r[2], preschool=r[3],
+                      pupils=r[4], groups=r[5], students=sum(r[2].get(str(g), 0) for g in range(1, 13)))
+                 for r in conn.execute("""SELECT kind,institutions,grades,preschool,
+                     reported_pupils,reported_groups FROM live.context_kind
+                     WHERE school_year=%s ORDER BY kind""", (publication[0],))]
+    grades = [dict(grade=g, students=sum(k["grades"].get(str(g), 0) for k in kinds))
+              for g in range(1, 13)]
+    highest = max((row["students"] for row in grades), default=1)
+    for row in grades:
+        row["width"] = round(row["students"] / highest * 100, 1)
+    kinds.sort(key=lambda row: (-row["students"], row["name"]))
+    return dict(year=publication[0], pupils_resource=publication[1], classes_resource=publication[2],
+                pupils_updated=publication[3][:10], classes_updated=publication[4][:10],
+                kind_count=publication[5], students=publication[6], groups=publication[7],
+                institutions=sum(row["institutions"] for row in kinds),
+                special_students=sum(row["grades"].get(str(g), 0) for row in kinds for g in (14, 15)),
+                kinds=kinds, grades=grades)
+
+
 def school_identity(code):
     with connect() as conn:
         row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
@@ -298,7 +326,7 @@ def render(request, page, data=None, **context):
         feedback_button=Markup(feedback.BUTTON),
         support_link=Markup(feedback.support_link(hub)),
         exam_url=EXAM_URL, register_url=REGISTER_URL, dzi_url=DZI_URL,
-        nvo_urls=NVO_URLS, status_urls=STATUS_URLS, **context))
+        nvo_urls=NVO_URLS, status_urls=STATUS_URLS, context_urls=CONTEXT_URLS, **context))
 
 
 @app.get("/healthz")
@@ -322,7 +350,12 @@ def home(request: Request):
     years = {exam: max((item["year"] for item in sources if item["exam"] == exam), default=None)
              for exam in NVO_DATASETS}
     return render(request, "home.html", data, nav="Табло", scores=scores,
-                  places=places, unmapped=unmapped, nvo_years=years)
+                  places=places, unmapped=unmapped, nvo_years=years, context_data=context_snapshot())
+
+
+@app.get("/context", response_class=HTMLResponse)
+def national_context(request: Request):
+    return render(request, "context.html", snapshot(), nav="Контекст", context_data=context_snapshot())
 
 
 def selected(data, q="", oblast="", municipality=""):
@@ -387,7 +420,7 @@ def school_csv(q: str = "", oblast: str = "", municipality: str = ""):
 def sources(request: Request):
     return render(request, "sources.html", snapshot(), nav="Източници", publications=source_history(),
                   dzi_publications=dzi_sources(), nvo_publications=nvo_sources(),
-                  status_publications=status_sources())
+                  status_publications=status_sources(), context_data=context_snapshot())
 
 
 @app.get("/matura", response_class=HTMLResponse)

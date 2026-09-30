@@ -210,6 +210,16 @@ th.n .sort { flex-direction: row-reverse; }
 .municipality-scroll tr.municipality-selected td { background: var(--accent-soft); }
 .municipality-scroll tr[hidden] { display: none; }
 @media (max-width: 1080px) { .municipality-scroll { max-height: 360px; } }
+
+.context-callout { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.context-callout .sub { margin-bottom: 0; }
+.grade-bars { display: grid; gap: 7px; }
+.grade-bar { display: grid; grid-template-columns: 65px minmax(0, 1fr) 90px; align-items: center; gap: 12px; font-size: 14px; }
+.grade-bar strong { text-align: right; font-weight: 600; }
+.grade-track { height: 12px; background: var(--line-2); border-radius: 3px; overflow: hidden; }
+.grade-track i { display: block; height: 100%; border-radius: 3px; background: var(--accent); }
+.context-types { min-width: 650px; }
+@media (max-width: 720px) { .grade-bar { grid-template-columns: 50px minmax(0, 1fr) 72px; gap: 7px; font-size: 12px; } }
 .year-strip a { border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; font-size: 13.5px; color: var(--ink-3); }
 .year-strip a:hover { border-color: var(--accent); color: var(--accent-ink); }
 .year-strip a.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
