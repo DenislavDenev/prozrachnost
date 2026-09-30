@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
 
@@ -62,17 +63,70 @@ def test_pages_render_with_real_sample(monkeypatch):
 
 def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
-    rows, unmapped = main.municipalities.scores(sample_snapshot())
+    data = sample_snapshot()
+    samples = [(school["oblast"], school["municipality"], school["subjects"]["БЕЛ"]["score"],
+                school["subjects"]["БЕЛ"]["takers"], school["matched"]) for school in data["schools"]]
+    rows, unmapped = main.education_map.aggregate(samples, "obshtini", "nvo7", data["year"], "БЕЛ")
     assert len(rows) == 265 and not unmapped
     bansko = next(row for row in rows if row["name"] == "Банско")
-    assert bansko["bel"] == Decimal("56.38") and bansko["bel_takers"] == 84
+    assert bansko["score"] == Decimal("56.38") and bansko["takers"] == 84
+    assert "oblast=" in bansko["href"] and "municipality=" in bansko["href"]
+    for level, expected in (("oblasti", 28), ("rayoni", 6), ("makrorayoni", 2), ("darzhava", 1)):
+        assert len(main.education_map.aggregate(samples, level, "nvo7", data["year"], "БЕЛ")[0]) == expected
+    mapped = dict(exam="nvo7", year=data["year"], session="may", kind="mandatory", subject="БЕЛ",
+        level="obshtini", level_name="Общини", levels=main.education_map.LEVELS,
+        years=[data["year"]], subjects=["БЕЛ", "МАТ"], places=rows, unmapped=unmapped,
+        source_url=main.EXAM_URL, resource=data["exam_resource"], updated=data["exam_updated"],
+        scale="точки от 0 до 100")
+    monkeypatch.setattr(main, "map_snapshot", lambda *a: mapped)
     page = TestClient(main.app).get("/karta")
     assert page.status_code == 200
     assert "Карта на резултатите" in page.text
     assert "© EuroGeographics" in page.text
-    assert 'data-bel="56.38"' in page.text
+    assert 'data-score="56.38"' in page.text
     assert "municipality-map.js" in page.text
     assert "municipality-map.js" not in TestClient(main.app).get("/").text
+    csv_response = TestClient(main.app).get("/karta.csv")
+    assert csv_response.status_code == 200 and "Банско" in csv_response.text
+    assert data["exam_resource"] in csv_response.text
+
+
+def test_suppressed_dzi_takers_do_not_get_a_geographic_mean():
+    rows = [("Благоевград", "Банско", Decimal("4.5"), 10, True),
+            ("Благоевград", "Банско", Decimal("5.0"), None, True)]
+    places, _ = main.education_map.aggregate(rows, "obshtini", "dzi", "2025/2026", "БЕЛ-З")
+    bansko = next(row for row in places if row["name"] == "Банско")
+    assert bansko["score"] is None and bansko["takers"] is None
+
+
+def test_map_selection_reads_each_published_exam_without_mixing_scales(monkeypatch):
+    year = "2025/2026"
+    monkeypatch.setattr(main, "source_history", lambda: [dict(year=year, exam_resource="seven",
+        exam_updated="2026-07-07")])
+    monkeypatch.setattr(main, "nvo_sources", lambda: [dict(year=year, exam="nvo4", resource="four",
+        updated="2026-07-07"), dict(year=year, exam="nvo10", resource="ten", updated="2026-07-07")])
+    monkeypatch.setattr(main, "dzi_sources", lambda: [dict(year=year, session="may", kind="mandatory",
+        resource="matura", updated="2026-07-07")])
+
+    class Connection:
+        def execute(self, query, params):
+            if "live.school s" in query:
+                return [("Благоевград", "Банско", Decimal("55"), 20, True, "БЕЛ")]
+            if "live.dzi_result" in query:
+                return [("Благоевград", "Банско", Decimal("4.5"), 20, True, "БЕЛ(ООП) З")]
+            return [("Благоевград", "Банско", Decimal("70"), 20, True, "БЕЛ")]
+
+    @contextmanager
+    def connection():
+        yield Connection()
+
+    monkeypatch.setattr(main, "connect", connection)
+    for exam, expected in (("nvo7", Decimal("55")), ("nvo4", Decimal("70")),
+                           ("nvo10", Decimal("70")), ("dzi", Decimal("4.5"))):
+        mapped = main.map_snapshot(exam=exam, level="oblasti")
+        oblast = next(row for row in mapped["places"] if row["name"] == "Благоевград")
+        assert oblast["score"] == expected and oblast["takers"] == 20
+        assert mapped["scale"] == ("оценка от 2 до 6" if exam == "dzi" else "точки от 0 до 100")
 
 
 def test_municipality_reference_has_exact_capital_and_region_aliases():
@@ -80,6 +134,17 @@ def test_municipality_reference_has_exact_capital_and_region_aliases():
     assert len(ref) == 265
     assert ref[main.municipalities.key("СОФИЯ-ГРАД", "СТОЛИЧНА")]["name_bg"] == "Столична"
     assert ref[main.municipalities.key("СОФИЯ-ОБЛАСТ", "АНТОН")]["name_bg"] == "Антон"
+
+
+def test_all_territorial_contours_match_the_reference():
+    root = Path(main.__file__).parent / "static"
+    detail = json.loads((root / "bg-municipalities.json").read_text(encoding="utf-8"))
+    levels = json.loads((root / "bg-geography.json").read_text(encoding="utf-8"))
+    ref = list(main.municipalities.reference().values())
+    assert set(detail["shapes"]) == {row["id"] for row in ref}
+    for level in "123":
+        assert set(levels["shapes"][level]) == {row["nuts" + level] for row in ref}
+    assert set(levels["shapes"]["0"]) == {"BG"}
 
 
 def test_filters_and_csv(monkeypatch):
@@ -168,19 +233,22 @@ def test_matura_school_search_and_csv(monkeypatch):
         verification="code", subjects=[dict(subject="БЕЛ(ООП) З", takers=None, hidden=1,
              schools=1, mean=None, missing_grade=0)]))
     seen = []
-    def school_rows(resource, subject="", q="", page=1, limit=50, sort="name"):
-        seen.append((resource, subject, q, page, limit, sort))
+    def school_rows(resource, subject="", q="", page=1, limit=50, sort="name", **filters):
+        seen.append((resource, subject, q, page, limit, sort, filters))
         return 1, [dict(code="105201", school="Примерно училище", town="София",
                         subject="БЕЛ(ООП) З", takers=None, score=Decimal("4.20"), matched=True)]
     monkeypatch.setattr(main, "matura_schools", school_rows)
+    monkeypatch.setattr(main, "place_options", lambda resource, table: [("София (столица)", "Столична")])
     client = TestClient(main.app)
-    page = client.get("/matura/2025-2026/uchilishta?subject=БЕЛ(ООП)+З&q=105201")
+    page = client.get("/matura/2025-2026/uchilishta?subject=БЕЛ(ООП)+З&q=105201&oblast=София+(столица)&municipality=Столична")
     assert page.status_code == 200
     assert "Примерно училище" in page.text and "няма данни" in page.text
-    assert seen[0] == ("test-resource", "БЕЛ(ООП) З", "105201", 1, 50, "name")
-    csv_page = client.get("/matura/2025-2026/uchilishta.csv?subject=БЕЛ(ООП)+З")
+    assert seen[0][:6] == ("test-resource", "БЕЛ(ООП) З", "105201", 1, 50, "name")
+    assert seen[0][6] == {"oblast": "София (столица)", "municipality": "Столична"}
+    assert "municipality=%D0%A1" in page.text
+    csv_page = client.get("/matura/2025-2026/uchilishta.csv?subject=БЕЛ(ООП)+З&oblast=София+(столица)&municipality=Столична")
     assert csv_page.status_code == 200 and "Примерно училище" in csv_page.text
-    assert seen[-1][-2] == 100000
+    assert seen[-1][4] == 100000 and seen[-1][6]["municipality"] == "Столична"
     assert client.get("/matura/2025-2026/uchilishta?subject=НЕПОЗНАТ").status_code == 404
 
 
@@ -197,8 +265,9 @@ def test_nvo_pages_school_search_and_elementary_profile(monkeypatch):
         unmatched=["2900001", "2900102"],
         subjects=[dict(subject="БЕЛ", schools=1738, takers=50000, mean=Decimal("72.50"))]))
     monkeypatch.setattr(main, "nvo_schools", lambda resource, subject="", q="", page=1,
-                        limit=50, sort="name": (1, [dict(code="105204", school="Начално училище",
+                        limit=50, sort="name", **filters: (1, [dict(code="105204", school="Начално училище",
                         town="Банско", subject="БЕЛ", takers=50, score=Decimal("80.00"), matched=True)]))
+    monkeypatch.setattr(main, "place_options", lambda resource, table: [("Благоевград", "Банско")])
     monkeypatch.setattr(main, "school_identity", lambda code: dict(code=code, name="Начално училище",
         oblast="Благоевград", municipality="Банско", town="Банско", matched=True, subjects={})
                       if code == "105204" else None)

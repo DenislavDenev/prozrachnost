@@ -57,4 +57,9 @@ def test_national_page_explains_granularity(monkeypatch):
     assert "вид училище" in page.text
     assert "a5ed412d" in page.text and "a08b426f" in page.text
     assert "58 032" in page.text and "8.2%" in page.text
+    assert "grade-track" not in page.text
+    assert "context-type-table" in page.text
+    exported = client.get("/context/types.csv")
+    assert exported.status_code == 200 and "основно" in exported.text
+    assert "a5ed412d" in exported.text and "a08b426f" in exported.text
     assert client.get("/context", follow_redirects=False).headers["location"] == "/#context"

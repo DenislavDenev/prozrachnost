@@ -8,13 +8,13 @@
 <form class="filters" action="/uchilishta" method="get">
   <label>Име, код или място <input name="q" type="search" value="{{ q }}"></label>
   <label>Област <select name="oblast"><option value="">Всички области</option>{% for name in oblasts %}<option value="{{ name }}" {% if oblast == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
-  <label>Община <select name="municipality"><option value="">Всички общини</option>{% for name in municipalities %}<option value="{{ name }}" {% if municipality == name %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+  <label>Община <select name="municipality"><option value="">Всички общини</option>{% for area, name in municipalities %}<option value="{{ name }}" data-oblast="{{ area }}" {% if municipality == name and (not oblast or area == oblast) %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
   <button type="submit">Покажи</button>
   <a class="l" href="/uchilishta">Изчисти</a>
 </form>
 <section class="p"><div class="ph"><div><h2>Публикувани резултати</h2><p class="sub">Сортирай с бутоните в заглавията.</p></div>
 <a class="more" href="/uchilishta.csv?q={{ q | urlencode }}&oblast={{ oblast | urlencode }}&municipality={{ municipality | urlencode }}">CSV ↓</a></div>
-<div class="table-scroll"><table id="school-table"><thead><tr>
+<div class="table-scroll"><table id="school-table" class="sortable-client"><thead><tr>
   <th><button class="sort" type="button" data-col="0">Училище</button></th>
   <th><button class="sort" type="button" data-col="1">Община</button></th>
   <th class="n"><button class="sort" type="button" data-col="2">БЕЛ · точки</button></th>
