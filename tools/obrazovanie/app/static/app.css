@@ -188,6 +188,28 @@ th.n .sort { flex-direction: row-reverse; }
 .compare-row strong { font-weight: 500; }
 .compare-row:first-of-type strong { font-weight: 700; }
 .year-strip { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 8px; margin-top: 18px; white-space: nowrap; }
+
+/* Образование: one shared map/list view. Geometry is fetched only when visible. */
+.municipality-layout { align-items: stretch; }
+.municipality-map { position: relative; min-height: 250px; }
+.municipality-map svg { display: block; width: 100%; aspect-ratio: 104.77 / 80.37; }
+.municipality-map path { stroke: #fff; stroke-width: .13; vector-effect: non-scaling-stroke; cursor: pointer; }
+.municipality-map path:hover, .municipality-map path.municipality-hover { stroke: var(--ink-2); stroke-width: 1.3; }
+.municipality-map path.municipality-selected { stroke: var(--ink); stroke-width: 1.8; }
+.municipality-loading { position: absolute; inset: 40% 10% auto; text-align: center; color: var(--ink-3); font-size: 14px; }
+.municipality-detail { min-height: 24px; font-size: 14px; font-weight: 600; margin: 6px 0 12px; }
+.municipality-legend { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 12px; }
+.municipality-legend i { width: 130px; height: 9px; border-radius: 3px; background: linear-gradient(90deg, #eef7f3, #d2eadf, #a5d8c2, #70bf9f, #2d9874, #0b7a5e); }
+.municipality-list { display: flex; flex-direction: column; }
+.municipality-search-label { display: block; color: var(--ink-3); font-size: 13px; margin-bottom: 5px; }
+.municipality-list input { width: 100%; }
+.municipality-scroll { overflow-y: auto; max-height: 600px; margin-top: 12px; }
+.municipality-scroll thead th { position: sticky; top: 0; background: #fff; z-index: 1; }
+.municipality-scroll td small { display: block; color: var(--ink-3); font-size: 12px; }
+.municipality-scroll tr:hover td { background: var(--surface-2); }
+.municipality-scroll tr.municipality-selected td { background: var(--accent-soft); }
+.municipality-scroll tr[hidden] { display: none; }
+@media (max-width: 1080px) { .municipality-scroll { max-height: 360px; } }
 .year-strip a { border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; font-size: 13.5px; color: var(--ink-3); }
 .year-strip a:hover { border-color: var(--accent); color: var(--accent-ink); }
 .year-strip a.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
