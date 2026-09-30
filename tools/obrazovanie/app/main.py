@@ -30,6 +30,9 @@ DZI_URL = f"https://data.egov.bg/data/view/{DZI_DATASET}"
 NVO_URLS = {exam: f"https://data.egov.bg/data/view/{dataset}" for exam, dataset in NVO_DATASETS.items()}
 STATUS_URLS = {kind: f"https://data.egov.bg/data/view/{dataset}" for kind, dataset in STATUS_DATASETS.items()}
 CONTEXT_URLS = {kind: f"https://data.egov.bg/data/view/{dataset}" for kind, dataset in CONTEXT_DATASETS.items()}
+PROFILES_URL = "https://data.egov.bg/data/view/c4985243-e3ee-4d01-9404-e1cf98828fca"
+BUDGET_URL = "https://www.mon.bg/mon/byudzheti-i-finansovi-otcheti/delegirani-byudzheti/"
+BUDGET_2026_URL = "https://www.mon.bg/nfs/2026/08/info-formula_2026.xlsx"
 app = FastAPI(title="Образование", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
@@ -326,7 +329,9 @@ def render(request, page, data=None, **context):
         feedback_button=Markup(feedback.BUTTON),
         support_link=Markup(feedback.support_link(hub)),
         exam_url=EXAM_URL, register_url=REGISTER_URL, dzi_url=DZI_URL,
-        nvo_urls=NVO_URLS, status_urls=STATUS_URLS, context_urls=CONTEXT_URLS, **context))
+        nvo_urls=NVO_URLS, status_urls=STATUS_URLS, context_urls=CONTEXT_URLS,
+        profiles_url=PROFILES_URL, budget_url=BUDGET_URL, budget_2026_url=BUDGET_2026_URL,
+        **context))
 
 
 @app.get("/healthz")

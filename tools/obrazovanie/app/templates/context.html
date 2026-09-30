@@ -4,7 +4,7 @@
 <h1>Ученици и паралелки</h1>
 {% if context_data %}
 <p class="lede">През учебната {{ context_data.year }} година МОН отчита <b>{{ context_data.students | num }} ученици от I до XII клас</b> в училищата от справката.</p>
-<p class="asof">Национални сборове по вид училище към декември {{ context_data.year[:4] }} г. Таблиците не съдържат кодове на отделни училища. <a class="l" href="/how">Какво означават данните ↗</a></p>
+<p class="asof">Национални сборове по вид училище за учебната {{ context_data.year }} година. Таблиците не съдържат кодове на отделни училища. <a class="l" href="/how">Какво означават данните ↗</a></p>
 <div class="grid">
   <section class="p s4 kpi"><div class="n">{{ context_data.students | num }}</div><div class="t">ученици от I до XII клас</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ context_data.institutions | num }}</div><div class="t">училища в 15 вида</div><div class="w"><a class="l" href="{{ context_urls.pupils }}">МОН · {{ context_data.pupils_updated }} ↗</a></div></section>
