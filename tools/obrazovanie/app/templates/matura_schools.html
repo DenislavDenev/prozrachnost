@@ -4,6 +4,7 @@
 <p class="asof"><a class="l" href="/matura/{{ exam.year | replace('/', '-') }}?session={{ exam.session }}&kind={{ exam.kind }}">← Обобщение на матурите</a></p>
 <h1>Матури по училища</h1>
 <p class="lede">{{ exam.year }} · {{ 'май–юни' if exam.session == 'may' else 'август–септември' }} · {{ 'задължителни' if exam.kind == 'mandatory' else 'по желание' }}. Резултатите са средни оценки от 2 до 6.</p>
+{% include "_dzi_glossary.html" %}
 <form class="filters" method="get">
   <input type="hidden" name="session" value="{{ exam.session }}"><input type="hidden" name="kind" value="{{ exam.kind }}">
   <label>Предмет<select name="subject"><option value="">Всички предмети</option>{% for item in exam.subjects %}<option value="{{ item.subject }}" {% if item.subject == subject %}selected{% endif %}>{{ item.subject | subject_name }}</option>{% endfor %}</select></label>

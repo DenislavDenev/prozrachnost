@@ -66,12 +66,13 @@ def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypat
     assert len(rows) == 265 and not unmapped
     bansko = next(row for row in rows if row["name"] == "Банско")
     assert bansko["bel"] == Decimal("56.38") and bansko["bel_takers"] == 84
-    page = TestClient(main.app).get("/")
+    page = TestClient(main.app).get("/karta")
     assert page.status_code == 200
-    assert "Резултати по общини" in page.text
+    assert "Карта на резултатите" in page.text
     assert "© EuroGeographics" in page.text
     assert 'data-bel="56.38"' in page.text
     assert "municipality-map.js" in page.text
+    assert "municipality-map.js" not in TestClient(main.app).get("/").text
 
 
 def test_municipality_reference_has_exact_capital_and_region_aliases():
@@ -152,6 +153,8 @@ def test_matura_page_and_school_group_render(monkeypatch):
     assert page.status_code == 200
     assert "Български език и литература" in page.text
     assert "4.12" in page.text
+    assert "втора изпитна сесия" in page.text
+    assert "ДИППК-Д.Пр З" in page.text and "профилирана подготовка" in page.text
     profile = client.get("/uchilishta/105201")
     assert profile.status_code == 200
     assert "Матури по години" in profile.text

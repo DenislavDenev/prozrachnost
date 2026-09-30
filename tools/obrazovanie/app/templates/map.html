@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Карта{% endblock %}
+{% block main %}
+<h1>Карта на резултатите</h1>
+{% if d %}
+<p class="lede">НВО VII клас през учебната {{ d.year }} година: среден резултат по общини за БЕЛ и математика.</p>
+<p class="asof">Претеглено по броя явили се от училищния файл на МОН. Оцветяването е по една скала от 0 до 100 точки. Разликите между общините не измерват сами по себе си качеството на преподаване.</p>
+<div class="grid municipality-layout space-top">
+  <section class="p s8"><div class="ph"><div><h2>България</h2><p class="sub" id="municipality-subtitle">Български език и литература · точки</p></div>
+  <div class="tabs" role="group" aria-label="Предмет на картата"><button type="button" class="municipality-subject" data-subject="bel" aria-pressed="true">БЕЛ</button><button type="button" class="municipality-subject" data-subject="math" aria-pressed="false">Математика</button></div></div>
+  <div class="municipality-map"><svg id="municipality-svg" role="img" aria-label="Карта на общините в България. Списъкът вдясно съдържа същите стойности."></svg><p class="municipality-loading" id="municipality-loading">Картата се зарежда при показване. Стойностите са достъпни и в списъка.</p></div>
+  <p class="municipality-detail" id="municipality-detail" aria-live="polite">Избери община, за да видиш резултата и броя явили се.</p>
+  <div class="municipality-legend"><span>0 точки</span><i aria-hidden="true"></i><span>100 точки</span></div>
+  <p class="src"><a href="{{ exam_url }}">МОН · НВО VII · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · © EuroGeographics за административните граници (Eurostat GISCO, LAU 2024)</p>
+  </section>
+  <section class="p s4 municipality-list"><div class="ph"><div><h2>Общини</h2><p class="sub">Избери община на картата или отвори училищата от списъка.</p></div></div>
+  <label class="municipality-search-label" for="municipality-search">Търси община</label><input id="municipality-search" type="search" autocomplete="off" placeholder="Име на община">
+  <div class="municipality-scroll scroll"><table><thead><tr><th>Община</th><th class="n">Точки</th></tr></thead><tbody id="municipality-list-body">
+  {% for item in places %}<tr data-code="{{ item.code }}" data-name="{{ item.name }}" data-oblast="{{ item.oblast }}" data-bel="{{ item.bel if item.bel is not none else '' }}" data-math="{{ item.math if item.math is not none else '' }}" data-bel-takers="{{ item.bel_takers }}" data-math-takers="{{ item.math_takers }}"><td>{% if item.href %}<a class="l" href="{{ item.href }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}<small>{{ item.oblast }}</small></td><td class="n municipality-value">{{ item.bel | num(2) }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  </section>
+</div>
+{% if unmapped %}<p class="warn">{{ unmapped | length }} училища не могат да се свържат еднозначно с геометрията на община. Резултатите им остават в училищния списък.</p>{% endif %}
+<p class="asof space-top">Двете училища в чужбина от файла на МОН остават в училищния списък, но не участват в картата на българските общини.</p>
+<script src="/static/municipality-map.js" defer></script>
+{% else %}<p class="lede">Проверените данни за картата още се подготвят.</p>{% endif %}
+{% endblock %}

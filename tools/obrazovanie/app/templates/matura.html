@@ -3,6 +3,8 @@
 {% block main %}
 <h1>Държавни зрелостни изпити</h1>
 <p class="lede">Резултати по предмет и училище от публикуваните таблици на МОН. Оценките са по скалата от 2 до 6.</p>
+<p class="asof">Август–септември е втора изпитна сесия. Освен при предишна слаба оценка, на нея може да се явят и зрелостници, пропуснали или недопуснати на предишна сесия. <a class="l" href="https://www.mon.bg/news/v-435-uchilistha-sthe-se-provede-matura-po-balgarski-ezik-i-literatura/">МОН · 20.08.2026 ↗</a></p>
+{% include "_dzi_glossary.html" %}
 {% if years %}
 <div class="year-strip scroll" aria-label="Учебна година">
 {% for year in years %}<a href="/matura/{{ year | replace('/', '-') }}" class="{{ 'on' if year == selected_year else '' }}" {% if year == selected_year %}aria-current="page"{% endif %}>{{ year }}</a>{% endfor %}

@@ -9,7 +9,7 @@
   <section class="p s4 kpi"><div class="n">{{ scores['БЕЛ'] | num(2) }}<small>точки</small></div><div class="t">БЕЛ, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
   <section class="p s4 kpi"><div class="n">{{ scores['МАТ'] | num(2) }}<small>точки</small></div><div class="t">Математика, от училищния файл</div><div class="w"><a class="l" href="{{ exam_url }}">МОН · {{ d.exam_updated }} ↗</a></div></section>
 </div>
-{% if context_data %}<section class="p space-top context-callout"><div><h2>Колко ученици има?</h2><p class="sub">{{ context_data.students | num }} ученици от I до XII клас в националната справка на МОН за {{ context_data.year }} г. Данните са по вид училище.</p></div><a class="l" href="/context">Виж учениците и паралелките ↗</a></section>{% endif %}
+{% include "_context_panel.html" %}
 <div class="grid space-top">
   <section class="p s4"><h2>НВО IV клас</h2><p class="sub">БЕЛ, математика и старите предмети по години.</p>{% if nvo_years.nvo4 %}<a class="l" href="/nvo/4/{{ nvo_years.nvo4 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>
   <section class="p s4"><h2>НВО X клас</h2><p class="sub">Резултати по училища в точки.</p>{% if nvo_years.nvo10 %}<a class="l" href="/nvo/10/{{ nvo_years.nvo10 | replace('/', '-') }}">Разгледай резултатите ↗</a>{% else %}<span class="sub">Данните се подготвят</span>{% endif %}</section>
@@ -18,29 +18,7 @@
 <section class="p space-top"><div class="ph"><div><h2>Намери училище</h2><p class="sub">Търси по име, населено място или код по НЕИСПУО.</p></div></div>
 <form action="/uchilishta" method="get" class="lookup"><label for="home-q">Име или код</label><input id="home-q" name="q" type="search" required><button type="submit">Търси</button></form>
 <p class="sub"><a class="l" href="/uchilishta">Всички училища ↗</a></p></section>
-{% if places %}
-<section class="space-top" aria-labelledby="map-title" id="municipality-results">
-<h2 class="sec" id="map-title">Резултати по общини</h2>
-<p class="asof">НВО VII · {{ d.year }} · претеглен среден резултат от училищния файл на МОН. Оцветяването е по една скала от 0 до 100 точки. Разликите между общините не измерват сами по себе си качеството на преподаване.</p>
-<div class="grid municipality-layout">
-  <section class="p s8"><div class="ph"><div><h2>България</h2><p class="sub" id="municipality-subtitle">Български език и литература · точки</p></div>
-  <div class="tabs" role="group" aria-label="Предмет на картата"><button type="button" class="municipality-subject" data-subject="bel" aria-pressed="true">БЕЛ</button><button type="button" class="municipality-subject" data-subject="math" aria-pressed="false">Математика</button></div></div>
-  <div class="municipality-map"><svg id="municipality-svg" role="img" aria-label="Карта на общините в България. Списъкът вдясно съдържа същите стойности."></svg><p class="municipality-loading" id="municipality-loading">Картата се зарежда при показване. Стойностите са достъпни и в списъка.</p></div>
-  <p class="municipality-detail" id="municipality-detail" aria-live="polite">Избери община, за да видиш резултата и броя явили се.</p>
-  <div class="municipality-legend"><span>0 точки</span><i aria-hidden="true"></i><span>100 точки</span></div>
-  <p class="src"><a href="{{ exam_url }}">МОН · НВО VII · {{ d.exam_updated }} · ресурс {{ d.exam_resource[:8] }} ↗</a> · © EuroGeographics за административните граници (Eurostat GISCO, LAU 2024)</p>
-  </section>
-  <section class="p s4 municipality-list"><div class="ph"><div><h2>Общини</h2><p class="sub">Избери община на картата или отвори училищата от списъка.</p></div></div>
-  <label class="municipality-search-label" for="municipality-search">Търси община</label><input id="municipality-search" type="search" autocomplete="off" placeholder="Име на община">
-  <div class="municipality-scroll scroll"><table><thead><tr><th>Община</th><th class="n">Точки</th></tr></thead><tbody id="municipality-list-body">
-  {% for item in places %}<tr data-code="{{ item.code }}" data-name="{{ item.name }}" data-oblast="{{ item.oblast }}" data-bel="{{ item.bel if item.bel is not none else '' }}" data-math="{{ item.math if item.math is not none else '' }}" data-bel-takers="{{ item.bel_takers }}" data-math-takers="{{ item.math_takers }}"><td>{% if item.href %}<a class="l" href="{{ item.href }}">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}<small>{{ item.oblast }}</small></td><td class="n municipality-value">{{ item.bel | num(2) }}</td></tr>{% endfor %}
-  </tbody></table></div>
-  </section>
-</div>
-{% if unmapped %}<p class="warn">{{ unmapped | length }} училища не могат да се свържат еднозначно с геометрията на община. Резултатите им остават в училищния списък.</p>{% endif %}
-</section>
-<script src="/static/municipality-map.js" defer></script>
-{% endif %}
+<p class="space-top"><a class="l" href="/karta">Виж картата на резултатите по общини ↗</a></p>
 <p class="asof space-top">{{ d.matched | num }} от {{ d.school_count | num }} кода съвпадат с регистъра на МОН. <a class="l" href="/sources">Виж несъпоставените</a>.</p>
 {% else %}
 <p class="lede">Проверените данни за училищата още се подготвят.</p>
