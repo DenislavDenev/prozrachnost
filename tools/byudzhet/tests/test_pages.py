@@ -49,3 +49,13 @@ def test_csv_keeps_original_units_and_all_denominators(client):
  rows=list(csv.DictReader(io.StringIO(client.get('/export.csv?municipality=000024663').text.lstrip('\ufeff'))))
  assert len(rows)==1 and rows[0]['debt_original']=='215961.97' and rows[0]['debt_original_unit']=='EUR'
  assert all(k+'_per_person' in rows[0] for k in Q.LABELS)
+
+@pytest.mark.parametrize('page,kind',[('kfp','kfp'),('darzhaven','state')])
+def test_missing_budget_period_keeps_gap_in_page_and_export(client,page,kind):
+ period='2025-11-30'
+ r=client.get(f'/{page}?y={period}')
+ assert r.status_code==200 and 'За избрания месец няма данни.' in r.text
+ assert f'value="{period}"' in r.text and f'kind={kind}&y={period}' in r.text
+ export=client.get(f'/export-budget.csv?kind={kind}&y={period}')
+ assert export.status_code==200 and len(export.text.splitlines())==1
+ assert Q.kfp_summary(None)==dict(revenue=None,spending=None,balance=None)
