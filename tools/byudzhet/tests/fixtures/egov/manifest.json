@@ -1,0 +1,52 @@
+{
+  "state-latest.json": {
+    "kind": "state",
+    "name": "Информация за изпълнението на държавния бюджет към 31.08.2026 г.",
+    "ref": "2db75566-c2c0-4022-8264-aa611f7160be"
+  },
+  "state-historical.json": {
+    "kind": "state",
+    "name": "Информация за изпълнението на държавния бюджет към 30.06.2021 г.",
+    "ref": "032e1083-a2a3-4ff6-9c76-3ba7dc115f35"
+  },
+  "kfp-latest.json": {
+    "kind": "kfp",
+    "name": "Консолидирана фискална програма и националните бюджети – август 2026 г.",
+    "ref": "9d8326db-b0bd-4d8a-8142-f9654ef21d06"
+  },
+  "kfp-historical.json": {
+    "kind": "kfp",
+    "name": "Консолидирана фискална програма и националните бюджети – август 2019 г.",
+    "ref": "8f3a5433-382a-411e-bff6-235985fa5f0e"
+  },
+  "indicators-latest.json": {
+    "kind": "indicators",
+    "name": "2026-06-30",
+    "ref": "73084abd-72f0-4747-a8dd-f46e095e962e"
+  },
+  "indicators-historical.json": {
+    "kind": "indicators",
+    "name": "2019-03-31",
+    "ref": "046fbaef-d5b1-4579-b7f4-f41713fff6da"
+  },
+  "debt-latest.json": {
+    "kind": "debt",
+    "name": "Данни „Общински дълг“ към 2026-06-30",
+    "ref": "500d6ba7-85a2-4942-a9b3-8bbe1a32a39d"
+  },
+  "debt-historical.json": {
+    "kind": "debt",
+    "name": "Данни „Общински дълг“ към 2019-03-31",
+    "ref": "de18e3cf-ba9d-4846-a8f9-d1375f2f7ac8"
+  },
+  "reserve-latest.json": {
+    "kind": "reserve",
+    "name": "Информация за фискалния резерв към 31.08.2026 г.",
+    "ref": "7d15d4ef-2f05-49d2-b05e-5041eddc9471"
+  },
+  "reserve-historical.json": {
+    "kind": "reserve",
+    "name": "Информация за фискалния резерв към 30.06.2021 г.",
+    "ref": "6db654f8-3bb0-45dc-93be-8e39064618b2"
+  }
+}

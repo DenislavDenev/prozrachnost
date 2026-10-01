@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Бюджет{% endblock %} · Прозрачност</title>
+<meta name="description" content="Бюджетта на България в числа: инфлация, БВП, заплати, безработица, дълг, области и сравнение с ЕС, с източник за всяко число.">
+<link rel="stylesheet" href="/static/fonts.css?v={{ v }}">
+<link rel="stylesheet" href="/static/app.css?v={{ v }}">
+<link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg">
+{% block head %}{% endblock %}
+</head>
+<body>
+<a class="skip" href="#main">Към съдържанието</a>
+{% set menu = [("Табло", "/"), ("Карта", "/karta"), ("Държавен бюджет", "/darzhaven"), ("КФП", "/kfp"), ("Общини", "/obshtini"), ("Източници", "/sources")] %}
+<header class="bar"><div class="bar-in">
+  <a class="word" href="/">бюджет<span class="dot">.</span></a>
+  <nav class="menu" aria-label="Основна навигация">
+    {% for t, h in menu %}<a href="{{ h }}" class="{{ 'on' if nav == t }}" {% if nav == t %}aria-current="page"{% endif %}>{{ t }}</a>{% endfor %}
+  </nav>
+  <a class="hub" href="{{ hub_url }}"><span class="hub-l">Всички инструменти</span><span class="hub-s">Всички</span> ↗</a>
+  {{ feedback_button }}
+</div></header>
+<nav class="menu-s" aria-label="Навигация">{% for t, h in menu %}<a href="{{ h }}" class="{{ 'on' if nav == t }}">{{ t }}</a>{% endfor %}</nav>
+<main id="main" class="wrap">
+{% block main %}{% endblock %}
+</main>
+<footer class="foot"><div class="wrap-f">
+  <span><b>Бюджет</b> · част от Прозрачност</span>
+  <span>Последен период: {{ fresh | date }}</span>
+  <a class="l" href="/how">Как работи</a><a class="l" href="/sources">Източници</a>
+  {{ support_link }}
+</div></footer>
+<script src="/static/vendor/echarts.min.js?v={{ v }}"></script>
+<script src="/static/app.js?v={{ v }}"></script>
+<script src="/static/budget.js?v={{ v }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
