@@ -26,7 +26,7 @@ def date(v):
 t.env.filters.update(num=number,money=money,date=date)
 def render(request,name,**context):
  hub=os.environ.get('HUB_URL','https://prozrachnost.denev.work')
- return t.TemplateResponse(request=request,name=name,context=dict(v='1',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,**context))
+ return t.TemplateResponse(request=request,name=name,context=dict(v='2',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
 def serial(data):
  import json
  return JSONResponse(json.loads(json.dumps(data,default=lambda v:float(v) if isinstance(v,Decimal) else str(v))))
@@ -57,11 +57,11 @@ def state_page(request:Request,y=None,q=''):
  if s:
   import calendar
   y=s['period'];py=int(y[:4])-1;month=int(y[5:7]);previous=Q.choose('state',f'{py}-{month:02d}-{calendar.monthrange(py,month)[1]:02d}')
- return render(request,'state.html',nav='Държавен бюджет',s=s,selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
+ return render(request,'state.html',nav='Държавен бюджет',s=s,rows=Q.state_rows(s,q),selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
 @app.get('/kfp',response_class=HTMLResponse)
 def kfp_page(request:Request,y=None,q='',budget_type=''):
  s=Q.choose('kfp',y)
- return render(request,'kfp.html',nav='КФП',s=s,selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('kfp'),reverse=True),q=q,budget_type=budget_type,summary=Q.kfp_summary(s))
+ return render(request,'kfp.html',nav='КФП',s=s,selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('kfp'),reverse=True),q=q,budget_type=budget_type,summary=Q.kfp_summary(s,budget_type))
 @app.get('/obshtini',response_class=HTMLResponse)
 def municipalities(request:Request,y=None,oblast='',municipality='',q='',sort='debt',direction='desc',denominator='current'):
  d=Q.municipality_rows(y,oblast,municipality,q,sort,direction,denominator)
@@ -87,9 +87,9 @@ def profile(request:Request,code,y=None,denominator='current'):
  d=Q.municipality_rows(y,municipality=code,denominator=denominator)
  return render(request,'municipality.html',nav='Общини',r=d['rows'][0],d=d)
 @app.get('/api/chart.json')
-def chart(kind='state',code=None,metrics=None):
+def chart(kind='state',code=None,metrics=None,budget_type='',y=None):
  if kind not in ('state','kfp','municipalities','reserve'):raise HTTPException(400,'Невалидна графика')
- return serial(Q.chart(kind,code,metrics.split(',') if metrics else None))
+ return serial(Q.chart(kind,code,metrics.split(',') if metrics else None,budget_type,y))
 @app.get('/export-budget.csv')
 def budget_csv(kind='state',y=None,q='',budget_type=''):
  if kind not in ('state','kfp','reserve'):raise HTTPException(400,'Невалиден набор')
@@ -97,7 +97,7 @@ def budget_csv(kind='state',y=None,q='',budget_type=''):
  for r in s['rows'] if s else []:
   if kind=='state':
    if q.casefold() not in r['line'].casefold():continue
-   rows.append(dict(period=s['period'],line=r['line'],law_eur=Q.euros(r['law']),actual_eur=Q.euros(r['actual']),pct=r['pct'],unit=r['actual']['unit'],law_original=r['law']['original'],actual_original=r['actual']['original']))
+   rows.append(dict(period=s['period'],line=r['line'],law_eur=Q.euros(r['law']),actual_eur=Q.euros(r['actual']),pct=r['pct'] if r['actual']['eur'] is not None else None,unit=r['actual']['unit'],law_original=r['law']['original'],actual_original=r['actual']['original']))
   else:
    if budget_type and r.get('budget_type')!=budget_type:continue
    for k,v in (r['values'].items() if kind=='kfp' else [(r['line'],r['value'])]):
@@ -117,4 +117,4 @@ def sources(request:Request,q=''):
  with db.connect() as c:problems=freshness(c)
  return render(request,'sources.html',nav='Източници',rows=source_rows(q),q=q,problems=problems,meta=json.loads((TOOLROOT/'db/ref/datasets.json').read_text(encoding='utf-8')))
 @app.get('/how',response_class=HTMLResponse)
-def how(request:Request):return render(request,'how.html',nav='Източници')
+def how(request:Request):return render(request,'how.html',nav='Източници',definitions=Q.DEFINITIONS)

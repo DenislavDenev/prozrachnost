@@ -1,11 +1,16 @@
-import calendar,csv,datetime as dt,io,threading,time
+import calendar,csv,datetime as dt,io,re,threading,time
 from decimal import Decimal
 from urllib.parse import urlencode
 from fastapi import HTTPException
 from ingest import db
 from ingest.parse import REF
 LABELS={'debt':'Остатъчна главница по общинския дълг','overdue':'Просрочени задължения','liabilities':'Задължения за разходи','commitments':'Поети ангажименти за разходи'}
-LEVELS=[('obshtini','Общини'),('oblasti','Области'),('rayoni','Райони'),('makrorayoni','Макрорайони'),('darzhava','България')]
+DEFINITIONS={
+ 'debt':'Дългът е оставащата главница по общинските заеми и други дългови инструменти към края на тримесечието. Това не включва бъдещи лихви и не е сбор на всички разходни задължения.',
+ 'overdue':'Просрочените задължения са отчетени задължения на общинския бюджет, чийто срок за плащане е изтекъл. Това не означава всички предстоящи плащания.',
+ 'liabilities':'Задълженията за разходи са възникнали и непогасени разходни задължения на общинския бюджет към отчетната дата. Част от тях може да са просрочени; останалите още не са.',
+ 'commitments':'Поетите ангажименти за разходи са оставащи неизпълнени ангажименти за бъдещи разходи. Те не са вече платени разходи и не всички са възникнали задължения.'}
+LEVELS=[('obshtini','Общини'),('oblasti','Области'),('rayoni','Райони'),('makrorayoni','Макрорайони'),('darzhava','Държава')]
 NUTS={'obshtini':4,'oblasti':3,'rayoni':2,'makrorayoni':1,'darzhava':0}
 REGIONS={'BG31':'Северозападен','BG32':'Северен централен','BG33':'Североизточен','BG34':'Югоизточен','BG41':'Югозападен','BG42':'Южен централен','BG3':'Северна и Югоизточна България','BG4':'Югозападна и Южна централна България'}
 REFBY={r['id']:r for r in REF};_cache={};_lock=threading.Lock()
@@ -72,7 +77,7 @@ def mapdata(m='debt',l='obshtini',y=None,denominator='current'):
  s=choose('debt' if metric=='debt' else 'indicators',d['y']);allvalid=all(r[metric] is not None for r in d['rows'])
  bg=sum(r[metric] for r in d['rows']) if allvalid else None
  if per:bg=bg/sum(r['population'] for r in d['rows']) if bg is not None and all(r['population'] for r in d['rows']) else None
- return dict(m=m,l=l,o='bg',nuts=n,title=LABELS[metric],plural=dict(LEVELS)[l],single={'obshtini':'Община','oblasti':'Област','rayoni':'Район','makrorayoni':'Макрорайон','darzhava':'Държава'}[l],unit='€ на лице, регистрирано по '+('настоящ' if denominator=='current' else 'постоянен')+' адрес' if per else '€',digits=2,items=rows,y=d['y'],years=d['years'],levels=LEVELS,bg=None if bg is None else float(bg),base=None,updated=None,countries={},dataset='МФ · '+str(d['y']),url=s['url'] if s else 'https://data.egov.bg',csv='/export-map.csv?'+urlencode(dict(m=m,l=l,y=d['y'] or '',denominator=denominator)),denominator=denominator,population_date=d['population_source']['period'] if d['population_source'] else None)
+ return dict(definition=DEFINITIONS[metric],m=m,l=l,o='bg',nuts=n,title=LABELS[metric],plural=dict(LEVELS)[l],single={'obshtini':'Община','oblasti':'Област','rayoni':'Район','makrorayoni':'Макрорайон','darzhava':'Държава'}[l],unit='€ на лице, регистрирано по '+('настоящ' if denominator=='current' else 'постоянен')+' адрес' if per else '€',digits=2,items=rows,y=d['y'],years=d['years'],levels=LEVELS,bg=None if bg is None else float(bg),base=None,updated=None,countries={},dataset='МФ · '+str(d['y']),url=s['url'] if s else 'https://data.egov.bg',csv='/export-map.csv?'+urlencode(dict(m=m,l=l,y=d['y'] or '',denominator=denominator)),denominator=denominator,population_date=d['population_source']['period'] if d['population_source'] else None)
 def state_summary(s):
  if not s:return {}
  out={}
@@ -90,9 +95,9 @@ def times(kind):
   out.append(dt.date(y,m,calendar.monthrange(y,m)[1]).isoformat());m+=step
   while m>12:y+=1;m-=12
  return sorted(set(out)|set(periods))
-def kfp_summary(s):
+def kfp_summary(s,budget_type=''):
  if not s:return dict(revenue=None,spending=None,balance=None)
- rows=s['rows'];total=[r for r in rows if r['budget_type']=='Консолидирана фискална програма'];rows=total or rows
+ rows=[r for r in s['rows'] if not budget_type or r['budget_type']==budget_type];total=[r for r in rows if r['budget_type']=='Консолидирана фискална програма'];rows=total or rows
  def add(predicate):
   vals=[euros(v) for r in rows for k,v in r['values'].items() if predicate(k)]
   return sum(vals) if vals and all(v is not None for v in vals) else None
@@ -101,12 +106,12 @@ def kfp_summary(s):
  # Payments excluding inter-budget transfers; national + EU budgets appear once each.
  spending=add(lambda k:any(k.startswith(z) for z in ['Персонал','Заплати и възнаграждения','Социални и здравно-осигурителни','Издръжка','Лихви','Социални разходи','Субсидии','Предоставени текущи','Капиталови разходи','Прираст на държавния','Вноска в общия']))
  return dict(revenue=revenue,spending=spending,balance=balance)
-def chart(kind,code=None,metrics=None):
+def chart(kind,code=None,metrics=None,budget_type='',y=None):
  if kind in ('state','kfp'):
   ss=bykind(kind);keys=metrics or ['revenue','spending'];label={'revenue':'Приходи','spending':'Разходи и трансфери' if kind=='state' else 'Разходи и вноска в ЕС','balance':'Бюджетно салдо','revenue_pct':'Приходи спрямо закона','spending_pct':'Разходи спрямо закона'}
   series=[]
   for k in keys:
-   series.append(dict(name=label[k],points=[[p,None if (v:=(state_summary(ss.get(p)) if kind=='state' else kfp_summary(ss.get(p))).get(k)) is None else float(v)] for p in times(kind)]))
+   series.append(dict(name=label[k],points=[[p,None if (v:=(state_summary(ss.get(p)) if kind=='state' else kfp_summary(ss.get(p),budget_type)).get(k)) is None else float(v)] for p in times(kind) if not y or p<=y]))
   return dict(unit='%' if keys[0].endswith('_pct') else '€',series=series)
  if kind=='reserve':return dict(unit='€',series=[dict(name='Фискален резерв',points=[[p,float(euros(s['rows'][0]['value'])) if (s:=choose(kind,p)) else None] for p in times(kind)])])
  series=[]
@@ -122,3 +127,17 @@ def csv_response(rows,headers):
  f=io.StringIO(newline='');w=csv.writer(f);w.writerow(headers)
  for r in rows:w.writerow([('' if r.get(k) is None else str(r[k])) for k in headers])
  return '\ufeff'+f.getvalue()
+
+def is_summary(line):
+ return bool(re.match(r'^[IVXLCDM]+\.\s',line))
+
+def state_rows(s,q=''):
+ rows=[];section=None
+ for raw in s['rows'] if s else []:
+  summary=is_summary(raw['line'])
+  if summary:section=raw['line']
+  if q.casefold() not in raw['line'].casefold():continue
+  row=dict(raw,summary=summary,section=section)
+  if row['actual']['eur'] is None:row['pct']=None
+  rows.append(row)
+ return rows

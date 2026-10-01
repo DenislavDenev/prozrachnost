@@ -2,10 +2,10 @@
 {% block title %}Карта{% endblock %}
 {% block main %}
 <h1 id="k-title">{{ d.title }} по {{ d.plural | lower }}{% if d.o == 'eu' %} в Европа{% endif %}</h1>
-<p class="lede" id="k-lede"></p>
+<p class="lede" id="k-lede"></p><details class="explain"><summary>С прости думи</summary><p id="k-definition"></p><p id="k-reading"></p><p>Тези показатели описват различни, понякога припокриващи се задължения. Не се събират в обща сума и сами по себе си не оценяват управлението на общината.</p></details>
 
 <div class="ctl" id="k-ctl">
-  <div class="tabs" role="group" aria-label="Обхват" id="k-scope">{% for k, sc in scopes.items() %}<a href="/karta?m={{ d.m }}&o={{ k }}" data-o="{{ k }}" {% if k == d.o %}aria-current="page"{% endif %}>{{ sc[0] }}</a>{% endfor %}</div>
+
   <div class="tabs" role="group" aria-label="Ниво" id="k-level">{% for k, name in d.levels %}<a href="/karta?m={{ d.m }}&o={{ d.o }}&l={{ k }}" data-l="{{ k }}" {% if k == d.l %}aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}</div>
   <label id="k-measure">Показател <select id="k-metric">{% for k, mm in measures.items() %}<option value="{{ k }}" {{ 'selected' if k == d.m }}>{{ mm[2] }}</option>{% endfor %}</select></label>
   <label>Тримесечие <select id="k-year">{% for yy in d.years %}<option {{ 'selected' if yy == d.y }}>{{ yy }}</option>{% endfor %}</select></label>
