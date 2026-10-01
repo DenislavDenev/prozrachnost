@@ -7,7 +7,7 @@
  const place=()=>{if(!owner)return;const a=owner.getBoundingClientRect(),p=pop.getBoundingClientRect();const top=a.bottom+8+p.height<=innerHeight?a.bottom+8:Math.max(8,a.top-p.height-8);pop.style.left=Math.max(8,Math.min(a.left,document.documentElement.clientWidth-p.width-8))+'px';pop.style.top=top+'px';};
  const show=b=>{clearTimeout(timer);const id=b.dataset.help,h=id.startsWith('row-')?data.rows[+id.slice(4)]:data.columns[id];if(!h)return;if(owner&&owner!==b)hide();owner=b;pop.replaceChildren();
   const title=document.createElement('strong');title.textContent=h.title;pop.append(title);
-  for(const text of [h.parent?'Категория: '+h.parent:null,h.text,h.example,h.sign,...(h.checks||[])]){if(!text)continue;const p=document.createElement('p');p.textContent=text;pop.append(p);}
+  for(const text of [h.parent?'Категория: '+h.parent:null,h.text,h.example,...(h.checks||[])]){if(!text)continue;const p=document.createElement('p');p.textContent=text;pop.append(p);}
   const link=document.createElement('a');link.textContent='Оригинален източник ↗';link.href=h.source||'/sources';link.rel='noopener';pop.append(link);
   const close=document.createElement('button');close.type='button';close.className='help-close';close.textContent='Затвори';close.addEventListener('click',hide);pop.append(close);
   pop.hidden=false;b.setAttribute('aria-describedby',pop.id);b.setAttribute('aria-expanded','true');place();

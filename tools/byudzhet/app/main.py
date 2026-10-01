@@ -26,7 +26,7 @@ def date(v):
 t.env.filters.update(num=number,money=money,date=date)
 def render(request,name,**context):
  hub=os.environ.get('HUB_URL','https://prozrachnost.denev.work')
- return t.TemplateResponse(request=request,name=name,context=dict(v='4',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
+ return t.TemplateResponse(request=request,name=name,context=dict(v='5',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
 def serial(data):
  import json
  return JSONResponse(json.loads(json.dumps(data,default=lambda v:float(v) if isinstance(v,Decimal) else str(v))))
