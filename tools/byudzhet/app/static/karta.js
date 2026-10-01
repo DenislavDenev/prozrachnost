@@ -17,13 +17,13 @@
   const tbody = $('k-list').tBodies[0];
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const ver = new URL(document.currentScript?.src || location.href).searchParams.get('v') || '';
-  const G = await (await fetch('/static/europe.json?v=' + ver)).json();
-  const M = await (await fetch('/static/bg-municipalities.json?v=' + ver)).json();
+  const [G,M] = await Promise.all(['/static/europe.json','/static/bg-municipalities.json'].map(async url => {const res=await fetch(url+'?v='+ver);if(!res.ok)throw Error('geometry');return res.json();}));
   G.bg['4'] = Object.fromEntries(Object.entries(M.shapes).map(([k,v]) => [k,v.d]));
   const layerCache = new Map();
   const dataCache = new Map();
-  let requestId = 0;
+  let requestId = 0, pending = null, flight = 0;
   let d = JSON.parse($('k-data').textContent), sel = null, view, byCode = new Map();
+  let desired={m:d.m,l:d.l,y:d.y,denominator:d.denominator};
 
   // ---------- the views: Europe is the whole frame, Bulgaria its outline with a margin ----------
   const ASPECT = 1012 / (G.h + 12);
@@ -44,9 +44,10 @@
   const setView = (v) => { view = v; svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`); };
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
   function fly(to, ms, each) {   // the camera moves from the current view to `to`; each(t) runs on every frame
-    const from = view, t0 = performance.now();
+    const token=++flight, from = view, t0 = performance.now();
     return new Promise((done) => {
       const step = (now) => {
+        if(token!==flight){done();return;}
         const t = still ? 1 : Math.min(1, (now - t0) / ms), k = ease(t);
         // zoom on a log scale, so flying in feels even rather than rushing at the end
         const w = from.w * (to.w / from.w) ** k, h = w / ASPECT;
@@ -80,13 +81,14 @@
       p.style.fill = fill(it.v) || 'var(--line-2)';
       g.append(p);
     }
-    g.classList.toggle('few', g.childElementCount < 400);   // colour changes fade only on small layers: a thousand would lag
+    // Recolour without per-path transitions: avoid hundreds of paints each frame.   // colour changes fade only on small layers: a thousand would lag
+    g.paths=new Map([...g.children].map(p=>[p.dataset.code,p]));
     layerCache.set(data.l, g);
     return g;
   }
   function recolour(data) {
     const fill = colours(data);
-    for (const it of data.items) { const p = layers.querySelector(`[data-code="${it.code}"]`); if (p) p.style.fill = fill(it.v) || 'var(--line-2)'; }
+    for (const it of data.items) { const p = layerCache.get(data.l)?.paths.get(it.code); if (p) p.style.fill = fill(it.v) || 'var(--line-2)'; }
   }
   function drawBorders(data) {   // the countries over the regions of Europe; Bulgaria's outline over its own map
     borders.replaceChildren();
@@ -103,6 +105,8 @@
     $('k-lede').innerHTML = data.y ? `Към ${date(data.y)}: <b>${total}</b>. ${data.m.endsWith('_per_person') && data.population_date ? "ГРАО към " + date(data.population_date) + "." : ""}` : 'Още няма данни.';
     $('k-h2').textContent = data.title + (data.y ? `, ${date(data.y)}` : '');
     $('k-unit').textContent = data.unit;
+    $('k-definition').textContent=data.definition;
+    $('k-reading').textContent=`Избраният период е ${date(data.y)}, нивото е ${data.plural.toLowerCase()}. ${data.m.endsWith('_per_person') ? 'Делим сумата на броя лица по '+(data.denominator==='current'?'настоящ':'постоянен')+' адрес, ГРАО към '+(date(data.population_date)||'няма данни')+'. Това не е личен дълг на жителя.' : 'Показваме общата сума в евро. За по-големите територии събираме данните на общините.'} По-тъмното зелено означава по-голяма стойност, сивото е липса на валидни данни. Ако липсва една община, не представяме непълен сбор като общ за територията.`;
     $('k-plural').textContent = data.plural;
     $('k-h-name').textContent = data.single;
     $('k-h-y').textContent = data.y || '';
@@ -110,7 +114,7 @@
     $('k-ds').textContent = data.dataset; $('k-ds').href = data.url; $('k-csv').href = data.csv;
     $('k-year').innerHTML = data.years.map((y) => `<option value="${y}"${y === data.y ? ' selected' : ''}>${date(y)}</option>`).join('');
     $('k-level').innerHTML = data.levels.map(([k, n]) => `<a href="/karta?m=${data.m}&o=${data.o}&l=${k}" data-l="${k}"${k === data.l ? ' aria-current="page"' : ''}>${n}</a>`).join('');
-    for (const [id, key] of [['k-scope', 'o'], ['k-measure', 'm']]) $(id).querySelectorAll('a').forEach((a) => {
+    for (const [id, key] of [['k-measure', 'm']]) $(id).querySelectorAll('a').forEach((a) => {
       a.toggleAttribute('aria-current', a.dataset[key] === data[key]); if (a.dataset[key] === data[key]) a.setAttribute('aria-current', 'page'); });
     const q = new URLSearchParams({ m: data.m, o: data.o, l: data.l, denominator: data.denominator }); if (data.y) q.set('y', data.y);
     history.replaceState(null, '', '/karta?' + q);
@@ -186,11 +190,11 @@
     const [cx, cy] = centre(), w = view.w / (z === 'in' ? 2 : 0.5), h = w / ASPECT;
     fly(clamp({ x: cx - w / 2, y: cy - h / 2, w, h }), 350);
   });
-  svg.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); zoomAt(Math.exp(-e.deltaY * 0.0025), ...toMap(e.clientX, e.clientY)); }, { passive: false });
+  svg.addEventListener('wheel', (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); ++flight; zoomAt(Math.exp(-e.deltaY * 0.0025), ...toMap(e.clientX, e.clientY)); }, { passive: false });
   svg.addEventListener('dblclick', (e) => { e.preventDefault(); const [mx, my] = toMap(e.clientX, e.clientY), w = view.w / 2, h = w / ASPECT;
     fly(clamp({ x: mx - ((mx - view.x) / view.w) * w, y: my - ((my - view.y) / view.h) * h, w, h }), 300); });
   let drag = null;
-  svg.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, v: view }; moved = false; });
+  svg.addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.button !== 0) return; ++flight; drag = { x: e.clientX, y: e.clientY, v: view }; moved = false; });
   addEventListener('pointermove', (e) => {
     if (!drag) return;
     const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -203,7 +207,7 @@
   // two fingers zoom and move; one finger scrolls the page (touch-action in the CSS)
   let pinch = null;
   const two = (t) => ({ d: Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY), x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
-  svg.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { e.preventDefault(); pinch = { ...two(e.touches), v: view }; } }, { passive: false });
+  svg.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { e.preventDefault(); ++flight; pinch = { ...two(e.touches), v: view }; } }, { passive: false });
   svg.addEventListener('touchmove', (e) => {
     if (!pinch || e.touches.length !== 2) return;
     e.preventDefault();
@@ -216,14 +220,16 @@
 
   // ---------- changes: a measure or year recolours, a level crossfades, Bulgaria <-> Europe flies ----------
   async function go(params, kind) {
-    const id = ++requestId;
-    const q = new URLSearchParams({m:d.m, l:d.l, denominator:d.denominator, ...(d.y ? {y:d.y} : {}), ...params});
+    const id = ++requestId; ++flight; pending?.abort(); pending=new AbortController();
+    desired={...desired,...params};
+    const q = new URLSearchParams(desired);
+    svg.setAttribute('aria-busy','true');
     try {
       const cacheKey=q.toString(), cached=dataCache.get(cacheKey); let next=cached && performance.now()-cached.at<60000 ? cached.data : null;
       const cacheHit=!!next;
-      if (!next) { const res=await fetch('/api/karta.json?'+q); if(!res.ok) throw Error('data'); next=await res.json(); dataCache.set(cacheKey,{data:next,at:performance.now()}); }
+      if (!next) { const res=await fetch('/api/karta.json?'+q,{signal:pending.signal}); if(!res.ok) throw Error('data'); next=await res.json(); dataCache.set(cacheKey,{data:next,at:performance.now()}); if(dataCache.size>64)dataCache.delete(dataCache.keys().next().value); }
       if (id !== requestId) return;
-      const renderAt=performance.now(); const fresh = layer(next); if (kind === "level") await fly(home(), 1300);
+      const renderAt=performance.now(); const fresh = layer(next); if (kind === "level" && next.l!==d.l) await fly(home(), 1300);
       if (id !== requestId) return;
       layers.replaceChildren(fresh);
       d = next; recolour(next); drawBorders(next); texts(next); list(next);
@@ -231,17 +237,17 @@
       const search = document.querySelector('[data-filter="k-list"]');
       if (search) search.dispatchEvent(new Event('input'));
       svg.dataset.renderMs=(performance.now()-renderAt).toFixed(2); svg.dataset.cacheHit=String(cacheHit);
-    } catch (_) { $('k-lede').textContent = 'Не успяхме да прочетем данните. Показани са последните заредени стойности.'; }
+    } catch (error) { if(id===requestId && error.name!=='AbortError') $('k-lede').textContent = 'Не успяхме да прочетем данните. Показани са последните заредени стойности.'; } finally { if(id===requestId)svg.setAttribute('aria-busy','false'); }
   }
   const pick = (id, key, kind) => $(id).addEventListener('click', (e) => {
     const a = e.target.closest('a'); if (!a) return; e.preventDefault();
-    if (a.dataset[key] === d[key]) return;
+    if (a.dataset[key] === desired[key]) return;
     const p = { [key]: a.dataset[key] };
     // away from Bulgaria the map opens on the countries (light, and the first thing to see); back home on the oblasts
     if (key === 'o') p.l = p.o === 'eu' ? 'darzhavi' : 'oblasti';
     go(p, kind);
   });
-  pick('k-scope', 'o', 'fly'); pick('k-level', 'l', 'level'); pick('k-measure', 'm', 'colour');
+  pick('k-level', 'l', 'level'); pick('k-measure', 'm', 'colour');
   $('k-metric').addEventListener('change',e=>go({m:e.target.value},'colour'));
   $('k-denominator').addEventListener('change',e=>go({denominator:e.target.value},'colour'));
   $('k-year').addEventListener('change', (e) => go({ y: e.target.value }, 'colour'));
@@ -249,4 +255,7 @@
   // ---------- start ----------
   setView(HOME[d.o]);
   layers.append(layer(d)); drawBorders(d); texts(d); list(d);
-})();
+})().catch(() => {
+  document.getElementById('k-lede').textContent = 'Не успяхме да заредим картата. Данните остават достъпни в CSV и в раздел „Общини“.';
+  document.getElementById('k-svg').setAttribute('aria-busy','false');
+});
