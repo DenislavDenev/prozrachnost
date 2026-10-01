@@ -89,7 +89,7 @@ def times(kind):
  while (y,m)<=(last.year,last.month):
   out.append(dt.date(y,m,calendar.monthrange(y,m)[1]).isoformat());m+=step
   while m>12:y+=1;m-=12
- return out
+ return sorted(set(out)|set(periods))
 def kfp_summary(s):
  if not s:return {}
  rows=s['rows'];total=[r for r in rows if r['budget_type']=='Консолидирана фискална програма'];rows=total or rows
@@ -108,7 +108,7 @@ def chart(kind,code=None,metrics=None):
   for k in keys:
    series.append(dict(name=label[k],points=[[p,None if (v:=(state_summary(ss.get(p)) if kind=='state' else kfp_summary(ss.get(p))).get(k)) is None else float(v)] for p in times(kind)]))
   return dict(unit='%' if keys[0].endswith('_pct') else '€',series=series)
- if kind=='reserve':return dict(unit='€',series=[dict(name='Фискален резерв',points=[[p,float(euros(choose(kind,p)['rows'][0]['value']))] for p in times(kind)])])
+ if kind=='reserve':return dict(unit='€',series=[dict(name='Фискален резерв',points=[[p,float(euros(s['rows'][0]['value'])) if (s:=choose(kind,p)) else None] for p in times(kind)])])
  series=[]
  for k in metrics or ['debt','overdue','liabilities']:
   source='debt' if k=='debt' else 'indicators';ss=bykind(source);points=[]

@@ -95,7 +95,8 @@
   const date = (s) => (s ? `${s.slice(8, 10)}.${s.slice(5, 7)}.${s.slice(0, 4)}` : '');
   function texts(data) {
     $('k-title').textContent = `${data.title} по ${data.plural.toLowerCase()}${data.o === 'eu' ? ' в Европа' : ''}`;
-    $('k-lede').innerHTML = data.y ? `Към ${date(data.y)}: <b>${num(data.bg, 2)} ${esc(data.unit)}</b>. ${data.population_date ? "ГРАО към " + date(data.population_date) + "." : ""}` : 'Още няма данни.';
+    const total=data.bg==null?'няма данни':data.unit==='€' ? (Math.abs(data.bg)>=1e9?num(data.bg/1e9,2)+' млрд. €':Math.abs(data.bg)>=1e6?num(data.bg/1e6,2)+' млн. €':num(data.bg,2)+' €') : num(data.bg,2)+' '+esc(data.unit);
+    $('k-lede').innerHTML = data.y ? `Към ${date(data.y)}: <b>${total}</b>. ${data.m.endsWith('_per_person') && data.population_date ? "ГРАО към " + date(data.population_date) + "." : ""}` : 'Още няма данни.';
     $('k-h2').textContent = data.title + (data.y ? `, ${date(data.y)}` : '');
     $('k-unit').textContent = data.unit;
     $('k-plural').textContent = data.plural;
@@ -234,6 +235,7 @@
     go(p, kind);
   });
   pick('k-scope', 'o', 'fly'); pick('k-level', 'l', 'level'); pick('k-measure', 'm', 'colour');
+  $('k-metric').addEventListener('change',e=>go({m:e.target.value},'colour'));
   $('k-year').addEventListener('change', (e) => go({ y: e.target.value }, 'colour'));
 
   // ---------- start ----------

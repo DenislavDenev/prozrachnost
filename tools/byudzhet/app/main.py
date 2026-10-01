@@ -55,7 +55,8 @@ def map_csv(m='debt',l='obshtini',y=None,denominator='current'):
 def state_page(request:Request,y=None,q=''):
  s=Q.choose('state',y);previous=None
  if s:
-  y=s['period'];previous=Q.choose('state',str(int(y[:4])-1)+y[4:])
+  import calendar
+  y=s['period'];py=int(y[:4])-1;month=int(y[5:7]);previous=Q.choose('state',f'{py}-{month:02d}-{calendar.monthrange(py,month)[1]:02d}')
  return render(request,'state.html',nav='Държавен бюджет',s=s,years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
 @app.get('/kfp',response_class=HTMLResponse)
 def kfp_page(request:Request,y=None,q='',budget_type=''):
@@ -75,7 +76,7 @@ def export(y=None,oblast='',municipality='',q='',sort='debt',direction='desc',de
   x=dict(r,unit='EUR')
   for k in Q.LABELS:x[k+'_original']=r['original'].get(k,{}).get('original');x[k+'_original_unit']=r['original'].get(k,{}).get('unit')
   rows.append(x)
- return csv(Q.csv_response(rows,['code','name','oblast','period','unit','debt','overdue','liabilities','commitments','debt_per_person','denominator','population','population_date']+[k+suffix for k in Q.LABELS for suffix in ('_original','_original_unit')]))
+ return csv(Q.csv_response(rows,['code','name','oblast','period','unit','debt','overdue','liabilities','commitments','debt_per_person','overdue_per_person','liabilities_per_person','commitments_per_person','denominator','population','population_date']+[k+suffix for k in Q.LABELS for suffix in ('_original','_original_unit')]))
 @app.get('/api/obshtini/{code}.json')
 def profile_api(code,y=None,denominator='current'):
  if code not in Q.REFBY:raise HTTPException(404,'Няма такава община')

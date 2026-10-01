@@ -169,3 +169,4 @@ th.n .sort { flex-direction: row-reverse; }
   .menu-s a { color: var(--ink-3); } .menu-s a.on { color: var(--ink); font-weight: 600; } }
 
 .map-pick{background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-align:left}.notice{color:#b25b06;background:#fcefd9;padding:12px;border-radius:6px}.nowrap{white-space:nowrap}.wrap > .p + .p{margin-top:16px}.chart{height:340px}.prose{max-width:900px}.prose p{line-height:1.6}
+.ctl{margin-bottom:20px}.ctl label{max-width:100%}.ctl select{max-width:100%}.ctl button{font:inherit;border:1px solid var(--line);border-radius:6px;background:white;padding:4px 12px;color:var(--accent-ink)}.warning{border-color:var(--amber);color:var(--amber)}

@@ -8,7 +8,7 @@ for file,old,new,test in cases:
  if old not in s:raise SystemExit('mutation target missing: '+old)
  try:
   p.write_bytes(s.replace(old,new,1).encode('utf-8'))
-  r=subprocess.run([sys.executable,'-B','-m','pytest','-q',test],cwd=root,capture_output=True,text=True)
+  r=subprocess.run([sys.executable,'-B','-m','pytest','-q',test],cwd=root,capture_output=True,text=True,encoding="utf-8")
   if r.returncode==0:raise SystemExit('SURVIVED '+file+' '+old)
   print('caught',old)
  finally:p.write_bytes(original)

@@ -4,7 +4,7 @@ const MONTHS = ['януари', 'февруари', 'март', 'април', '�
 // and the other series use neither blue nor yellow, so the two keep their meaning
 const EU = '#1f4fa8', EA = '#d9a400';
 const GEO_COLOR = { BG: '#0b7a5e', EU27_2020: EU, EA, EA21: EA, EA20: EA };
-const PALETTE = ['#121417', '#0b7a5e', '#8a5cb8', '#c2587a', '#7a8b2c', '#5b6b7f', '#2a9d8f', '#8d6e63', '#9aa1aa', '#b0413e'];
+const PALETTE = ['#0b7a5e', '#121417', '#8a5cb8', '#c2587a', '#7a8b2c', '#5b6b7f', '#2a9d8f', '#8d6e63', '#9aa1aa', '#b0413e'];
 const FLAGS = { p: 'предварителни', e: 'оценка', b: 'прекъсване на реда', d: 'различно определение', u: 'ниска надеждност', s: 'оценка на Eurostat', r: 'ревизирани', f: 'прогноза' };
 
 const ZOOM_FROM = '2010';

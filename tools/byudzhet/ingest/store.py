@@ -37,6 +37,7 @@ def put(c,kind,ref,name,version,raw,metadata=None,now=None):
  data['url']=name if kind=='population' else 'https://data.egov.bg/data/resourceView/'+ref
  data['resource']=ref;data['version']=str(version)
  if old and old==data:
+  if old_meta and old_meta[0]!=sha:log(c,kind,ref,'sha256',old_meta[0],sha,'rewritten')
   c.execute("UPDATE src.resource SET status='наред',error=NULL,sha256=%s,version=%s,period=%s WHERE ref=%s",(sha,str(version),data['period'],ref))
   c.execute('DELETE FROM ops.held WHERE ref=%s',(ref,));return 'unchanged'
  held=c.execute('SELECT sha256,first_seen FROM ops.held WHERE ref=%s',(ref,)).fetchone()
@@ -45,6 +46,8 @@ def put(c,kind,ref,name,version,raw,metadata=None,now=None):
    c.execute('INSERT INTO ops.held VALUES (%s,%s,%s) ON CONFLICT(ref) DO UPDATE SET sha256=excluded.sha256,first_seen=excluded.first_seen',(ref,sha,now));log(c,kind,ref,None,None,sha,'held')
   c.execute("UPDATE src.resource SET status='задържан до второ четене',error=NULL WHERE ref=%s",(ref,));return 'held'
  with c.transaction():
+  if old_meta and old and old_meta[0]!=sha:log(c,kind,ref,'sha256',old_meta[0],sha,'rewritten')
+  if old_meta and old and old_meta[2]!=str(version):log(c,kind,ref,'version',old_meta[2],version,'rewritten')
   c.execute('INSERT INTO stage.snapshot VALUES (%s,%s,%s,%s) ON CONFLICT(ref) DO UPDATE SET payload=excluded.payload,period=excluded.period',(ref,kind,data['period'],Jsonb(data)))
   a=flatten(old) if old else {};b=flatten(data)
   for k in sorted(a.keys()|b.keys()):
