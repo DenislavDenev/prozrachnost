@@ -168,7 +168,7 @@ def cpc(raw, url):
         key = 'cpc:' + (dossier or 'missing-dossier') + ':decision:' + act_no + ':' + act_date
         r = base(key, 'cpc', act_no, urljoin(url, 'Dossier.aspx?DossID=' + dossier) if dossier else url)
         case_no = case.get_text(' ', strip=True)
-        r.update(case_no=case_no if case_no != '-' else None, source_case_id=dossier, act_date=act_date,
+        r.update(case_no=case_no if case_no != '-' else None, source_case_id=dossier, act_date=act_date, act_no=act_no,
                  kind='Решение', published_on=date(pub.get_text()), outcome_text=None)
         r['court_result'] = None
         r['complaint_status'] = None

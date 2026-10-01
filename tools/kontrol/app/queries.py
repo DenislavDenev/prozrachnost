@@ -29,6 +29,8 @@ def _loadrows():
     # Canonical source ID deduplicates reports present in multiple category lists.
     rows = [r for s in snapshots() for r in s['rows']]
     rows = parse.canonical(rows)
+    for row in rows:
+        if row['source']=='cpc' and not row.get('act_no'):row['act_no']=row['title']
     with db.connect() as c:
         docs={r[0]:r[1] for r in c.execute('SELECT ref,payload FROM live.document')}
     for row in rows:
@@ -90,7 +92,7 @@ def summary(rows):
 def timeline(rows):
     return sorted(Counter(r.get('publication_year') or 'Не е посочена' for r in rows).items())
 
-FIELDS = ['id','source','title','kind','sector','auditee','eik','case_no','act_date','published_on','publication_year','completed_on','report_period','unp','recommendation_text','violations_count','document_page','document_sha256','url']
+FIELDS = ['id','source','title','kind','sector','auditee','eik','case_no','act_no','act_date','published_on','publication_year','completed_on','report_period','unp','recommendation_text','violations_count','document_page','document_sha256','url']
 def csv_response(rows):
     buf=io.StringIO(newline='');writer=csv.writer(buf);writer.writerow(FIELDS)
     for r in rows:

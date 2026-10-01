@@ -1,4 +1,5 @@
 import os
+import asyncio
 import hashlib
 from pathlib import Path
 from urllib.parse import quote
@@ -13,6 +14,17 @@ from . import queries as Q, feedback
 
 ROOT = Path(__file__).resolve().parent
 app = FastAPI(title='Одити и контрол', docs_url=None, redoc_url=None)
+class RequestBudget:
+    def __init__(self,app):
+        self.app=app;self.slots=asyncio.Semaphore(4)
+    async def __call__(self,scope,receive,send):
+        path=scope.get('path','')
+        if scope['type']!='http' or path.startswith('/static/') or path in ('/healthz','/favicon.svg'):
+            return await self.app(scope,receive,send)
+        async with self.slots:
+            await self.app(scope,receive,send)
+
+app.add_middleware(RequestBudget)
 app.mount('/static', StaticFiles(directory=ROOT/'static'), name='static')
 app.include_router(feedback.router('DenislavDenev/prozrachnost', Path(os.environ.get('KONTROL_FEEDBACK', str(DATA/'feedback'))), 'Одити и контрол'))
 t=Jinja2Templates(directory=ROOT/'templates')
