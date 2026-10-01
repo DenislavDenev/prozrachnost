@@ -151,7 +151,7 @@ def kfp(rows,p):
   income=[k for k in vals if k in ('Данъчни приходи','Неданъчни приходи','Помощи')]
   spending=[k for k in vals if any(k.startswith(z) for z in ('Персонал','Заплати и възнаграждения','Социални и здравно-осигурителни','Издръжка','Лихви','Социални разходи','Субсидии','Предоставени текущи','Капиталови разходи','Прираст на държавния','Вноска в общия'))]
   transfers=[k for k in vals if k.startswith('Трансфери (') or k=='Други трансфери (нето)']
-  balance=[k for k in vals if k.startswith('Бюджетно салдо')]
+  balance=[k for k in vals if 'Бюджетно салдо' in k]
   used=income+spending+transfers+balance
   if len(income)!=3 or len(balance)!=1:raise ShapeError('Липсват компоненти на салдото на КФП')
   if any(vals[k] is None for k in used):raise ShapeError('Липсва стойност в сверка на КФП')
