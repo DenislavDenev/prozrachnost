@@ -9,6 +9,10 @@
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const svg = $('k-svg'), world = svg.querySelector('.world'), layers = svg.querySelector('.layers');
+  if (new URLSearchParams(location.search).has('qa') && 'PerformanceObserver' in window) {
+    new PerformanceObserver(entries=>{const maximum=Math.max(Number(svg.dataset.maxLongTask||0),...entries.getEntries().map(e=>e.duration));svg.dataset.maxLongTask=maximum.toFixed(2);}).observe({type:'longtask',buffered:false});
+  }
+
   const borders = svg.querySelector('.borders'), top = svg.querySelector('.top'), tip = $('k-tip'), box = $('k-box');
   const tbody = $('k-list').tBodies[0];
   const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -215,8 +219,9 @@
     const id = ++requestId;
     const q = new URLSearchParams({m:d.m, l:d.l, denominator:d.denominator, ...(d.y ? {y:d.y} : {}), ...params});
     try {
-      const cacheKey=q.toString(); let next=dataCache.get(cacheKey);
-      if (!next) { const res=await fetch('/api/karta.json?'+q); if(!res.ok) throw Error('data'); next=await res.json(); dataCache.set(cacheKey,next); }
+      const cacheKey=q.toString(), cached=dataCache.get(cacheKey); let next=cached && performance.now()-cached.at<60000 ? cached.data : null;
+      const cacheHit=!!next;
+      if (!next) { const res=await fetch('/api/karta.json?'+q); if(!res.ok) throw Error('data'); next=await res.json(); dataCache.set(cacheKey,{data:next,at:performance.now()}); }
       if (id !== requestId) return;
       const renderAt=performance.now(); const fresh = layer(next); if (kind === "level") await fly(home(), 1300);
       if (id !== requestId) return;
@@ -225,7 +230,7 @@
       sel = null; top.replaceChildren(); tip.hidden = true;
       const search = document.querySelector('[data-filter="k-list"]');
       if (search) search.dispatchEvent(new Event('input'));
-      svg.dataset.renderMs=(performance.now()-renderAt).toFixed(2);
+      svg.dataset.renderMs=(performance.now()-renderAt).toFixed(2); svg.dataset.cacheHit=String(cacheHit);
     } catch (_) { $('k-lede').textContent = 'Не успяхме да прочетем данните. Показани са последните заредени стойности.'; }
   }
   const pick = (id, key, kind) => $(id).addEventListener('click', (e) => {
