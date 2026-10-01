@@ -26,7 +26,7 @@ def share(value):
     percent=Decimal(m[1].replace(',','.'))
     if not 0 <= percent <= 100: raise ShapeError('participation outside 0..100')
     owner=m[2].strip() or None
-    # A principal is not a shareholder; indirect ownership is kept explicit.
+    # Published owners do not prove their state ownership chain.
     participation='direct' if owner and owner.casefold().startswith(('държавна собственост','държавно участие')) else 'owner_reported' if owner and owner not in ('Активно','Неактивно') else 'unspecified'
     return dict(share_pct=str(percent),owner=owner,share_text=original,participation=participation)
 
