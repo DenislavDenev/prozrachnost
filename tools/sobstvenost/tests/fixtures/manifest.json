@@ -58,5 +58,23 @@
     "original_sha256": "98353a2db8859c3e4873b256744a25fb86619c88b3c3caf689d43823c969c4b5",
     "fixture_sha256": "a4eaa0f15e48ff7334f031a9aa849a641e06856c4ed86ebf29ff086f0dabb319",
     "cut": "Only enterprise cards and original pagination, disabled terminal next retained."
+  },
+  {
+    "name": "appk-10.html",
+    "original_sha256": "c32b51daec5faf2028d74e11ae5ff15768eed75596fc88a14684fb94271269b6",
+    "fixture_sha256": "a9cebff291cb2c0f602b288496b8e8cb582ab1989c82e0c20556e26a02917295",
+    "cut": "Only factual profile cards; original double-space board separators preserved, contacts removed."
+  },
+  {
+    "name": "appk-100.html",
+    "original_sha256": "a3d0b10e4611dcdccdbb70213b4b37798c38204918f89763961b4fd07ba91495",
+    "fixture_sha256": "5054b143bf05d5fe5e40e5354cae5446c20af59abb72002def832050efbf88ba",
+    "cut": "Only factual profile cards; freeform role entry preserved, contacts removed."
+  },
+  {
+    "name": "ncr-mining.html",
+    "original_sha256": "7cee9550650539fcdbcfed0273db08f487fb62dfa03b795a82410f540af932fc",
+    "fixture_sha256": "56beb96b0cfffb9563310a100ba45b10253f8dd85c6b4f9c08d1a5e9ed0deb91",
+    "cut": "Only legal-person identity, official location and term; contacts and financial prose excluded."
   }
 ]

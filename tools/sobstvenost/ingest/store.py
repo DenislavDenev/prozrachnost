@@ -1,5 +1,5 @@
 import datetime as dt
-import hashlib,json
+import hashlib,json,os
 from psycopg.types.json import Jsonb
 from .parse import ShapeError
 from .config import DATA
@@ -17,7 +17,11 @@ def save_raw(conn,source,url,raw):
     if path.exists():
         existing=path.read_bytes()
         if len(existing)!=len(raw) or hashlib.sha256(existing).hexdigest()!=sha:raise ShapeError('immutable raw archive is corrupted '+str(path))
-    else: path.write_bytes(raw)
+    else:
+        temporary=path.with_name(path.name+'.partial')
+        with temporary.open('wb') as handle:
+            handle.write(raw);handle.flush();os.fsync(handle.fileno())
+        temporary.replace(path)
     conn.execute('INSERT INTO ops.raw_file(source,url,path,sha256,bytes) VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',(source,url,str(path),sha,len(raw)))
     return sha
 

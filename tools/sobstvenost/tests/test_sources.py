@@ -1,6 +1,19 @@
 from pathlib import Path
 import pytest
 
+def test_actual_board_in_single_list_item():
+    row=parse.profile((P/'appk-10.html').read_bytes())
+    assert len(row['board'])==3
+    assert all(member['country']=='БЪЛГАРИЯ' for member in row['board'])
+    assert row['board'][1]['name']=='Сергей Кирилов Цочев'
+
+def test_actual_freeform_board_preserved_without_person_guess():
+    row=parse.profile((P/'appk-100.html').read_bytes())
+    assert row['board_format']=='source_entries'
+    assert row['board']==[dict(original='УПРАВИТЕЛ: СТОЯН ПЕТРОВ ЦВЕТАНОВ, Държава: БЪЛГАРИЯ',verbatim=True)]
+    raw=(P/'appk-100.html').read_bytes().replace(b'<li>',b'<span>').replace(b'</li>',b'</span>')
+    with pytest.raises(parse.ShapeError,match='not parseable'):parse.profile(raw)
+
 def test_disabled_terminal_next_is_not_an_extra_page():
     raw=b'<ul class="pagination"><li class="active"><a href="?page=29">29</a></li><li class="disabled"><a href="?page=30">Next</a></li></ul>'
     assert parse.pages(parse.soup(raw))==29
@@ -13,6 +26,11 @@ def test_legacy_maritime_notice():
     assert row['location_places']==[{'oblast':'Бургас','municipality':'Царево'}]
     assert row['concessionaire_eik']=='115325125' and row['term_months']==240
     assert row['financials'] is None
+
+def test_actual_legacy_mining_notice():
+    row=parse.assigned_notice((P/'ncr-mining.html').read_bytes())
+    assert row['location_places']==[dict(oblast='Пазарджик',municipality='Пазарджик')]
+    assert row['concessionaire_eik']=='112612045' and row['term_months']==180
 
 def test_resume_rejects_corrupted_original(tmp_path):
     import hashlib

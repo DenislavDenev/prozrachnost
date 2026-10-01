@@ -78,7 +78,7 @@ def ministries(raw):
 PROFILE_FIELDS={'ЕИК/Булстат':'eik_original','Вид':'kind','Правна форма':'legal_form','Седалище и адрес на управление':'seat','Орган, упражняващ правата на държавата':'principal','Членове на органите на управление и контрол':'board','КИД 2008':'kid','Категория на предприятието по смисъла на ЗС':'category','Предмет на дейност':'subject','Счетоводните стандарти, които предприятието прилага':'standards'}
 
 def profile(raw):
-    s=soup(raw);result={}
+    s=soup(raw);result={};board_items=None
     for card in s.select('div.p-3'):
         label=card.select_one('div.text-body-secondary')
         value=card.select_one('div.h6')
@@ -86,17 +86,24 @@ def profile(raw):
             name=text(label)
             if name in ('Телефон:','E-mail:','Уеб сайт:'): continue
             if name not in PROFILE_FIELDS: raise ShapeError('unknown profile field '+name)
+            if name.startswith('Членове') and value.select('li'):
+                board_items=[text(li) for li in value.select('li')]
+                if any(not item for item in board_items):raise ShapeError('empty item in nonempty board list')
             result[PROFILE_FIELDS[name]]=', '.join(text(li) for li in value.select('li')) if name.startswith('Членове') and value.select('li') else text(value)
     if set(result)!=set(PROFILE_FIELDS.values()): raise ShapeError('missing profile fields '+str(set(PROFILE_FIELDS.values())-set(result)))
     result['eik']=result['eik_original'] if valid_eik(result['eik_original']) else None
     # Split at the source country marker, not at commas inside names.
     result['board_original']=result['board']
-    members=re.findall(r'([^:]+?),\s*Държава:\s*([^,]+)(?:,\s*|$)',result['board_original'])
+    board_pattern=r'([^:]+?),\s*Държава:\s*(.*?)(?:\s{2,}|,\s*(?=[^:]+?,\s*Държава:)|$)'
+    members=re.findall(board_pattern,result['board_original'])
     result['board']=[dict(name=name.strip(' ,'),country=country.strip()) for name,country in members]
-    if not result['board'] and result['board_original'].strip() not in ('','-','\u2014'):
-        raise ShapeError('nonempty board list is not parseable')
-    if re.sub(r'([^:]+?),\s*Държава:\s*([^,]+)(?:,\s*|$)','',result['board_original']).strip(' ,') not in ('','-','\u2014'):
-        raise ShapeError('board list has unclassified content')
+    unclassified=re.sub(board_pattern,'',result['board_original']).strip(' ,') not in ('','-','\u2014')
+    result['board_format']='parsed_people'
+    if unclassified or (not result['board'] and result['board_original'].strip() not in ('','-','\u2014')):
+        if board_items is None:raise ShapeError('nonempty board list is not parseable')
+        # Recognized source list items are preserved verbatim; one item may contain many people.
+        result['board']=[dict(original=item,verbatim=True) for item in board_items]
+        result['board_format']='source_entries'
     result['report_links']=sorted({APPK+a['href'] for a in s.select('a[href]') if re.search(r'/CompanyDetails(?:Annual|Quarterly)Report/\d+$',a['href'])})
     result['report_pages']=sorted({APPK+a['href'] for a in s.select('.pagination a[href]') if 'disabled' not in a.parent.get('class',[]) and 'active' not in a.parent.get('class',[])})
     return result
@@ -157,6 +164,9 @@ def assigned_notice(raw):
     elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '7.3. Местонахождение на обекта на концесията:' in value:
         location=value.split('7.3. Местонахождение на обекта на концесията:',1)[1].split('7.4.',1)[0]
         term=re.search(r'7.5. Конкретен срок на концесията:\s*(\d+)\s*месеца',value)
+    elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '5.4. Местонахождение на находището:' in value:
+        location=value.split('5.4. Местонахождение на находището:',1)[1].split('5.5.',1)[0]
+        term=re.search(r'Раздел VI\. Срок на концесията:\s*(\d+)\s*месеца',value)
     else:raise ShapeError('assigned notice schema absent')
     municipalities=re.findall(r'Община:\s*([^,]+)',location)
     eik=re.search(r'ЕИК \(друга приложима информация за регистрация\):\s*(\d+)',value)

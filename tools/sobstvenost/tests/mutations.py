@@ -13,6 +13,10 @@ cases=[
  ('app/queries.py',"members[code].add(row['id'])","members[code].add(row['id']+':'+name)",'tests/test_pages.py::test_multi_municipality_same_national_concession'),
  ('ingest/store.py','if len(existing)!=len(raw) or hashlib.sha256(existing).hexdigest()!=sha:','if False:','tests/test_store.py::test_raw_corruption_never_overwrites'),
  ('ingest/store.py','if removed or nested_loss or scalar_loss:','if removed or nested_loss:','tests/test_store.py::test_scalar_identity_loss_is_held'),
+ ('ingest/parse.py',"result['board']=[dict(original=item,verbatim=True) for item in board_items]","result['board']=[]",'tests/test_sources.py::test_actual_freeform_board_preserved_without_person_guess'),
+ ('ingest/progress.py',"if self.end is not None and time.monotonic()+seconds>=self.end:","if False:",'tests/test_progress.py::test_deadline_does_not_start_request_that_crosses_budget'),
+ ('ingest/progress.py',"if self.data['sha256']!=digest(rows) or not 0<=self.data['done']<=len(rows):","if False:",'tests/test_progress.py::test_corrupt_checkpoint_never_skips_source'),
+ ('ingest/documents.py',"annual=[r for r in reports if r['kind']=='annual']","annual=reports",'tests/test_documents.py::test_selects_only_actual_latest_annual_year'),
 ]
 for file,old,new,test in cases:
     p=root/file;original=p.read_bytes();text=original.decode('utf-8')

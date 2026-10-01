@@ -12,6 +12,6 @@ def conn():
     from ingest import db
     with psycopg.connect(dsn,autocommit=True) as c:
         db.migrate(c)
-        c.execute('TRUNCATE live.record,stage.record,ops.version,ops.change_log,ops.held,ops.source_state,ops.job_run,ops.raw_file RESTART IDENTITY')
+        c.execute('TRUNCATE live.record,stage.record,ops.version,ops.change_log,ops.held,ops.source_state,ops.job_run,ops.raw_file,ops.document_file RESTART IDENTITY')
         yield c
 

@@ -63,7 +63,15 @@ def enterprise(id):
         versions=c.execute("SELECT payload,observed_at,sha256 FROM ops.version WHERE source='appk' AND scope=%s ORDER BY observed_at",('profile:'+id,)).fetchall()
         report_versions=c.execute("SELECT payload,observed_at,sha256 FROM ops.version WHERE source='appk' AND scope=%s ORDER BY observed_at DESC",('reports:'+id,)).fetchall()
     link_eik=detail.get('eik') if detail and detail.get('eik') and sum(p.get('eik')==detail['eik'] for p in allprofiles.values())==1 else None
-    return dict(row=row,detail=detail,link_eik=link_eik,reports=records('appk','reports:'+id),versions=versions,report_versions=report_versions)
+    return dict(row=row,detail=detail,link_eik=link_eik,reports=records('appk','reports:'+id),versions=versions,report_versions=report_versions,archives=document_versions('appk',id))
+
+def document_versions(source,id):
+    key='appk_id' if source=='appk' else 'ncr_id'
+    with db.connect(row_factory=dict_row) as c:
+        rows=c.execute('SELECT url,sha256,media_type,first_seen FROM ops.document_file WHERE source=%s AND metadata->>%s=%s ORDER BY first_seen DESC',(source,key,id)).fetchall()
+    result=defaultdict(list)
+    for row in rows:result[row['url']].append(row)
+    return result
 
 def concession(id):
     row=next((r for r in records('ncr','catalogue') if r['id']==id),None)

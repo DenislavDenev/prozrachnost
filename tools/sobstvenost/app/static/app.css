@@ -195,3 +195,5 @@ th.n .sort { flex-direction: row-reverse; }
 .budget-heading .help-trigger{margin-top:1px}
 .state-budget .budget-summary td:first-child{padding-left:12px}
 .wrap{min-width:0}.wrap>.scroll{max-width:100%;overflow-x:auto}.wrap>.scroll table{min-width:640px}.grid>*{min-width:0}.ctl{flex-wrap:wrap}.ctl input{max-width:100%;box-sizing:border-box}.ctl label{min-width:0}.ctl select{max-width:100%}th{vertical-align:top}.sort{border:0;background:transparent;font:inherit;text-align:left;cursor:pointer;color:inherit}.sort:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #0b7a5e;outline-offset:3px}.word{white-space:nowrap}
+
+.prose,.row-role,.p p,.p li { overflow-wrap: anywhere; }

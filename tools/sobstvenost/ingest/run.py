@@ -5,6 +5,7 @@ from . import db,parse,store
 from .config import DATA,ROOT
 from .http import Client
 from .checks import freshness,summary
+from .progress import Queue,Deadline,BudgetReached,pending
 
 def archive(conn,client,source,url,data=None,resume=False):
     if resume and data is None:
@@ -71,11 +72,12 @@ def ncr_catalogue(conn,client):
     result=store.apply(conn,'ncr','catalogue',rows,total,raw_digest(client))
     return dict(status=result,rows=len(rows),source_count=total,pages=last)
 
-def appk_details(conn,client,limit=None,resume=False,pdfs=False):
+def appk_details(conn,client,limit=None,resume=False,pdfs=False,continue_pending=False):
     rows=[r[0] for r in conn.execute("SELECT payload FROM live.record WHERE source='appk' AND scope='catalogue' AND gone_at IS NULL ORDER BY ref")]
-    done=0
-    store.state(conn,'appk','details','partial','Профилите и отчетните метаданни още не са прочетени докрай',0)
-    for row in rows:
+    scope='pdfs' if pdfs else 'details'
+    queue=Queue('appk',scope,rows,continue_pending);rows=queue.rows;done=queue.done
+    store.state(conn,'appk',scope,'partial','Профилите и отчетните метаданни още не са прочетени докрай',0)
+    for row in rows[done:]:
         client.raws.clear()
         if limit is not None and done>=limit:break
         url=row['source_url'];raw=archive(conn,client,'appk',url,resume=resume)
@@ -99,17 +101,19 @@ def appk_details(conn,client,limit=None,resume=False,pdfs=False):
         with conn.transaction():
             store.apply(conn,'appk','profile:'+row['id'],[data],1,raw_digest(client))
             store.apply(conn,'appk','reports:'+row['id'],reports,len(reports),raw_digest(client))
-        done+=1
-        store.state(conn,'appk','details','partial','Профилите и отчетните метаданни още не са прочетени докрай',done)
+        queue.advance();done=queue.done
+        store.state(conn,'appk',scope,'partial','Профилите и отчетните метаданни още не са прочетени докрай',done)
         print(json.dumps(dict(progress='appk-details',completed=done,total=len(rows))),flush=True)
-    store.state(conn,'appk','details','ok' if done==len(rows) else 'partial',None if done==len(rows) else 'profile backfill is incomplete',done)
+    store.state(conn,'appk',scope,'ok' if done==len(rows) else 'partial',None if done==len(rows) else 'profile backfill is incomplete',done)
+    if done==len(rows):
+        conn.execute('UPDATE ops.source_state SET last_success=%s WHERE source=%s AND scope=%s',(queue.data['started_at'],'appk',scope));queue.complete()
     return dict(completed=done,total=len(rows),partial=done!=len(rows))
 
-def ncr_details(conn,client,limit=None,resume=False):
+def ncr_details(conn,client,limit=None,resume=False,continue_pending=False):
     rows=[r[0] for r in conn.execute("SELECT payload FROM live.record WHERE source='ncr' AND scope='catalogue' AND gone_at IS NULL ORDER BY ref")]
-    done=0
+    queue=Queue('ncr','details',rows,continue_pending);rows=queue.rows;done=queue.done
     store.state(conn,'ncr','details','partial','Партидите и обявленията още не са прочетени докрай',0)
-    for row in rows:
+    for row in rows[done:]:
         client.raws.clear()
         if limit is not None and done>=limit:break
         data=parse.concession_detail(archive(conn,client,'ncr',row['source_url'],resume=resume))
@@ -118,14 +122,29 @@ def ncr_details(conn,client,limit=None,resume=False):
             notice=parse.assigned_notice(archive(conn,client,'ncr',link,resume=resume));notice['source_url']=link;notices.append(notice)
         data.update(id=row['id'],source_url=row['source_url'],notices=notices)
         store.apply(conn,'ncr','profile:'+row['id'],[data],1,raw_digest(client))
-        done+=1
+        queue.advance();done=queue.done
         store.state(conn,'ncr','details','partial','Партидите и обявленията още не са прочетени докрай',done)
         print(json.dumps(dict(progress='ncr-details',completed=done,total=len(rows))),flush=True)
     store.state(conn,'ncr','details','ok' if done==len(rows) else 'partial',None if done==len(rows) else 'detail backfill is incomplete',done)
+    if done==len(rows):
+        conn.execute('UPDATE ops.source_state SET last_success=%s WHERE source=%s AND scope=%s',(queue.data['started_at'],'ncr','details'));queue.complete()
     return dict(completed=done,total=len(rows),partial=done!=len(rows))
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--step',required=True,choices=['migrate','appk','ncr','appk-details','ncr-details','refresh','freshness','summary','municipal','pdfs']);p.add_argument('--resume',action='store_true');p.add_argument('--limit',type=int);args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--step',required=True,choices=['migrate','appk','ncr','appk-details','ncr-details','refresh','freshness','summary','municipal','pdfs']);p.add_argument('--resume',action='store_true');p.add_argument('--limit',type=int);p.add_argument('--budget-seconds',type=int);p.add_argument('--continue-pending',action='store_true');p.add_argument('--pending-only',action='store_true');args=p.parse_args()
+    if args.budget_seconds is not None and args.budget_seconds<=0:p.error('budget must be positive')
+    # Calculate after the shared lock: a queued night job cannot spill into morning.
+    now=dt.datetime.now(dt.timezone.utc)
+    cuts=[now.replace(hour=5,minute=45,second=0,microsecond=0),now.replace(hour=17,minute=45,second=0,microsecond=0)]
+    cuts.append(cuts[0]+dt.timedelta(days=1))
+    safe_seconds=int((min(cut for cut in cuts if cut>now)-now).total_seconds())
+    minute=now.hour*60+now.minute
+    if 345<=minute<615 or 1065<=minute<1335:safe_seconds=0
+    args.budget_seconds=min(args.budget_seconds,safe_seconds) if args.budget_seconds is not None else safe_seconds
+    if args.pending_only:
+        if args.step!='pdfs':p.error('pending-only is supported only for attachment archive')
+        if not (pending('appk','pdfs') or pending('ncr','pdfs')):
+            print(json.dumps(dict(skipped=True,reason='no pending attachment checkpoint')));return 0
     try:
         if args.step=='migrate':
             with db.connect() as conn:db.migrate(conn)
@@ -138,15 +157,23 @@ def main():
             raise RuntimeError('municipal dataset inventory and individual reuse permissions are not yet validated; no fabricated import')
         else:
             with db.job(args.step) as conn:
-                client=Client()
-                if args.step=='refresh':
-                    result=dict(appk=appk_catalogue(conn,client),ncr=ncr_catalogue(conn,client))
-                    result['appk_details']=appk_details(conn,client,resume=args.resume)
-                    result['ncr_details']=ncr_details(conn,client,resume=args.resume)
-                elif args.step=='appk':result=appk_catalogue(conn,client)
-                elif args.step=='ncr':result=ncr_catalogue(conn,client)
-                elif args.step in ('appk-details','pdfs'):result=appk_details(conn,client,args.limit,args.resume,pdfs=args.step=='pdfs')
-                else:result=ncr_details(conn,client,args.limit,args.resume)
+                client=Client(deadline=Deadline(args.budget_seconds))
+                try:
+                    if args.step=='refresh':
+                        continuing=args.continue_pending and (pending('appk','details') or pending('ncr','details'))
+                        result={} if continuing else dict(appk=appk_catalogue(conn,client),ncr=ncr_catalogue(conn,client))
+                        if not continuing or pending('appk','details'):
+                            result['appk_details']=appk_details(conn,client,resume=args.resume,continue_pending=args.continue_pending)
+                        result['ncr_details']=ncr_details(conn,client,resume=args.resume,continue_pending=args.continue_pending)
+                    elif args.step=='appk':result=appk_catalogue(conn,client)
+                    elif args.step=='ncr':result=ncr_catalogue(conn,client)
+                    elif args.step=='pdfs':
+                        from . import documents
+                        result=documents.archive(conn,client,archive,resume=args.resume,continue_pending=args.continue_pending)
+                    elif args.step=='appk-details':result=appk_details(conn,client,args.limit,args.resume,continue_pending=args.continue_pending)
+                    else:result=ncr_details(conn,client,args.limit,args.resume,continue_pending=args.continue_pending)
+                except BudgetReached:
+                    result=dict(pending=True,reason='budget',step=args.step)
         print(json.dumps(result,ensure_ascii=False,default=str),flush=True)
         return 1 if result.get('problems') or result.get('partial') else 0
     except Exception as e:

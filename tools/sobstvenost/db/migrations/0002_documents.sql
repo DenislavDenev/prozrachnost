@@ -1,0 +1,1 @@
+CREATE TABLE ops.document_file(source text NOT NULL,ref text NOT NULL,sha256 text NOT NULL,url text NOT NULL,media_type text NOT NULL,bytes bigint NOT NULL,metadata jsonb NOT NULL,first_seen timestamptz NOT NULL DEFAULT now(),last_seen timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(source,ref,sha256));
