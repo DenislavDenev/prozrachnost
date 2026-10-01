@@ -19,7 +19,7 @@ def seed(conn,monkeypatch):
 
 def test_all_pages_profiles_feedback(conn,monkeypatch):
     seed(conn,monkeypatch);client=TestClient(app)
-    for url in ['/','/?view=concessions','/predpriyatiya','/predpriyatiya/id/105','/predpriyatiya/831646048','/koncesii','/koncesii/f0648cf4-8c12-4cf8-9c57-4f739e9b6396','/karta','/sources','/how']:
+    for url in ['/','/?view=concessions','/predpriyatiya','/predpriyatiya/id/105','/predpriyatiya/831646048','/koncesii','/koncesii/f0648cf4-8c12-4cf8-9c57-4f739e9b6396','/karta','/sources','/how','/rights']:
         response=client.get(url)
         assert response.status_code==200,url+' '+response.text[:400]
         assert 'Обратна връзка' in response.text and 'Подкрепи проекта' in response.text

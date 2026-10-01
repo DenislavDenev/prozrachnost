@@ -1,6 +1,13 @@
 from pathlib import Path
 import pytest
 
+def test_legacy_maritime_notice():
+    from pathlib import Path
+    row=parse.assigned_notice((Path(__file__).parent/'fixtures/ncr-arapya.html').read_bytes())
+    assert row['location_places']==[{'oblast':'Бургас','municipality':'Царево'}]
+    assert row['concessionaire_eik']=='115325125' and row['term_months']==240
+    assert row['financials'] is None
+
 def test_resume_rejects_corrupted_original(tmp_path):
     import hashlib
     from ingest.run import archive

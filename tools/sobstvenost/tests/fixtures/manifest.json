@@ -46,5 +46,11 @@
     "original_sha256": "414d8f14a880d304fe42899e8a0ac2a61b008954fbd900a5902c24289d803c33",
     "fixture_sha256": "2cd6f37b9dd50f7c84310c611080c244282669ff97613cff888a8861a60ed82e",
     "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "ncr-arapya.html",
+    "original_sha256": "9afdca127522dd546bd598ad753c0c918177f79fe0636251aad8f690703f090c",
+    "fixture_sha256": "b5e645ed018fd459f7cd1ba565cc007e03e64ecfc29841b564bc29dfa4f61341",
+    "cut": "Only published legal-person role and sectionVII facts; sectionI contact fields omitted."
   }
 ]

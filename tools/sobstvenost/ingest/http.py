@@ -22,7 +22,9 @@ class Client:
                     except ValueError:
                         try:delay=max(0,(email.utils.parsedate_to_datetime(retry)-dt.datetime.now(dt.timezone.utc)).total_seconds())
                         except (ValueError,TypeError):pass
-            except requests.Timeout:
+            except requests.exceptions.SSLError:
+                raise
+            except (requests.Timeout,requests.ConnectionError):
                 self.last=time.monotonic()
             if attempt==3:raise RuntimeError('source repeatedly failed '+url)
             time.sleep(delay)

@@ -51,6 +51,11 @@ def test_scalar_identity_loss_is_held(conn):
     assert store.apply(conn,'appk','profile:105',[dict(id='105',eik=None,share_pct=None)],1)=='held'
     assert conn.execute('SELECT payload FROM live.record').fetchone()[0]['eik']=='831646048'
 
+def test_original_share_disappearance_is_held(conn):
+    store.apply(conn,'appk','catalogue',[dict(id='105',share_pct='100',share_text='100% Държавна собственост',participation='direct')],1)
+    assert store.apply(conn,'appk','catalogue',[dict(id='105',share_pct='100',share_text=None,participation=None)],1)=='held'
+    assert conn.execute('SELECT payload FROM live.record').fetchone()[0]['share_text']=='100% Държавна собственост'
+
 def test_raw_corruption_never_overwrites(conn,tmp_path,monkeypatch):
     monkeypatch.setattr(store,'DATA',tmp_path)
     sha=store.save_raw(conn,'appk','https://example.invalid/source',b'original')

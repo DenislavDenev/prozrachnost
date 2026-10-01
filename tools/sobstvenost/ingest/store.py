@@ -39,7 +39,7 @@ def apply(conn,source,scope,rows,expected,answer_sha=None):
             {json.dumps(x,sort_keys=True) for x in old[ref].get(field,[])} - {json.dumps(x,sort_keys=True) for x in new[ref].get(field,[])}
             for ref in old.keys()&new.keys() for field in ('board','documents','report_links','municipalities')
         )
-        scalar_loss=any(old[ref].get(field) is not None and new[ref].get(field) is None for ref in old.keys()&new.keys() for field in ('eik','share_pct','principal','filed_on','owner','year','quarter','unit'))
+        scalar_loss=any(old[ref].get(field) is not None and new[ref].get(field) is None for ref in old.keys()&new.keys() for field in ('eik','share_pct','principal','filed_on','owner','share_text','participation','year','quarter','unit'))
         held=conn.execute("SELECT sha256,first_at<=now()-interval '1 day' FROM ops.held WHERE source=%s AND scope=%s",(source,scope)).fetchone()
         if removed or nested_loss or scalar_loss:
             if not held or held[0]!=sha:

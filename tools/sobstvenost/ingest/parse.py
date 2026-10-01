@@ -150,11 +150,15 @@ def concession_detail(raw):
 
 def assigned_notice(raw):
     s=soup(raw);value=text(s)
-    if '9.5. Основно място на изпълнение на концесията:' not in value:raise ShapeError('assigned notice schema absent')
-    location=value.split('9.5. Основно място на изпълнение на концесията:',1)[1].split('9.6.',1)[0]
+    if '9.5. Основно място на изпълнение на концесията:' in value:
+        location=value.split('9.5. Основно място на изпълнение на концесията:',1)[1].split('9.6.',1)[0]
+        term=re.search(r'9.7.1.*?\(месецa\):\s*(\d+)\s*месеца',value)
+    elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '7.3. Местонахождение на обекта на концесията:' in value:
+        location=value.split('7.3. Местонахождение на обекта на концесията:',1)[1].split('7.4.',1)[0]
+        term=re.search(r'7.5. Конкретен срок на концесията:\s*(\d+)\s*месеца',value)
+    else:raise ShapeError('assigned notice schema absent')
     municipalities=re.findall(r'Община:\s*([^,]+)',location)
     eik=re.search(r'ЕИК \(друга приложима информация за регистрация\):\s*(\d+)',value)
-    name=re.search(r'6.1. Име/Наименование:\s*(.*?)\s*ЕИК',value)
-    term=re.search(r'9.7.1.*?\(месецa\):\s*(\d+)\s*месеца',value)
+    name=re.search(r'(?:6.1. )?Име/Наименование:\s*(.*?)\s*ЕИК',value)
     places=[dict(oblast=oblast.strip(),municipality=municipality.strip()) for oblast,municipality in re.findall(r'Област:\s*([^,]+),\s*Община:\s*([^,]+)',location)]
     return dict(municipality_names=municipalities,location_places=places,location_original=location,concessionaire_eik=eik[1] if eik and valid_eik(eik[1]) else None,concessionaire_name=name[1] if name else None,term_months=int(term[1]) if term else None,financials=None)

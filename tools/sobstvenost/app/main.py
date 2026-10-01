@@ -83,3 +83,8 @@ def map_csv(l='obshtini',kind='',status='',conceder='',q='',subject='',municipal
 def sources(request:Request):return render(request,'sources.html',nav='Източници',states=Q.states())
 @app.get('/how',response_class=HTMLResponse)
 def how(request:Request):return render(request,'how.html',nav='Как работи')
+
+@app.get('/rights',response_class=HTMLResponse)
+def rights(request:Request):
+    policy=(Path(__file__).parents[1]/'docs/legal.md').read_text(encoding='utf-8')
+    return render(request,'rights.html',nav='',paragraphs=policy.split('\n\n')[1:])
