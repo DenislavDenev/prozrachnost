@@ -83,7 +83,7 @@ def test_state_hierarchy_and_empty_original_value(client,monkeypatch):
  row['actual']['eur']=None;row['actual']['original']=None;row['pct']='0'
  monkeypatch.setattr(Q,'snapshots',lambda:ss)
  page=client.get('/darzhaven?y='+state['period'])
- assert page.status_code==200 and 'budget-summary' in page.text and 'Съставно перо' in page.text
+ assert page.status_code==200 and 'budget-summary' in page.text and 'Включено подперо' in page.text
  assert 'Няма отчет в източника' in page.text
  assert next(r for r in Q.state_rows(state) if r['line']==row['line'])['pct'] is None
  import csv,io
@@ -100,3 +100,39 @@ def test_map_explains_selected_metric_and_omits_single_scope(client):
  how=client.get('/how');assert how.status_code==200
  assert how.text.count('<h2>Определения на картата</h2>')==1
  assert '<title>Как работи' in how.text and '<title>Как работи<section' not in how.text
+
+
+def test_state_transfer_context_previous_and_incomplete_plan(client):
+ s=Q.choose('state','2025-12-31');rows=Q.state_rows(s)
+ received=next(r for r in rows if r['ident']=='received')
+ children=[r for r in rows if r['parent']==received['key']]
+ assert {r['ident'] for r in children}=={'municipalities','doo'}
+ from decimal import Decimal
+ assert sum(Decimal(r['actual']['original']) for r in children)==Decimal(received['actual']['original'])
+ assert children[0]['law']['original'] is None
+ assert 'непълна' in received['checks'][0] and 'не приписваме остатъка' in received['checks'][0]
+ previous=Q.state_previous(s)
+ given=previous['expenses-transfers/transfers/provided/municipalities']
+ taken=previous['expenses-transfers/transfers/received/municipalities']
+ assert given['actual']['original']=='12423.847231199998'
+ assert taken['actual']['original']=='31.923121'
+ import csv,io
+ exported=list(csv.DictReader(io.StringIO(client.get('/export-budget.csv?y=2025-12-31').text.lstrip('\ufeff'))))
+ assert len({r['row_key'] for r in exported})==len(exported)
+ taken=next(r for r in exported if r['row_key'].endswith('/received/municipalities'))
+ assert taken['law_original']==taken['law_eur']==''
+ page=client.get('/darzhaven?y=2025-12-31');assert page.status_code==200
+ assert page.text.count('data-help="row-')==len(s['rows'])
+ assert 'Разбивката има ограничение' in page.text
+
+def test_state_chart_total_includes_eu_and_matches_published_balance(client):
+ from decimal import Decimal
+ s=Q.choose('state');original=s['rows']
+ income=Q.euros(next(r for r in original if r['line'].startswith('I.'))['actual'])
+ ii=Q.euros(next(r for r in original if r['line'].startswith('II.'))['actual'])
+ iii=Q.euros(next(r for r in original if r['line'].startswith('III.'))['actual'])
+ balance=Q.euros(next(r for r in original if r['line'].startswith('IV.'))['actual'])
+ assert abs(income-ii-iii-balance)<Decimal('0.01')
+ series=client.get('/api/chart.json?kind=state&metrics=revenue,spending_total,balance').json()['series']
+ assert abs(Decimal(str(series[1]['points'][-1][1]))-ii-iii)<Decimal('0.01')
+ assert 'вноска в ЕС' in series[1]['name']

@@ -26,7 +26,7 @@ def date(v):
 t.env.filters.update(num=number,money=money,date=date)
 def render(request,name,**context):
  hub=os.environ.get('HUB_URL','https://prozrachnost.denev.work')
- return t.TemplateResponse(request=request,name=name,context=dict(v='2',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
+ return t.TemplateResponse(request=request,name=name,context=dict(v='3',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
 def serial(data):
  import json
  return JSONResponse(json.loads(json.dumps(data,default=lambda v:float(v) if isinstance(v,Decimal) else str(v))))
@@ -57,7 +57,7 @@ def state_page(request:Request,y=None,q=''):
  if s:
   import calendar
   y=s['period'];py=int(y[:4])-1;month=int(y[5:7]);previous=Q.choose('state',f'{py}-{month:02d}-{calendar.monthrange(py,month)[1]:02d}')
- return render(request,'state.html',nav='Държавен бюджет',s=s,rows=Q.state_rows(s,q),selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
+ return render(request,'state.html',nav='Държавен бюджет',s=s,rows=Q.state_rows(s,q),selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('state'),reverse=True),q=q,previous=Q.state_previous(previous),helps=[Q.state_help(r,s) for r in Q.state_rows(s,q)],column_help=Q.COLUMN_HELP)
 @app.get('/kfp',response_class=HTMLResponse)
 def kfp_page(request:Request,y=None,q='',budget_type=''):
  s=Q.choose('kfp',y)
@@ -94,16 +94,15 @@ def chart(kind='state',code=None,metrics=None,budget_type='',y=None):
 def budget_csv(kind='state',y=None,q='',budget_type=''):
  if kind not in ('state','kfp','reserve'):raise HTTPException(400,'Невалиден набор')
  s=Q.choose(kind,y);rows=[]
- for r in s['rows'] if s else []:
+ for r in (Q.state_rows(s,q) if kind=='state' else s['rows'] if s else []):
   if kind=='state':
-   if q.casefold() not in r['line'].casefold():continue
-   rows.append(dict(period=s['period'],line=r['line'],law_eur=Q.euros(r['law']),actual_eur=Q.euros(r['actual']),pct=r['pct'] if r['actual']['eur'] is not None else None,unit=r['actual']['unit'],law_original=r['law']['original'],actual_original=r['actual']['original']))
+   rows.append(dict(period=s['period'],line=r['line'],law_eur=Q.euros(r['law']),actual_eur=Q.euros(r['actual']),pct=r['pct'],row_key=r['key'],parent=r['section'],depth=r['depth'],unit=r['actual']['unit'],law_original=r['law']['original'],actual_original=r['actual']['original']))
   else:
    if budget_type and r.get('budget_type')!=budget_type:continue
    for k,v in (r['values'].items() if kind=='kfp' else [(r['line'],r['value'])]):
     if q.casefold() not in (k+' '+r.get('budget_type','')).casefold():continue
     rows.append(dict(period=s['period'],budget_type=r.get('budget_type',''),item=k,value_eur=Q.euros(v),unit=v['unit'],original=v['original']))
- headers=['period','line','law_eur','actual_eur','pct','unit','law_original','actual_original'] if kind=='state' else ['period','budget_type','item','value_eur','unit','original']
+ headers=['period','line','law_eur','actual_eur','pct','unit','law_original','actual_original','row_key','parent','depth'] if kind=='state' else ['period','budget_type','item','value_eur','unit','original']
  return csv(Q.csv_response(rows,headers))
 def source_rows(q=''):
  with db.connect() as c:

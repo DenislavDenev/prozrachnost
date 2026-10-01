@@ -67,3 +67,22 @@ def test_kfp_source_balance_and_guard():
  with pytest.raises(ShapeError):parse.parse((F/'egov/kfp-invalid-balance.json').read_bytes(),'kfp','2025-11-30')
  raw=json.loads((F/'egov/kfp-latest.json').read_bytes());raw['data'][1][1]='1'
  with pytest.raises(ShapeError):parse.parse(json.dumps(raw),'kfp','2026-08-31')
+
+
+def test_state_duplicate_names_do_not_mask_missing_values():
+ import copy
+ from ingest.store import flatten,should_hold
+ d=parse.parse((F/'egov/state-latest.json').read_bytes(),'state','2026-08-31')
+ both=[r for r in d['rows'] if r['line']=='Общини'];assert len(both)==2
+ keys=flatten(d);assert any('/provided/municipalities/' in k for k in keys)
+ assert any('/received/municipalities/' in k for k in keys)
+ changed=copy.deepcopy(d);first=next(r for r in changed['rows'] if r['line']=='Общини')
+ first['actual']['eur']=None;first['actual']['original']=None
+ assert should_hold(d,changed)
+
+def test_state_unknown_and_duplicate_categories_stop_parse():
+ d=json.loads((F/'egov/state-latest.json').read_bytes())
+ original=d['data'][3][0];d['data'][3][0]='Непознато бюджетно перо'
+ with pytest.raises(ShapeError):parse.parse(json.dumps(d),'state','2026-08-31')
+ d['data'][3][0]=original;d['data'].insert(4,d['data'][3])
+ with pytest.raises(ShapeError):parse.parse(json.dumps(d),'state','2026-08-31')

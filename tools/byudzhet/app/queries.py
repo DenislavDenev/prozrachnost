@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException
 from ingest import db
 from ingest.parse import REF
+from ingest.state import structure
 LABELS={'debt':'Остатъчна главница по общинския дълг','overdue':'Просрочени задължения','liabilities':'Задължения за разходи','commitments':'Поети ангажименти за разходи'}
 DEFINITIONS={
  'debt':'Парите, които общината още трябва да върне по заемите си и други форми на дълг към края на тримесечието. Показваме оставащата за връщане сума, без бъдещите лихви.',
@@ -85,6 +86,8 @@ def state_summary(s):
   line=r['line']
   key='revenue' if line.startswith('I. ПРИХОДИ') else 'spending' if line.startswith('II.') else 'balance' if 'БЮДЖЕТНО САЛДО' in line.upper() else None
   if key:out[key]=euros(r['actual']);out[key+'_law']=euros(r['law']);out[key+'_pct']=r['pct']
+  if line.startswith('III.'):out['eu_contribution']=euros(r['actual'])
+ out['spending_total']=out['spending']+out['eu_contribution'] if out.get('spending') is not None and out.get('eu_contribution') is not None else None
  return out
 def times(kind):
  periods=sorted(bykind(kind))
@@ -108,7 +111,7 @@ def kfp_summary(s,budget_type=''):
  return dict(revenue=revenue,spending=spending,balance=balance)
 def chart(kind,code=None,metrics=None,budget_type='',y=None):
  if kind in ('state','kfp'):
-  ss=bykind(kind);keys=metrics or ['revenue','spending'];label={'revenue':'Приходи','spending':'Разходи и трансфери' if kind=='state' else 'Разходи и вноска в ЕС','balance':'Бюджетно салдо','revenue_pct':'Приходи спрямо закона','spending_pct':'Разходи спрямо закона'}
+  ss=bykind(kind);keys=metrics or ['revenue','spending_total' if kind=='state' else 'spending'];label={'spending_total':'Разходи, трансфери и вноска в ЕС','revenue':'Приходи','spending':'Разходи и трансфери' if kind=='state' else 'Разходи и вноска в ЕС','balance':'Бюджетно салдо','revenue_pct':'Приходи спрямо закона','spending_pct':'Разходи спрямо закона'}
   series=[]
   for k in keys:
    series.append(dict(name=label[k],points=[[p,None if (v:=(state_summary(ss.get(p)) if kind=='state' else kfp_summary(ss.get(p),budget_type)).get(k)) is None else float(v)] for p in times(kind) if not y or p<=y]))
@@ -132,12 +135,55 @@ def is_summary(line):
  return bool(re.match(r'^[IVXLCDM]+\.\s',line))
 
 def state_rows(s,q=''):
- rows=[];section=None
- for raw in s['rows'] if s else []:
-  summary=is_summary(raw['line'])
-  if summary:section=raw['line']
-  if q.casefold() not in raw['line'].casefold():continue
-  row=dict(raw,summary=summary,section=section)
+ rows=structure(s['rows']) if s else []
+ for row in rows:
+  row['source_pct']=row['pct']
   if row['actual']['eur'] is None:row['pct']=None
-  rows.append(row)
- return rows
+  if not euros(row['law']):row['pct']=None
+  row['checks']=[];children=[r for r in rows if r['parent']==row['key']]
+  # "in this number" is a partial detail, not an exhaustive subtotal.
+  if not children or row['ident']=='privatization':continue
+  for field,label in [('law','План'),('actual','Отчет')]:
+   parts=[r for r in children if not(field=='actual' and r['ident']=='contingency')]
+   values=[euros(r[field]) for r in parts];total=euros(row[field])
+   if total is None:continue
+   if not values or any(v is None for v in values):
+    missing=', '.join(r['display_line'] for r,v in zip(parts,values) if v is None);known=sum(v for v in values if v is not None)
+    row['checks'].append(label+': разбивката е непълна в източника. Липсва стойност за '+missing+'. Общо '+money_text(total)+', публикувани подсуми '+money_text(known)+', разлика '+money_text(total-known)+'. Празна клетка не е нула; не приписваме остатъка на никое подперо.')
+    continue
+   calculated=sum((-v if row['ident']=='transfers' and r['ident']=='received' else v) for r,v in zip(parts,values))
+   diff=total-calculated
+   if abs(diff)>Decimal('0.01'):
+    row['checks'].append(label+': публикувано общо '+money_text(total)+', сбор на подредовете '+money_text(calculated)+', разлика '+money_text(diff)+'. Запазваме оригиналните числа; не изравняваме разбивката.')
+   else:row['checks'].append(label+': подредовете се събират до публикуваното обобщение.' if row['ident']!='transfers' else label+': дадени минус получени се равнява на нетните трансфери.')
+ for row in rows:row['warning']=any('непълна' in c or 'разлика' in c for c in row['checks'])
+ return [r for r in rows if q.casefold() in (r['line']+' '+r['display_line']).casefold()]
+
+def money_text(v):
+ return format(v,',.2f').replace(',',' ').replace('.',',')+' €'
+
+def state_previous(s):
+ return {r['key']:r for r in structure(s['rows'])} if s else {}
+
+def state_help(row,s):
+ ident=row['ident']
+ sign='При „нето“ обратните движения вече са приспаднати. Минусът показва отрицателния нетен резултат на това перо, а не автоматично грешка или нарушение.'
+ if ident=='balance':sign='Плюс означава излишък; минус означава дефицит. Крайният месец е важен: отчет към август не е отчет за цялата година.'
+ elif '/received' in row['key']:sign='Получените трансфери са показани като получена сума. При изчисляване на „Трансфери (нето)“ тя се изважда от дадените.'
+ elif '/provided' in row['key']:sign='Дадените трансфери увеличават нетно предоставената сума; получените се приспадат отделно. Подперо с „нето“ вече включва обратните движения.'
+ elif row['key'].startswith('income'):sign='Плюсът е отчетено постъпление. Отрицателен нетен приход може да отразява възстановявания или корекции; конкретната операция не е посочена в тази таблица.'
+ elif row['key'].startswith('financing'):sign='Плюсът е нетен източник на средства, а минусът е нетно използване или погасяване в тази финансова операция. Това е финансиране, не събран данък.'
+ elif ident!='transfers':sign='Положителната сума участва в разходите. Отрицателната намалява този сбор; при „нето“ обратните движения вече са приспаднати. Таблицата не посочва конкретната операция зад всеки минус.'
+ text=row['description']
+ if row['line'].endswith('**'):text+=' Бележката на МФ уточнява, че получените трансфери включват и преводи от НЗОК за одобрени разходи на държавни болници.'
+ return dict(title=row['display_line'],text=text,example='Пример (условен): '+row['example'],sign=sign,checks=row['checks'],source=s['url'],parent=row['section'])
+
+COLUMN_HELP={
+ 'line':dict(title='Перо и подперо',text='Отстъпът показва към кой общ ред принадлежи сумата. Един и същ надпис, например „Общини“, може да се среща при дадени и при получени трансфери.',example='Пример: дадени на общини и получени от общини са два различни реда.'),
+ 'law_eur':dict(title='Годишен план (закон)',text='Планът по закона за държавния бюджет, приет от Народното събрание. Това е годишният план, публикуван от МФ, не план за избрания месец.',example='Пример: план 100 € за годината и отчет 60 € до август.'),
+ 'actual_eur':dict(title='Отчет',text='Реално събраното или платеното от началото на годината до избрания месец. Сумите са показани в евро; оригиналната единица остава в CSV.',example='Пример: отчет за декември включва цялата година; отчет за август включва януари–август.'),
+ 'pct':dict(title='Изпълнение',text='Отчетът, разделен на годишния план, умножен по 100. Липсващ отчет или липсващ/нулев план означава, че процент не може да се изчисли.',example='Пример: 60 € отчет при 100 € план = 60%. При отрицателни нетни операции процентът следва знаците на сумите.'),
+ 'previous':dict(title='Същият период преди година',text='Сравняваме същото перо в същата категория и за същия краен месец. Дадени и получени трансфери не се смесват. При различен обхват няма съпоставим ред.',example='Пример: дадените на общини през 2026 г. се сравняват с дадените на общини през 2025 г., не с получените от тях.'),
+ 'chart':dict(title='Приходи, плащания и салдо',text='Плащанията в тази графика включват раздел II и вноската в ЕС от раздел III. Приходи минус тази обща сума дават касовото салдо на държавния бюджет. Държавният бюджет е само част от КФП; статистическият дефицит на страната има друг обхват и метод.',example='Пример: 100 € приходи и 110 € плащания означават салдо −10 €.'),
+ 'reserve':dict(title='Фискален резерв',text='Финансови средства и вземания, публикувани от МФ към края на месеца. Това е наличност, а не разход или резервът за непредвидени разходи в бюджетната таблица.',example='Пример: салдото на сметка е наличност; платеното от нея през годината е поток.'),
+}
