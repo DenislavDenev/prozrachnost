@@ -31,7 +31,21 @@ def test_filters_csv_api_and_missing_quarter(client):
  assert all(row['debt'] is None and row['overdue'] is None for row in r['rows'])
 def test_map_all_levels_and_ratio_of_sums(client):
  a=client.get('/api/karta.json?m=debt').json();assert len(a['items'])==265
+ assert all('y=2026-06-30&denominator=current' in r['href'] for r in a['items'])
  b=client.get('/api/karta.json?m=debt&l=oblasti').json();assert len(b['items'])==28
  assert abs(sum(r['v'] for r in a['items'])-sum(r['v'] for r in b['items']))<0.001
  d=client.get('/api/karta.json?m=debt_per_person&l=darzhava').json();assert len(d['items'])==1 and d['items'][0]['v'] is not None
  assert client.get('/api/karta.json?m=unknown').status_code==400
+
+def test_reserve_missing_month_is_a_gap(client,monkeypatch):
+ s=copy.deepcopy(Q.choose('reserve'));later=copy.deepcopy(s)
+ s['period']='2026-06-30';later['period']='2026-08-31'
+ monkeypatch.setattr(Q,'snapshots',lambda:[s,later])
+ r=client.get('/api/chart.json?kind=reserve')
+ assert r.status_code==200 and r.json()['series'][0]['points'][1]==['2026-07-31',None]
+
+def test_csv_keeps_original_units_and_all_denominators(client):
+ import csv,io
+ rows=list(csv.DictReader(io.StringIO(client.get('/export.csv?municipality=000024663').text.lstrip('\ufeff'))))
+ assert len(rows)==1 and rows[0]['debt_original']=='215961.97' and rows[0]['debt_original_unit']=='EUR'
+ assert all(k+'_per_person' in rows[0] for k in Q.LABELS)

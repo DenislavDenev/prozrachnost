@@ -6,6 +6,6 @@
 
 Настройки: `BYUDZHET_DSN`, `BYUDZHET_DATA`, `BYUDZHET_FEEDBACK`, `HUB_URL`. Уеб: `uvicorn app.main:app --port 8003`. Импорт: `python -m ingest.run --step migrate`, след това `--step refresh`, `--step grao` и `--step freshness`. Първото наваксване може да използва изрично зададен `--archive` със сурови отговори; текущият каталог винаги се проверява. Следващите ходове четат ресурсите от източника отново, включително същата версия, за да открият промяна по хеш.
 
-Обновяване: ежедневно в 04:40 UTC; ГРАО на 16-о число в 05:10 UTC; отделна проверка на свежестта. Конфигурацията за внедряване и автоматизация е в частното репо. Тестове: `BYUDZHET_TEST_DSN=dbname=byudzhet_test python -m pytest -q`, след това `python tests/mutations.py`.
+Обновяване: ежедневно в 04:40 UTC; ГРАО ежедневно в 05:30 UTC; отделна проверка на свежестта. Конфигурацията за внедряване и автоматизация е в частното репо. Тестове: `BYUDZHET_TEST_DSN=dbname=byudzhet_test python -m pytest -q`, след това `python tests/mutations.py`.
 
 Виж [източниците](docs/sources.md) и [методологията](docs/methodology.md). Това не е пълно изпълнение на общинските бюджети по пера.

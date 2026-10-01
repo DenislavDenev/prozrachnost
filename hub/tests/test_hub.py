@@ -42,6 +42,8 @@ def test_live_cards_link_out():
     assert 'href="https://tender.denev.work"' in html
     assert 'href="http://localhost:8016"' in html
     assert hub.TOOLS["obrazovanie"]["status"] == "new"
+    assert 'href="https://byudzhet.denev.work"' in html
+    assert hub.TOOLS["byudzhet"]["status"] == "active"
 
 
 def test_tool_page_and_404():
@@ -76,7 +78,7 @@ def test_broken_registry_refuses_to_start(tmp_path):
         hub.load_registry(p)
 
 
-@pytest.mark.parametrize("path", ["/", "/instrumenti/byudzhet", "/podkrepi"])
+@pytest.mark.parametrize("path", ["/", "/instrumenti/pazar", "/podkrepi"])
 def test_feedback_is_last_in_the_header_and_support_last_in_the_footer(path):
     html = client.get(path).text
     header = html.split("<header", 1)[1].split("</header>", 1)[0]

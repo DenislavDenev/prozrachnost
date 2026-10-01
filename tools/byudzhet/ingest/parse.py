@@ -145,10 +145,23 @@ def kfp(rows,p):
   if not any(number(x) is not None for x in r[1:]):notes.append(r);continue
   out.append(dict(budget_type=clean(r[0]),values={k:money(v,currency(p),1000000) for k,v in zip(h[1:],r[1:])}))
  if len({r['budget_type'] for r in out})!=len(out):raise ShapeError('Дублиран вид бюджет')
+ # Each budget's balance includes its net transfers; internal transfers are not spending twice.
+ for row in out:
+  vals={k:number(v['original'] or '') for k,v in row['values'].items()}
+  income=[k for k in vals if k in ('Данъчни приходи','Неданъчни приходи','Помощи')]
+  spending=[k for k in vals if any(k.startswith(z) for z in ('Персонал','Заплати и възнаграждения','Социални и здравно-осигурителни','Издръжка','Лихви','Социални разходи','Субсидии','Предоставени текущи','Капиталови разходи','Прираст на държавния','Вноска в общия'))]
+  transfers=[k for k in vals if k.startswith('Трансфери (') or k=='Други трансфери (нето)']
+  balance=[k for k in vals if 'Бюджетно салдо' in k]
+  used=income+spending+transfers+balance
+  if len(income)!=3 or len(balance)!=1:raise ShapeError('Липсват компоненти на салдото на КФП')
+  if any(vals[k] is None for k in used):raise ShapeError('Липсва стойност в сверка на КФП')
+  # Published rounded tenths of a million have a bounded rounding interval; exact zero adds no uncertainty.
+  tolerance=sum((Decimal(10)**vals[k].as_tuple().exponent/2 for k in used if vals[k]),Decimal('0.000001'))
+  near(sum(vals[k] for k in income+transfers),sum(vals[k] for k in spending+balance),tolerance)
  total=next((r for r in out if r['budget_type']=='Консолидирана фискална програма'),None)
  if total:
   for k in h[1:]:near(number(total['values'][k]['original'] or ''),sum(number(r['values'][k]['original'] or '') for r in out if r is not total))
- return dict(rows=out,notes=notes,columns=h[1:],reconciliation='Сбор по видове бюджети = КФП' if total else 'Няма публикуван общ ред КФП; сверка със сбор не е възможна',cumulative=True)
+ return dict(rows=out,notes=notes,columns=h[1:],reconciliation='Приходи + нетни трансфери = разходи + салдо по всеки вид бюджет; '+('сбор по видове = КФП' if total else 'няма публикуван независим общ ред КФП'),cumulative=True)
 def reserve(rows,p):
  if rows[0][0]=='':
   if len(rows[0])!=2 or 'млн.' not in rows[0][1] or 'лв' not in rows[0][1] or currency(p)!='BGN':raise ShapeError('Променена единица на резерва')

@@ -62,3 +62,8 @@ def test_catalog_pagination():
   def api(self,method,body):
    page=body['page_number'];return json.dumps(dict(success=True,total_records=2,resources=[dict(uri=str(page),name='2026-06-30',version='1',updated_at='2026-09-04')])).encode()
  assert len(resources(API(),'a'))==2
+
+def test_kfp_source_balance_and_guard():
+ with pytest.raises(ShapeError):parse.parse((F/'egov/kfp-invalid-balance.json').read_bytes(),'kfp','2025-11-30')
+ raw=json.loads((F/'egov/kfp-latest.json').read_bytes());raw['data'][1][1]='1'
+ with pytest.raises(ShapeError):parse.parse(json.dumps(raw),'kfp','2026-08-31')
