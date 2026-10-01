@@ -62,7 +62,7 @@ def refresh(c,client,source=None,limit=None):
         if limit is not None and report['stored']>=limit:
             report['pending']+=1;continue
         try:
-            raw=client.get(r['url']);sha=store.archive(c,r['source'],fetch_url or r['url'],raw)
+            raw=client.get(r['url']);sha=store.archive(c,r['source'],r['url'],raw)
             if r['url'].lower().endswith('.pdf'):
                 metadata=title_excerpt(raw)
             else:

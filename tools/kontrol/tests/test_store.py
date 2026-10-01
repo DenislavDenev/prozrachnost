@@ -82,3 +82,18 @@ def test_document_bytes_versions_and_provenance(conn):
     assert conn.execute('SELECT payload FROM live.document').fetchone()[0]['document_sha256']==store.digest(second)
     assert conn.execute('SELECT count(*) FROM ops.raw_file').fetchone()[0]==2
     assert conn.execute('SELECT url FROM ops.raw_file LIMIT 1').fetchone()[0]=='https://official.example/postback'
+
+
+def test_refresh_fetches_archives_and_extracts(conn,monkeypatch):
+    from ingest import documents
+    r=rows()[0]; store.publish(conn,'nao',[r],manifest([r]))
+    raw=b'%PDF-actual-response'
+    class Client:
+        def get(self,url):
+            assert url==r['url']; return raw
+    monkeypatch.setattr(documents,'title_excerpt',lambda data:dict(document_sha256=store.digest(data),text_available=True,excerpt='Източников предмет',excerpt_page=1))
+    report=documents.refresh(conn,Client(),'nao')
+    assert report['stored']==1 and report['problems']==[]
+    doc=conn.execute('SELECT payload FROM live.document').fetchone()[0]
+    assert doc['document_sha256']==store.digest(raw) and doc['excerpt_page']==1
+    assert conn.execute('SELECT sha256 FROM ops.raw_file').fetchone()[0]==store.digest(raw)

@@ -79,3 +79,8 @@ def source_page(request:Request):
 @app.get('/how',response_class=HTMLResponse)
 def how(request:Request):
     return render(request,'how.html',nav='Как работи')
+
+
+@app.get('/legal',response_class=HTMLResponse)
+def legal(request:Request):
+    return render(request,'legal.html',nav='Данни и корекции')

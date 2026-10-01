@@ -20,7 +20,7 @@ def client(monkeypatch):
     monkeypatch.setattr(Q,'document_coverage',lambda:dict(eligible=9,processed=0,pending=9,text_available=0,excerpts=0))
     return TestClient(main.app)
 
-@pytest.mark.parametrize('path',['/','/oditi','/preporaki','/inspekcii','/kzk','/sources','/how'])
+@pytest.mark.parametrize('path',['/','/oditi','/preporaki','/inspekcii','/kzk','/sources','/how','/legal'])
 def test_rendered_pages(client,path):
     r=client.get(path)
     assert r.status_code==200

@@ -6,6 +6,6 @@
 <header><div class="bar"><a class="word" href="/">одити и контрол<span class="dot">.</span></a><a class="hub" href="{{hub_url}}">Всички инструменти ↗</a>{{feedback_button}}</div>
 <nav aria-label="Основна навигация">{% for name,path in [('Табло','/'),('Одити','/oditi'),('Препоръки','/preporaki'),('Инспекции','/inspekcii'),('КЗК','/kzk'),('Източници','/sources')] %}<a href="{{path}}" {% if nav==name %}aria-current="page"{% endif %}>{{name}}</a>{% endfor %}</nav></header>
 <main id="main">{% block main %}{% endblock %}</main>
-<footer><span>Одити и контрол · част от Прозрачност</span><a href="/how">Как работи</a><a href="/sources">Източници</a>{{support_link}}</footer>
+<footer><span>Одити и контрол · част от Прозрачност</span><a href="/how">Как работи</a><a href="/sources">Източници</a>{{support_link}}<a href="/legal">Данни, права и корекции</a></footer>
 <script type="application/json" id="state-help">{{help|tojson}}</script><script src="/static/state-help.js"></script>
 {% block scripts %}{% endblock %}</body></html>
