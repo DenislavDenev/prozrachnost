@@ -303,9 +303,9 @@ def test_freshness_knows_a_stale_list(conn):
     run(conn, src)
     everyone(conn, src)
     assert checks.freshness(conn, TODAY) == []
-    conn.execute("UPDATE ops.source_state SET last_ok = now() - interval '5 days' WHERE ref LIKE 'month/%'")
+    conn.execute("UPDATE ops.source_state SET last_ok = %s::date - interval '5 days' WHERE ref LIKE 'month/%%'", (TODAY,))
     assert any("списъкът на заседанията" in p for p in checks.freshness(conn, TODAY))
-    conn.execute("UPDATE ops.source_state SET last_ok = now() - interval '5 days' WHERE ref = 'absences'")
+    conn.execute("UPDATE ops.source_state SET last_ok = %s::date - interval '5 days' WHERE ref = 'absences'", (TODAY,))
     assert any("официалните отсъствия" in p for p in checks.freshness(conn, TODAY))
 
 
