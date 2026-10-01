@@ -1,4 +1,4 @@
-import csv,io
+import csv,io,os
 from fastapi.testclient import TestClient
 from ingest import db,store,parse
 from app.main import app
@@ -6,7 +6,8 @@ from app import queries as Q
 from .test_sources import P
 
 def seed(conn,monkeypatch):
-    monkeypatch.setattr(db,'connect',lambda **kw: __import__('psycopg').connect(conn.info.dsn,**kw))
+    # Connection.info omits credentials; retain the exact guarded test DSN for TCP CI.
+    monkeypatch.setattr(db,'connect',lambda **kw: __import__('psycopg').connect(os.environ['SOBSTVENOST_TEST_DSN'],**kw))
     companies=parse.companies((P/'appk-companies-1.html').read_bytes())[0]
     store.apply(conn,'appk','catalogue',companies,len(companies))
     detail=parse.profile((P/'appk-105.html').read_bytes());detail.update(id='105',source_url=companies[1]['source_url'])
