@@ -84,9 +84,10 @@ def detail(request:Request,id:str):
     if not r:raise HTTPException(404)
     versions=[]
     document_versions=[]
+    document_ref=r.get('document_id') or id
     with db.connect() as c:
         versions=[dict(sha256=x[0],detected_at=x[1]) for x in c.execute('SELECT sha256,detected_at FROM ops.version WHERE ref=%s ORDER BY detected_at',(id,))]
-        document_versions=[dict(sha256=x[0],url=x[1],fetched_at=x[2]) for x in c.execute('SELECT sha256,url,fetched_at FROM ops.document_version WHERE ref=%s ORDER BY fetched_at',(id,))]
+        document_versions=[dict(sha256=x[0],url=x[1],fetched_at=x[2]) for x in c.execute('SELECT sha256,url,fetched_at FROM ops.document_version WHERE ref=%s ORDER BY fetched_at',(document_ref,))]
     return render(request,'detail.html',nav='Одити',r=r,versions=versions,document_versions=document_versions)
 
 @app.get('/sources',response_class=HTMLResponse)

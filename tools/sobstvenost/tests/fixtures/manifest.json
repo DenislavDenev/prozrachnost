@@ -76,5 +76,11 @@
     "original_sha256": "7cee9550650539fcdbcfed0273db08f487fb62dfa03b795a82410f540af932fc",
     "fixture_sha256": "56beb96b0cfffb9563310a100ba45b10253f8dd85c6b4f9c08d1a5e9ed0deb91",
     "cut": "Only legal-person identity, official location and term; contacts and financial prose excluded."
+  },
+  {
+    "name": "ncr-mining-opening.html",
+    "original_sha256": "ecc63f0cafda2315f6c66dc717b9bcda3e6449987d1185bb165ae219de95a0ed",
+    "fixture_sha256": "9e170507977cf95949138507fea5c3a11615267a629b5cd094f398588d469e1d",
+    "cut": "Only source form title, legal-person identity, official location and term; all contact fields excluded."
   }
 ]

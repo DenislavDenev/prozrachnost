@@ -104,3 +104,20 @@ def test_shared_cache_build_and_version_invalidation(monkeypatch):
     assert builds==['first'] and result[0] is result[1]
     signature[0]='changed'
     assert Q.allrows()==[{'id':'changed'}] and builds==['first','changed']
+
+
+def test_inspection_versions_use_parent_document(monkeypatch,client):
+    r=parse.adfi((F/'adfi.html').read_bytes(),'https://www.adfi.minfin.bg/bg/34')[0]
+    r.update(id='list:inspection:99',document_id='list',kind='Приключила финансова инспекция')
+    monkeypatch.setattr(Q,'allrows',lambda:[r])
+    looked=[]
+    class Connection:
+        def __enter__(self):return self
+        def __exit__(self,*a):pass
+        def execute(self,sql,params):
+            looked.append(params[0])
+            return [('a'*64,r['url'],'2026-10-02')] if 'document_version' in sql else []
+    monkeypatch.setattr(main.db,'connect',Connection)
+    response=client.get('/oditi/list:inspection:99')
+    assert response.status_code==200 and looked==['list:inspection:99','list']
+    assert 'не е отделен документ' in response.text and 'Няма приключено архивиране' not in response.text

@@ -27,4 +27,7 @@ def test_attachment_original_versions_do_not_rewrite_report(conn,tmp_path,monkey
     assert conn.execute('SELECT count(*) FROM ops.document_file').fetchone()[0]==2
     assert conn.execute('SELECT count(*) FROM ops.version').fetchone()[0]==before
     assert conn.execute('SELECT count(*) FROM ops.raw_file').fetchone()[0]==2
+    assert conn.execute("SELECT count(*) FROM ops.raw_read WHERE mode='live' AND method='GET'").fetchone()[0]==3
+    documents.archive(conn,client,run.archive,resume=True)
+    assert conn.execute("SELECT count(*) FROM ops.raw_read WHERE mode='archive_reuse'").fetchone()[0]==1
     with pytest.raises(parse.ShapeError):documents.media_type(b'<html>Error</html>')

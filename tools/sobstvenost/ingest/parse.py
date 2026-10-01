@@ -164,8 +164,8 @@ def assigned_notice(raw):
     elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '7.3. Местонахождение на обекта на концесията:' in value:
         location=value.split('7.3. Местонахождение на обекта на концесията:',1)[1].split('7.4.',1)[0]
         term=re.search(r'7.5. Конкретен срок на концесията:\s*(\d+)\s*месеца',value)
-    elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '5.4. Местонахождение на находището:' in value:
-        location=value.split('5.4. Местонахождение на находището:',1)[1].split('5.5.',1)[0]
+    elif value.startswith(('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА','ФОРМУЛЯР ЗА ОТКРИВАНЕ НА ПАРТИДА НА КОНЦЕСИЯ ЗА ДОБИВ НА ПОДЗЕМНИ БОГАТСТВА, ПРЕДОСТАВЕНА ПО РЕДА НА ЗАКОНА ЗА ПОДЗЕМНИТЕ БОГАТСТВА')) and '5.4. Местонахождение на находището:' in value:
+        location=re.split(r'5\.5\.|Раздел VI\.',value.split('5.4. Местонахождение на находището:',1)[1],maxsplit=1)[0]
         term=re.search(r'Раздел VI\. Срок на концесията:\s*(\d+)\s*месеца',value)
     else:raise ShapeError('assigned notice schema absent')
     municipalities=re.findall(r'Община:\s*([^,]+)',location)
