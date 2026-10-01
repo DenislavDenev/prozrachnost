@@ -108,7 +108,7 @@
     $('k-level').innerHTML = data.levels.map(([k, n]) => `<a href="/karta?m=${data.m}&o=${data.o}&l=${k}" data-l="${k}"${k === data.l ? ' aria-current="page"' : ''}>${n}</a>`).join('');
     for (const [id, key] of [['k-scope', 'o'], ['k-measure', 'm']]) $(id).querySelectorAll('a').forEach((a) => {
       a.toggleAttribute('aria-current', a.dataset[key] === data[key]); if (a.dataset[key] === data[key]) a.setAttribute('aria-current', 'page'); });
-    const q = new URLSearchParams({ m: data.m, o: data.o, l: data.l }); if (data.y) q.set('y', data.y);
+    const q = new URLSearchParams({ m: data.m, o: data.o, l: data.l, denominator: data.denominator }); if (data.y) q.set('y', data.y);
     history.replaceState(null, '', '/karta?' + q);
   }
   function list(data) {
@@ -218,12 +218,14 @@
       const cacheKey=q.toString(); let next=dataCache.get(cacheKey);
       if (!next) { const res=await fetch('/api/karta.json?'+q); if(!res.ok) throw Error('data'); next=await res.json(); dataCache.set(cacheKey,next); }
       if (id !== requestId) return;
-      const fresh = layer(next); if (kind === "level") await fly(home(), 1300);
+      const renderAt=performance.now(); const fresh = layer(next); if (kind === "level") await fly(home(), 1300);
+      if (id !== requestId) return;
       layers.replaceChildren(fresh);
       d = next; recolour(next); drawBorders(next); texts(next); list(next);
       sel = null; top.replaceChildren(); tip.hidden = true;
       const search = document.querySelector('[data-filter="k-list"]');
       if (search) search.dispatchEvent(new Event('input'));
+      svg.dataset.renderMs=(performance.now()-renderAt).toFixed(2);
     } catch (_) { $('k-lede').textContent = 'Не успяхме да прочетем данните. Показани са последните заредени стойности.'; }
   }
   const pick = (id, key, kind) => $(id).addEventListener('click', (e) => {
@@ -236,6 +238,7 @@
   });
   pick('k-scope', 'o', 'fly'); pick('k-level', 'l', 'level'); pick('k-measure', 'm', 'colour');
   $('k-metric').addEventListener('change',e=>go({m:e.target.value},'colour'));
+  $('k-denominator').addEventListener('change',e=>go({denominator:e.target.value},'colour'));
   $('k-year').addEventListener('change', (e) => go({ y: e.target.value }, 'colour'));
 
   // ---------- start ----------

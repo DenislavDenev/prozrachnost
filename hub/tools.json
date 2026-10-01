@@ -10,8 +10,8 @@
   "tools": [
     {"slug": "tender", "no": 0, "name": "Обществени поръчки", "group": "pari", "status": "active", "url_env": "TENDER_URL", "url_default": "https://tender.denev.work", "visual": "illustration",
      "line": "Кой, за какво и на кого плаща с публични средства. Разглеждай договори, възложители и изпълнители.", "cta": "Отвори инструмента"},
-    {"slug": "byudzhet", "no": 1, "name": "Бюджет", "group": "pari", "status": "soon", "visual": "bars",
-     "line": "Как държавата и всяка община събират и харчат парите си.",
+    {"slug": "byudzhet", "no": 1, "name": "Бюджет", "group": "pari", "status": "active", "url_env": "BYUDZHET_URL", "url_default": "https://byudzhet.denev.work", "visual": "bars",
+     "line": "Приходи и разходи на държавата, дълг и финансови задължения на 265 общини.",
      "questions": ["Колко събира и харчи държавата всеки месец и докъде е спрямо закона?", "Колко дължи всяка община, колко са просрочените ѝ задължения и колко е това на човек?", "Кои общини трупат просрочени задължения тримесечие след тримесечие?"],
      "sources": [{"name": "Министерство на финансите, финансови показатели за общините", "url": "https://data.egov.bg/data/view/980fa747-e0d0-4371-9457-f41d730040cd"}, {"name": "ГРАО, население по общини", "url": "https://www.grao.bg/tables.html"}]},
     {"slug": "evrofondove", "no": 2, "name": "Еврофондове", "group": "pari", "status": "soon", "visual": "network",

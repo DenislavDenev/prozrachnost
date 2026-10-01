@@ -9,7 +9,7 @@
   <div class="tabs" role="group" aria-label="Ниво" id="k-level">{% for k, name in d.levels %}<a href="/karta?m={{ d.m }}&o={{ d.o }}&l={{ k }}" data-l="{{ k }}" {% if k == d.l %}aria-current="page"{% endif %}>{{ name }}</a>{% endfor %}</div>
   <label id="k-measure">Показател <select id="k-metric">{% for k, mm in measures.items() %}<option value="{{ k }}" {{ 'selected' if k == d.m }}>{{ mm[2] }}</option>{% endfor %}</select></label>
   <label>Тримесечие <select id="k-year">{% for yy in d.years %}<option {{ 'selected' if yy == d.y }}>{{ yy }}</option>{% endfor %}</select></label>
-<form><label>Знаменател <select name="denominator" onchange="location.search=new URLSearchParams({...Object.fromEntries(new URLSearchParams(location.search)),denominator:this.value})"><option value="current" {{ "selected" if d.denominator=="current" }}>Настоящ адрес</option><option value="permanent" {{ "selected" if d.denominator=="permanent" }}>Постоянен адрес</option></select></label></form>
+<form><label>Знаменател <select id="k-denominator" name="denominator"><option value="current" {{ "selected" if d.denominator=="current" }}>Настоящ адрес</option><option value="permanent" {{ "selected" if d.denominator=="permanent" }}>Постоянен адрес</option></select></label></form>
 </div>
 
 <div class="grid">

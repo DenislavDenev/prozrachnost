@@ -105,12 +105,16 @@ def budget_csv(kind='state',y=None,q='',budget_type=''):
     rows.append(dict(period=s['period'],budget_type=r.get('budget_type',''),item=k,value_eur=Q.euros(v),unit=v['unit'],original=v['original']))
  headers=['period','line','law_eur','actual_eur','pct','unit','law_original','actual_original'] if kind=='state' else ['period','budget_type','item','value_eur','unit','original']
  return csv(Q.csv_response(rows,headers))
-@app.get('/sources',response_class=HTMLResponse)
-def sources(request:Request):
- import json
+def source_rows(q=''):
  with db.connect() as c:
   rows=[dict(ref=a,kind=b,name=d,period=e,read_at=f,status=g,error=h,version=i) for a,b,d,e,f,g,h,i in c.execute('SELECT ref,kind,name,period,read_at,status,error,version FROM src.resource ORDER BY kind,name')]
-  problems=freshness(c)
- return render(request,'sources.html',nav='Източници',rows=rows,problems=problems,meta=json.loads((TOOLROOT/'db/ref/datasets.json').read_text(encoding='utf-8')))
+ return [r for r in rows if q.casefold() in ' '.join(str(v or '') for v in r.values()).casefold()]
+@app.get('/export-sources.csv')
+def sources_csv(q=''):return csv(Q.csv_response(source_rows(q),['kind','ref','name','period','read_at','version','status','error']))
+@app.get('/sources',response_class=HTMLResponse)
+def sources(request:Request,q=''):
+ import json
+ with db.connect() as c:problems=freshness(c)
+ return render(request,'sources.html',nav='Източници',rows=source_rows(q),q=q,problems=problems,meta=json.loads((TOOLROOT/'db/ref/datasets.json').read_text(encoding='utf-8')))
 @app.get('/how',response_class=HTMLResponse)
 def how(request:Request):return render(request,'how.html',nav='Източници')
