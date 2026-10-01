@@ -1,4 +1,5 @@
 import datetime as dt
+import time
 from psycopg.types.json import Jsonb
 from . import store
 from .pdf import title_excerpt
@@ -14,14 +15,18 @@ def save_document(c,r,raw,metadata,fetch_url=None):
         if not old or old[0]!=metadata:
             store.log(c,r['source'],r['id'],'document_sha256',old[0].get('document_sha256') if old else None,sha,'rewritten' if old else 'new-record')
 
-def cpc(c,client,limit=None):
+def cpc(c,client,limit=None,max_seconds=None):
     from . import sources,parse
     from .pdf import cpc_document
-    report=dict(stored=0,unchanged=0,pending=0,problems=[])
+    report=dict(stored=0,unchanged=0,pending=0,problems=[],checkpoint=False)
+    deadline=time.monotonic()+max_seconds if max_seconds is not None else None
+    class Checkpoint(Exception):pass
     def save(source,url,raw):store.archive(c,source,url,raw)
     def callback(rows,raw,url):
         data=parse.postback_form(raw)
         for r in rows:
+            if deadline is not None and time.monotonic()>=deadline:
+                raise Checkpoint()
             old=c.execute('SELECT read_at FROM live.document WHERE ref=%s',(r['id'],)).fetchone()
             if old and dt.datetime.now(dt.timezone.utc)-old[0]<dt.timedelta(days=7):
                 report['unchanged']+=1;continue
@@ -44,13 +49,20 @@ def cpc(c,client,limit=None):
                 report['stored']+=1
             except Exception as e:report['problems'].append(r['id']+': '+str(e))
     # Reuses the proven real stateful search/pagination contract, never fabricated URLs.
-    rows,manifest=sources.cpc(client,save,document_callback=callback)
-    if report['pending']:report['problems'].append('КЗК: само документ/неприключено архивиране: '+str(report['pending']))
-    report['source_count']=manifest['source_count'];report['pages']=manifest['pages']
+    try:
+        rows,manifest=sources.cpc(client,save,document_callback=callback)
+        report['source_count']=manifest['source_count'];report['pages']=manifest['pages']
+    except Checkpoint:
+        report['checkpoint']=True
+        eligible={r['id'] for x in c.execute("SELECT payload FROM live.snapshot WHERE source='cpc'") for r in x[0]['rows']}
+        archived={r[0] for r in c.execute('SELECT ref FROM live.document')}
+        report['pending']=len(eligible-archived)
+        report['scope']='Планирано прекъсване по време; каталогът и последният пълен прочит не се променят'
+    if report['pending'] and not report['checkpoint']:report['problems'].append('КЗК: само документ/неприключено архивиране: '+str(report['pending']))
     return report
 
-def refresh(c,client,source=None,limit=None):
-    if source=='cpc':return cpc(c,client,limit)
+def refresh(c,client,source=None,limit=None,max_seconds=None):
+    if source=='cpc':return cpc(c,client,limit,max_seconds)
     rows=canonical([r for x in c.execute('SELECT payload FROM live.snapshot ORDER BY source') for r in x[0]['rows']])
     rows=[r for r in rows if r['source']!='cpc' and r.get('kind')!='Приключила финансова инспекция' and (source is None or source in r['categories'])]
     now=dt.datetime.now(dt.timezone.utc)

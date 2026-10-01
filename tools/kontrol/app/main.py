@@ -1,4 +1,5 @@
 import os
+import hashlib
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import FastAPI, Request, HTTPException
@@ -25,9 +26,13 @@ HELP = {
  'result':dict(title='Констатация и съдебен резултат',text='Констатацията в доклад не е присъда. Решение на КЗК може да бъде обжалвано; окончателен съдебен резултат не е установен тук.',example='Условен пример: отменено решение не е действащ извод за нарушение.',source='/how'),
 }
 
+def asset(path):
+    content=(ROOT/path.lstrip('/')).read_bytes()
+    return path+'?v='+hashlib.sha256(content).hexdigest()[:12]
+
 def render(request,name,**kw):
     hub=os.environ.get('HUB_URL','https://prozrachnost.denev.work')
-    return t.TemplateResponse(request=request,name=name,context=dict(hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),help={'columns':HELP,'rows':[]},link=Q.link,source_names={k:v[0] for k,v in SOURCES.items()},**kw))
+    return t.TemplateResponse(request=request,name=name,context=dict(hub_url=hub,asset=asset,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),help={'columns':HELP,'rows':[]},link=Q.link,source_names={k:v[0] for k,v in SOURCES.items()},**kw))
 
 @app.get('/healthz')
 def health():

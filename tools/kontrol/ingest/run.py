@@ -22,7 +22,9 @@ def main():
     p.add_argument('--export', type=Path, help='Private offline raw archive plus verified parsed bundle; does not publish')
     p.add_argument('--bundle', type=Path, help='Publish a complete previously archived bundle with its manifest')
     p.add_argument('--limit', type=int, help='Explicit document work budget; pending work is reported as incomplete')
+    p.add_argument('--max-seconds',type=int,help='CPC document runtime checkpoint; pending work remains visible')
     args = p.parse_args()
+    if args.max_seconds is not None and (args.max_seconds<=0 or args.step!='documents' or args.source!='cpc'):p.error('--max-seconds requires CPC documents and a positive budget')
     if args.export:
         args.export.mkdir(parents=True, exist_ok=True)
         c = None
@@ -46,9 +48,12 @@ def main():
             report['last_ok']={s:str(read) if read else None for s,read in c.execute("SELECT source,read_at FROM src.resource WHERE status='наред'")}
             report['changes']=c.execute("SELECT count(*) FROM ops.change_log WHERE detected_at>=now()-interval '7 days'").fetchone()[0]
             report['held']=c.execute('SELECT count(*) FROM ops.held').fetchone()[0]
+            eligible={r['id'] for x in c.execute('SELECT payload FROM live.snapshot') for r in x[0]['rows'] if r.get('kind')!='Приключила финансова инспекция'}
+            archived={r[0] for r in c.execute('SELECT ref FROM live.document')}
+            report['counts']['Документи: чакащи архивиране']=len(eligible-archived)
         elif args.step == 'documents':
             from .documents import refresh
-            report=refresh(c,client,args.source,args.limit)
+            report=refresh(c,client,args.source,args.limit,args.max_seconds)
         else:
             selected = [args.source] if args.source else [s for s in SOURCES if args.step == 'refresh' or args.step == 'nao' and (s.startswith('nao') or s.startswith('recommendations')) or args.step == 'adfi' and s.startswith('adfi') or args.step == 'cpc' and s == 'cpc']
             def progress(source, year, page, count):

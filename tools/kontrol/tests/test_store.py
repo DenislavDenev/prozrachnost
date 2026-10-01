@@ -97,3 +97,17 @@ def test_refresh_fetches_archives_and_extracts(conn,monkeypatch):
     doc=conn.execute('SELECT payload FROM live.document').fetchone()[0]
     assert doc['document_sha256']==store.digest(raw) and doc['excerpt_page']==1
     assert conn.execute('SELECT sha256 FROM ops.raw_file').fetchone()[0]==store.digest(raw)
+
+
+def test_cpc_budget_checkpoint_preserves_catalog(conn,monkeypatch):
+    from ingest import documents,sources
+    rs=parse.cpc((Path(__file__).parent/'fixtures/cpc.html').read_bytes(),'https://official.example/')[0]
+    store.publish(conn,'cpc',rs,manifest(rs))
+    before=conn.execute("SELECT sha256 FROM live.snapshot WHERE source='cpc'").fetchone()[0]
+    monkeypatch.setattr(documents.time,'monotonic',iter([0,2]).__next__)
+    def crawl(client,save,document_callback):
+        document_callback(rs,b'<input name="__VIEWSTATE" value="state"><input name="__EVENTVALIDATION" value="validation">','https://official.example/')
+    monkeypatch.setattr(sources,'cpc',crawl)
+    report=documents.cpc(conn,None,max_seconds=1)
+    assert report['checkpoint'] and report['pending']==len(rs) and report['problems']==[]
+    assert conn.execute("SELECT sha256 FROM live.snapshot WHERE source='cpc'").fetchone()[0]==before
