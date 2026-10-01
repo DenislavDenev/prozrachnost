@@ -111,3 +111,14 @@ def test_cpc_budget_checkpoint_preserves_catalog(conn,monkeypatch):
     report=documents.cpc(conn,None,max_seconds=1)
     assert report['checkpoint'] and report['pending']==len(rs) and report['problems']==[]
     assert conn.execute("SELECT sha256 FROM live.snapshot WHERE source='cpc'").fetchone()[0]==before
+
+
+def test_document_soft_error_never_becomes_archived_document(conn):
+    from ingest import documents
+    r=dict(rows()[0],url='https://official.example/old.doc')
+    store.publish(conn,'nao',[r],manifest([r]))
+    class Client:
+        def get(self,url):return b'<html>captcha soft error</html>'
+    report=documents.refresh(conn,Client(),'nao')
+    assert report['stored']==0 and len(report['problems'])==1
+    assert conn.execute('SELECT count(*) FROM live.document').fetchone()[0]==0

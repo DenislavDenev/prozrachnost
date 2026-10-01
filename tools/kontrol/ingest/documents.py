@@ -84,6 +84,8 @@ def refresh(c,client,source=None,limit=None,max_seconds=None):
             if r['url'].lower().endswith('.pdf'):
                 metadata=title_excerpt(raw)
             else:
+                if not raw.startswith((bytes.fromhex('d0cf11e0a1b11ae1'),b'PK',b'{\\rtf')):
+                    raise ShapeError('Връзката не върна разпознат документен формат')
                 metadata=dict(text_available=False,excerpt=None,excerpt_page=None,document_sha256=sha,text_status='само документ: стар формат, текстът не е надеждно прочетен')
             metadata['url']=r['url']
             save_document(c,r,raw,metadata)
