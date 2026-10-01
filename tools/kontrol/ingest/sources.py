@@ -83,7 +83,7 @@ def adfi(client, source, save, progress=lambda *a: None):
     progress(source, None, 1, len(rows))
     return rows, dict(complete=True, occurrence_count=len(rows), source_count=None, pages=1,
                      document_count=len(documents), inspection_count=inspection_count, inspection_gaps=gaps,
-                     scope='Всички редове в единната HTML страница; брой на документи, не на инспекции' if source == 'adfi' else 'Всички тримесечни списъци в /bg/18; броят е на списъци, не на инспекции')
+                     scope='Всички редове в единната HTML страница; брой на документи, не на инспекции' if source == 'adfi' else f'Всички {len(documents)} тримесечни списъка в /bg/18 плюс {inspection_count} проверени реда на инспекции; {len(gaps)} формата само документ')
 
 def cpc(client, save, progress=lambda *a: None, document_callback=None):
     source, url = 'cpc', SOURCES['cpc'][1]

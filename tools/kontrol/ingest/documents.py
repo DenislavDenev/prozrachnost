@@ -66,8 +66,14 @@ def refresh(c,client,source=None,limit=None,max_seconds=None):
     rows=canonical([r for x in c.execute('SELECT payload FROM live.snapshot ORDER BY source') for r in x[0]['rows']])
     rows=[r for r in rows if r['source']!='cpc' and r.get('kind')!='Приключила финансова инспекция' and (source is None or source in r['categories'])]
     now=dt.datetime.now(dt.timezone.utc)
+    deadline=time.monotonic()+max_seconds if max_seconds is not None else None
     report=dict(stored=0,unchanged=0,pending=0,problems=[])
     for r in rows:
+        if deadline is not None and time.monotonic()>=deadline:
+            archived={r[0] for r in c.execute('SELECT ref FROM live.document')}
+            report['checkpoint']=True
+            report['pending']=len({r['id'] for r in rows}-archived)
+            break
         old=c.execute('SELECT payload,read_at FROM live.document WHERE ref=%s',(r['id'],)).fetchone()
         if old and now-old[1]<dt.timedelta(days=7) and old[0]['url']==r['url']:
             report['unchanged']+=1;continue
@@ -84,6 +90,6 @@ def refresh(c,client,source=None,limit=None,max_seconds=None):
             report['stored']+=1
         except Exception as e:
             report['problems'].append(r['id']+': '+str(e))
-    if report['pending']:
+    if report['pending'] and not report.get('checkpoint'):
         report['problems'].append('Недовършено наваксване на документи: '+str(report['pending']))
     return report

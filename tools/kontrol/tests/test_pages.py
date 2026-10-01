@@ -82,3 +82,25 @@ def test_quarter_filter_matches_csv(monkeypatch,client):
     assert page.status_code==200 and '1 уникални записа' in page.text
     rows=list(csv.DictReader(io.StringIO(client.get('/export.csv?view=inspekcii&period=2024-Q1').content.decode('utf-8-sig'))))
     assert [r['id'] for r in rows]==['test-a']
+
+
+def test_shared_cache_build_and_version_invalidation(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import time
+    signature=['first']; builds=[]
+    class Connection:
+        def __enter__(self):return self
+        def __exit__(self,*a):pass
+        def execute(self,sql):self.sql=sql;return self
+        def __iter__(self):return iter([('nao',signature[0])])
+        def fetchone(self):return (0,None)
+    monkeypatch.setattr(Q.db,'connect',Connection)
+    monkeypatch.setattr(Q,'_cache_key',None);monkeypatch.setattr(Q,'_cache_rows',None)
+    def load():
+        builds.append(signature[0]);time.sleep(.02);return [{'id':signature[0]}]
+    monkeypatch.setattr(Q,'_loadrows',load)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        result=list(pool.map(lambda _:Q.allrows(),range(2)))
+    assert builds==['first'] and result[0] is result[1]
+    signature[0]='changed'
+    assert Q.allrows()==[{'id':'changed'}] and builds==['first','changed']

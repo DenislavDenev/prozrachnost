@@ -22,9 +22,9 @@ def main():
     p.add_argument('--export', type=Path, help='Private offline raw archive plus verified parsed bundle; does not publish')
     p.add_argument('--bundle', type=Path, help='Publish a complete previously archived bundle with its manifest')
     p.add_argument('--limit', type=int, help='Explicit document work budget; pending work is reported as incomplete')
-    p.add_argument('--max-seconds',type=int,help='CPC document runtime checkpoint; pending work remains visible')
+    p.add_argument('--max-seconds',type=int,help='Document runtime checkpoint; pending work remains visible')
     args = p.parse_args()
-    if args.max_seconds is not None and (args.max_seconds<=0 or args.step!='documents' or args.source!='cpc'):p.error('--max-seconds requires CPC documents and a positive budget')
+    if args.max_seconds is not None and (args.max_seconds<=0 or args.step!='documents' ):p.error('--max-seconds requires documents and a positive budget')
     if args.export:
         args.export.mkdir(parents=True, exist_ok=True)
         c = None

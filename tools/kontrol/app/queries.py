@@ -1,4 +1,5 @@
 import csv
+import threading
 import io
 from collections import Counter
 from urllib.parse import urlencode
@@ -24,7 +25,7 @@ def document_coverage():
                 text_available=sum(bool(docs[r].get('text_available')) for r in eligible & docs.keys()),
                 excerpts=sum(bool(docs[r].get('excerpt')) for r in eligible & docs.keys()))
 
-def allrows():
+def _loadrows():
     # Canonical source ID deduplicates reports present in multiple category lists.
     rows = [r for s in snapshots() for r in s['rows']]
     rows = parse.canonical(rows)
@@ -35,6 +36,24 @@ def allrows():
         if doc.get('url')==row['url']:
             row.update({k:v for k,v in doc.items() if k!='url'})
     return [public_row(row) for row in rows]
+
+_cache_lock=threading.Lock()
+_cache_key=None
+_cache_rows=None
+
+def allrows():
+    global _cache_key,_cache_rows
+    # One immutable archive build per committed source/document version. Concurrent
+    # page/CSV requests share rows; no duplicate full JSON decode/canonical copies.
+    with _cache_lock:
+        with db.connect() as c:
+            key=(tuple(c.execute('SELECT source,sha256 FROM live.snapshot ORDER BY source')),
+                 c.execute('SELECT count(*),max(read_at) FROM live.document').fetchone())
+        if key!=_cache_key:
+            _cache_rows=None
+            _cache_rows=_loadrows()
+            _cache_key=key
+        return _cache_rows
 
 def select(view, year='', kind='', sector='', q='', sort='published', source='', period=''):
     rows = allrows()
