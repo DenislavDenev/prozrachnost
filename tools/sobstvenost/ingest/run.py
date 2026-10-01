@@ -8,6 +8,7 @@ from .checks import freshness,summary
 from .progress import Queue,Deadline,BudgetReached,pending
 
 def archive(conn,client,source,url,data=None,resume=False):
+    if getattr(client,'deadline',None):client.deadline.require()
     if resume and data is None:
         row=conn.execute("SELECT path,sha256,bytes FROM ops.raw_file WHERE source=%s AND url=%s AND fetched_at>now()-interval '1 day' ORDER BY id DESC LIMIT 1",(source,url)).fetchone()
         if row and Path(row[0]).exists():
@@ -15,12 +16,19 @@ def archive(conn,client,source,url,data=None,resume=False):
             import hashlib
             if len(raw)!=row[2] or hashlib.sha256(raw).hexdigest()!=row[1]:
                 raise parse.ShapeError('Corrupted original archive during resume')
+            read_proof(conn,source,url,'GET','archive_reuse',raw)
             client.raws[url]=raw
             return raw
     raw=client.get(url,data)
     store.save_raw(conn,source,url,raw)
+    read_proof(conn,source,url,'GET' if data is None else 'POST','live',raw)
     client.raws[url]=raw
     return raw
+
+def read_proof(conn,source,url,method,mode,raw):
+    import hashlib
+    conn.execute('''INSERT INTO ops.raw_read(job_id,source,url,method,mode,sha256,bytes)
+        VALUES((SELECT id FROM ops.job_run WHERE status='running' ORDER BY id DESC LIMIT 1),%s,%s,%s,%s,%s,%s)''',(source,url,method,mode,hashlib.sha256(raw).hexdigest(),len(raw)))
 
 def raw_digest(client):
     import hashlib
@@ -72,9 +80,9 @@ def ncr_catalogue(conn,client):
     result=store.apply(conn,'ncr','catalogue',rows,total,raw_digest(client))
     return dict(status=result,rows=len(rows),source_count=total,pages=last)
 
-def appk_details(conn,client,limit=None,resume=False,pdfs=False,continue_pending=False):
+def appk_details(conn,client,limit=None,resume=False,continue_pending=False):
     rows=[r[0] for r in conn.execute("SELECT payload FROM live.record WHERE source='appk' AND scope='catalogue' AND gone_at IS NULL ORDER BY ref")]
-    scope='pdfs' if pdfs else 'details'
+    scope='details'
     queue=Queue('appk',scope,rows,continue_pending);rows=queue.rows;done=queue.done
     store.state(conn,'appk',scope,'partial','Профилите и отчетните метаданни още не са прочетени докрай',0)
     for row in rows[done:]:
@@ -92,11 +100,6 @@ def appk_details(conn,client,limit=None,resume=False,pdfs=False,continue_pending
         for link in sorted(links):
             report=parse.report(archive(conn,client,'appk',link,resume=resume),link)
             report['appk_id']=row['id'];reports.append(report)
-            if pdfs and report['kind']=='annual' and report['year']==max((parse.report(archive(conn,client,'appk',h,resume=True),h)['year'] for h in links if 'Annual' in h),default=0):
-                for doc in report['documents']:
-                    pdf=archive(conn,client,'appk',doc['url'],resume=resume)
-                    if not pdf.startswith(b'%PDF-'):raise parse.ShapeError('document is not PDF')
-                    doc['sha256']=store.save_raw(conn,'appk',doc['url'],pdf)
         data.update(id=row['id'],source_url=url,reports=len(reports))
         with conn.transaction():
             store.apply(conn,'appk','profile:'+row['id'],[data],1,raw_digest(client))

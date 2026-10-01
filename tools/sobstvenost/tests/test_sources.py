@@ -31,6 +31,10 @@ def test_actual_legacy_mining_notice():
     row=parse.assigned_notice((P/'ncr-mining.html').read_bytes())
     assert row['location_places']==[dict(oblast='Пазарджик',municipality='Пазарджик')]
     assert row['concessionaire_eik']=='112612045' and row['term_months']==180
+    opened=parse.assigned_notice((P/'ncr-mining-opening.html').read_bytes())
+    assert opened['location_places']==[dict(oblast='Ловеч',municipality='Угърчин')]
+    assert opened['concessionaire_eik']=='110550933' and opened['term_months']==420
+    assert 'Срок' not in opened['location_original']
 
 def test_resume_rejects_corrupted_original(tmp_path):
     import hashlib
