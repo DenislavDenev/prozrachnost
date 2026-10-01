@@ -28,6 +28,8 @@ body:
         - Население
         - Образование
         - Бюджет
+        - Държавна собственост
+        - Одити и контрол
     validations:
       required: true
   - type: textarea

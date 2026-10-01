@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+
+<html lang="bg">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="Електронно-информационна система за публичните предприятия" name="description"/>
+<title>АВИОНАМС</title>
+<!-- swipejs css -->
+<link href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" rel="stylesheet"/>
+<!-- Font Awesome 6.5.2 Free -->
+<link crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<!-- Plugins CSS -->
+<link href="/v2/assets/css/dual-range-slider.css" rel="stylesheet"/>
+<!-- Custom CSS -->
+<link href="/v2/assets/css/app.css" rel="stylesheet"/>
+</head>
+<body class="home d-flex flex-column min-vh-100">
+<!-- Navigation -->
+
+<section class="bg-gradient-primary text-white py-5">
+<div class="container">
+<div class="row">
+<div class="col">
+
+</div>
+</div>
+<div class="row py-4">
+<div class="col mx-auto">
+<h2 class="mb-3">АВИОНАМС</h2>
+</div>
+</div>
+</div>
+</section>
+<section class="bg-info flex-grow-1">
+<div class="container">
+<ul class="nav nav-pills nav-fill bg-white p-1 rounded-3 sticky-top" id="company-details-tabs" role="tablist">
+<li class="flex-sm-fill text-sm-center nav-item p-0" role="presentation">
+<button aria-controls="company" aria-selected="true" class="nav-link w-100 py-3 fw-semibold small active" data-bs-target="#company" data-bs-toggle="tab" id="company-tab" role="tab" type="button">
+<i class="fa-solid fa-circle-info me-2"></i>
+<span class="d-none d-md-inline-block">За предприятието</span>
+</button>
+</li>
+<li class="flex-sm-fill text-sm-center nav-item p-0" role="presentation">
+<button aria-controls="fin-report" aria-selected="false" class="nav-link w-100 py-3 fw-semibold small" data-bs-target="#fin-report" data-bs-toggle="tab" id="fin-report-tab" role="tab" type="button">
+<i class="fa-regular fa-file-lines me-2"></i>
+<span class="d-none d-md-inline-block">Финансови отчети</span>
+</button>
+</li>
+</ul>
+<div class="tab-content py-4" id="company-details-content">
+<div class="tab-pane fade show active" id="company">
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/bulstat.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">ЕИК/Булстат</div>
+<div class="h6 mb-0">000635619</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/company-type.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Вид</div>
+<div class="h6 mb-0">Търговско дружество</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/legal-form.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Правна форма</div>
+<div class="h6 mb-0">АД</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/address.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Седалище и адрес на управление</div>
+<div class="h6 mb-0">БЪЛГАРИЯ, обл. Пловдив, общ. Пловдив,  гр. Пловдив,  р-н Тракия,  , бл. ,  ул. „Цар Симеон”, ном. 2, вх. , ет. , ап. </div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/city-hall.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Орган, упражняващ правата на държавата</div>
+<div class="h6 mb-0">"Държавна консолидационна компания" ЕАД</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/members.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">
+                Членове на органите на управление и контрол
+            </div>
+<div class="h6 mb-0">
+<ul class="mb-0">
+<li>АТАНАС ДИМИТРОВ АТАНАСОВ,  БЪЛГАРИЯ</li>
+<li>ДИМИТЪР ХРИСТОВ ПЕТРОВ,  БЪЛГАРИЯ</li>
+<li>ЦАНКО ИВАНОВ СТОЙКОВ,  БЪЛГАРИЯ</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/scanner-bar.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">КИД 2008</div>
+<div class="h6 mb-0">Ремонт и поддържане на въздухоплавателни и космически средства</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/business-progress-bar.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Категория на предприятието по смисъла на ЗС</div>
+<div class="h6 mb-0">Средно предприятие</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/business-user.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Предмет на дейност</div>
+<div class="h6 mb-0">Извършване на техническо обслужване, ремонт и производство на летателни апарати, военна техника, въоръжение, боеприпаси и друго военнотехническо имущество, съоръжения, апаратури и машини, трансфер на технологии и промишлено коопериране, външнотърговска дейност с оръжие, изделия и технологии с двойна употреба, управление на движимо и недвижимо имущество, внос, износ, реклама, маркетинг, инженеринг, развитие и усъвършенстване на предлаганите продукти, услуги, техническа помощ и обучение, както и всяка друга дейност, незабранена от закона.Дружеството може да извършва в страната и в чужбина сделки от всякакъв вид, включително да придобива и отчуждава недвижими и движими вещи и вещни права, ценни книги, права върху изобретения, търговски марки, ноу-хау, авторски произведения и други обекти на интелектуална собственост, да придобива права от всякакъв вид и да се задължава по всякакъв начин.</div>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-2 col-sm-2 col-md-1 py-1 d-flex justify-content-center">
+<img alt="" src="/v2/assets/images/icons/color-pie.svg" style="width:28px;height:28px;"/>
+</div>
+<div class="col-10 col-sm-10 col-md-11">
+<div class="text-body-secondary small mb-1">Счетоводните стандарти, които предприятието прилага</div>
+<div class="h6 mb-0">Национални счетоводни стандарти</div>
+</div>
+</div>
+</div>
+
+</div>
+<div class="tab-pane fade" id="fin-report">
+<section class="rounded bg-white p-3 mb-4">
+<h6 class="mb-4">Филтрирай по:</h6>
+<form action="/public/Public/CompanyDetails/51" method="get">
+<input name="id" type="hidden" value="51"/>
+<input name="activeTab" type="hidden" value="fin-report"/>
+<input id="reportTabInput" name="reportTab" type="hidden" value="quarterly"/>
+<div class="row d-flex align-items-center gy-4">
+<div class="col-md-12 col-lg-6">
+<ul class="bg-light p-2 rounded-4 d-flex d-lg-inline-flex stats-switcher nav nav-tabs border-0" id="reportTabs">
+<li class="nav-item" role="presentation">
+<button class="nav-link btn btn-light p-2 rounded-3 fw-semibold me-2 border-0 active" data-bs-target="#quarterly" data-bs-toggle="tab" type="button">
+                            Тримесечни отчети
+                        </button>
+</li>
+<li class="nav-item" role="presentation">
+<button class="nav-link btn btn-light p-2 rounded-3 fw-semibold border-0" data-bs-target="#annual" data-bs-toggle="tab" type="button">
+                            Годишни отчети
+                        </button>
+</li>
+</ul>
+</div>
+<div class="col-md-6 offset-lg-2 col-lg-2">
+<select class="form-select w-100 report-select" name="reportYear">
+<option selected="selected" value="">
+                        Година
+                    </option>
+<option value="2025">
+                            2025
+                        </option>
+<option value="2024">
+                            2024
+                        </option>
+<option value="2023">
+                            2023
+                        </option>
+<option value="2022">
+                            2022
+                        </option>
+<option value="2021">
+                            2021
+                        </option>
+<option value="2020">
+                            2020
+                        </option>
+</select>
+</div>
+<div class="col-md-6 col-lg-2">
+<button class="btn btn-primary w-100" type="submit">
+                    Приложи филтри
+                </button>
+</div>
+</div>
+</form>
+</section>
+<section class="tab-content">
+<div class="tab-pane fade show active" id="quarterly">
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Трето тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2025</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/9442">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Второ тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2025</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/6803">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Първо тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2025</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/8204">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Трето тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2024</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/7496">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Второ тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2024</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/7119">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Първо тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2024</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/6416">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Трето тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2023</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/5692">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Второ тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2023</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/5290">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Първо тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2023</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/4544">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Тримесечни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<span class="text-nowrap badge small fw-medium badge-primary-subtle">
+                        Трето тримесечие
+                    </span>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2022</div>
+</div>
+<div class="col-12 col-md-6 col-lg-2">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsQuarterlyReport/3817">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col">
+<nav class="mt-4 justify-content-center d-flex">
+<ul class="pagination">
+<li class="page-item disabled">
+<a class="page-link" href="/public/Public/CompanyDetails/51?annualPage=1&amp;activeTab=fin-report&amp;reportTab=quarterly&amp;quarterlyPage=0">
+                    Предишна
+                </a>
+</li>
+<li class="page-item active">
+<a class="page-link" href="/public/Public/CompanyDetails/51?annualPage=1&amp;activeTab=fin-report&amp;reportTab=quarterly&amp;quarterlyPage=1">
+                        1
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/CompanyDetails/51?annualPage=1&amp;activeTab=fin-report&amp;reportTab=quarterly&amp;quarterlyPage=2">
+                        2
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/CompanyDetails/51?annualPage=1&amp;activeTab=fin-report&amp;reportTab=quarterly&amp;quarterlyPage=2">
+                    Следваща
+                </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+</div>
+<div class="tab-pane fade" id="annual">
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2025</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        17.09.2026
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/10759">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2024</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        26.06.2025
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/8549">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Неокончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2024</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        28.05.2025
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/7868">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2023</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        30.05.2024
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/4053">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2022</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        12.05.2023
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/2984">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2021</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        11.04.2022
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/755">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="p-3 rounded mb-2 bg-white shadow-sm">
+<div class="row gy-3 align-items-center">
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Вид</div>
+<div class="fw-semibold">Годишни отчети</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-4">
+<div class="text-body-secondary small">Тип отчет</div>
+<div class="fw-semibold">Окончателен отчет</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Година</div>
+<div class="fw-semibold">2020</div>
+</div>
+<div class="col-12 col-sm-6 col-md-6 col-lg-2">
+<div class="text-body-secondary small">Дата</div>
+<div class="fw-semibold">
+                        21.04.2021
+                    </div>
+</div>
+<div class="col-12 col-md-6 col-lg-2 offset-md-6 offset-lg-0">
+<a class="btn btn-outline-info text-black fw-semibold text-nowrap btn-fixed w-100" href="/Public/Public/CompanyDetailsAnnualReport/754">
+                        Подробности →
+                    </a>
+</div>
+</div>
+</div>
+<div class="rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col">
+</div>
+</div>
+</div>
+</div>
+</section>
+
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+
+<button class="btn btn-primary btn-floating" id="btn-back-to-top" style="display: none; position: fixed; bottom: 20px; right: 20px; z-index: 1000;" title="Back to top" type="button">
+<i class="fas fa-arrow-up"></i>
+</button>
+<!-- Bootstrap 5.3.3 JS Bundle -->
+
+<!-- Plugins JavaScript -->
+
+
+
+
+<!-- Custom JavaScript -->
+
+
+</body>
+</html>

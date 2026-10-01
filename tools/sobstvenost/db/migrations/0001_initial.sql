@@ -1,0 +1,11 @@
+CREATE SCHEMA IF NOT EXISTS live;
+CREATE SCHEMA IF NOT EXISTS stage;
+CREATE SCHEMA IF NOT EXISTS ops;
+CREATE TABLE live.record(source text NOT NULL, scope text NOT NULL, ref text NOT NULL, payload jsonb NOT NULL, first_seen timestamptz NOT NULL DEFAULT now(), last_seen timestamptz NOT NULL DEFAULT now(), gone_at timestamptz, PRIMARY KEY(source,scope,ref));
+CREATE TABLE stage.record(source text, scope text, ref text, payload jsonb, PRIMARY KEY(source,scope,ref));
+CREATE TABLE ops.version(source text NOT NULL, scope text NOT NULL, ref text NOT NULL, sha256 text NOT NULL, payload jsonb NOT NULL, observed_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(source,scope,ref,sha256));
+CREATE TABLE ops.change_log(id bigserial PRIMARY KEY,detected_at timestamptz NOT NULL DEFAULT now(),source text NOT NULL,ref text NOT NULL,field text,old text,new text,cause text NOT NULL);
+CREATE TABLE ops.held(source text,scope text,sha256 text NOT NULL,first_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(source,scope));
+CREATE TABLE ops.source_state(source text,scope text,status text NOT NULL,last_read timestamptz,last_success timestamptz,rows integer,error text,sha256 text,PRIMARY KEY(source,scope));
+CREATE TABLE ops.raw_file(id bigserial PRIMARY KEY,source text NOT NULL,url text NOT NULL,path text NOT NULL,sha256 text NOT NULL,fetched_at timestamptz NOT NULL DEFAULT now(),bytes bigint NOT NULL,UNIQUE(source,url,sha256));
+CREATE TABLE ops.job_run(id bigserial PRIMARY KEY,step text NOT NULL,started_at timestamptz NOT NULL DEFAULT now(),finished_at timestamptz,status text NOT NULL DEFAULT 'running',error text);

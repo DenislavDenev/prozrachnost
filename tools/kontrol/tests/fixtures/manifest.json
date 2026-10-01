@@ -1,0 +1,12 @@
+[
+  {
+    "fixture": "nao.html",
+    "original_sha256": "00ec1133af45410ecd2664aadfa7cd793a67b627d2f63eb04e1c78aa54f926fc",
+    "reduction": "First three original document elements; no invented fields"
+  },
+  {
+    "fixture": "recommendations.html",
+    "original_sha256": "ba38d3c35b2436d3329f53eba9d47c5ce4f7522e6174e0b16b59257ddc4349dd",
+    "reduction": "First three original document elements; no invented fields"
+  }
+]

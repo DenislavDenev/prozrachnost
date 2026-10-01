@@ -1,0 +1,57 @@
+{
+  ".gitattributes": {
+    "sha256": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
+    "bytes": 9,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "adfi-2011q3-table.json": {
+    "sha256": "ad050b8f246b6fc411bffa4118dbc84a4e2179c24bea340f88c6ef081262ee59",
+    "bytes": 6443,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "adfi-2024q2-table.json": {
+    "sha256": "a3b295e1d8469fdaaa24c83d351accfaf521590357550f6c2a4d58389e77ce17",
+    "bytes": 14807,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "adfi-history.html": {
+    "sha256": "bad0c41f4854c64bef5b95bc271eaa026ba0dc05381dc6d5fde78beefb7bf7d5",
+    "bytes": 621,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "adfi.html": {
+    "sha256": "9a400c97980f20c57a30e55f11837f46c97650813ca3b7c971a4195bfc0194ad",
+    "bytes": 1431,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "cpc-initial.html": {
+    "sha256": "7ad0c44af8530fb069b6fa0101ec100b44bf3e4e2a0b48adbaaee8ab593be891",
+    "bytes": 40036,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "cpc-reduced.html": {
+    "sha256": "33893d1b1a88df2450d9f1c5e7db0c73fcaca5247b9c7135d0d824257a3be4d5",
+    "bytes": 5752,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "cpc.html": {
+    "sha256": "50ac9171b961aacd942cf80c76bba0cf345cabe685e913e7429c80a68a67b666",
+    "bytes": 92047,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "manifest.json": {
+    "sha256": "2a99eabcd47dd51fe6b36589d3689f4a9625a51eccd720a24cb3cf345645520b",
+    "bytes": 435,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "nao.html": {
+    "sha256": "14cc05b7d141fc043f86fd3a368fce127e3c2272db0429df1a546045dcb1cc61",
+    "bytes": 2508,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  },
+  "recommendations.html": {
+    "sha256": "2951127983ad089bfd1e48eff078dd1af6dffeb014bb1b612b50e3b43d2472ae",
+    "bytes": 3260,
+    "description": "Source-derived original fragments; HTML fixture privacy fields removed or documented extracted PDF index tables"
+  }
+}

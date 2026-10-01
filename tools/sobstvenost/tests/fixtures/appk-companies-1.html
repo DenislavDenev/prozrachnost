@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+
+<html lang="bg">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="Електронно-информационна система за публичните предприятия" name="description"/>
+<title>АППК - Предприятия</title>
+<!-- swipejs css -->
+<link href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" rel="stylesheet"/>
+<!-- Font Awesome 6.5.2 Free -->
+<link crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap" rel="stylesheet"/>
+<!-- Plugins CSS -->
+<link href="/v2/assets/css/dual-range-slider.css" rel="stylesheet"/>
+<!-- Custom CSS -->
+<link href="/v2/assets/css/app.css" rel="stylesheet"/>
+</head>
+<body class="home d-flex flex-column min-vh-100">
+<!-- Navigation -->
+
+<section class="bg-gradient-primary text-white py-5">
+<div class="container">
+<div class="row">
+<div class="col">
+
+</div>
+</div>
+<div class="row py-4">
+<div class="col">
+<h2 class="mb-3">Предприятия</h2>
+</div>
+</div>
+<div class="row" style="margin-bottom: -100px;">
+<div class="col">
+<div class="card border-0 shadow-sm">
+<div class="card-body">
+<form action="/public/Public/Companies" class="needs-validation" id="publicSearchForm" method="get">
+<input id="searchType" name="searchType" type="hidden" value="company"/>
+<div class="row align-items-end gy-2">
+<div class="col-lg-9 order-1">
+<ul class="nav nav-pills d-inline-flex">
+<li class="nav-item" role="presentation">
+<button class="nav-link btn btn-light active" data-bs-target="#company-search" data-bs-toggle="pill" id="company-tab" role="tab" type="button">
+                                Търсене по предприятие
+                            </button>
+</li>
+<li class="nav-item" role="presentation">
+<button class="nav-link btn btn-light" data-bs-target="#ministry-search" data-bs-toggle="pill" id="ministry-tab" role="tab" type="button">
+                                Търсене по министерство
+                            </button>
+</li>
+</ul>
+<div class="tab-content" id="search-tabContent">
+<div class="tab-pane fade show active" id="company-search" role="tabpanel">
+<div class="input-group">
+<span class="input-group-text bg-transparent border-end-0">
+<i class="fa-solid fa-search"></i>
+</span>
+<input aria-label="Search" class="form-control border-start-0 search-input" placeholder="Търсене по име на предприятие или ЕИК..." type="search" value=""/>
+</div>
+</div>
+<div class="tab-pane fade" id="ministry-search" role="tabpanel">
+<div class="input-group">
+<span class="input-group-text bg-transparent border-end-0">
+<i class="fa-solid fa-search"></i>
+</span>
+<input aria-label="Search" class="form-control border-start-0 search-input" placeholder="Търсене по име на министерство..." type="search" value=""/>
+</div>
+</div>
+</div>
+<input id="OrganizationName" name="OrganizationName" type="hidden"/>
+</div>
+<div class="col-sm-12 filters p-2 order-2 order-lg-3">
+</div>
+<div class="col-lg-3 d-flex gap-3 order-3 order-lg-2 justify-content-end">
+<button aria-controls="extendedSearch" class="btn btn-light" data-bs-target="#extendedSearch" data-bs-toggle="offcanvas" type="button">
+                        Разширено търсене
+                    </button>
+<button class="btn btn-primary" type="submit">
+                        Търсене
+                    </button>
+</div>
+</div>
+</form>
+</div>
+</div>
+<form action="/Public/Public/Companies" id="extendedSearchForm" method="get">
+<input id="incomes-min" name="TotalIncomeMin" type="hidden"/>
+<input id="incomes-max" name="TotalIncomeMax" type="hidden"/>
+<input id="outcomes-min" name="TotalExpenseMin" type="hidden"/>
+<input id="outcomes-max" name="TotalExpenseMax" type="hidden"/>
+<input id="neto-min" name="NetIncomeMin" type="hidden"/>
+<input id="neto-max" name="NetIncomeMax" type="hidden"/>
+<input id="actives-min" name="TotalAssetsMin" type="hidden"/>
+<input id="actives-max" name="TotalAssetsMax" type="hidden"/>
+<input id="pasive-min" name="TotalLiabilitiesMin" type="hidden"/>
+<input id="pasive-max" name="TotalLiabilitiesMax" type="hidden"/>
+<input id="capital-min" name="OwnCapitalMin" type="hidden"/>
+<input id="capital-max" name="OwnCapitalMax" type="hidden"/>
+<div aria-labelledby="extendedSearchLabel" class="offcanvas offcanvas-end overflow-x-hidden" data-bs-scroll="false" id="extendedSearch" tabindex="-1">
+<div class="offcanvas-header">
+<h5 class="offcanvas-title" id="extendedSearchLabel">Разширено търсене</h5>
+<button aria-label="Close" class="btn-close" data-bs-dismiss="offcanvas" type="button"></button>
+</div>
+<div class="offcanvas-body overflow-x-hidden">
+<p>Изберете полета</p>
+<p>От посочените филтри могат да се избират едновременно повече от един (до три).</p>
+<div class="row mt-4">
+<div class="col-12">
+<label class="form-label fw-bold" for="extended-search-year">
+                        Година
+                    </label>
+<div class="input-group">
+<span class="input-group-text bg-light">
+<i class="fa-regular fa-calendar"></i>
+</span>
+<input class="form-control" id="extended-search-year" max="2100" min="2000" name="StatYear" placeholder="Например: 2025" step="1" type="number" value=""/>
+</div>
+<div class="form-text">
+                        Изберете година, за която да се приложат финансовите филтри.
+                    </div>
+</div>
+<div class="row mt-4 gy-4">
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-incomes">
+                                Общо приходи
+                            </label>
+<input class="form-check-input" data-drs-target="#incomes" id="switch-incomes" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="incomes">
+</div>
+</div>
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-outcomes">
+                                Общо разходи
+                            </label>
+<input class="form-check-input" data-drs-target="#outcomes" id="switch-outcomes" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="outcomes">
+</div>
+</div>
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-neto">
+                                Нетна печалба / загуба
+                            </label>
+<input class="form-check-input" data-drs-target="#neto" id="switch-neto" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="neto">
+</div>
+</div>
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-actives">
+                                Общо активи
+                            </label>
+<input class="form-check-input" data-drs-target="#actives" id="switch-actives" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="actives">
+</div>
+</div>
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-pasive">
+                                Общо пасиви
+                            </label>
+<input class="form-check-input" data-drs-target="#pasive" id="switch-pasive" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="pasive">
+</div>
+</div>
+<div class="col-sm-12 d-flex flex-column gap-2 border-bottom border-light-subtle pb-4">
+<div class="form-check form-switch form-check-reverse d-flex justify-content-between">
+<label class="form-check-label fw-bold" for="switch-capital">
+                                Собствен капитал
+                            </label>
+<input class="form-check-input" data-drs-target="#capital" id="switch-capital" role="switch" type="checkbox"/>
+</div>
+<div class="drs-slider" data-drs-end="999000000000" data-drs-max="999000000000" data-drs-min="0" data-drs-start="0" data-drs-status="disabled" id="capital">
+</div>
+</div>
+</div>
+</div>
+<div class="offcanvas-footer p-3">
+<div class="row">
+<div class="col d-flex gap-2">
+<button class="btn btn-outline-primary flex-grow-1" data-bs-dismiss="offcanvas" type="button">
+                        Отмени
+                    </button>
+<button class="btn btn-primary flex-grow-1" type="submit">
+                        Запази търсенето
+                    </button>
+</div>
+</div>
+</div>
+</div>
+</div></form>
+
+
+</div>
+</div>
+</div>
+</section>
+<section class="bg-light" style="padding: 100px 0">
+<div class="container">
+<div class="row">
+<div class="col">
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АВИОНАМС
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        99.97% ДКК ЕАД
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/51">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АВТОМАГИСТРАЛИ
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100% държавна собственост
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/105">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АГЕНЦИЯ ДИПЛОМАТИЧЕСКИ ИМОТИ  В СТРАНАТА
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100 %
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/281">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АГРОЛЕСПРОЕКТ
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100%
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/38">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АГРОУСЛУГИ Мамарчево
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        —
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/309">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АЕЦ КОЗЛОДУЙ
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100%
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/35">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                Академика 2011
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100 %
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/276">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АЛИАНС
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100% държавна собственост
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/99">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АРЕНА РУСЕ
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        —
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/300">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="p-4 rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col-lg-6 col-sm-8 col-md-6 py-1">
+<div class="text-body-secondary small fw-medium">
+                        Предприятие
+            </div>
+<div class="h6 mb-0 fw-semibold">
+                АРМСТРОЙИНВЕСТ
+            </div>
+</div>
+<div class="col-lg-3 col-sm-4 col-md-3 py-1">
+<div class="text-body-secondary small fw-medium">Държавно участие</div>
+<div class="h6 mb-0 fw-semibold">
+                        100%
+                    </div>
+</div>
+<div class="col-lg-1 col-sm-6 d-flex align-items-center">
+<span class="small fw-bolder badge text-nowrap badge-outline-success">
+<i class="fa fa-check"></i> Активно
+                        </span>
+</div>
+<div class="col-lg-2 pt-md-0 pt-3 justify-content-end d-flex align-items-center">
+<a class="btn btn-outline-info text-black" href="/Public/Public/CompanyDetails/106">
+                Детайли <i class="fa fa-arrow-right-long ms-2"></i>
+</a>
+</div>
+</div>
+</div>
+<div class="rounded mb-1 bg-white shadow-sm">
+<div class="row">
+<div class="col">
+<nav class="mt-4 justify-content-center d-flex">
+<ul class="pagination">
+<li class="page-item disabled">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=0">
+                    Предишна
+                </a>
+</li>
+<li class="page-item active">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=1">
+                        1
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=2">
+                        2
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=3">
+                        3
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=4">
+                        4
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=5">
+                        5
+                    </a>
+</li>
+<li class="page-item disabled">
+<span class="page-link">...</span>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=29">
+                        29
+                    </a>
+</li>
+<li class="page-item">
+<a class="page-link" href="/public/Public/Companies?searchType=company&amp;page=2">
+                    Следваща
+                </a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+
+<button class="btn btn-primary btn-floating" id="btn-back-to-top" style="display: none; position: fixed; bottom: 20px; right: 20px; z-index: 1000;" title="Back to top" type="button">
+<i class="fas fa-arrow-up"></i>
+</button>
+<!-- Bootstrap 5.3.3 JS Bundle -->
+
+<!-- Plugins JavaScript -->
+
+
+
+
+<!-- Custom JavaScript -->
+
+</body>
+</html>
