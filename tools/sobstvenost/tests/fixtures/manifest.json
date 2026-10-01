@@ -1,0 +1,50 @@
+[
+  {
+    "name": "appk-companies-1.html",
+    "original_sha256": "94c40e3eb8ca98436c258f0c00c310410c061e30dfbb789ad4ccc48bc91bbad1",
+    "fixture_sha256": "2e880d82e86343301d4d3e46824a2e28f1100ce99f0adcb430fc0586523a10a1",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-companies-9.html",
+    "original_sha256": "3dbface29a2e30fcf49a3afa4acbda09ba841b999c31722b09c3a5352f2f6da1",
+    "fixture_sha256": "c5a2cc47fd938c916ac4c873eb5a43ceff0645d41fbe5d16a8a67c1dd57b8473",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-105.html",
+    "original_sha256": "52c195b2d2df85c170d2c800870da119d41d161c997ccb377713efe2e3b01f17",
+    "fixture_sha256": "6b038c3b5e44e693ea8ab8d0e4784f2ef5fe1e3492ce15ca602b5c200efc22d7",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-51.html",
+    "original_sha256": "b076d25ccbacbf392269f71f7e95e802f22d897a3620c478debd291a3c4f6980",
+    "fixture_sha256": "72cad3112a625afe71048cfa54f2f00c4dd65cbde82cb1ad618d3f18fc97d95e",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-281.html",
+    "original_sha256": "a925c2290d13878b2f9d0e83c601cf8a59a6325b890d800a8651d0f9419036fc",
+    "fixture_sha256": "8cfb2b9c57708dc56bad045de4c42425db8f39971e2cfd919d00ddd42cea8e3e",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-annual-9848.html",
+    "original_sha256": "4fdd54e574bea56ae732a22acb08acf6cf99e33b0cc3ea659e5737bcaeec2e57",
+    "fixture_sha256": "0a0759e9e562aa933a68351afd5810c916b1693ef5c06840106cd52ab5a6165d",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "appk-quarterly-10603.html",
+    "original_sha256": "6da9fde6dda09b034c9bcc33c761420ebe0203f225f45652c8b4339cd9db98fe",
+    "fixture_sha256": "2725554cdf460025011e447b0308fd16175314c1ae47559962b5c5dd3a881266",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  },
+  {
+    "name": "ncr-search-1.html",
+    "original_sha256": "414d8f14a880d304fe42899e8a0ac2a61b008954fbd900a5902c24289d803c33",
+    "fixture_sha256": "2cd6f37b9dd50f7c84310c611080c244282669ff97613cff888a8861a60ed82e",
+    "cut": "headers, footer, scripts and contact fields removed; factual records preserved"
+  }
+]
