@@ -72,3 +72,13 @@ def test_public_privacy_without_losing_source_identity():
     r=public_row(dict(id='source:1',title='ЕТ Иван, личен контакт test@example.test',auditee='object',eik='1234567890'))
     assert r['id']=='source:1' and r['eik'] is None
     assert 'test@example.test' not in r['title'] and 'Иван' not in r['title']
+
+
+def test_quarter_filter_matches_csv(monkeypatch,client):
+    row=parse.adfi((F/'adfi.html').read_bytes(),'https://www.adfi.minfin.bg/bg/34')[0]
+    a=dict(row,id='test-a',report_period='2024-Q1'); b=dict(row,id='test-b',report_period='2024-Q2')
+    monkeypatch.setattr(Q,'allrows',lambda:[a,b])
+    page=client.get('/inspekcii?period=2024-Q1')
+    assert page.status_code==200 and '1 уникални записа' in page.text
+    rows=list(csv.DictReader(io.StringIO(client.get('/export.csv?view=inspekcii&period=2024-Q1').content.decode('utf-8-sig'))))
+    assert [r['id'] for r in rows]==['test-a']

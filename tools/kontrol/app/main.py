@@ -39,26 +39,26 @@ def favicon():
     return Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="25" fill="#0b7a5e"/><path d="m18 32 9 9 19-22" fill="none" stroke="white" stroke-width="5"/></svg>',media_type='image/svg+xml')
 
 @app.get('/',response_class=HTMLResponse)
-def home(request:Request,year='',kind='',sector='',q='',source=''):
-    rows,options=Q.select('all',year,kind,sector,q,source=source)
-    return render(request,'home.html',nav='Табло',rows=rows,options=options,stats=Q.summary(rows),timeline=Q.timeline(rows),filters=dict(year=year,kind=kind,sector=sector,q=q,source=source),view='all')
+def home(request:Request,year='',kind='',sector='',q='',source='',period=''):
+    rows,options=Q.select('all',year,kind,sector,q,source=source,period=period)
+    return render(request,'home.html',nav='Табло',rows=rows,options=options,stats=Q.summary(rows),timeline=Q.timeline(rows),filters=dict(year=year,kind=kind,sector=sector,q=q,source=source,period=period),view='all')
 
 @app.get('/oditi',response_class=HTMLResponse)
 @app.get('/preporaki',response_class=HTMLResponse)
 @app.get('/inspekcii',response_class=HTMLResponse)
 @app.get('/kzk',response_class=HTMLResponse)
-def listing(request:Request,year='',kind='',sector='',q='',source='',sort='published',page:int=1):
+def listing(request:Request,year='',kind='',sector='',q='',source='',sort='published',page:int=1,period=''):
     view=request.url.path.strip('/')
     labels={'oditi':'Одити','preporaki':'Препоръки','inspekcii':'Инспекции','kzk':'КЗК'}
-    rows,options=Q.select(view,year,kind,sector,q,sort,source)
+    rows,options=Q.select(view,year,kind,sector,q,sort,source,period)
     page=max(1,page);start=(page-1)*100
-    filters=dict(year=year,kind=kind,sector=sector,q=q,source=source,sort=sort)
+    filters=dict(year=year,kind=kind,sector=sector,q=q,source=source,sort=sort,period=period)
     return render(request,'list.html',nav=labels[view],view=view,rows=rows[start:start+100],stats=Q.summary(rows),options=options,filters=filters,page=page,pages=(len(rows)+99)//100)
 
 @app.get('/export.csv')
-def export(view='all',year='',kind='',sector='',q='',source='',sort='published'):
+def export(view='all',year='',kind='',sector='',q='',source='',sort='published',period=''):
     if view not in ['all','oditi','preporaki','inspekcii','kzk']:raise HTTPException(400)
-    rows,_=Q.select(view,year,kind,sector,q,sort,source)
+    rows,_=Q.select(view,year,kind,sector,q,sort,source,period)
     return Response(Q.csv_response(rows),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename="kontrol.csv"'})
 
 @app.get('/oditi/{id:path}',response_class=HTMLResponse)

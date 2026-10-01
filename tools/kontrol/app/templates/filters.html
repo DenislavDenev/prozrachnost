@@ -1,5 +1,6 @@
 <form class="filters" method="get"><label>Година на публикуване<select name="year"><option value="">Всички години</option>{% for y in options.publication_year %}<option value="{{y}}" {% if filters.year==y %}selected{% endif %}>{{y}}</option>{% endfor %}</select></label>
 <label>Вид<select name="kind"><option value="">Всички видове</option>{% for k in options.kind %}<option {% if filters.kind==k %}selected{% endif %}>{{k}}</option>{% endfor %}</select></label>
 {% if options.sector %}<label>Категория<select name="sector"><option value="">Всички категории</option>{% for k in options.sector %}<option {% if filters.sector==k %}selected{% endif %}>{{k}}</option>{% endfor %}</select></label>{% endif %}
+{% if options.report_period %}<label>Отчетен период<select name="period"><option value="">Всички периоди</option>{% for p in options.report_period %}<option {% if filters.period==p %}selected{% endif %}>{{p}}</option>{% endfor %}</select></label>{% endif %}
 <label>Търсене във всички избрани данни<input name="q" value="{{filters.q}}" type="search"></label><button type="submit">Покажи</button><a href="{{request.url.path}}">Изчисти</a>
 {% if filters.source %}<input type="hidden" name="source" value="{{filters.source}}">{% endif %}</form>

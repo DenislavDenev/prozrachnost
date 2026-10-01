@@ -36,7 +36,7 @@ def allrows():
             row.update({k:v for k,v in doc.items() if k!='url'})
     return [public_row(row) for row in rows]
 
-def select(view, year='', kind='', sector='', q='', sort='published', source=''):
+def select(view, year='', kind='', sector='', q='', sort='published', source='', period=''):
     rows = allrows()
     if view == 'oditi':
         rows = [r for r in rows if any(s.startswith('nao') for s in r['categories']) and not r.get('recommendation_text')]
@@ -46,10 +46,10 @@ def select(view, year='', kind='', sector='', q='', sort='published', source='')
         rows = [r for r in rows if r['source'].startswith('adfi')]
     elif view == 'kzk':
         rows = [r for r in rows if r['source'] == 'cpc']
-    options = {k: sorted({r.get(k) for r in rows if r.get(k)}, reverse=k=='publication_year') for k in ['publication_year','kind','sector']}
+    options = {k: sorted({r.get(k) for r in rows if r.get(k)}, reverse=k=='publication_year') for k in ['publication_year','kind','sector','report_period']}
     rows = [r for r in rows if (not year or r.get('publication_year') == year)
             and (not kind or r.get('kind') == kind) and (not sector or r.get('sector') == sector)
-            and (not source or source in r['categories'])
+            and (not source or source in r['categories']) and (not period or r.get('report_period')==period)
             and (not q or q.casefold() in ' '.join(str(r.get(k) or '') for k in ['title','auditee','case_no','report_period','recommendation_text','excerpt']).casefold())]
     if sort == 'title':
         rows.sort(key=lambda r:(r['title'].casefold(),r['id']))
