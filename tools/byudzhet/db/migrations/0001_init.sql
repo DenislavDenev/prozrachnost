@@ -1,0 +1,12 @@
+CREATE SCHEMA IF NOT EXISTS ops;
+CREATE SCHEMA IF NOT EXISTS src;
+CREATE SCHEMA IF NOT EXISTS stage;
+CREATE SCHEMA IF NOT EXISTS live;
+CREATE TABLE ops.raw_file(source text,ref text,path text,sha256 text,fetched_at timestamptz NOT NULL DEFAULT now(),bytes bigint,PRIMARY KEY(source,ref,sha256));
+CREATE TABLE ops.change_log(id bigserial PRIMARY KEY,detected_at timestamptz NOT NULL DEFAULT now(),source text,ref text,field text,old text,new text,cause text);
+CREATE TABLE src.resource(ref text PRIMARY KEY,kind text NOT NULL,name text NOT NULL,period date,version text,sha256 text,read_at timestamptz,status text NOT NULL,error text,metadata jsonb NOT NULL DEFAULT '{}');
+CREATE TABLE ops.held(ref text PRIMARY KEY,sha256 text NOT NULL,first_seen timestamptz NOT NULL);
+CREATE TABLE ops.job_run(id bigserial PRIMARY KEY,step text,started_at timestamptz DEFAULT now(),finished_at timestamptz,status text,report jsonb);
+CREATE TABLE stage.snapshot(ref text PRIMARY KEY,kind text NOT NULL,period date NOT NULL,payload jsonb NOT NULL);
+CREATE TABLE live.snapshot(LIKE stage.snapshot INCLUDING ALL);
+CREATE INDEX snapshot_kind_period ON live.snapshot(kind,period);

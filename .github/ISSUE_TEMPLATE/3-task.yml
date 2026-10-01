@@ -27,6 +27,7 @@ body:
         - Парламент
         - Население
         - Образование
+        - Бюджет
     validations:
       required: true
   - type: textarea

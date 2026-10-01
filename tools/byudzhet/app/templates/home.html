@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Бюджет{% endblock %}
+{% block main %}
+<h1>Публичните пари</h1>
+<p class="lede">{% if state %}Към {{ state.period|date }} държавният бюджет е събрал <b>{{ summary.revenue|money }}</b>, или <b>{{ summary.revenue_pct|num }}%</b> от закона; разходите и трансферите са <b>{{ summary.spending|money }}</b>.{% else %}Няма данни за държавния бюджет.{% endif %} Към {{ mun.y|date }} общините имат остатъчен дълг <b>{{ mun.bg|money }}</b>.</p>
+<div class="grid">
+{% for title,query in [('Приходи и разходи, натрупани от януари','kind=state'),('Бюджетно салдо, натрупано от януари','kind=state&metrics=balance'),('Изпълнение спрямо годишния закон','kind=state&metrics=revenue_pct,spending_pct'),('Общински дълг и задължения към края на тримесечието','kind=municipalities')] %}
+<section class="p s6"><h2>{{ title }}</h2><div class="sub">{{ '%' if 'pct' in query else 'млрд. €' }}</div><div class="chart" data-src="/api/chart.json?{{ query }}" data-scale="{{ 1 if 'pct' in query else 1000000000 }}"></div><div class="src">МФ · <a href="/sources">набори и периоди</a> · <a href="{{ '/export.csv' if 'municipalities' in query else '/export-budget.csv' }}">CSV</a></div></section>
+{% endfor %}
+</div>
+<p class="mut">Сумите до 2025 г. са превърнати от лева по 1,95583. Задълженията и ангажиментите са отделни показатели и не се събират в обща сума.</p>
+{% endblock %}
