@@ -91,7 +91,7 @@ def times(kind):
   while m>12:y+=1;m-=12
  return sorted(set(out)|set(periods))
 def kfp_summary(s):
- if not s:return {}
+ if not s:return dict(revenue=None,spending=None,balance=None)
  rows=s['rows'];total=[r for r in rows if r['budget_type']=='Консолидирана фискална програма'];rows=total or rows
  def add(predicate):
   vals=[euros(v) for r in rows for k,v in r['values'].items() if predicate(k)]

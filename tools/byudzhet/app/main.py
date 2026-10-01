@@ -57,11 +57,11 @@ def state_page(request:Request,y=None,q=''):
  if s:
   import calendar
   y=s['period'];py=int(y[:4])-1;month=int(y[5:7]);previous=Q.choose('state',f'{py}-{month:02d}-{calendar.monthrange(py,month)[1]:02d}')
- return render(request,'state.html',nav='Държавен бюджет',s=s,years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
+ return render(request,'state.html',nav='Държавен бюджет',s=s,selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('state'),reverse=True),q=q,previous={r['line']:r for r in previous['rows']} if previous else {})
 @app.get('/kfp',response_class=HTMLResponse)
 def kfp_page(request:Request,y=None,q='',budget_type=''):
  s=Q.choose('kfp',y)
- return render(request,'kfp.html',nav='КФП',s=s,years=sorted(Q.bykind('kfp'),reverse=True),q=q,budget_type=budget_type,summary=Q.kfp_summary(s))
+ return render(request,'kfp.html',nav='КФП',s=s,selected_period=s['period'] if s else y or '',years=sorted(Q.bykind('kfp'),reverse=True),q=q,budget_type=budget_type,summary=Q.kfp_summary(s))
 @app.get('/obshtini',response_class=HTMLResponse)
 def municipalities(request:Request,y=None,oblast='',municipality='',q='',sort='debt',direction='desc',denominator='current'):
  d=Q.municipality_rows(y,oblast,municipality,q,sort,direction,denominator)
