@@ -1,14 +1,16 @@
 import datetime as dt,hashlib,json
 from psycopg.types.json import Jsonb
 from .config import DATA
+from .state import structure
 from .parse import parse,population,ShapeError
 def digest(raw):return hashlib.sha256(raw).hexdigest()
 def log(c,kind,ref,field,old,new,cause):
  c.execute('INSERT INTO ops.change_log(source,ref,field,old,new,cause) VALUES (%s,%s,%s,%s,%s,%s)',(kind,ref,field,None if old is None else str(old),None if new is None else str(new),cause))
 def flatten(data):
  out={}
+ statekeys={r['order']:r['key'] for r in structure(data['rows'])} if data.get('kind')=='state' else {}
  for i,r in enumerate(data['rows']):
-  key=r.get('code',r.get('line',r.get('budget_type',str(i))))
+  key=statekeys.get(r.get('order'),r.get('code',r.get('line',r.get('budget_type',str(i)))))
   def walk(v,path):
    if isinstance(v,dict):
     for k,x in sorted(v.items()):walk(x,path+'/'+k)

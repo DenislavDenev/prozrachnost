@@ -180,3 +180,11 @@ th.n .sort { flex-direction: row-reverse; }
 .row-section { max-width: 36ch; }
 .missing { color: #69707a; font-size: 13px; }
 .layers g.few path { transition: none; }
+/* Budget context stays attached to each row even after sorting. */
+.budget-subtotal{font-weight:600;background:#fafbfa}
+.budget-part td:first-child,.budget-subtotal td:first-child{padding-left:calc(12px + var(--depth,1)*16px)}
+.row-warning{display:block;color:#b25b06;font-size:11px;font-weight:400}
+.help-trigger{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid #d6e4df;border-radius:50%;background:white;color:#0b7a5e;font-size:13px;font-weight:600;vertical-align:middle;cursor:help;flex-shrink:0}
+.help-trigger:focus-visible{outline:2px solid #0b7a5e;outline-offset:2px}
+.state-popover{position:fixed;z-index:1000;width:360px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 16px);overflow:auto;padding:16px;border:1px solid #0b7a5e;border-radius:6px;background:white;font-size:13px;line-height:1.5;box-sizing:border-box}
+.state-popover[hidden]{display:none}.state-popover p{margin:10px 0}.state-popover strong{font-size:15px}.state-popover a{color:#0b7a5e}.help-close{float:right;border:0;background:white;color:#0b7a5e;padding:0;cursor:pointer}

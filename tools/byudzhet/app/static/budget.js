@@ -11,7 +11,7 @@
  }
  document.querySelectorAll('.budget-sort [data-column]').forEach(b=>b.addEventListener('click',()=>{
   const table=b.closest('table'),column=+b.dataset.column,desc=b.dataset.direction!=='desc';b.dataset.direction=desc?'desc':'asc';
-  const key=r=>{const s=r.cells[column].textContent.trim();if(s==='няма данни')return null;const n=Number(s.replaceAll(' ','').replace(',','.'));return Number.isNaN(n)?s:n;};
+  const key=r=>{const cell=r.cells[column],s=(cell.dataset.v??cell.textContent).trim();if(!s||s==='няма данни')return null;const n=Number(s.replaceAll(' ','').replace(',','.')); return Number.isNaN(n)?s:n;};
   const rows=[...table.tBodies[0].rows];rows.sort((a,z)=>{const x=key(a),y=key(z);if(x===null)return 1;if(y===null)return -1;return (typeof x==='number'?x-y:String(x).localeCompare(String(y),'bg'))*(desc?-1:1);});table.tBodies[0].append(...rows);
  }));
 })();

@@ -135,6 +135,10 @@ def state(rows,p):
   if None in parts and field=='law':continue
   if None in parts:raise ShapeError('Липсва съставно перо на приходите')
   near(total,sum(parts))
+ from .state import structure
+ try:classified=structure(out)
+ except ValueError as e:raise ShapeError(str(e)) from e
+ if any(r['ident'].startswith('unknown:') for r in classified):raise ShapeError('Непознато перо на държавния бюджет')
  return dict(rows=out,notes=notes,reconciliation='Приходи = данъчни + неданъчни + помощи; процент = отчет / закон',cumulative=True)
 def kfp(rows,p):
  h=[clean(x) for x in rows[0]]
