@@ -31,6 +31,7 @@ def test_filters_csv_api_and_missing_quarter(client):
  assert all(row['debt'] is None and row['overdue'] is None for row in r['rows'])
 def test_map_all_levels_and_ratio_of_sums(client):
  a=client.get('/api/karta.json?m=debt').json();assert len(a['items'])==265
+ assert all('y=2026-06-30&denominator=current' in r['href'] for r in a['items'])
  b=client.get('/api/karta.json?m=debt&l=oblasti').json();assert len(b['items'])==28
  assert abs(sum(r['v'] for r in a['items'])-sum(r['v'] for r in b['items']))<0.001
  d=client.get('/api/karta.json?m=debt_per_person&l=darzhava').json();assert len(d['items'])==1 and d['items'][0]['v'] is not None

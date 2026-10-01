@@ -62,7 +62,7 @@ def mapdata(m='debt',l='obshtini',y=None,denominator='current'):
  for row in d['rows']:
   ref=REFBY[row['code']];code=row['code'] if n==4 else ref['nuts'+str(n)] if n else 'BG'
   name=row['name'] if n==4 else row['oblast'] if n==3 else REGIONS[code] if n else 'България'
-  x=items.setdefault(code,dict(code=code,name=name,v=Decimal(0),population=0,valid=True,rank=None,change=None,href='/obshtini/'+row['code'] if n==4 else None))
+  x=items.setdefault(code,dict(code=code,name=name,v=Decimal(0),population=0,valid=True,rank=None,change=None,href='/obshtini/'+row['code']+'?'+urlencode(dict(y=d['y'] or '',denominator=denominator)) if n==4 else None))
   if row[metric] is None or per and not row['population']:x['valid']=False
   if row[metric] is not None:x['v']+=row[metric]
   if row['population']:x['population']+=row['population']
