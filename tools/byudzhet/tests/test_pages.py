@@ -95,6 +95,8 @@ def test_map_explains_selected_metric_and_omits_single_scope(client):
  assert page.status_code==200 and 'id="k-scope"' not in page.text
  assert 'id="k-definition"' in page.text and 'С прости думи' in page.text
  data=client.get('/api/karta.json?m=commitments_per_person&denominator=permanent').json()
- assert 'неизпълнени' in data['definition'] and data['denominator']=='permanent'
+ assert 'договор за ремонт на улица' in data['definition'] and data['denominator']=='permanent'
  assert dict(data['levels'])['darzhava']=='Държава'
- assert client.get('/how').status_code==200
+ how=client.get('/how');assert how.status_code==200
+ assert how.text.count('<h2>Определения на картата</h2>')==1
+ assert '<title>Как работи' in how.text and '<title>Как работи<section' not in how.text
