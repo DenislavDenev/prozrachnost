@@ -1,6 +1,12 @@
 from pathlib import Path
 import pytest
 
+def test_disabled_terminal_next_is_not_an_extra_page():
+    raw=b'<ul class="pagination"><li class="active"><a href="?page=29">29</a></li><li class="disabled"><a href="?page=30">Next</a></li></ul>'
+    assert parse.pages(parse.soup(raw))==29
+    rows,last=parse.companies((P/'appk-companies-29.html').read_bytes())
+    assert len(rows)==8 and last==29
+
 def test_legacy_maritime_notice():
     from pathlib import Path
     row=parse.assigned_notice((Path(__file__).parent/'fixtures/ncr-arapya.html').read_bytes())

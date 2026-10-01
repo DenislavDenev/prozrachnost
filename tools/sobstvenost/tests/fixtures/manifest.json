@@ -52,5 +52,11 @@
     "original_sha256": "9afdca127522dd546bd598ad753c0c918177f79fe0636251aad8f690703f090c",
     "fixture_sha256": "b5e645ed018fd459f7cd1ba565cc007e03e64ecfc29841b564bc29dfa4f61341",
     "cut": "Only published legal-person role and sectionVII facts; sectionI contact fields omitted."
+  },
+  {
+    "name": "appk-companies-29.html",
+    "original_sha256": "98353a2db8859c3e4873b256744a25fb86619c88b3c3caf689d43823c969c4b5",
+    "fixture_sha256": "a4eaa0f15e48ff7334f031a9aa849a641e06856c4ed86ebf29ff086f0dabb319",
+    "cut": "Only enterprise cards and original pagination, disabled terminal next retained."
   }
 ]

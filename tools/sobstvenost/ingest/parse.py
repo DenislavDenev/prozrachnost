@@ -41,6 +41,7 @@ def valid_eik(value):
 def pages(s, param='page'):
     vals=[]
     for a in s.select('.pagination a[href]'):
+        if a.find_parent(class_='disabled'):continue
         q=parse_qs(urlparse(a['href']).query)
         vals.extend(int(v) for v in q.get(param,[]) if v.isdigit())
     return max(vals,default=1)
