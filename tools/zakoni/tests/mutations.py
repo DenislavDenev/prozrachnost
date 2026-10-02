@@ -60,7 +60,7 @@ MUTATIONS = [
     ("a changed record keeps its old version", "ingest/store.py", "UPDATE silver.{table} c SET valid_to = %s WHERE c.valid_to IS NULL AND {sc}",
      "UPDATE silver.{table} c SET valid_to = %s WHERE FALSE AND {sc}", f"{STO}::test_a_changed_act_is_a_new_version_and_not_a_new_act"),
     ("the count after the write is the count in the file", "ingest/load.py", "    if held != n_parent:", "    if False:",
-     f"{STO}::test_the_first_build_reads_every_resource_and_the_counts_agree"),
+     f"{STO}::test_a_write_that_loses_a_record_is_caught_by_the_count_after_it"),
     ("the count of an unchanged file is checked against silver", "ingest/load.py", "        if rows is not None and rows != held:", "        if False:",
      f"{STO}::test_a_reconciliation_that_fails_stops_the_build_of_gold"),
     ("the legislative initiatives report is compared with the other", "ingest/load.py", 'status = "същият файл като " + BY_ID[r.same_as].name if other == sha else',
