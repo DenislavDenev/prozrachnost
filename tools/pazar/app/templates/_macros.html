@@ -1,0 +1,12 @@
+{% macro help(id, label) %}<button type="button" class="help-trigger" data-help="{{ id }}" aria-label="Какво е: {{ label }}">?</button>{% endmacro %}
+{% macro basketbar(action, basket, baskets, day, days) %}
+<form class="ctl" method="get" action="{{ action }}" id="filters">
+  <label>Кошница <select name="k" aria-label="Кошница">
+    {% for s, b in baskets.items() %}<option value="{{ s }}" {{ 'selected' if not basket.custom and s == basket.slug }}>{{ b.label }} ({{ b.cats|length }})</option>{% endfor %}
+    {% if basket.custom %}<option value="" selected>{{ basket.label }}</option>{% endif %}</select></label>
+  <label>Ден <select name="d" aria-label="Ден">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label>
+  {% if basket.custom %}<input type="hidden" name="c" value="{{ basket.cats|join(',') }}">{% endif %}
+  <button>Покажи</button>
+</form>
+{% endmacro %}
+{% macro srcline(csv) %}<div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="{{ csv }}">CSV</a></div>{% endmacro %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, basketbar %}
+{% block title %}Карта{% endblock %}
+{% block main %}
+<h1>Ценово равнище по общини</h1>
+<p class="lede" id="k-lede">За кошницата „{{ d.basket }}“ на <b>{{ day|date }}</b>: {{ d.shown }} от {{ d.total }} общини имат достатъчно данни.</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Оцветена е общината, в която медианните цени на избраните стоки са по-високи или по-ниски от националните. +4% значи, че същите стоки струват по общинските медиани с 4% повече. {{ help('level', 'ценово равнище') }}</p>
+  <p>Показваме само общини с поне 3 обекта от поне 2 вериги и цени за половината от стоките. Останалите са сиви: „недостатъчно данни“, а не „средна цена“. Онлайн магазин за цялата страна никога не е магазин на картата.</p>
+</details>
+{{ basketbar("/karta", basket, baskets, day, days) }}
+<div class="grid">
+  <section class="p s8 map" id="k-map"><h2 id="k-h2">{{ d.title }}</h2><div class="sub">{{ d.unit }}</div>
+    <div class="mapbox">
+      <svg id="k-svg" role="img" aria-label="Карта на общините: ценово равнище на кошницата"><g class="layers"></g><g class="borders"></g><g class="top"></g></svg>
+      <div class="zoom" role="group" aria-label="Мащаб"><button type="button" data-z="in" title="Приближи" aria-label="Приближи">+</button><button type="button" data-z="out" title="Отдалечи" aria-label="Отдалечи">−</button><button type="button" data-z="home" title="Цялата карта" aria-label="Цялата карта">⌂</button></div>
+      <div class="tip" id="k-tip" hidden></div>
+      <noscript><p class="mut">Картата има нужда от JavaScript; данните са в <a class="l" href="{{ d.csv }}">CSV</a>.</p></noscript>
+    </div>
+    <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a id="k-csv" href="{{ d.csv }}">CSV</a> · © EuroGeographics за административните граници (Eurostat GISCO) · Ctrl + колелце, двойно щракване или два пръста приближават; влачи за преместване</div></section>
+  <section class="p s4 fill places"><div class="tools"><h2>Общини</h2><input type="search" placeholder="Търси" aria-label="Търси община" data-filter="k-list"></div>
+    <div class="box"><div class="scroll" id="k-box" tabindex="0" aria-label="Списък на общините">
+    <table class="sortable" id="k-list"><thead><tr><th>Община</th><th class="n">Равнище, %</th><th class="n">Обекти</th></tr></thead><tbody></tbody></table></div></div></section>
+</div>
+<script id="k-data" type="application/json">{{ d | tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/pazar-karta.js?v={{ v }}"></script>{% endblock %}

@@ -70,3 +70,24 @@ LEFT JOIN (
   UNION ALL SELECT 'oblast', nuts3, category, count(*), count(*) FILTER (WHERE lr <> 0), sum(lr) FROM pair WHERE nuts3 IS NOT NULL AND NOT national_price GROUP BY nuts3, category
   UNION ALL SELECT 'municipality', municipality_id, category, count(*), count(*) FILTER (WHERE lr <> 0), sum(lr) FROM pair WHERE municipality_id IS NOT NULL AND NOT national_price GROUP BY municipality_id, category
 ) p ON p.scope = x.scope AND p.key = x.key AND p.category = x.category;
+
+-- promotions: a promotional price is a real discount when it is at least 1 percent below the lowest retail price of the same shop
+-- and product in the 30 days before; `raised` marks a retail price that was put up (1 percent or more) above that lowest price.
+DELETE FROM gold.promo_day WHERE day = %(d)s;
+CREATE TEMP TABLE prior ON COMMIT DROP AS
+SELECT n.store_id, n.product_id, min(o.retail::numeric / 10000 / CASE WHEN cd2.currency = 'BGN' THEN %(rate)s ELSE 1 END) AS prior
+FROM cur n
+JOIN silver.price_span o ON o.store_id = n.store_id AND o.product_id = n.product_id AND o.from_day >= %(p30)s AND o.from_day < %(d)s
+     AND coalesce(o.to_day, 'infinity') >= %(d)s::date - 30 AND (o.flags & 29) = 0
+JOIN silver.store st2 ON st2.store_id = o.store_id
+JOIN silver.chain_day cd2 ON cd2.chain_id = st2.chain_id AND cd2.day = o.from_day
+WHERE n.promo IS NOT NULL GROUP BY 1, 2;
+INSERT INTO gold.promo_day (day, chain_eik, n_promos, n_real, n_none, n_raised, n_nohistory, avg_declared, avg_real, window_days)
+SELECT %(d)s, n.eik, count(*), count(*) FILTER (WHERE p.prior IS NOT NULL AND n.promo <= p.prior * 0.99),
+       count(*) FILTER (WHERE p.prior IS NOT NULL AND n.promo > p.prior * 0.99),
+       count(*) FILTER (WHERE p.prior IS NOT NULL AND n.promo > p.prior * 0.99 AND n.retail >= p.prior * 1.01),
+       count(*) FILTER (WHERE p.prior IS NULL),
+       avg(1 - n.promo / n.retail), avg(1 - n.promo / p.prior) FILTER (WHERE p.prior IS NOT NULL),
+       least(30, %(d)s::date - (SELECT min(day) FROM silver.day WHERE status = 'built'))
+FROM cur n LEFT JOIN prior p ON p.store_id = n.store_id AND p.product_id = n.product_id
+WHERE n.promo IS NOT NULL GROUP BY n.eik;

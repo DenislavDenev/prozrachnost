@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, basketbar, srcline %}
+{% block title %}Табло{% endblock %}
+{% block main %}
+<h1>Цените в магазините</h1>
+<p class="lede">На <b>{{ day|date }}</b> <b>{{ summary.chains }} вериги</b> подадоха <b>{{ summary.valid|num(0) }} цени</b> от <b>{{ summary.stores|num(0) }} обекта</b>.
+  {% if now.value is not none %}Кошницата „{{ basket.label }}“ ({{ now.n }} категории) струва по медианните цени <b>{{ now.value|eur }}</b>{% if ch %}; за последните {{ ch.days }} дни цените ѝ в същите обекти са се променили с <b>{{ ch.pct|signed }}</b>{% endif %}.
+  {% elif now.n %}За кошницата „{{ basket.label }}“ има цени само за {{ now.n }} от {{ now.of }} категории, затова обща цена не се показва.{% else %}За тази кошница няма цени за деня.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Търговските вериги са длъжни да подават всеки ден цените на 101 основни стоки (хляб, мляко, яйца, месо, зеленчуци, лекарства без рецепта и други). Всяка стока е един конкретен продукт и опаковка. Показваме цените така, както са подадени, и не ги поправяме.</p>
+  <p>Цената на кошницата е сумата от медианните цени ({{ help('median', 'медиана') }}) на избраните стоки, по една от всяка. Промяната за 30 дни е индексът на цените ({{ help('index', 'индекс') }}): сравняваме цената на същия продукт в същия обект между два дни, затова смяната на веригите, които подават файл ({{ help('coverage', 'покритие') }}), не се брои за поскъпване или поевтиняване.</p>
+</details>
+{{ basketbar("/", basket, baskets, day, days) }}
+<div class="grid">
+  <section class="p s12"><h2>Индекс на цените на кошницата {{ help('index', 'индекс') }}</h2><div class="sub">100 = първият ден с данни (16.10.2025); същите обекти и продукти</div>
+    <div class="chart" id="c-index" data-src="/api/index.json?{{ basket.param }}" data-digits="1"></div>
+    <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="/export-index.csv?{{ basket.param }}">CSV</a></div></section>
+  <section class="p s12"><h2>Цена на кошницата, сума от медианите {{ help('cost', 'цена на кошницата') }}</h2><div class="sub">€; само дни, в които има цена за всяка категория</div>
+    <div class="chart" id="c-cost" data-src="/api/cost.json?{{ basket.param }}" data-digits="2"></div>
+    <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="/export-index.csv?{{ basket.param }}">CSV</a></div></section>
+  <section class="p s6"><h2>Най-големи поскъпвания за 30 дни</h2><div class="sub">по категория, същите обекти и продукти</div>
+    <table class="sortable"><thead><tr><th>Категория</th><th class="n">Промяна</th></tr></thead><tbody>
+    {% for r in up %}<tr><td><a class="l" href="/kategorii/{{ r.code }}">{{ r.name }}</a></td><td class="n num pos" data-v="{{ r.pct }}">{{ r.pct|signed }}</td></tr>{% else %}<tr><td colspan="2">няма данни</td></tr>{% endfor %}</tbody></table></section>
+  <section class="p s6"><h2>Най-големи поевтинявания за 30 дни</h2><div class="sub">по категория, същите обекти и продукти</div>
+    <table class="sortable"><thead><tr><th>Категория</th><th class="n">Промяна</th></tr></thead><tbody>
+    {% for r in down %}<tr><td><a class="l" href="/kategorii/{{ r.code }}">{{ r.name }}</a></td><td class="n num neg" data-v="{{ r.pct }}">{{ r.pct|signed }}</td></tr>{% else %}<tr><td colspan="2">няма данни</td></tr>{% endfor %}</tbody></table></section>
+  <section class="p s12"><h2>Вериги на {{ day|date }}</h2>
+    <div class="sub">цена на {{ chains.common }} общи категории (тези, които имат всички {{ chains.listed }} вериги с цени за поне 60% от кошницата); вериги се сравняват само по общите категории</div>
+    <input type="search" placeholder="Търси верига" aria-label="Търси верига" data-filter="t-chains">
+    <div class="scroll"><table class="sortable" id="t-chains"><thead><tr><th>Верига</th><th class="n">Цена на общите категории, €</th><th class="n">Спрямо страната</th><th class="n">Обекти</th><th class="n">Категории с цена</th><th class="n">Промоции {{ help('promo', 'дял на промоциите') }}</th></tr></thead><tbody>
+    {% for r in chains.rows %}<tr><td><a class="l" href="/verigi/{{ r.eik }}">{{ r.name }}</a></td><td class="n num" data-v="{{ r.value if r.value is not none else '' }}">{{ r.value|eur }}</td>
+      <td class="n num" data-v="{{ r.vs_country if r.vs_country is not none else '' }}">{{ r.vs_country|signed }}</td><td class="n">{{ r.stores }}</td><td class="n">{{ r.n_cats }} от {{ basket.cats|length }}</td>
+      <td class="n num" data-v="{{ r.promo_share if r.promo_share is not none else '' }}">{{ ((r.promo_share * 100)|num(1) ~ '%') if r.promo_share is not none else 'няма данни' }}</td></tr>{% endfor %}</tbody></table></div>
+    <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="/export-koshnica.csv?{{ basket.param }}&d={{ day }}">CSV</a></div></section>
+  <section class="p s12"><h2>Колко вериги подават файл {{ help('coverage', 'покритие') }}</h2><div class="sub">броят се променя много през годината: сравненията във времето са по същите обекти и продукти, не по сборове</div>
+    <div class="chart small" id="c-cov" data-src="/api/coverage.json"></div>
+    <div class="src">Колко струва (КЗП) · <a href="/proverka">проверка</a></div></section>
+</div>
+<p class="mut">Цените до 31.12.2025 са в лева и са превърнати по 1,95583. Цена, очевидно грешна (нула, над 5 000, скок над 5 пъти, две различни за един обект и ден), е отбелязана и е извън числата. {{ help('as_submitted', 'цена, както е подадена') }}</p>
+{% endblock %}

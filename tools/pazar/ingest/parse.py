@@ -7,6 +7,7 @@ when it carries more decimals), an odd value is flagged, an unreadable row is ke
 import csv
 import io
 import re
+import sys
 import zipfile
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -225,6 +226,7 @@ def parse_csv(member, data):
             r.bad.append((line, "columns:%d" % len(row), raw))
             continue
         pl, store, name, code, cat, ret, promo = [c.strip() for c in row]
+        pl, store, name, code = sys.intern(pl), sys.intern(store), sys.intern(name), sys.intern(code)     # the same shop and product repeat in thousands of rows
         eka, district = place(pl)
         if not pl or not store or not name or not code:
             r.bad.append((line, "missing:" + ",".join(n for n, v in (("place", pl), ("store", store), ("name", name), ("code", code)) if not v), raw))

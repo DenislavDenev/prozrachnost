@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Категории{% endblock %}
+{% block main %}
+<h1>101 категории на КЗП</h1>
+<p class="lede">Списъкът на голямата потребителска кошница по чл. 55б от ЗВЕРБ. Всяка категория е един конкретен продукт и опаковка. Цени за <b>{{ day|date }}</b>.</p>
+<form class="ctl" method="get"><label>Ден <select name="d">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label><button>Покажи</button></form>
+<section class="p"><input type="search" placeholder="Търси категория" aria-label="Търси категория" data-filter="t-cat">
+  <div class="scroll"><table class="sortable" id="t-cat"><thead><tr><th class="n">№</th><th>Категория</th><th>Група</th><th class="n">Медиана {{ help('median', 'медиана') }}</th><th class="n">Най-ниска</th><th class="n">Най-висока</th><th class="n">Цени</th><th class="n">Вериги</th><th class="n">Промоции {{ help('promo', 'дял на промоциите') }}</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td class="n">{{ r.code }}</td><td><a class="l" href="/kategorii/{{ r.code }}">{{ r.name }}</a></td><td>{{ r.group }}</td>
+   <td class="n num" data-v="{{ r.median if r.median is not none else '' }}">{{ r.median|eur }}</td><td class="n num" data-v="{{ r.min if r.min is not none else '' }}">{{ r.min|eur }}</td><td class="n num" data-v="{{ r.max if r.max is not none else '' }}">{{ r.max|eur }}</td>
+   <td class="n">{{ r.prices if r.prices is not none else 'няма данни' }}</td><td class="n">{{ r.chains if r.chains is not none else 'няма данни' }}</td>
+   <td class="n num" data-v="{{ r.promo_share if r.promo_share is not none else '' }}">{{ ((r.promo_share * 100)|num(1) ~ '%') if r.promo_share is not none else 'няма данни' }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">Списък на КЗП · Колко струва (КЗП) · <a href="/export-kategorii.csv?d={{ day }}">CSV</a></div></section>
+{% endblock %}

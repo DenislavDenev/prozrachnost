@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Източници и свежест{% endblock %}
+{% block main %}
+<h1>Източници и свежест</h1>
+<p class="lede">Откъде идват числата, докога са четени и какво не е наред.</p>
+{% if problems %}<section class="p warning"><h2>{{ problems|length }} {{ 'проблем' if problems|length == 1 else 'проблема' }}</h2>{% for p in problems %}<p>{{ p }}</p>{% endfor %}</section>{% else %}<section class="p"><h2>Свежест: наред</h2><p>Няма открити проблеми при последната проверка.</p></section>{% endif %}
+<section class="p"><h2>Колко струва (КЗП)</h2>
+  <p>Файл на ден (ZIP със CSV на верига) от <a class="l" href="https://kolkostruva.bg/opendata" rel="noopener">kolkostruva.bg/opendata</a>. Файловете от 16.10.2025 са запазени в архива на проекта и се четат от там. <b>Няма посочен лиценз</b> („всички права запазени“): показваме данните с източника, но не ги раздаваме като набор и не са в общия API, докато КЗП не отговори писмено.</p>
+  <div class="scroll"><table><thead><tr><th>Статус</th><th class="n">Дни</th><th>От</th><th>До</th></tr></thead><tbody>
+  {% for r in s.days %}<tr><td>{{ {'built': 'построени', 'held': 'задържани до второ четене', 'invalid': 'невалиден отговор'}.get(r[0], r[0]) }}</td><td class="n">{{ r[1] }}</td><td>{{ r[2]|date }}</td><td>{{ r[3]|date }}</td></tr>{% endfor %}</tbody></table></div>
+  {% if s.missing %}<p class="warn">{{ s.missing }} дни между първия и последния построен ден още не са построени (наваксване от архива в ход) или нямат файл; страниците показват това, което е построено.</p>{% endif %}
+  {% for h in s.held %}<p>Задържан: {{ h[0] }} от {{ h[1]|date }} ({{ h[2] }})</p>{% endfor %}
+  <p class="mut">Списъкът на категориите: документът на КЗП за чл. 55б от ЗВЕРБ. Общини: ЕКАТТЕ на НСИ, общинският справочник на Прозрачност.</p></section>
+<section class="p"><h2>Горива: бюлетин на ЕК</h2><p>Седмичен файл на Европейската комисия (<a class="l" href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en" rel="noopener">Weekly Oil Bulletin</a>), CC BY 4.0 по правната бележка на Комисията. {% if s.fuel and s.fuel[0] %}Последно четене: {{ s.fuel[0]|string|truncate(16, True, '') }} UTC; последна седмица: {{ s.fuel[1]|date }}.{% else %}Още не е четен.{% endif %}</p></section>
+<section class="p"><h2>Последни изпълнения</h2><div class="scroll"><table><thead><tr><th>Стъпка</th><th>Начало</th><th>Край</th><th>Състояние</th></tr></thead><tbody>
+  {% for r in s.jobs %}<tr><td>{{ r[0] }}</td><td>{{ r[1]|string|truncate(16, True, '') }}</td><td>{{ (r[2]|string|truncate(16, True, '')) if r[2] else '' }}</td><td>{{ r[3] }}</td></tr>{% endfor %}</tbody></table></div>
+  <p><a class="l" href="/sources.json">sources.json</a></p></section>
+{% endblock %}

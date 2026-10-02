@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}{{ ch.name }}{% endblock %}
+{% block main %}
+<h1>{{ ch.name }}</h1>
+<p class="lede">ЕИК <b>{{ ch.eik }}</b>{% if not ch.eik_valid %} (контролната цифра не е вярна){% endif %} · подава от {{ ch.first_day|date }}. На <b>{{ day|date }}</b>: <b>{{ stores|length }}</b> обекта, <b>{{ (summary.prices or 0)|num(0) }}</b> цени в категориите на кошницата, <b>{{ summary.products|num(0) }}</b> продукта общо{% if summary.promo_share is not none %}, промоции {{ ((summary.promo_share * 100)|num(1)) }}%{% endif %}.
+  {% if ch.national %}Тази верига е <b>национална цена</b> {{ help('national', 'национална цена') }}: един онлайн обект за цялата страна, не е магазин на картата.{% endif %}</p>
+<section class="p"><h2>Кога е подавала файл</h2><div class="sub">един квадрат е един ден от 16.10.2025; зелено: подаден, жълто: без файл, лилаво: файл с редовете на друга верига. Дните без файл не са нула.</div>
+  <div class="gap-days" role="img" aria-label="Дни с и без файл">{% for x in days %}<i class="{{ 'miss' if not x.filed else 'cp' if x.copy_of else '' }}" title="{{ x.day|date }}: {{ 'без файл' if not x.filed else 'файл с редовете на друга верига' if x.copy_of else (x.valid|string ~ ' цени') }}"></i>{% endfor %}</div>
+  <p class="mut">{{ missed|length }} дни без използваем файл от {{ days|length }}; {{ days|selectattr('copy_of')|list|length }} дни с копие на друга верига; {{ days|selectattr('truncated')|list|length }} отрязани файла.</p>
+  <div class="src">Колко струва (КЗП) · <a href="/export-verigi/{{ ch.eik }}.csv">CSV по дни</a></div></section>
+<section class="p"><h2>Обекти на {{ day|date }}</h2><input type="search" placeholder="Търси обект" aria-label="Търси обект" data-filter="t-s">
+  <div class="scroll"><table class="sortable" id="t-s"><thead><tr><th>Обект (както е подаден)</th><th>Населено място</th><th>Община</th></tr></thead><tbody>
+  {% for s in stores %}<tr><td>{{ s.name }}</td><td>{{ s.place_name or s.place }}</td><td>{{ s.municipality or 'няма данни' }}</td></tr>{% else %}<tr><td colspan="3">няма обекти за деня</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

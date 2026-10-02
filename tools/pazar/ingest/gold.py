@@ -40,11 +40,12 @@ def build_day(c, day):
     t0 = time.monotonic()
     ms = day.replace(day=1)
     pms = (day - dt.timedelta(days=7)).replace(day=1)
+    p30 = (day - dt.timedelta(days=30)).replace(day=1)
     sha = c.execute("SELECT zip_sha256 FROM silver.day WHERE day = %s AND status = 'built'", (day,)).fetchone()[0]
     c.execute("SELECT gold.ensure_month(%s)", (day,))
     with c.transaction(), psycopg.ClientCursor(c) as cur:
         cur.execute("SET LOCAL work_mem = '256MB'")
-        cur.execute(_sql("20_category_day.sql"), dict(d=day, ms=ms, pms=pms, rate=config.BGN_PER_EUR))
+        cur.execute(_sql("20_category_day.sql"), dict(d=day, ms=ms, pms=pms, p30=p30, rate=config.BGN_PER_EUR))
         rows = c.execute("SELECT count(*) FROM gold.category_day WHERE day = %s", (day,)).fetchone()[0]
         secs = round(time.monotonic() - t0, 1)
         c.execute("""INSERT INTO gold.day (day, rows, secs, silver_sha256) VALUES (%s, %s, %s, %s)
