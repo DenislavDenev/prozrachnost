@@ -18,6 +18,7 @@ jobs:
         run: |
           for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py tools/ikonomika/app/feedback.py tools/parlament/app/feedback.py tools/naselenie/app/feedback.py tools/obrazovanie/app/feedback.py tools/byudzhet/app/feedback.py tools/pazar/app/feedback.py tools/sobstvenost/app/feedback.py tools/kontrol/app/feedback.py; do cmp hub/feedback.py "$f"; done
           for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py tools/ikonomika/tests/test_feedback.py tools/parlament/tests/test_feedback.py tools/naselenie/tests/test_feedback.py tools/obrazovanie/tests/test_feedback.py tools/byudzhet/tests/test_feedback.py tools/pazar/tests/test_feedback.py tools/sobstvenost/tests/test_feedback.py tools/kontrol/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
+          for t in subsidii zakoni sigurnost; do [ -f tools/$t/app/feedback.py ] && cmp hub/feedback.py tools/$t/app/feedback.py; [ -f tools/$t/tests/test_feedback.py ] && cmp hub/tests/test_feedback.py tools/$t/tests/test_feedback.py; done; true
           cmp tools/ikonomika/app/static/europe.json tools/tender/app/static/europe.json   # the outlines of Europe: Икономика builds, Тендер copies
 
   hub:
@@ -290,9 +291,120 @@ jobs:
       - run: python tests/mutations.py
 
 
+  subsidii:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/subsidii } }
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: subsidii_test
+          POSTGRES_INITDB_ARGS: --locale=C.UTF-8 --encoding=UTF8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SUBSIDII_TEST_DSN: host=localhost user=postgres password=postgres dbname=subsidii_test
+      SUBSIDII_DATA: /tmp/subsidii-data
+    steps:
+      - uses: actions/checkout@v7
+      # the job runs from the first commit of the tool; before that it has nothing to test
+      - id: has
+        working-directory: .
+        run: if [ -f tools/subsidii/requirements.txt ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.has.outputs.yes
+        uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - if: steps.has.outputs.yes
+        run: pip install -r requirements.txt httpx2
+      # the database tests skip without SUBSIDII_TEST_DSN; here every one of them must run
+      - if: steps.has.outputs.yes
+        run: |
+          set -o pipefail
+          python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+          ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+      # each rule that guards the data is broken on purpose; the tests must notice every one
+      - if: steps.has.outputs.yes
+        run: python tests/mutations.py
+
+  zakoni:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/zakoni } }
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: zakoni_test
+          POSTGRES_INITDB_ARGS: --locale=C.UTF-8 --encoding=UTF8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ZAKONI_TEST_DSN: host=localhost user=postgres password=postgres dbname=zakoni_test
+      ZAKONI_DATA: /tmp/zakoni-data
+    steps:
+      - uses: actions/checkout@v7
+      # the job runs from the first commit of the tool; before that it has nothing to test
+      - id: has
+        working-directory: .
+        run: if [ -f tools/zakoni/requirements.txt ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.has.outputs.yes
+        uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - if: steps.has.outputs.yes
+        run: pip install -r requirements.txt httpx2
+      # the database tests skip without ZAKONI_TEST_DSN; here every one of them must run
+      - if: steps.has.outputs.yes
+        run: |
+          set -o pipefail
+          python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+          ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+      # each rule that guards the data is broken on purpose; the tests must notice every one
+      - if: steps.has.outputs.yes
+        run: python tests/mutations.py
+
+  sigurnost:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/sigurnost } }
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sigurnost_test
+          POSTGRES_INITDB_ARGS: --locale=C.UTF-8 --encoding=UTF8
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SIGURNOST_TEST_DSN: host=localhost user=postgres password=postgres dbname=sigurnost_test
+      SIGURNOST_DATA: /tmp/sigurnost-data
+    steps:
+      - uses: actions/checkout@v7
+      # the job runs from the first commit of the tool; before that it has nothing to test
+      - id: has
+        working-directory: .
+        run: if [ -f tools/sigurnost/requirements.txt ]; then echo "yes=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.has.outputs.yes
+        uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - if: steps.has.outputs.yes
+        run: pip install -r requirements.txt httpx2
+      # the database tests skip without SIGURNOST_TEST_DSN; here every one of them must run
+      - if: steps.has.outputs.yes
+        run: |
+          set -o pipefail
+          python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+          ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+      # each rule that guards the data is broken on purpose; the tests must notice every one
+      - if: steps.has.outputs.yes
+        run: python tests/mutations.py
+
   ci-ok:
     if: always()
-    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, obrazovanie, byudzhet, pazar, sobstvenost, kontrol]
+    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, obrazovanie, byudzhet, pazar, sobstvenost, kontrol, subsidii, zakoni, sigurnost]
     runs-on: ubuntu-latest
     steps:
       - run: |
