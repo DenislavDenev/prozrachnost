@@ -21,3 +21,25 @@ assembly,code,group,name,color,color_source
 *,НЕЗ,НЕЗ,Независими,#9aa1aa,
 *,НЕЧЛ В ПГ,НЕЧЛ,Нечленуващи в парламентарна група,#9aa1aa,
 *,НЕЧЛ ПГ,НЕЧЛ,Нечленуващи в парламентарна група,#9aa1aa,
+*,ГЕРБ,ГЕРБ,ГЕРБ,#0054A6,GERB
+*,КБ,КБ,Коалиция за България,#C20009,Coalition for Bulgaria
+*,АТАКА,АТАКА,Атака,#344D28,Attack (political party)
+*,СК,СК,Синята коалиция,#1D2D5A,Blue Coalition
+*,РЗС,РЗС,"Ред, законност и справедливост",#F66E22,"Order, Law and Justice"
+*,БСПЛБ,БСПЛБ,БСП – Лява България,#DB0F28,BSP – Left Bulgaria
+*,РБ,РБ,Реформаторски блок,#2A3A79,Reformist Bloc
+*,ПФ,ПФ,Патриотичен фронт,#000066,Patriotic Front (Bulgaria)
+*,БДЦ,БДЦ,Български демократичен център,#08B4D8,Bulgaria Without Censorship
+*,БДЦНС,БДЦНС,БДЦ – Народен съюз,#08B4D8,Bulgaria Without Censorship
+*,АБВ,АБВ,АБВ,#6A013A,Alternative for Bulgarian Revival
+*,ОП,ОП,Обединени патриоти,#009B75,United Patriots
+*,ВОЛЯ,ВОЛЯ,Воля,#00718F,Volya Movement
+*,ПГБСП,ПГБСП,БСП за България,#DB0F28,BSP for Bulgaria
+*,ИСМВ,ИСМВ,Изправи се! Мутри вън!,#4C813D,"Stand Up! Mafia, Get Out!"
+*,ИБГНИ,ИБГНИ,Изправи се.БГ! Ние идваме!,#50BE5B,Stand Up.BG! We are coming!
+*,НДСВ,НДСВ,Национално движение Симеон Втори,#F5CE42,National Movement for Stability and Progress
+*,ОДС,ОДС,Обединени демократични сили,#0C4BAC,United Democratic Forces
+*,ДСБ,ДСБ,Демократи за силна България,#02528A,Democrats for a Strong Bulgaria
+*,ЕЛ,ЕЛ,Евролевица,#009966,Bulgarian Euro-Left
+*,ОНС,ОНС,Обединение за национално спасение,#EE5C29,Union for National Salvation
+*,БББ,БББ,Български бизнес блок,#6C5B3F,Bulgarian Business Bloc

@@ -402,7 +402,12 @@ def test_a_sitting_the_source_cannot_answer_is_reported_and_the_rest_go_on(conn)
     src = Source()
     src.files["pl-sten/11174"] = http.Failed("източникът не отговаря: pl-sten/11174 след 5 опита")
     st = run(conn, src)
-    assert st["sittings"] == {"stored": 1, "invalid": 1} and any("11174" in p and "не отговаря" in p for p in st["problems"])
+    assert st["sittings"] == {"stored": 1, "no-answer": 1} and any("11174" in p and "не отговаря" in p for p in st["problems"])
+    # recheck does not try it again (each try waits minutes): only the refused and the unreadable are read again
+    from ingest import load
+    n = len(src.calls)
+    load.recheck(conn, {}, get=src.get)
+    assert not any("pl-sten/11174" in u for u in src.calls[n:])
 
 
 def test_a_bill_its_steps_and_its_votes(conn):

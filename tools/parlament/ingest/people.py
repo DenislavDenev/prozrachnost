@@ -39,7 +39,7 @@ def people(conn, stats_, get=None, everyone=False):
     known = parse.assemblies(raw)
     save_raw(conn, "fn-assembly", "fn-assembly.json", raw)
     current = max(n for _, n in known)
-    read, problems = 0, []
+    read, empty, problems = 0, 0, []
     for api_id, no in sorted(known, key=lambda x: x[1]):
         conn.execute("UPDATE live.assembly SET api_id = %s WHERE no = %s", (api_id, no))
         ref = f"assembly/{no}"
@@ -61,10 +61,17 @@ def people(conn, stats_, get=None, everyone=False):
             for pid in ids:
                 if pid in have and no != current and not everyone:
                     continue
-                profile(conn, no, pid, get)
-                read += 1
+                try:
+                    profile(conn, no, pid, get)
+                    read += 1
+                except parse.Empty:
+                    empty += 1                      # listed, but the Assembly has no profile under this number
+                    state(conn, f"profile/{pid}", status="empty", error=None, last_ok="now", rows=0)
+                except (http.Failed, parse.ShapeError) as e:   # one profile does not stop the assembly
+                    problems.append(f"Парламент: профил {pid} ({no}-о Народно събрание): {e}")
+                    state(conn, f"profile/{pid}", status="invalid", error=str(e)[:2000])
             state(conn, ref, status="ok", error=None, last_ok="now", rows=len(ids))
-        except (http.Gone, parse.ShapeError) as e:
+        except (http.Gone, http.Failed, parse.ShapeError) as e:
             state(conn, ref, status="invalid", error=str(e)[:2000])
             problems.append(f"Парламент: {no}-о Народно събрание: {e}")
     date_sittings(conn)
@@ -75,7 +82,7 @@ def people(conn, stats_, get=None, everyone=False):
     if voted:
         stats.rebuild(conn, voted)
     stats.link_bodies(conn)
-    stats_.update(assemblies=len(known), profiles=read, people=linked, problems=problems)
+    stats_.update(assemblies=len(known), profiles=read, empty=empty, people=linked, problems=problems)
     return stats_
 
 

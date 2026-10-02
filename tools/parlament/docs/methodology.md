@@ -114,4 +114,6 @@
 | заседание, което източникът не връща | `test_a_sitting_the_source_cannot_answer_is_reported_and_the_rest_go_on` |
 | законопроектът, краткото заглавие, гласуванията му, задържане | `test_a_bill_and_the_short_title_of_its_votes`, `test_a_bill_its_steps_and_its_votes` |
 
-`tests/mutations.py` чупи всяко от тези правила (27 мутации) и проверява, че тестът пада.
+| празен отговор и нулев байт в текста | `test_an_empty_answer_and_a_nul_in_the_text` |
+
+`tests/mutations.py` чупи всяко от тези правила (28 мутации) и проверява, че тестът пада.

@@ -68,6 +68,9 @@ def load(conn, stats_, first=None, get=None, today=None):
     for bid in sorted(ids):
         try:
             got = bill(conn, bid, get)
+        except parse.Empty:
+            got = "empty"
+            state(conn, f"bill/{bid}", status="empty", error=None, last_ok="now", rows=0)
         except (http.Gone, http.Failed, parse.ShapeError) as e:
             got = "invalid"
             state(conn, f"bill/{bid}", status="invalid", error=str(e)[:2000])

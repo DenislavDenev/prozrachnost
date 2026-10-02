@@ -115,16 +115,20 @@ def load(conn, stats_, first=None, get=None, today=None):
             problems.append(f"Парламент: списъкът на заседанията за {m:02d}.{y}: {e}")
             continue
         state(conn, ref, status="ok", error=None, last_ok="now", rows=len(listed))
-        for sid, _ in listed:
+        for sid, day in listed:
             try:
                 got, assembly = sitting(conn, sid, get)
-            except (http.Gone, http.Failed, parse.ShapeError) as e:
+            except http.Failed as e:                # the source cannot answer for this sitting (500 every time)
+                got, assembly = "no-answer", None
+                state(conn, f"sten/{sid}", status="no-answer", error=str(e)[:2000])
+            except (http.Gone, parse.ShapeError) as e:
                 got, assembly = "invalid", None
                 state(conn, f"sten/{sid}", status="invalid", error=str(e)[:2000])
             out[got] = out.get(got, 0) + 1
             if got == "stored":
                 touched.add(assembly)
-            if got == "invalid":
+            # a sitting the source cannot answer is a problem while it is recent; the old ones are known (/sources)
+            if got == "invalid" or got == "no-answer" and day >= today - dt.timedelta(days=60):
                 err = conn.execute("SELECT error FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()
                 problems.append(f"Парламент: заседание {sid}: {err[0]}")
     if touched:
@@ -142,7 +146,10 @@ def recheck(conn, stats_, get=None):
                                 AND status IN ('invalid', 'no-files') ORDER BY 1""", (SOURCE,)).fetchall():
         try:
             got, assembly = sitting(conn, sid, get)
-        except (http.Gone, http.Failed, parse.ShapeError) as e:
+        except http.Failed as e:
+            got, assembly = "no-answer", None
+            state(conn, f"sten/{sid}", status="no-answer", error=str(e)[:2000])
+        except (http.Gone, parse.ShapeError) as e:
             got, assembly = "invalid", None
             state(conn, f"sten/{sid}", status="invalid", error=str(e)[:2000])
         out[got] = out.get(got, 0) + 1
