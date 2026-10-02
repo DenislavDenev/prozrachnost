@@ -178,12 +178,12 @@ def _int(s, what):
 
 def _count(s, what):
     """A count of the file by group; in the online sittings of 2021 "40+1" is 40 in the hall and 1 online: 41."""
-    return sum(_int(x, what) for x in (s or "").split("+"))
+    return sum(_int(x.replace("онлайн", ""), what) for x in (s or "").split("+"))
 
 
 # "Номер (2) ГЛАСУВАНЕ проведено на 24-09-2026 10:12 по тема ЗИД на Наказателния кодекс – първо гласуване "
 # (spaces as typed: "Номер (5 )ГЛАСУВАНЕ" happens)
-ITEM = re.compile(r"^Номер \((\d+)\s*\)\s*(РЕГИСТРАЦИЯ|ГЛАСУВАНЕ)\s+проведен[ао]\s+на\s+(\d\d)-(\d\d)-(\d{4})\s+(\d\d):(\d\d)(?:\s+по тема\s*(.*))?$", re.S)
+ITEM = re.compile(r"^Номер \((\d+)\s*\)\s*(РЕГИСТРАЦИЯ|ГЛАСУВАНЕ)\s+(?:проведен[ао]|ОНЛАЙН)\s+на\s+(\d\d)-(\d\d)-(\d{4})\s+(\d\d):(\d\d)(?:\s+по тема\s*(.*))?$", re.S)
 GV_HEAD = {"textbox3", "textbox11", "textbox12", "textbox13", "textbox18", "NAME", "START_DATE", "ALL_DEPUTIES", "REGISTERED", "textbox22"}
 
 
@@ -228,10 +228,14 @@ def groups(raw):
                 if not set(names) <= set(head):
                     raise ShapeError(f"unexpected columns of a block: {head}")
                 cols = [head.index(x) for x in names]
-            elif title and c0 == "Общо:":
+            elif title and c0.startswith("Общо:"):
                 if cols is None:
                     raise ShapeError(f"a total before the columns: {r}")
                 total = [r[i] if i < len(r) else "" for i in cols]
+                # 11.2020-02.2021: every item has two blocks, the hall alone and then "Общо: система за гласуване +
+                # онлайн", the hall with those who voted online. The roll call has both, so the second block is the item
+                if "онлайн" in c0:
+                    items.pop(int(ITEM.match(title.strip()).group(1)), None)
             elif title:
                 if total is None:
                     raise ShapeError(f"a group before the total: {r}")
@@ -326,8 +330,10 @@ def _wide(text):
 
 
 def _one(no, name, group, item, code):
-    code = (code or "").strip()
-    code = REMOTE.get(code.lower(), code)
+    code = "".join((code or "").lower().split())          # "онлайн +", "он лайн"
+    if code.startswith("онлайн") and code[6:] in VOTES:   # a vote cast online is a vote (11.2020-08.2021)
+        code = code[6:]
+    code = REMOTE.get(code, code).upper().replace("O", "О").replace("P", "Р")   # a Latin O or P typed for the Cyrillic one
     if code not in VOTES and code not in MARKS:
         raise ShapeError(f"unknown code {code!r} for {name}, item {item}")
     return (_int(no, "MP"), " ".join(name.split()), group_code(group), _int(item, "item"), code)

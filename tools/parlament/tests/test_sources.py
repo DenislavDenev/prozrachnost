@@ -308,6 +308,16 @@ def test_two_more_sheets_of_the_wide_roll_call():
     assert votes[0][:4] == (334, "АЛЕКСАНДЪР РУМЕНОВ НЕНКОВ", "ГЕРБ", 1) and votes[0][4] == "П"
 
 
+def test_the_online_votes_of_2020_are_votes_and_the_second_block_is_the_item():
+    """19.11.2020: the file by group has two blocks per item, the hall alone ("Общо:" 110 for) and the hall with those
+    who voted online ("Общо: система за гласуване + онлайн" 119 for, ГЕРБ "80+6"). The roll call writes an online vote
+    as "онлайн +": it is a vote, and the second block is what it adds up to."""
+    items, votes = parse.groups(parse.sheet(raw("gv191120.xlsx"))), parse.rollcall(parse.sheet(raw("iv191120.xlsx")))
+    assert len(items) == 43 and items[2]["total"] == (119, 8, 1, 128) and items[2]["groups"]["ГЕРБ"] == (86, 0, 0, 86)
+    assert sum(1 for v in votes if v[3] == 2 and v[4] == "+") == 119
+    assert parse.check(items, votes)[0] == []
+
+
 def test_a_bill_and_the_short_title_of_its_votes():
     from ingest import bills
     b = parse.bill(raw("bill-166636.json"))

@@ -228,9 +228,12 @@ def sitting(conn, sid, get):
             if conn.execute("SELECT 1 FROM live.sitting WHERE id = %s AND gv_sha = %s AND iv_sha = %s", (sid, gsha, isha)).fetchone():
                 state(conn, ref, status="ok", error=None, last_ok="now")
                 return "unchanged", s["assembly"]
-            items = parse.groups(gv)
-            votes, aside = parse.split_shifted(items, parse.rollcall(iv))
-            bad, notes = parse.check(items, votes, {mp: g for mp, (_, g) in aside.items()})
+            try:
+                items = parse.groups(gv)
+                votes, aside = parse.split_shifted(items, parse.rollcall(iv))
+                bad, notes = parse.check(items, votes, {mp: g for mp, (_, g) in aside.items()})
+            except parse.ShapeError as e:      # one of two files of a kind cannot be read (03.04.2020): the next pair
+                bad = [str(e)]
             tried.append(bad)
             if not bad:
                 break
