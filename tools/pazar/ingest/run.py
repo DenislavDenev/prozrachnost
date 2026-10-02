@@ -5,6 +5,7 @@ build        every archived day that is not built yet (or --from/--to); refuses 
 rebuild      one month again from the archive (--month YYYY-MM)
 gold         the gold tables for the built days that have none (or --from/--to), and the dimensions
 fuel         the weekly Oil Bulletin of the European Commission (one request)
+sample       random products of chosen chains for the manual check against their sites (--day --seed --chains -n)
 freshness    the problems list; empty when all is well
 report       the weekly summary
 
@@ -16,7 +17,7 @@ import datetime as dt
 import json
 import sys
 
-from . import archive, build, checks, config, db, fuel, gold
+from . import archive, build, checks, config, db, fuel, gold, verify
 
 
 def step_build(c, a):
@@ -49,6 +50,11 @@ def step_fuel(c, a):
     return fuel.store(c, fuel.fetch())
 
 
+def step_sample(c, a):
+    day = dt.date.fromisoformat(a.day)
+    return {"rows": verify.sample(c, day, a.seed, a.chains.split(","), a.n), "problems": []}
+
+
 def step_freshness(c, a):
     return {"problems": checks.freshness(c)}
 
@@ -57,7 +63,7 @@ def step_report(c, a):
     return {"problems": [], **checks.weekly(c)}
 
 
-STEPS = {"build": step_build, "rebuild": step_rebuild, "gold": step_gold, "fuel": step_fuel, "freshness": step_freshness, "report": step_report}
+STEPS = {"build": step_build, "rebuild": step_rebuild, "gold": step_gold, "fuel": step_fuel, "sample": step_sample, "freshness": step_freshness, "report": step_report}
 
 
 def main(argv=None):
@@ -66,6 +72,10 @@ def main(argv=None):
     p.add_argument("--from", dest="first")
     p.add_argument("--to", dest="last")
     p.add_argument("--month")
+    p.add_argument("--day")
+    p.add_argument("--seed", default="1")
+    p.add_argument("--chains", default="")
+    p.add_argument("-n", type=int, default=6)
     p.add_argument("--budget", type=int, help="seconds after which the step stops and reports where it got to")
     p.add_argument("--rebuild", action="store_true")
     p.add_argument("--no-gold", action="store_true")
