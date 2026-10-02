@@ -5,3 +5,6 @@ CREATE TABLE silver.link (
   period date,                      -- first day of the month the bulletin is for, from its name
   source_updated_at timestamptz, list_sha256 text NOT NULL);
 CREATE INDEX link_set ON silver.link (set_uri, period);
+
+-- a first build read the 104 links as empty tables: those rows are removed (the links are kept above)
+DELETE FROM silver.resource WHERE set_uri IN (SELECT set_uri FROM silver.dataset WHERE kind = 'bulletin');
