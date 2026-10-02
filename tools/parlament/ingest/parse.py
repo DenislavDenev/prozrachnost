@@ -298,9 +298,10 @@ def rollcall(raw):
 
 
 def _wide(text):
-    """One row per MP: name, empty, number, group, [assembly], then a column per item. The item numbers are the
+    """One row per MP: name, [empty], number, group, [assembly], then a column per item. The item numbers are the
     header's non-empty cells, the codes the row's non-empty cells from the header's first number on (an empty
-    separator column is not always in the same place in the header and in the rows)."""
+    separator column is not always in the same place in the header and in the rows). Some sheets of 2010-2011 have no
+    empty cell after the name; some of 2009 repeat the header on every printed page."""
     lines = list(csv.reader(io.StringIO(text), delimiter=";"))
     head = lines[1]
     nums = [c.strip() for c in head if c.strip()]
@@ -309,9 +310,11 @@ def _wide(text):
     start = next(i for i, c in enumerate(head) if c.strip())
     out = []
     for r in lines[2:]:
-        if not any(x.strip() for x in r):
+        if not any(x.strip() for x in r) or r == head:
             continue
-        codes = [x.strip() for x in r[start:] if x.strip()]
+        at = 1 if len(r) > 1 and r[1].strip().isdigit() else 2      # where the MP's number is
+        r = [r[0], "", *r[at:]] if at == 1 else r               # such a sheet has the cell missing in its header too
+        codes = [x.strip() for x in r[start + (at == 1):] if x.strip()]
         if not codes:
             continue   # an MP listed without a single code: not in the hall's list that day (the file by group agrees)
         if len(codes) == len(nums):

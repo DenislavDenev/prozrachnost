@@ -297,6 +297,17 @@ def test_the_online_sittings_of_2021_count_the_hall_plus_online():
     assert parse.check(items, votes)[0] == []
 
 
+def test_two_more_sheets_of_the_wide_roll_call():
+    """28.07.2010: the sheet has no empty cell after the MP's name (name, number, group, codes). 03.12.2009: the
+    header with the item numbers is repeated on every printed page. Both add up with their file by group."""
+    for day, n_items, mps in (("280710", 33, 240), ("031209", 75, 240)):
+        items, votes = parse.groups(parse.sheet(raw(f"gv{day}.xls"))), parse.rollcall(parse.sheet(raw(f"iv{day}.xls")))
+        assert len(items) == n_items and len({v[0] for v in votes}) == mps
+        assert parse.check(items, votes)[0] == []
+    votes = parse.rollcall(parse.sheet(raw("iv280710.xls")))
+    assert votes[0][:4] == (334, "АЛЕКСАНДЪР РУМЕНОВ НЕНКОВ", "ГЕРБ", 1) and votes[0][4] == "П"
+
+
 def test_a_bill_and_the_short_title_of_its_votes():
     from ingest import bills
     b = parse.bill(raw("bill-166636.json"))
