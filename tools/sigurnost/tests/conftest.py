@@ -50,6 +50,6 @@ def c(schema):
 
 
 def reset(conn):
-    conn.execute("TRUNCATE silver.dataset, silver.resource, silver.col, silver.row, silver.cell CASCADE")
+    conn.execute("TRUNCATE silver.dataset, silver.link, silver.resource, silver.col, silver.row, silver.cell CASCADE")
     conn.execute("TRUNCATE ops.raw_file, ops.change_log, ops.held, ops.job_run RESTART IDENTITY")
     conn.execute("TRUNCATE gold.observation, gold.crime_row, gold.source_table, gold.unmatched, gold.check_result, gold.build RESTART IDENTITY")

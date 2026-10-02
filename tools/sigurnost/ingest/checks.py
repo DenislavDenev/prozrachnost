@@ -222,9 +222,9 @@ def freshness(c, now=None, st=None):
             problems.append(TEXT.format(f"Полицейска статистика: последната година е {newest}, а има {now.year - newest} години без нова"))
         elif newest < now.year - 1:
             info.append(f"Полицейска статистика за {newest + 1} още не е публикувана на портала (последната е за {newest}).")
-    last_bulletin = c.execute("SELECT max(source_updated) FROM silver.dataset WHERE kind = 'bulletin'").fetchone()[0]
-    if last_bulletin and (now.date() - last_bulletin).days > 60:
-        info.append(f"Месечният бюлетин на МВР не е обновяван от {last_bulletin}: източникът е спрял.")
+    last_bulletin = c.execute("SELECT max(period) FROM silver.link").fetchone()[0]
+    if last_bulletin and (now.date() - last_bulletin).days > 75:
+        info.append(f"Последният месечен бюлетин на МВР е за {last_bulletin:%m.%Y}: няма нов над два месеца.")
     n_empty = c.execute("SELECT count(*) FROM silver.resource WHERE kind = 'empty' AND is_current").fetchone()[0]
     if n_empty:
         info.append(f"{n_empty} ресурса на портала са без таблица (празен отговор).")

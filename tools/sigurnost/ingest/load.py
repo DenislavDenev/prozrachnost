@@ -8,6 +8,7 @@ version (no rows) and the previous version stays current.
 """
 import datetime as dt
 import json
+import re
 
 from . import archive, config, sheet, templates
 
@@ -34,7 +35,34 @@ def sync_datasets(c, st, now=None):
             (d["set_uri"], d["title"], d["kind"], int(d["year"]) if d["year"] else None, d["terms_of_use_id"], name, shared,
              d["source_updated"] or None, listed, sha, path, now if lst else None))
         out[d["set_uri"]] = lst[0] if lst else None
+        if lst:
+            sync_links(c, d["set_uri"], lst[0], sha)
     return out
+
+
+MONTHS = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август", "септември", "октомври", "ноември", "декември"]
+
+
+def link_period(name):
+    """"Бюлетин април 2024 г." is the month it is for; None for a name that does not say."""
+    m = re.match(r"\s*Бюлетин\s+(\w+)\s+(\d{4})", name or "", re.I)
+    if not m or m.group(1).lower() not in MONTHS:
+        return None
+    return dt.date(int(m.group(2)), MONTHS.index(m.group(1).lower()) + 1, 1)
+
+
+def sync_links(c, set_uri, resources, list_sha):
+    """The resources of type "Хиперлинк" (a link to a file on the Ministry's site) are recorded as links and not opened."""
+    n = 0
+    for r in resources:
+        if r.get("type") != "Хиперлинк" or not r.get("resource_url"):
+            continue
+        c.execute("""INSERT INTO silver.link (resource_uri, set_uri, name, url, period, source_updated_at, list_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s)
+                     ON CONFLICT (resource_uri) DO UPDATE SET name = EXCLUDED.name, url = EXCLUDED.url, period = EXCLUDED.period,
+                       source_updated_at = EXCLUDED.source_updated_at, list_sha256 = EXCLUDED.list_sha256""",
+                  (r["uri"], set_uri, r.get("name") or "", r["resource_url"], link_period(r.get("name")), r.get("updated_at") or None, list_sha))
+        n += 1
+    return n
 
 
 def _log(c, ref, field, old, new, cause):
@@ -158,6 +186,10 @@ def ingest(c, st, now=None, sets=None):
         rep["sets"] += 1
         known = {r[0] for r in c.execute("SELECT resource_uri FROM silver.resource WHERE set_uri = %s AND is_current", (d["set_uri"],))}
         for res in lst:
+            if res.get("type") == "Хиперлинк":
+                rep["links"] = rep.get("links", 0) + 1       # a link to a file on mvr.bg: recorded by sync_links, never opened
+                known.discard(res["uri"])
+                continue
             got = archive.read(res["uri"], st)
             if got is None:
                 rep["unread"].append(res["uri"])
