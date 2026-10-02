@@ -47,7 +47,7 @@ def mark_day(c, day, status, sha, path, size, note, chains=None, valid=None):
                  WHERE silver.day.status <> 'built'""", (day, status, sha, path, size, note, chains, valid))
 
 
-def build_one(c, day, raw, sha, path, now=None, month_replay=False, st=None, source=None):
+def build_one(c, day, raw, sha, path, now=None, month_replay=False, st=None, source=None, parsed=None):
     """One day, with the rules. Returns (state, report): built | unchanged | held | invalid | rebuilt."""
     now = now or dt.datetime.now(dt.timezone.utc)
     size = len(raw)
@@ -56,7 +56,7 @@ def build_one(c, day, raw, sha, path, now=None, month_replay=False, st=None, sou
         return "unchanged", {"day": str(day)}
     raw_file(c, day, sha, path, size)
     try:
-        parsed = parse.parse_day(raw)
+        parsed = parsed or parse.parse_day(raw)
     except parse.ShapeError as e:
         mark_day(c, day, "invalid", sha, path, size, str(e))
         log(c, day, None, row[1] if row else None, sha, "invalid")
@@ -118,32 +118,46 @@ def rebuild_month(c, ms, st=None, source=None):
 
 
 def catch_up(c, first=None, last=None, now=None, st=None, limit_secs=None):
-    """Every archived day in [first, last] that is not built, in order. Returns the report of the run."""
+    """Every archived day in [first, last] that is not built, in order. The next file is read and parsed in a second thread
+    while the database works on the current one. Returns the report of the run."""
     import time
+    from concurrent.futures import ThreadPoolExecutor
     st = st or archive.state()
     t0 = time.monotonic()
     rep = {"built": 0, "unchanged": 0, "held": 0, "invalid": 0, "rebuilt": 0, "days": [], "problems": []}
-    for k in sorted(archive.days(st)):
-        day = d(k)
-        if (first and day < d(first)) or (last and day > d(last)):
-            continue
-        if limit_secs and time.monotonic() - t0 > limit_secs:
-            rep["stopped"] = "бюджетът от време свърши при " + k
-            break
-        try:
-            raw, sha, path = archive.read(k, st)
-        except archive.ArchiveError as e:
-            rep["problems"].append(f"{k}: {e}")
-            continue
-        try:
-            state, r = build_one(c, day, raw, sha, path, now=now, st=st)
-        except load.Mismatch as e:
-            mark_day(c, day, "invalid", sha, path, len(raw), str(e))
-            log(c, day, None, None, sha, "invalid")
-            state, r = "invalid", {"day": k, "error": str(e)}
-        rep[state] += 1
-        if state != "unchanged":
-            rep["days"].append(r if state in ("held", "invalid") else {kk: r[kk] for kk in ("day", "valid", "bad", "chains", "secs") if kk in r} | ({"state": state}))
-        if state == "invalid":
-            rep["problems"].append(f"{k}: невалиден ден: {r.get('error')}")
+    todo = [k for k in sorted(archive.days(st)) if not ((first and d(k) < d(first)) or (last and d(k) > d(last)))]
+    built = {r[0]: r[1] for r in c.execute("SELECT day, zip_sha256 FROM silver.day WHERE status = 'built'")}
+
+    def load_day(k):
+        raw, sha, path = archive.read(k, st)
+        return raw, sha, path, (None if built.get(d(k)) == sha else parse.parse_day(raw))    # nothing to parse for a built day
+
+    with ThreadPoolExecutor(1) as pool:
+        ahead = pool.submit(load_day, todo[0]) if todo else None
+        for i, k in enumerate(todo):
+            day = d(k)
+            if limit_secs and time.monotonic() - t0 > limit_secs:
+                rep["stopped"] = "бюджетът от време свърши при " + k
+                break
+            try:
+                raw, sha, path, parsed = ahead.result()
+            except archive.ArchiveError as e:
+                rep["problems"].append(f"{k}: {e}")
+                ahead = pool.submit(load_day, todo[i + 1]) if i + 1 < len(todo) else None
+                continue
+            except parse.ShapeError:        # build_one parses again, marks the day invalid and says why
+                raw, sha, path = archive.read(k, st)
+                parsed = None
+            ahead = pool.submit(load_day, todo[i + 1]) if i + 1 < len(todo) else None
+            try:
+                state, r = build_one(c, day, raw, sha, path, now=now, st=st, parsed=parsed)
+            except load.Mismatch as e:
+                mark_day(c, day, "invalid", sha, path, len(raw), str(e))
+                log(c, day, None, None, sha, "invalid")
+                state, r = "invalid", {"day": k, "error": str(e)}
+            rep[state] += 1
+            if state != "unchanged":
+                rep["days"].append(r if state in ("held", "invalid") else {kk: r[kk] for kk in ("day", "valid", "bad", "chains", "secs") if kk in r} | {"state": state})
+            if state == "invalid":
+                rep["problems"].append(f"{k}: невалиден ден: {r.get('error')}")
     return rep

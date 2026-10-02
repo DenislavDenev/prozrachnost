@@ -232,3 +232,16 @@ def test_copies_and_pharmacy_categories_are_stored_as_submitted(c):
     assert c.execute("""SELECT cd.copy_of FROM silver.chain_day cd JOIN silver.chain ch USING (chain_id) WHERE cd.day = %s AND ch.eik = '130007884'""", (D2,)).fetchone() == ("203105528",)
     assert count(c, """SELECT count(*) FROM silver.price_span s JOIN silver.product p USING (product_id) WHERE p.code = '3211' AND s.category = 86""") >= 1
     assert count(c, "SELECT count(*) FROM silver.chain WHERE eik = '030466961' OR eik_valid = false") == 0
+
+
+def test_catch_up_builds_the_archive_in_order_and_marks_a_broken_day(c, tmp_path, monkeypatch):
+    from ingest import archive, config
+    days = {"2026-09-26": fixture("2026-09-26"), D1: fixture(D1), D2: b"<html>404</html>", D3: fixture(D3)}
+    arch = archive_dir(tmp_path, days)
+    monkeypatch.setattr(config, "ARCHIVE", arch)
+    rep = build.catch_up(c, st=archive.state(arch))
+    assert (rep["built"], rep["invalid"]) == (3, 1) and any("HTML" in p for p in rep["problems"])
+    assert [r[0] for r in c.execute("SELECT status FROM silver.day ORDER BY day")] == ["built", "built", "invalid", "built"]
+    again = build.catch_up(c, st=archive.state(arch))                 # the built days are not parsed or built again
+    assert (again["built"], again["unchanged"], again["invalid"]) == (0, 3, 1)
+    assert day_rows(c, D1) == csv_rows(days[D1]) and day_rows(c, D3) == csv_rows(days[D3])
