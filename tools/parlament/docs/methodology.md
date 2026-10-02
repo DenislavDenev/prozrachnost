@@ -117,4 +117,4 @@
 | празен отговор и нулев байт в текста | `test_an_empty_answer_and_a_nul_in_the_text` |
 | онлайн заседанията на 2021 г.: „40+1“ | `test_the_online_sittings_of_2021_count_the_hall_plus_online` |
 
-`tests/mutations.py` чупи всяко от тези правила (29 мутации) и проверява, че тестът пада.
+`tests/mutations.py` чупи всяко от тези правила (30 мутации) и проверява, че тестът пада.

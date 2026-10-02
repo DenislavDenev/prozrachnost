@@ -21,12 +21,15 @@ LATE_STENO = 10
 def freshness(conn, today=None):
     today = today or dt.date.today()
     problems = []
-    month = f"month/{today.year}-{today.month:02d}"
-    for ref, days, what in ((month, LIST_STALE, "списъкът на заседанията за месеца"), ("roster", ROSTER_STALE, "списъкът на депутатите"),
-                            ("absences", LISTS_STALE, "официалните отсъствия"), ("penalties", LISTS_STALE, "наказанията"),
-                            (f"bills/{today.year}-{today.month:02d}", LISTS_STALE, "законопроектите за месеца"),
-                            (f"assembly/{current(conn)}", PEOPLE_STALE, "профилите на депутатите")):
-        r = conn.execute("SELECT last_ok FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, ref)).fetchone()
+    # a list by month: this month's, or on its first days the last one's (each lane reads the new month at its own hour)
+    last = today.replace(day=1) - dt.timedelta(days=1)
+    months = [f"{today.year}-{today.month:02d}", f"{last.year}-{last.month:02d}"]
+    for refs, days, what in (([f"month/{m}" for m in months], LIST_STALE, "списъкът на заседанията за месеца"),
+                             (["roster"], ROSTER_STALE, "списъкът на депутатите"),
+                             (["absences"], LISTS_STALE, "официалните отсъствия"), (["penalties"], LISTS_STALE, "наказанията"),
+                             ([f"bills/{m}" for m in months], LISTS_STALE, "законопроектите за месеца"),
+                             ([f"assembly/{current(conn)}"], PEOPLE_STALE, "профилите на депутатите")):
+        r = conn.execute("SELECT max(last_ok) FROM ops.source_state WHERE source = %s AND ref = ANY(%s)", (SOURCE, refs)).fetchone()
         if not r or not r[0] or r[0].date() < today - dt.timedelta(days=days):
             problems.append(f"Парламент: {what} не е четен успешно от {r[0].date() if r and r[0] else 'никога'}")
     for sid, date, status, error in conn.execute("""
