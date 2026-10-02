@@ -5,7 +5,7 @@
 <div class="crumbs"><a href="/zasedaniya?g={{ s.date.year }}">Заседания {{ s.date.year }}</a> ·
   {% if s.assembly %}<a href="/zasedaniya?ns={{ s.assembly }}">{{ aname(s.assembly) }}</a>{% endif %}</div>
 <h1>Заседание от {{ s.date | long }} г.</h1>
-<p class="lede">{% if votes %}<b>{{ votes | length }} {{ 'гласуване' if votes | length == 1 else 'гласувания' }}</b>{% endif %}
+<p class="lede">{% if votes %}<b>{{ votes | length }} {{ 'гласуване' if votes | length == 1 else 'гласувания' }}</b>{% endif -%}
   {% if votes and speeches %} и {% endif %}{% if speeches %}<b>{{ (speeches | length) - (1 if speeches[0].no == 0 else 0) }} изказвания</b>
   на <b>{{ speakers | length }} души</b>{% endif %}{% if not votes and not speeches %}{{ s.heading.split('\n')[0] }}{% endif %}.
   {% if s.video %}Видеозапис: <b>{{ s.video | length }} {{ 'част' if s.video | length == 1 else 'части' }}</b>.{% endif %}</p>
