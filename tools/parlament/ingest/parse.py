@@ -138,7 +138,7 @@ def file_date(path):
 def kind(raw):
     """"gv" for a file by group, "iv" for a roll call, None for anything else (read from the content, not the name)."""
     text = _text(raw)          # a damaged file says so (ShapeError)
-    if text.startswith(("NAME,", "Регистрации и гласувания от:")):
+    if text.startswith(("NAME,", *WIDE)):
         return "iv"
     if text.startswith("textbox3") or re.search(r"^Номер \(\d+", text, re.M) and re.search(r"^ПГ;", text, re.M):
         return "gv"
@@ -146,6 +146,8 @@ def kind(raw):
 
 
 MARKERS = ("Номер (", "NAME,", "Регистрации и гласувания")
+# how a roll call with a column per item starts; the second is of the online sittings of 2021
+WIDE = ("Регистрации и гласувания от:", "Регистрации и гласувания + онлайн от:")
 
 
 def _text(raw):
@@ -172,6 +174,11 @@ def _int(s, what):
     if not s.isdigit():
         raise ShapeError(f"{what}: not a count: {s!r}")
     return int(s)
+
+
+def _count(s, what):
+    """A count of the file by group; in the online sittings of 2021 "40+1" is 40 in the hall and 1 online: 41."""
+    return sum(_int(x, what) for x in (s or "").split("+"))
 
 
 # "Номер (2) ГЛАСУВАНЕ проведено на 24-09-2026 10:12 по тема ЗИД на Наказателния кодекс – първо гласуване "
@@ -247,8 +254,8 @@ def _add(items, title, total, group, own):
     no, kind, d, mo, y, h, mi, topic = m.groups()
     kind = "registration" if kind == "РЕГИСТРАЦИЯ" else "vote"
     n = 2 if kind == "registration" else 4
-    total = tuple(_int(x, "total") for x in total[:n])
-    own = None if any(not (x or "").strip() for x in own[:n]) else tuple(_int(x, group) for x in own[:n])
+    total = tuple(_count(x, "total") for x in total[:n])
+    own = None if any(not (x or "").strip() for x in own[:n]) else tuple(_count(x, group) for x in own[:n])
     if len(total) != n or own is not None and len(own) != n:
         raise ShapeError(f"item {no}: short row")
     it = items.setdefault(int(no), {"kind": kind, "at": dt.datetime(int(y), int(mo), int(d), int(h), int(mi)),
@@ -280,7 +287,7 @@ def rollcall(raw):
     """The roll call -> [(mp_no, name, group, item, code)]. Two layouts: one row per MP and item (NAME, textbox7 ...),
     or one row per MP with a column per item (from "Регистрации и гласувания от:")."""
     text = _text(raw)
-    if text.startswith("Регистрации и гласувания от:"):
+    if text.startswith(WIDE):
         return _wide(text)
     rows = list(csv.DictReader(io.StringIO(text)))
     if not rows or not {"NAME", "textbox7", "textbox8", "ITEM", "textbox2"} <= set(rows[0]):

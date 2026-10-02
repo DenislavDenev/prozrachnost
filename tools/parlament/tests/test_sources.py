@@ -285,6 +285,18 @@ def test_online_registration_is_read_and_counted_the_way_the_file_by_group_does(
         assert parse.check(items, votes)[0] == []
 
 
+def test_the_online_sittings_of_2021_count_the_hall_plus_online():
+    """29.04.2021 (45th assembly): the roll call starts with "Регистрации и гласувания + онлайн от:" and the file by
+    group writes "40+1" for 40 votes in the hall and 1 online; the roll call has all 41. Checked against the sheet:
+    item 2, БСП 36 for of 36 voted; item 10, БСП abstained "40+1"."""
+    gv, iv = parse.sheet(raw("gv290421.xlsx")), parse.sheet(raw("iv290421.xlsx"))
+    assert (parse.kind(gv), parse.kind(iv)) == ("gv", "iv")
+    items, votes = parse.groups(gv), parse.rollcall(iv)
+    assert len(items) == 118 and items[2]["groups"]["БСП"] == (36, 0, 0, 36) and items[2]["total"] == (173, 2, 29, 204)
+    assert items[10]["groups"]["БСП"] == (0, 0, 41, 41)
+    assert parse.check(items, votes)[0] == []
+
+
 def test_a_bill_and_the_short_title_of_its_votes():
     from ingest import bills
     b = parse.bill(raw("bill-166636.json"))
