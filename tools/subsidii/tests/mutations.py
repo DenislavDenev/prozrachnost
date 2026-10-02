@@ -84,9 +84,7 @@ def main():
     for file, old, new, test in CASES:
         p = root / file
         original = p.read_bytes()
-        text = original.decode("utf-8").replace("
-", "
-")
+        text = original.decode("utf-8").replace("\r\n", "\n")
         if old not in text:
             raise SystemExit("mutation target missing: " + old)
         try:
