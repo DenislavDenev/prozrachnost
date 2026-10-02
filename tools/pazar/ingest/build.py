@@ -23,8 +23,9 @@ def raw_file(c, day, sha, path, size):
 
 
 def previous(c, day):
-    """(chains, valid) of the last built day before `day`."""
-    return c.execute("SELECT chains, valid FROM silver.day WHERE status IN ('built', 'held') AND chains IS NOT NULL AND day < %s ORDER BY day DESC LIMIT 1", (day,)).fetchone()
+    """(chains, valid) of the last built or held day within 3 days before `day`; after a longer gap there is nothing to compare with."""
+    return c.execute("""SELECT chains, valid FROM silver.day WHERE status IN ('built', 'held') AND chains IS NOT NULL AND day < %s AND day >= %s
+                        ORDER BY day DESC LIMIT 1""", (day, day - dt.timedelta(days=3))).fetchone()
 
 
 def drop_is_big(c, day, parsed):

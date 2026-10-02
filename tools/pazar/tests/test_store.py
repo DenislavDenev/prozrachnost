@@ -245,3 +245,9 @@ def test_catch_up_builds_the_archive_in_order_and_marks_a_broken_day(c, tmp_path
     again = build.catch_up(c, st=archive.state(arch))                 # the built days are not parsed or built again
     assert (again["built"], again["unchanged"], again["invalid"]) == (0, 3, 1)
     assert day_rows(c, D1) == csv_rows(days[D1]) and day_rows(c, D3) == csv_rows(days[D3])
+
+
+def test_a_day_after_a_long_gap_is_not_held_against_an_old_day(c):
+    put(c, "2026-09-26", fixture("2026-09-26"))
+    small = derive(D2, only={LIDL, KAUFLAND, TMARKET})       # 3 files of 11, but the day before is more than 3 days away
+    assert put(c, D2, small)[0] == "built"
