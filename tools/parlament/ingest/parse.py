@@ -24,6 +24,11 @@ class ShapeError(ValueError):
     """The answer is not what the parser knows: nothing of it is written."""
 
 
+class Empty(ShapeError):
+    """The Assembly lists a number and answers `{}` for it (some profiles of the 39th, 40th, 46th and 51st assembly, six
+    bills): there is nothing to read; it is counted, not an error of ours to alert on."""
+
+
 def _json(raw):
     try:
         return json.loads(raw.decode("utf-8"))
@@ -91,9 +96,10 @@ def sitting(raw):
     v = s.get("video")
     video = [x["file"] for x in sorted(v.get("playlist") or [], key=lambda x: x.get("item") or 0) if x.get("file")] \
         if isinstance(v, dict) else []
-    return {"id": int(s["Pl_Sten_id"]), "date": _date(s["Pl_Sten_date"]), "heading": s["Pl_Sten_sub"] or "",
+    # a NUL in the text (a stenogram of 11.1992) is not text: the database refuses it
+    return {"id": int(s["Pl_Sten_id"]), "date": _date(s["Pl_Sten_date"]), "heading": (s["Pl_Sten_sub"] or "").replace(chr(0), ""),
             "assembly": assembly_no(s["Pl_Sten_sub"]), "files": votes, "pdf": pdf,
-            "body": s.get("Pl_Sten_body") or "", "video": video}
+            "body": (s.get("Pl_Sten_body") or "").replace(chr(0), ""), "video": video}
 
 
 def sheet(raw):
@@ -561,6 +567,8 @@ def profile(raw):
     languages, past: [API ids of earlier assemblies], memberships: [...]}. The date and place of birth, e-mail,
     phones, links and photo are left out."""
     p = _json(raw)
+    if p == {} or p == []:
+        raise Empty("the Assembly has no profile under this number")
     if not isinstance(p, dict) or not isinstance(p.get("A_ns_MP_id"), int) or not p.get("A_ns_MPL_Name1"):
         raise ShapeError(f"not a profile: {str(p)[:120]}")
     ms = []
@@ -630,6 +638,8 @@ def bill(raw):
     sponsors: [(profile, name)], committees: [(id, name, role)], steps: [{id, date, sitting, committee, committee_name,
     what, stage}]}. government: brought by the Council of Ministers (imp_list_min), not by MPs."""
     b = _json(raw)
+    if b == {} or b == []:
+        raise Empty("the Assembly has no bill under this number")
     if not isinstance(b, dict) or not isinstance(b.get("L_Act_id"), int) or not b.get("L_ActL_title"):
         raise ShapeError(f"not a bill: {str(b)[:120]}")
     folder = str(b.get("A_ns_folder") or "")

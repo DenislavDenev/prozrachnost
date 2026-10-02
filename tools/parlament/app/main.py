@@ -94,6 +94,7 @@ def ordinal(n):
 
 
 STATUS = {"ok": "наред", "held": "задържан до второ четене", "invalid": "невалиден отговор", "no-files": "без поименно гласуване",
+          "no-votes": "без гласувания", "no-answer": "липсва при източника", "empty": "липсва при източника",
           None: "не е четен"}
 
 STAGE = re.compile(r"\([^()]{2,200}\)")
@@ -382,12 +383,17 @@ def unity_api(ns: int):
 @app.get("/sources", response_class=HTMLResponse)
 def sources_page(request: Request):
     reads = q("""SELECT ref, last_read, last_ok, status, error, rows FROM ops.source_state
-                 WHERE ref NOT LIKE 'sten/%%' ORDER BY ref DESC LIMIT 14""")
-    bad = q("""SELECT st.ref, s.date, st.status, st.error FROM ops.source_state st JOIN live.sitting s ON 'sten/' || s.id = st.ref
-               WHERE st.status NOT IN ('ok', 'no-files') ORDER BY s.date DESC""")
-    counts = one("""SELECT count(*), count(*) FILTER (WHERE iv_sha IS NOT NULL), min(date) FILTER (WHERE iv_sha IS NOT NULL)
-                    FROM live.sitting""")
-    return page(request, "sources.html", "Източници", reads=reads, bad=bad, counts=counts,
+                 WHERE ref !~ '^(sten|bill|profile)/' ORDER BY last_read DESC, ref DESC LIMIT 14""")
+    # a sitting the source cannot answer was never written: it has no date here
+    bad = q("""SELECT st.ref, s.date, st.status, st.error FROM ops.source_state st
+               LEFT JOIN live.sitting s ON 'sten/' || s.id = st.ref
+               WHERE st.ref ~ '^sten/[0-9]+$' AND st.status IN ('invalid', 'held', 'no-answer')
+               ORDER BY s.date DESC NULLS LAST, st.ref""")
+    counts = one("""SELECT count(*), count(*) FILTER (WHERE iv_sha IS NOT NULL), min(date) FILTER (WHERE iv_sha IS NOT NULL),
+                           min(date), count(*) FILTER (WHERE steno_sha IS NOT NULL) FROM live.sitting""")
+    missing = dict(q("""SELECT split_part(ref, '/', 1), count(*) FROM ops.source_state
+                        WHERE status IN ('empty', 'no-answer') GROUP BY 1"""))
+    return page(request, "sources.html", "Източници", reads=reads, bad=bad, counts=counts, missing=missing,
                 problems=freshness_problems())
 
 

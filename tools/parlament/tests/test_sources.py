@@ -303,3 +303,15 @@ def test_a_bill_and_the_short_title_of_its_votes():
     assert bills.reading("ЗИД на Закона за държавния дълг - второ гласуване - параграф 3") == 2 and bills.reading("Решение за избиране") is None
     with pytest.raises(parse.ShapeError):
         parse.bill(b'{"L_Act_id": 1}')
+
+
+def test_an_empty_answer_and_a_nul_in_the_text():
+    with pytest.raises(parse.Empty):
+        parse.profile(b"{}")
+    with pytest.raises(parse.Empty):
+        parse.bill(b"{}")
+    import json
+    s = json.loads(raw("sten-310726-text.json"))
+    s["Pl_Sten_body"] = s["Pl_Sten_body"][:500] + chr(0) + s["Pl_Sten_body"][500:]
+    got = parse.sitting(json.dumps(s).encode())
+    assert chr(0) not in got["body"] and len(parse.speeches(got["body"])) == 39
