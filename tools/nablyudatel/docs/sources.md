@@ -11,7 +11,7 @@
 | ДФЗ, изплатени субсидии | `https://seu.dfz.bg/seu/f?p=727:8110:::NO` | Oracle APEX 5.1; CSV от `f?p=727:8110:<сесия>:CSV::::` след избор на година | CSV-то е в cp1251, въпреки че заглавката казва UTF-8; финансова 2024: 424 хил. реда, 72 MB, около 80 s; година е от 16.10 до 15.10; новата идва след 15.10 и най-старата изчезва |
 | ЕСО, товар | `https://www.eso.bg/api/load_plus_forecast.json.php` | JSON, серии по дни | около 10 дни назад |
 | НИГГГ, земетресения | `https://ndc.niggg.bas.bg/data.xml` | XML | 30 дни назад |
-| data.egov.bg | `POST https://data.egov.bg/api/listResources`, `getResourceData` | JSON | 18 набора от плановете (списъкът е в `archive/sources.py`); за непознат набор порталът връща 500; след около 17 заявки на 3 s прекъсва връзката, затова 1 заявка на 8 s |
+| data.egov.bg | `POST https://data.egov.bg/api/listResources`, `getResourceData` | JSON | 90 набора от плановете (18 от 28.09.2026 и 72 набора на МВР от 02.10.2026) (списъкът е в `archive/sources.py`); за непознат набор порталът връща 500; след около 17 заявки на 3 s прекъсва връзката, затова 1 заявка на 8 s |
 | ЕКАТТЕ (НСИ) | `https://www.nsi.bg/nrnm/ekatte/zip/download?files_type=json` | ZIP с JSON | |
 | GTFS на София | `https://gtfs.sofiatraffic.bg/api/v1/static` | ZIP, около 19 MB | CC BY-SA |
 | Народно събрание, състав | `https://www.parliament.bg/api/v1/coll-list-ns/bg` | JSON | недокументирано API |
