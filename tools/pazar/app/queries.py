@@ -62,7 +62,7 @@ def groups():
 def baskets():
     g = groups()
     out = {"hrani": Basket("hrani", "Храни и напитки", [c for k in FOOD for c in g.get(k, [])]),
-           "vsichki": Basket("vsichki", "Цялата кошница (101 категории)", sorted(c for v in g.values() for c in v))}
+           "vsichki": Basket("vsichki", "Цялата кошница", sorted(c for v in g.values() for c in v))}
     for i, (name, cats) in enumerate(g.items(), 1):
         out[f"g{i}"] = Basket(f"g{i}", name, cats)
     return out

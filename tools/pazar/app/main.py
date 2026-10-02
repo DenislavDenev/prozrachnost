@@ -36,7 +36,7 @@ def signed(v, d=1):
     if v is None:
         return "няма данни"
     s = number(abs(v), d)
-    return ("+" if v > 0.0005 else "−" if v < -0.0005 else "") + s + "%"
+    return ("+" if round(v, d) > 0 else "−" if round(v, d) < 0 else "") + s + "%"      # -0,04 shown to one decimal is 0,0%, not −0,0%
 
 
 def date(v):
