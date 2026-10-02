@@ -139,8 +139,9 @@ def sources():
               FROM silver.dataset d ORDER BY d.kind, d.year NULLS LAST, d.title""")
     tables = q("SELECT * FROM gold.source_table ORDER BY year DESC, family")
     held = q("SELECT * FROM ops.held")
+    links = q("SELECT name, url, period, source_updated_at FROM silver.link ORDER BY period DESC NULLS LAST, name")
     changes = q("SELECT detected_at, ref, field, old, new, cause FROM ops.change_log ORDER BY id DESC LIMIT 30")
-    return dict(datasets=ds, tables=tables, held=held, changes=changes, unmatched=q("SELECT * FROM gold.unmatched ORDER BY year, name"),
+    return dict(datasets=ds, links=links, tables=tables, held=held, changes=changes, unmatched=q("SELECT * FROM gold.unmatched ORDER BY year, name"),
                 issues=q("""SELECT r.resource_uri, r.n_rows, r.issues FROM silver.resource r WHERE r.is_current AND r.issues > 0 ORDER BY r.issues DESC"""))
 
 

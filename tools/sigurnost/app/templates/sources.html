@@ -17,6 +17,9 @@
 <section class="p s12"><h2>Сверки</h2><div class="sub">„ok“: равно; „differs“: не е равно, таблицата не се публикува; „source“: разликата е в самия оригинал и е само за сведение</div>
 <div class="scroll"><table class="sortable"><thead><tr><th class="n">Година</th><th>Таблица</th><th>Сверка</th><th>Обхват</th><th class="n">Очаквано</th><th class="n">Получено</th><th class="n">Разлика</th><th>Състояние</th></tr></thead><tbody>
 {% for c in checks %}<tr><td class="n">{{ c.year }}</td><td>{{ c.family }}</td><td>{{ c.check_id }}{% if c.gating %} (спира){% endif %}</td><td>{{ c.scope }}</td><td class="n">{{ c.expected|num(0) }}</td><td class="n">{{ c.got|num(0) }}</td><td class="n">{{ c.diff|signed }}</td><td>{{ c.status }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% if s.links %}<section class="p s12"><h2>Месечен бюлетин на МВР: връзки</h2><div class="sub">{{ s.links|length }} месечни бюлетина (PDF на сайта на МВР) са описани в набора на портала; тук са само връзките. Файловете не са прочетени и не са съхранени: условията на сайта на МВР изискват писмено съгласие.</div>
+<div class="scroll"><table class="sortable"><thead><tr><th>Бюлетин</th><th>Месец</th><th>Файл</th></tr></thead><tbody>
+{% for l in s.links %}<tr><td>{{ l.name }}</td><td data-v="{{ l.period or '' }}">{{ l.period.strftime('%m.%Y') if l.period else '' }}</td><td><a class="l" href="{{ l.url }}" rel="noopener">PDF ↗</a></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
 {% if s.held or s.unmatched or s.issues %}<section class="p s12"><h2>Задържано и непознато</h2>
 <ul>{% for h in s.held %}<li>Задържан: {{ h.ref }} ({{ h.reason }}) от {{ h.first_seen }}</li>{% endfor %}{% for u in s.unmatched %}<li>Непозната структура {{ u.year }}: {{ u.name }}</li>{% endfor %}
 {% for i in s.issues %}<li>Ресурс {{ i.resource_uri }}: {{ i.issues }} клетки с текст на мястото на число (стойността е „няма данни“, текстът е запазен)</li>{% endfor %}</ul></section>{% endif %}

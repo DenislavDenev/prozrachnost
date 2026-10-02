@@ -71,6 +71,12 @@ CASES = [
      "bad = {fam: [] for fam, rs in res.items()}", FAILED),
     ("ingest/gold.py", "if code is None:\n                    c.execute(", "if False:\n                    c.execute(",
      STORE + "test_an_unknown_structure_is_unmatched_and_stops_the_tables_read_against_it"),
+    # links
+    ("ingest/load.py", 'if r.get("type") != "Хиперлинк" or not r.get("resource_url"):', "if False:",
+     STORE + "test_the_monthly_bulletin_is_five_links_with_their_months_never_opened"),
+    ("ingest/load.py", 'if res.get("type") == "Хиперлинк":', "if False:", STORE + "test_the_monthly_bulletin_is_five_links_with_their_months_never_opened"),
+    ("ingest/load.py", "if not m or m.group(1).lower() not in MONTHS:", "if not m:", STORE + "test_the_period_of_a_bulletin_comes_from_its_name"),
+    ("ingest/checks.py", "if last_bulletin and (now.date() - last_bulletin).days > 75:", "if False:", STORE + "test_the_monthly_bulletin_is_five_links_with_their_months_never_opened"),
     # freshness
     ("ingest/checks.py", "if age > config.MAX_ARCHIVE_AGE_H:", "if False:", FRESH),
     ("ingest/checks.py", "if now - first > dt.timedelta(days=1):", "if False:", FRESH),
@@ -84,6 +90,8 @@ def main():
         p = root / file
         original = p.read_bytes()
         text = original.decode("utf-8")
+        if "\r\n" in text:        # a Windows checkout (autocrlf): the targets are written with LF
+            old, new = old.replace("\n", "\r\n"), new.replace("\n", "\r\n")
         if old not in text:
             raise SystemExit("mutation target missing: " + old)
         try:

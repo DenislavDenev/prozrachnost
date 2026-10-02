@@ -242,3 +242,23 @@ def test_the_step_refuses_an_old_archive(c, arch):
     out = runmod.step_build(c, type("A", (), {"force": False, "rebuild": False})())
     assert "архивът е остарял" in out["problems"][0]
     assert one(c, "SELECT count(*) FROM silver.resource") == 0
+
+
+def test_the_monthly_bulletin_is_five_links_with_their_months_never_opened(c, arch):
+    st = arch({h.POLICE: h.police_2024(), h.BULLETIN: None})
+    rep = run(c, st)
+    assert rep["links"] == 5 and rep["resources"] == 6 and "empty" not in rep["outcomes"]
+    rows = c.execute("SELECT name, period, url FROM silver.link ORDER BY period").fetchall()
+    assert [r[1].isoformat() for r in rows] == ["2018-01-01", "2018-02-01", "2026-06-01", "2026-07-01", "2026-08-01"]
+    assert rows[0][2].startswith("https://www.mvr.bg/upload/") and rows[0][2].endswith(".pdf")
+    assert one(c, "SELECT count(*) FROM silver.resource WHERE set_uri = %s", h.BULLETIN) == 0
+    problems, info = checks.freshness(c, st=st, now=dt.datetime(2026, 9, 5, 8, 0, tzinfo=UTC))
+    assert not any("бюлетин" in i for i in info)
+    problems, info = checks.freshness(c, st=st, now=dt.datetime(2026, 12, 5, 8, 0, tzinfo=UTC))
+    assert any("Последният месечен бюлетин на МВР е за 08.2026" in i for i in info)
+
+
+def test_the_period_of_a_bulletin_comes_from_its_name():
+    assert load.link_period("Бюлетин април 2024 г.") == dt.date(2024, 4, 1)
+    assert load.link_period("Бюлетин декември 2025 г.") == dt.date(2025, 12, 1)
+    assert load.link_period("Нещо друго") is None and load.link_period("Бюлетин Марсиански 2024") is None

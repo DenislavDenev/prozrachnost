@@ -6,6 +6,7 @@ from pathlib import Path
 FIX = Path(__file__).resolve().parent / "fixtures" / "egov"
 POLICE = "386ae85b-0c5c-4a5e-bd88-a8c7c123b765"      # Полицейска статистика 2024 г.
 OLD = "dc074958-c8d5-4484-808a-800335ea4a23"         # Статистически данни на престъпността (2014, 2015)
+BULLETIN = "32cdf912-38b5-4e58-bfc0-70df0b02a36b"      # Ежемесечен бюлетин: 104 hyperlinks to PDF files on mvr.bg
 POLICE_2019 = "9c037c22-aeaa-4e4a-8be2-4eda7fa4b4f6"
 POLICE_2019_B = "fcb6aff7-f948-402d-8005-90091f80f02f"
 
@@ -34,7 +35,7 @@ def build_archive(root, sets, last_ok="2026-10-02T02:56:05Z", now_read="2026-10-
     for set_uri, res in sets.items():
         meta = {r["uri"]: r for r in listing(set_uri)} if (FIX / set_uri / "_list.json").exists() else {}
         lst = []
-        for uri, raw in res.items():
+        for uri, raw in (res or {}).items():
             sha = hashlib.sha256(raw).hexdigest()
             rel = f"egov/{set_uri}/{uri}/1.{sha[:12]}.json"
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -43,6 +44,8 @@ def build_archive(root, sets, last_ok="2026-10-02T02:56:05Z", now_read="2026-10-
             m = dict(meta.get(uri) or {"uri": uri, "name": "Полицейска статистика 2024 г.", "version": "1", "updated_at": "2025-04-10 15:00:00"})
             m["dataset_uri"] = set_uri
             lst.append(m)
+        if res is None:       # a set of links: the list as the portal gave it, no files
+            lst = list(meta.values())
         body = json.dumps(sorted(lst, key=lambda r: r["uri"]), ensure_ascii=False).encode("utf-8")
         sha = hashlib.sha256(body).hexdigest()
         rel = f"egov/{set_uri}/_list/2026-10-02.{sha[:12]}.json"
