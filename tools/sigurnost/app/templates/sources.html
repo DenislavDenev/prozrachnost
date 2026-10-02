@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Източници{% endblock %}
+{% block main %}
+<h1>Източници</h1>
+<p class="lede">{% if problems %}<b>Има {{ problems|length }} {{ 'проблем' if problems|length == 1 else 'проблема' }}.</b>{% else %}Всичко е наред: няма проблеми със свежестта и сверките.{% endif %}</p>
+{% if problems %}<details open><summary>{{ problems|length }} проблема</summary><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></details>{% endif %}
+{% if info %}<ul class="mut">{% for i in info %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+<section class="p s12"><h2>Набори на МВР в data.egov.bg</h2><div class="sub">канал: държавен API (data.egov.bg); четем от архива на „Наблюдател“, не от портала. Лицензът е от метаданните на набора.</div>
+<div class="scroll"><table class="sortable"><thead><tr><th>Набор</th><th>Вид</th><th class="n">Година</th><th>Лиценз</th><th class="n">Ресурси в списъка</th><th class="n">Прочетени</th><th class="n">Празни</th><th class="n">Невалидни</th><th>Последно четене</th></tr></thead><tbody>
+{% for d in s.datasets %}<tr><td><a class="l" href="https://data.egov.bg/data/view/{{ d.set_uri }}" rel="noopener">{{ d.title }}</a></td><td>{{ d.kind }}</td><td class="n">{{ d.year or '' }}</td><td>{{ d.licence }}{% if not d.shared %} <span class="badge warn">не се раздава</span>{% endif %}</td>
+ <td class="n">{{ d.listed if d.listed is not none else 'не е в архива' }}</td><td class="n">{{ d.built }}</td><td class="n">{{ d.empty }}</td><td class="n">{{ d.invalid }}</td><td>{{ d.last_read.strftime('%d.%m.%Y %H:%M') if d.last_read else 'не е четен' }}</td></tr>{% endfor %}</tbody></table></div>
+<div class="src"><a href="/sources.json">JSON</a></div></section>
+<section class="p s12"><h2>Таблиците в публичните числа</h2><div class="sub">всяка (година, вид) е един ресурс; шаблонът е отпечатък на заглавните редове</div>
+<div class="scroll"><table class="sortable"><thead><tr><th class="n">Година</th><th>Вид</th><th>Ресурс</th><th>Шаблон</th><th class="n">Редове</th><th class="n">Клетки с текст</th><th>Бележка</th></tr></thead><tbody>
+{% for x in s.tables %}<tr><td class="n">{{ x.year }}</td><td>{{ x.family }}</td><td><a class="l" href="https://data.egov.bg/data/resourceView/{{ x.resource_uri }}" rel="noopener">{{ x.resource_uri[:8] }}</a></td><td>{{ x.template }}</td><td class="n">{{ x.n_rows }}</td><td class="n">{{ x.issues }}</td><td>{{ x.note or '' }}</td></tr>
+{% else %}<tr><td colspan="7">няма публикувани таблици</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p s12"><h2>Сверки</h2><div class="sub">„ok“: равно; „differs“: не е равно, таблицата не се публикува; „source“: разликата е в самия оригинал и е само за сведение</div>
+<div class="scroll"><table class="sortable"><thead><tr><th class="n">Година</th><th>Таблица</th><th>Сверка</th><th>Обхват</th><th class="n">Очаквано</th><th class="n">Получено</th><th class="n">Разлика</th><th>Състояние</th></tr></thead><tbody>
+{% for c in checks %}<tr><td class="n">{{ c.year }}</td><td>{{ c.family }}</td><td>{{ c.check_id }}{% if c.gating %} (спира){% endif %}</td><td>{{ c.scope }}</td><td class="n">{{ c.expected|num(0) }}</td><td class="n">{{ c.got|num(0) }}</td><td class="n">{{ c.diff|signed }}</td><td>{{ c.status }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% if s.held or s.unmatched or s.issues %}<section class="p s12"><h2>Задържано и непознато</h2>
+<ul>{% for h in s.held %}<li>Задържан: {{ h.ref }} ({{ h.reason }}) от {{ h.first_seen }}</li>{% endfor %}{% for u in s.unmatched %}<li>Непозната структура {{ u.year }}: {{ u.name }}</li>{% endfor %}
+{% for i in s.issues %}<li>Ресурс {{ i.resource_uri }}: {{ i.issues }} клетки с текст на мястото на число (стойността е „няма данни“, текстът е запазен)</li>{% endfor %}</ul></section>{% endif %}
+<section class="p s12"><h2>Последни промени</h2><div class="scroll"><table><thead><tr><th>Кога</th><th>Ресурс</th><th>Поле</th><th>Старо</th><th>Ново</th><th>Причина</th></tr></thead><tbody>
+{% for c in s.changes %}<tr><td>{{ c.detected_at.strftime('%d.%m.%Y %H:%M') }}</td><td>{{ c.ref }}</td><td>{{ c.field or '' }}</td><td>{{ (c.old or '')[:14] }}</td><td>{{ (c.new or '')[:14] }}</td><td>{{ c.cause }}</td></tr>{% endfor %}</tbody></table></div></section>
+<p class="mut">Пожари (ГДПБЗН): <a class="l" href="/pozhari">известна празнина</a>. Контурите на картата: © EuroGeographics (Eurostat GISCO), само некомерсиална употреба; не се раздават.</p>
+{% endblock %}

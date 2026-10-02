@@ -1,0 +1,10 @@
+{% macro help(id, label) %}<button type="button" class="help-trigger" data-help="{{ id }}" aria-label="Какво е: {{ label }}">?</button>{% endmacro %}
+{% macro yearform(action, year, years, extra='') %}
+<form class="ctl" method="get" action="{{ action }}" id="filters">
+  <label>Година <select name="y" aria-label="Година">{% for x in years %}<option {{ 'selected' if x == year }}>{{ x }}</option>{% endfor %}</select></label>
+  {{ extra|safe }}
+  <button>Покажи</button>
+</form>
+{% endmacro %}
+{% macro src(table, csv, json) %}<div class="src">МВР, data.egov.bg{% if table %} · <a href="https://data.egov.bg/data/resourceView/{{ table.resource_uri }}" rel="noopener">таблицата</a> · шаблон {{ table.template }}{% endif %} · <a href="/sources">набор и четене</a> · <a href="{{ csv }}">CSV</a> · <a href="{{ json }}">JSON</a></div>{% endmacro %}
+{% macro tip() %}{% endmacro %}

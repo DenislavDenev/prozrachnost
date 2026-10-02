@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, yearform, src %}
+{% block title %}Видове престъпления{% endblock %}
+{% block main %}
+<h1>Видове престъпления, {{ year }}{% if s.code != 'BG' %}: област {{ s.name }}{% endif %}</h1>
+<p class="lede">{% if rows %}{{ rows|length }} реда от таблицата на МВР за {{ 'страната' if s.code == 'BG' else 'област ' ~ s.name }}. {% if rows[0].total %}Общо регистрирани: <b>{{ rows[0].reg|num }}</b>.{% endif %}{% else %}Няма таблица за избраното.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Редовете са престъпленията по видове, както ги подрежда МВР: точки (1., 2.), подточки (1.1.) и редове „в това число“ (със знак „·“ или „-“). Редовете „в това число“ са част от реда над тях и <b>не се добавят</b> към него; може да са само част от него, а остатъкът не се попълва {{ help('rows', 'редове в това число') }}.</p>
+  <p>Пример: „Убийство“ 237, „в това число“ умишлено убийство, довършено, 76 и опит 33: тези два реда не дават 237, защото има и други видове убийство. Номерацията на МВР в някои таблици е отместена; показваме я както е.</p>
+  <p>Сравнение с друга година е само когато таблицата има същия шаблон. Иначе пише, че не са съпоставими.</p>
+</details>
+{% set extra %}
+<label>Област <select name="o" aria-label="Област"><option value="BG" {{ 'selected' if s.code == 'BG' }}>Цялата страна</option>{% for x in oblasts if x.code != 'BG' %}<option value="{{ x.code }}" {{ 'selected' if x.code == s.code }}>{{ x.name }}</option>{% endfor %}</select></label>
+<label>Сравни с <select name="sr" aria-label="Сравни с"><option value="">без сравнение</option>{% for x in years if x != year %}<option {{ 'selected' if x == sr }}>{{ x }}</option>{% endfor %}</select></label>
+{% endset %}
+{{ yearform("/vidove", year, years, extra) }}
+{% if note %}<p class="warning mut">{{ note }}</p>{% endif %}
+<section class="p s12"><input type="search" placeholder="Търси вид престъпление" aria-label="Търси вид престъпление" data-filter="t-types">
+<div class="scroll"><table class="sortable" id="t-types"><thead><tr><th>№</th><th>Вид престъпление</th><th class="n">Регистрирани {{ help('reg', 'регистрирани') }}</th><th class="n">На 100 хил. {{ help('per100k', 'на 100 хил. души') }}</th><th class="n">Разкрити {{ help('solved', 'разкрити') }}</th><th class="n">Разкриваемост {{ help('clearance', 'разкриваемост') }}</th>{% if sr %}<th class="n">Регистрирани {{ sr }}</th><th class="n">Разлика</th>{% endif %}</tr></thead><tbody>
+{% for r in rows %}<tr class="{{ 'tot' if r.total }}"><td data-v="{{ r.row_no }}">{{ r.code }}</td><td class="l{{ r.level }}">{{ r.text }}</td>
+ <td class="n num" data-v="{{ r.reg if r.reg is not none else '' }}">{{ r.reg|num }}</td><td class="n num" data-v="{{ r.per100k if r.per100k is not none else '' }}">{{ r.per100k|num(1) }}</td>
+ <td class="n num" data-v="{{ r.solved if r.solved is not none else '' }}">{{ r.solved|num }}</td><td class="n num" data-v="{{ r.clearance if r.clearance is not none else '' }}">{{ r.clearance|pct(1) }}</td>
+ {% if sr %}<td class="n num" data-v="{{ r.other_reg if r.other_reg is not none else '' }}">{{ r.other_reg|num }}</td><td class="n num" data-v="{{ r.diff_reg if r.diff_reg is not none else '' }}">{{ r.diff_reg|signed }}</td>{% endif %}</tr>
+{% else %}<tr><td colspan="6">няма данни</td></tr>{% endfor %}</tbody></table></div>
+{{ src(table, "/vidove.csv?y=" ~ year ~ "&o=" ~ s.code ~ ("&sr=" ~ sr if sr else ""), "/vidove.json?y=" ~ year ~ "&o=" ~ s.code ~ ("&sr=" ~ sr if sr else "")) }}</section>
+{% endblock %}

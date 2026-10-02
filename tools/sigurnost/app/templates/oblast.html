@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, yearform, src %}
+{% block title %}{{ s.name }}{% endblock %}
+{% block main %}
+<h1>{{ s.name }}, {{ year }}</h1>
+<p class="lede">{% if total and total.reg is not none %}Регистрирани: <b>{{ total.reg|num }}</b>{% if total.per100k is not none %} (<b>{{ total.per100k|num(1) }}</b> на 100 хил. души){% endif %}; разкрити от регистрираните през годината: <b>{{ total.solved|num }}</b>, разкриваемост <b>{{ total.clearance|pct(1) }}</b>.{% else %}Няма данни за {{ year }}.{% endif %}</p>
+{{ yearform("/oblasti/" ~ s.code, year, years) }}
+<div class="grid">
+  <section class="p s12"><h2>По години</h2><div class="sub">прекъсва при смяна на шаблона на таблицата</div>
+    <div class="chart" id="c-obl" data-src="/api/series.json?o={{ s.code }}" data-digits="0"></div>
+    <div class="src">МВР · <a href="/sources">набор и четене</a> · <a href="/oblasti/{{ s.code }}.csv?y={{ year }}">CSV</a> · <a href="/oblasti/{{ s.code }}.json?y={{ year }}">JSON</a></div></section>
+  {% if rows %}<section class="p s12"><h2>Видове престъпления в областта</h2><div class="sub">таблицата „по видове, област след област“; редовете „в това число“ не се събират · <a class="l" href="/vidove?o={{ s.code }}&y={{ year }}">всички колони и сравнение</a></div>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Вид</th><th class="n">Регистрирани</th><th class="n">Разкрити</th><th class="n">Разкриваемост</th><th class="n">Установени извършители</th></tr></thead><tbody>
+    {% for r in rows %}<tr class="{{ 'tot' if r.total }}"><td class="l{{ r.level }}">{{ r.text }}</td><td class="n num" data-v="{{ r.reg if r.reg is not none else '' }}">{{ r.reg|num }}</td><td class="n num" data-v="{{ r.solved if r.solved is not none else '' }}">{{ r.solved|num }}</td>
+      <td class="n num" data-v="{{ r.clearance if r.clearance is not none else '' }}">{{ r.clearance|pct(1) }}</td><td class="n num" data-v="{{ r.persons if r.persons is not none else '' }}">{{ r.persons|num }}</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(table, "/oblasti/" ~ s.code ~ ".csv?y=" ~ year, "/oblasti/" ~ s.code ~ ".json?y=" ~ year) }}</section>{% endif %}
+</div>
+<p class="mut">Отделните катастрофи са в <a class="l" href="{{ patna_url }}">Пътна обстановка</a>.</p>
+{% endblock %}

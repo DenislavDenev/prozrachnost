@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, yearform, src %}
+{% block title %}Области{% endblock %}
+{% block main %}
+<h1>Престъпления по области, {{ year }}</h1>
+<p class="lede">Таблица на регистрираните и разкритите престъпления по областни дирекции на МВР и по главни дирекции. Изберете област за видовете престъпления в нея.</p>
+{{ yearform("/oblasti", year, years) }}
+<section class="p s12">{% include "_obl_table.html" %}{{ src(table, "/oblasti.csv?y=" ~ year, "/oblasti.json?y=" ~ year) }}</section>
+{% endblock %}
