@@ -94,7 +94,7 @@
      "line": "Градски транспорт по разписание и на живо.",
      "questions": ["Спазва ли градският транспорт в София разписанието?", "Колко курса реално минават спрямо разписанието?", "Колко спирки и линии има по квартали?"],
      "sources": [{"name": "Столична община, GTFS на градския транспорт", "url": "https://urbandata.sofia.bg/dataset/gtfs-static"}]},
-    {"slug": "pazar", "no": 21, "name": "Пазар", "group": "pazari", "status": "soon", "visual": "line",
+    {"slug": "pazar", "no": 21, "name": "Пазар", "group": "pazari", "status": "new", "url_env": "PAZAR_URL", "url_default": "https://pazar.denev.work", "visual": "line", "cta": "Отвори инструмента",
      "line": "Цените в магазините всеки ден, по вериги и общини.",
      "questions": ["Колко струва една и съща стока в различните вериги, градове и дни?", "Как се мени кошницата с основни продукти?", "Колко от промоциите са истински?"],
      "sources": [{"name": "Колко струва, КЗП", "url": "https://kolkostruva.bg/opendata"}],
