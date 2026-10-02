@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Горива{% endblock %}
+{% block main %}
+<h1>Цени на горивата</h1>
+<p class="lede">Седмичният бюлетин на Европейската комисия: средни потребителски цени с данъци за България{% if rows %}; последната седмица е от <b>{{ rows[-1][0]|date }}</b>{% endif %}. Горивата не са в „Колко струва“.</p>
+<details class="explain"><summary>С прости думи</summary><p>Бюлетинът е официален седмичен преглед на цените на бензина, дизела и газта в държавите от ЕС, за понеделника на седмицата. Показваме евро за литър; в първоизточника са евро за 1000 литра. Няма цени по бензиностанции. Хранителната инфлация (ХИПЦ на Евростат) е в инструмента Икономика.</p></details>
+<section class="p"><h2>България, с данъци</h2><div class="sub">€ на литър</div><div class="chart tall" data-src="/api/fuel.json?geo=BG" data-digits="3"></div>
+  <div class="src">Европейска комисия, Weekly Oil Bulletin (CC BY 4.0 по правната бележка на Комисията) · <a href="/export-goriva.csv">CSV</a></div></section>
+<section class="p"><h2>Средно за ЕС, с данъци</h2><div class="chart" data-src="/api/fuel.json?geo=EU" data-digits="3"></div>
+  <div class="src">Европейска комисия, Weekly Oil Bulletin · <a href="/export-goriva.csv">CSV</a></div></section>
+{% endblock %}

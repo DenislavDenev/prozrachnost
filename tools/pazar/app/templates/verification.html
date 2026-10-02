@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Проверка на истинността{% endblock %}
+{% block main %}
+<h1>Как проверяваме, че числата са верни</h1>
+<p class="lede">Показваме цената така, както веригата я е подала. Преди да се покаже, всеки ден се сверява с файла си. Тук е какво проверяваме, какво намерихме и какво не можем да докажем.</p>
+<section class="p"><h2>Сверка на всеки ден със файла</h2>
+  <p><b>{{ ov.days }}</b> дни са построени ({{ ov.first|date }} до {{ ov.last|date }}). Редовете във файловете са <b>{{ ov.records|num(0) }}</b>: валидни <b>{{ ov.valid|num(0) }}</b>, точни повторения <b>{{ ov.dups|num(0) }}</b>, невалидни <b>{{ ov.bad|num(0) }}</b>. Дни, в които тези числа не се събират: <b>{{ ov.mismatched }}</b>. Преди записа редовете, които интервалите връщат за деня, се сравняват с тези на файла верига по верига (брой и сбор на цените); разлика спира деня.</p>
+  <p class="mut">Статус на дните: {% for k, n in ov.status.items() %}{{ n }} {{ {'built': 'построени', 'held': 'задържани до второ четене', 'invalid': 'невалидни'}.get(k, k) }}{{ ', ' if not loop.last }}{% endfor %}.</p></section>
+<section class="p"><h2>Аномалии (отбелязани, извън числата)</h2><div class="scroll"><table class="sortable"><thead><tr><th>Вид</th><th class="n">Редове</th></tr></thead><tbody>
+  {% for k, n in ov.flags.items()|sort(attribute=1, reverse=True) %}<tr><td>{{ {'promo_zero': 'промоция 0 (значи „няма промоция“)', 'promo_not_below_retail': 'промоция не под цената', 'conflicting_prices': 'две различни цени за един обект и код в деня', 'rounded': 'повече от 4 знака след точката', 'decimal_comma': 'десетична запетая', 'category_unlisted': 'категория извън 1 до 101', 'retail_high': 'цена над 5 000', 'price_jump': 'скок над 5 пъти'}.get(k, k) }}</td><td class="n">{{ n|num(0) }}</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Невалидни редове по причина</h2><div class="scroll"><table class="sortable"><thead><tr><th>Причина</th><th class="n">Редове</th></tr></thead><tbody>
+  {% for k, n in ov.reasons.items()|sort(attribute=1, reverse=True) %}<tr><td>{{ {'retail:empty': 'празна цена на дребно', 'retail:not_positive': 'цена на дребно нула или по-малка', 'retail:not_a_number': 'цената не е число', 'truncated': 'последен ред на отрязан файл', 'file': 'файл със сменено заглавие или без ЕИК'}.get(k, k) }}</td><td class="n">{{ n|num(0) }}</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Файлове с редовете на друга верига {{ help('copy', 'копие на друга верига') }}</h2><div class="scroll"><table class="sortable"><thead><tr><th>Верига</th><th class="n">Дни</th><th>Първо</th><th>Последно</th></tr></thead><tbody>
+  {% for r in ov.copies %}<tr><td>{{ r[0] }}</td><td class="n">{{ r[1] }}</td><td>{{ r[2]|date }}</td><td>{{ r[3]|date }}</td></tr>{% else %}<tr><td colspan="4">няма</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Отрязани файлове</h2><div class="scroll"><table class="sortable"><thead><tr><th>Ден</th><th>Верига</th><th>Файл</th></tr></thead><tbody>
+  {% for r in ov.truncated %}<tr><td>{{ r[0]|date }}</td><td>{{ r[1] }}</td><td>{{ r[2] }}</td></tr>{% else %}<tr><td colspan="3">няма</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Смяна на валутата</h2><div class="sub">дни, в които вериги са сменили лева с евро или обратно; открива се от цените, не от датата</div><div class="scroll"><table class="sortable"><thead><tr><th>Ден</th><th class="n">Лева към евро</th><th class="n">Евро към лева</th></tr></thead><tbody>
+  {% for r in ov.switches %}<tr><td data-v="{{ r[0] }}">{{ r[0]|date }}</td><td class="n">{{ r[1] }}</td><td class="n">{{ r[2] }}</td></tr>{% else %}<tr><td colspan="3">няма</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Покритие</h2><div class="chart small" data-src="/api/coverage.json"></div><div class="src">Колко струва (КЗП) · брой вериги, подали използваем файл</div></section>
+{% for p in protocols %}<section class="p"><h2>Ръчна сверка със сайтовете на веригите: {{ p.name }}</h2>{% if p.note %}<p>{{ p.note }}</p>{% endif %}
+  <div class="scroll"><table class="sortable"><thead><tr>{% for h in p.rows[0].keys() if p.rows %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>{% for r in p.rows %}<tr>{% for x in r.values() %}<td>{{ x }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div></section>{% endfor %}
+{% if not protocols %}<section class="p"><h2>Ръчна сверка със сайтовете на веригите</h2><p>Още няма публикуван протокол.</p></section>{% endif %}
+{% endblock %}

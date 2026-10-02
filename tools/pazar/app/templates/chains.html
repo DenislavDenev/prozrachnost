@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Вериги{% endblock %}
+{% block main %}
+<h1>Вериги</h1>
+<p class="lede">{{ rows|length }} вериги са подавали файл поне веднъж от 16.10.2025. На <b>{{ day|date }}</b> са подали {{ rows|selectattr('stores')|list|length }}. Броят им се променя много през годината ({{ help('coverage', 'покритие') }}).</p>
+<details class="explain"><summary>С прости думи</summary><p>„Пропуснати дни“ са дните, в които веригата не е подала използваем файл: за тях няма цена, а не нулева цена. „Копие“ е ден, в който файлът ѝ е съдържал точно редовете на друга верига ({{ help('copy', 'копие на друга верига') }}); такъв файл е извън числата. „Отрязан“ е файл, спрян от портала на 20 MiB.</p></details>
+<section class="p"><input type="search" placeholder="Търси верига" aria-label="Търси верига" data-filter="t-ch">
+  <div class="scroll"><table class="sortable" id="t-ch"><thead><tr><th>Верига</th><th class="n">Обекти на {{ day|date }}</th><th class="n">Дни с файл</th><th class="n">Пропуснати дни</th><th class="n">Копия</th><th class="n">Отрязани</th><th>Първо подаване</th><th>Последно</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><a class="l" href="/verigi/{{ r.eik }}">{{ r.name }}</a>{% if r.national %} <span class="badge">национална цена</span>{% endif %}{% if not r.eik_valid %} <span class="badge warn">ЕИК с грешна контролна цифра</span>{% endif %}</td>
+    <td class="n">{{ r.stores }}</td><td class="n">{{ r.days }} от {{ r.of }}</td><td class="n">{{ r.missed }}</td><td class="n">{{ r.copies }}</td><td class="n">{{ r.truncated }}</td><td data-v="{{ r.first }}">{{ r.first|date }}</td><td data-v="{{ r.last }}">{{ r.last|date }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">Колко струва (КЗП) · <a href="/export-verigi.csv?d={{ day }}">CSV</a></div></section>
+{% endblock %}

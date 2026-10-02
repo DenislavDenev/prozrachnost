@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Продукти{% endblock %}
+{% block main %}
+<h1>Продукти</h1>
+<p class="lede">Търси продукт по име във файловете на веригите. Всеки продукт е на една верига: един и същ код в две вериги не е един продукт. Сравнението между вериги е по категория на КЗП.</p>
+<form class="ctl" method="get" action="/produkti">
+  <label>Име <input type="search" name="q" value="{{ q }}" placeholder="например мляко" aria-label="Име на продукт"></label>
+  <label>Верига <select name="chain" aria-label="Верига"><option value="">Всички</option>{% for c in chains %}<option value="{{ c.eik }}" {{ 'selected' if c.eik == chain }}>{{ c.name }}</option>{% endfor %}</select></label>
+  <label>Категория <select name="category" aria-label="Категория"><option value="">Всички</option>{% for c in cats %}<option value="{{ c.code }}" {{ 'selected' if c.code == category }}>{{ c.code }}. {{ c.name }}</option>{% endfor %}</select></label>
+  <button>Търси</button>
+</form>
+{% if q or chain or category %}
+<section class="p"><h2>{{ found|length }}{{ '+' if more }} {{ 'продукта' if found|length != 1 else 'продукт' }}</h2>
+  {% if more %}<p class="mut">Показани са първите 100. Стесни търсенето.</p>{% endif %}
+  <div class="scroll"><table class="sortable"><thead><tr><th>Продукт</th><th>Верига</th><th>Код на веригата</th><th class="n">Категория</th></tr></thead><tbody>
+  {% for p in found %}<tr><td><a class="l" href="/produkti/{{ p.eik }}/{{ p.code }}">{{ p.name }}</a></td><td>{{ p.chain }}</td><td>{{ p.code }}</td><td class="n">{{ p.category if p.category is not none else '' }}</td></tr>{% else %}<tr><td colspan="4">няма такива продукти</td></tr>{% endfor %}</tbody></table></div></section>
+{% endif %}
+{% endblock %}

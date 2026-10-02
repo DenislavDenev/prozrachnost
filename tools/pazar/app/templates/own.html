@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Моята кошница{% endblock %}
+{% block main %}
+<h1>Моята кошница</h1>
+<p class="lede">Избери стоките, които купуваш, и виж къде е най-евтино. Смята се по медианните цени на {{ day|date }}; всяка стока е категория от списъка на КЗП (един продукт и опаковка).</p>
+<details class="explain"><summary>С прости думи</summary><p>За всяка верига събираме медианните цени на избраните стоки, но само ако има цени за всички тях; иначе се сравняват общите стоки на всички показани вериги и това се казва. Общините са по ценово равнище спрямо страната за същите стоки. Нищо не се записва за теб: изборът е в адреса на страницата.</p></details>
+<form id="own" class="p" method="get" action="/koshnica">
+  <label>Ден <select name="d">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label>
+  <div class="checks">{% for g, codes in groups.items() %}{% set gi = loop.index %}<h3>{{ g }} <button type="button" class="btn alt" data-group="{{ gi }}">всички</button></h3>
+    {% for c in cats if c.code in codes %}<label><input type="checkbox" name="cat" value="{{ c.code }}" data-g="{{ gi }}" {{ 'checked' if basket and c.code in basket.cats }}> {{ c.name }}</label>{% endfor %}{% endfor %}</div>
+  <p><button class="btn">Покажи</button></p>
+</form>
+{% if res %}
+<section class="p"><h2>Цена на кошницата: {{ basket.cats|length }} категории</h2>
+  <p class="lede">{% if res.cost.value is not none %}Медианната цена на избраното е <b>{{ res.cost.value|eur }}</b>{% else %}За {{ res.cost.n }} от {{ res.cost.of }} избрани категории има цена; обща цена не се показва{% endif %}{% if res.change %}, а за последните 30 дни цените им са се променили с <b>{{ res.change.pct|signed }}</b> по същите обекти{% endif %}.</p></section>
+<section class="p"><h2>По вериги</h2><div class="sub">{{ res.chains.common }} общи категории за {{ res.chains.listed }} вериги</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Верига</th><th class="n">Цена, €</th><th class="n">Спрямо страната</th><th class="n">Категории с цена</th></tr></thead><tbody>
+  {% for r in res.chains.rows if r.value is not none %}<tr><td><a class="l" href="/verigi/{{ r.eik }}">{{ r.name }}</a></td><td class="n num" data-v="{{ r.value }}">{{ r.value|eur }}</td><td class="n num" data-v="{{ r.vs_country }}">{{ r.vs_country|signed }}</td><td class="n">{{ r.n_cats }} от {{ basket.cats|length }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">Колко струва (КЗП) · <a href="/export-koshnica.csv?c={{ basket.cats|join(',') }}&d={{ day }}">CSV</a></div></section>
+<section class="p"><h2>Най-евтини общини</h2><div class="sub">ценово равнище спрямо страната; само общини с поне 3 обекта от 2 вериги</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Община</th><th>Област</th><th class="n">Равнище</th><th class="n">Обекти</th></tr></thead><tbody>
+  {% for r in (res.top|selectattr('v')|sort(attribute='v'))[:15] %}<tr><td>{{ r.name }}</td><td>{{ r.oblast }}</td><td class="n num" data-v="{{ r.v }}">{{ r.v|signed }}</td><td class="n">{{ r.stores }}</td></tr>{% endfor %}</tbody></table></div>
+  <p><a class="l" href="/karta?c={{ basket.cats|join(',') }}&d={{ day }}">Покажи на картата</a></p></section>
+{% endif %}
+{% endblock %}

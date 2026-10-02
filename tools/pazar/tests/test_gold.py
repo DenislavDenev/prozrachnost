@@ -185,3 +185,24 @@ def test_the_reference_tables_are_whole(g):
     assert g.execute("SELECT count(*) FROM gold.municipality").fetchone()[0] == 265
     assert g.execute("SELECT count(DISTINCT municipality_id) FROM gold.place").fetchone()[0] == 265
     assert g.execute("SELECT count(*) FROM gold.place").fetchone()[0] > 5000
+
+
+def one_chain_day(prices):
+    """A tiny file of one chain (ЕИК of Lidl) with one shop: {code: (retail, promo)} in euro."""
+    from tests.helpers import csv_of, make_zip
+    rows = [parse.Row("68134", "68134", None, "Магазин 1", code, "Продукт " + code, 6, round(r * 10000), None if p is None else round(p * 10000), 0)
+            for code, (r, p) in prices.items()]
+    return make_zip({"Лидл България_131071587.csv": csv_of(rows)})
+
+
+def test_a_promotion_is_real_only_below_the_shops_own_earlier_price(g):
+    put(g, "2026-09-28", one_chain_day({"A": (2.00, None), "B": (2.00, None), "C": (2.00, None), "D": (2.00, None)}))
+    put(g, "2026-09-29", one_chain_day({"A": (2.00, 1.50),      # a real discount
+                                         "B": (2.60, 2.00),      # the price was put up, the "promotion" is the old price
+                                         "C": (2.00, 1.99),      # under 1% below the old price
+                                         "D": (2.00, 2.00)}))    # not a promotion at all
+    gold.build_missing(g)
+    row = g.execute("SELECT n_promos, n_real, n_none, n_raised, n_nohistory, window_days, avg_real FROM gold.promo_day WHERE day = '2026-09-29' AND chain_eik = %s", (LIDL,)).fetchone()
+    assert row[:6] == (3, 1, 2, 1, 0, 1)
+    assert abs(float(row[6]) - (0.25 + 0.0 + 0.005) / 3) < 1e-4      # the average discount against the earlier price, over all three
+    assert g.execute("SELECT count(*) FROM gold.promo_day WHERE day = '2026-09-28'").fetchone()[0] == 0

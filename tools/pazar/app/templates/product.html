@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block main %}
+<h1>{{ p.name }}</h1>
+<p class="lede">{{ p.chain }} · код <b>{{ p.code }}</b>{% if p.category_name %} · категория {{ p.category }}: <a class="l" href="/kategorii/{{ p.category }}">{{ p.category_name }}</a>{% endif %}. Виден от {{ p.first_day|date }}.</p>
+<details class="explain"><summary>С прости думи</summary><p>Линиите са най-ниската, медианната и най-високата цена на този продукт в обектите на веригата за всеки ден, в евро, както са подадени. Ден без линия значи, че веригата не е подала файл или продуктът не е бил подаден: не е нула. {{ help('as_submitted', 'цена, както е подадена') }}</p></details>
+<section class="p"><h2>Цена по дни</h2><div class="sub">€ · най-ниска, медиана и най-висока в обектите на веригата</div>
+  <div class="chart tall" data-src="/api/product/{{ p.eik }}/{{ p.code }}.json" data-digits="2"></div>
+  <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="/export-product/{{ p.eik }}/{{ p.code }}.csv">CSV</a></div></section>
+<form class="ctl" method="get"><label>Ден <select name="d">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label><button>Покажи</button></form>
+<section class="p"><h2>Цени по обекти на {{ day|date }}</h2><div class="sub">{{ stores|length }} обекта; цената е такава, каквато е подадена</div>
+  <input type="search" placeholder="Търси обект" aria-label="Търси обект" data-filter="t-st">
+  <div class="scroll"><table class="sortable" id="t-st"><thead><tr><th>Обект</th><th>Населено място</th><th class="n">Цена на дребно, €</th><th class="n">Промоция, €</th><th>Бележка</th></tr></thead><tbody>
+  {% for s in stores %}<tr><td>{{ s.store }}</td><td>{{ s.place_name or s.place }}</td><td class="n num" data-v="{{ s.retail }}">{{ (s.retail / (1.95583 if s.currency == 'BGN' else 1))|eur }}</td>
+    <td class="n num" data-v="{{ s.promo if s.promo is not none else '' }}">{{ ((s.promo / (1.95583 if s.currency == 'BGN' else 1))|eur) if s.promo else '' }}</td>
+    <td>{% for f in s.flags %}<span class="badge warn">{{ f }}</span> {% endfor %}{% if s.currency == 'BGN' %}<span class="badge">подадена в лева</span>{% endif %}</td></tr>{% else %}<tr><td colspan="5">няма цени за деня</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}

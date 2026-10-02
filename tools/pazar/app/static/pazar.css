@@ -1,0 +1,14 @@
+/* Пазар: what the shared sheet (app.css) does not have */
+.ctl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:end;margin:14px 0}
+.ctl label{display:flex;flex-direction:column;font-size:13px;color:var(--ink-3);gap:4px}
+.ctl select,.ctl input[type=search],.ctl input[type=text]{min-height:36px;max-width:100%}
+.ctl button,.btn{min-height:36px;padding:0 14px;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:6px;font:inherit;cursor:pointer}
+.btn.alt{background:#fff;color:var(--accent-ink)}
+.num{white-space:nowrap}.pos{color:#b0413e}.neg{color:#0b7a5e}
+.badge{display:inline-block;padding:1px 7px;border:1px solid var(--line);border-radius:10px;font-size:12px;color:var(--ink-3)}
+.badge.warn{border-color:#e7c28f;background:var(--amber-soft);color:var(--amber)}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}@media(max-width:800px){.cols2{grid-template-columns:1fr}}
+.checks{columns:3 260px;gap:20px}.checks label{display:block;font-size:14px;margin:2px 0}
+.checks h3{font-size:14px;margin:12px 0 4px;break-after:avoid}
+.gap-days{display:flex;flex-wrap:wrap;gap:3px}.gap-days i{width:9px;height:14px;background:var(--accent);display:block;border-radius:1px}.gap-days i.miss{background:var(--amber)}.gap-days i.cp{background:#8a5cb8}
+.mapnote{font-size:13px;color:var(--ink-3)}

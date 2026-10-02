@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}{{ cat.name }}{% endblock %}
+{% block main %}
+<h1>{{ cat.name }}</h1>
+<p class="lede">Категория {{ cat.code }} от списъка на КЗП · група: {{ cat.group }} · <a class="l" href="{{ cat.source }}" rel="noopener">документът на КЗП ↗</a>. Цени за <b>{{ day|date }}</b>.</p>
+<form class="ctl" method="get"><label>Ден <select name="d">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label><button>Покажи</button></form>
+<section class="p"><h2>Цена във времето</h2><div class="sub">€ · най-ниска, медиана {{ help('median', 'медиана') }} и най-висока подадена цена; съставът на подалите вериги се мени ({{ help('coverage', 'покритие') }})</div>
+  <div class="chart tall" data-src="/api/category/{{ cat.code }}.json" data-digits="2"></div>
+  <div class="src">Колко струва (КЗП) · <a href="/sources">набор и четене</a> · <a href="/export-category/{{ cat.code }}.csv?d={{ day }}">CSV</a></div></section>
+<div class="cols2">
+<section class="p"><h2>По вериги</h2><div class="scroll"><table class="sortable"><thead><tr><th>Верига</th><th class="n">Медиана</th><th class="n">Най-ниска</th><th class="n">Най-висока</th><th class="n">Обекти</th></tr></thead><tbody>
+  {% for r in chains %}<tr><td><a class="l" href="/verigi/{{ r.key }}">{{ r.name }}</a></td><td class="n num" data-v="{{ r.median }}">{{ r.median|eur }}</td><td class="n num" data-v="{{ r.min }}">{{ r.min|eur }}</td><td class="n num" data-v="{{ r.max }}">{{ r.max|eur }}</td><td class="n">{{ r.stores }}</td></tr>{% else %}<tr><td colspan="5">няма данни</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>По области</h2><div class="sub">без онлайн магазини за цялата страна</div><div class="scroll"><table class="sortable"><thead><tr><th>Област</th><th class="n">Медиана</th><th class="n">Най-ниска</th><th class="n">Най-висока</th><th class="n">Обекти</th></tr></thead><tbody>
+  {% for r in oblasti %}<tr><td>{{ r.name }}</td><td class="n num" data-v="{{ r.median }}">{{ r.median|eur }}</td><td class="n num" data-v="{{ r.min }}">{{ r.min|eur }}</td><td class="n num" data-v="{{ r.max }}">{{ r.max|eur }}</td><td class="n">{{ r.stores }}</td></tr>{% else %}<tr><td colspan="5">няма данни</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+{% endblock %}

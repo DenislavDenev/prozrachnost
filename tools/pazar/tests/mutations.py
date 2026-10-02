@@ -58,6 +58,7 @@ CASES = [
      "tests/test_gold.py::test_anomalies_are_out_of_the_figures_but_stay_in_silver"),
     ("db/gold/20_category_day.sql", "s.promo > 0 AND s.promo < s.retail AND (s.flags & 31) = 0", "s.promo > 0 AND s.promo <= s.retail AND (s.flags & 29) = 0",
      "tests/test_gold.py::test_promotion_equal_to_the_price_is_not_a_promotion"),
+    ("db/gold/20_category_day.sql", "n.promo <= p.prior * 0.99", "n.promo <= p.prior * 1.5", "tests/test_gold.py::test_a_promotion_is_real_only_below_the_shops_own_earlier_price"),
     ("db/gold/20_category_day.sql", "ln(n.retail / (o.retail::numeric / 10000 / n.prev_rate))", "ln(n.retail / (o.retail::numeric / 10000))",
      "tests/test_gold.py::test_the_index_across_the_month_boundary_and_across_the_euro"),
     # fuel

@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Промоции{% endblock %}
+{% block main %}
+<h1>Истински и мними промоции</h1>
+<p class="lede">На <b>{{ day|date }}</b> {% if rows %}веригите са подали <b>{{ rows|sum(attribute='promos')|num(0) }}</b> промоционални цени; за <b>{{ ((rows|sum(attribute='real')) / ([1, (rows|sum(attribute='real')) + (rows|sum(attribute='none'))]|max) * 100)|num(0) }}%</b> от тези с история промоцията е под най-ниската цена на същия обект за същия продукт през предходните 30 дни.{% else %}няма изчислени промоции.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary><p>Една цена е „промоция“, когато е по-ниска от цената на дребно във файла. Тя е истинска отстъпка, ако е и поне с 1% под най-ниската цена, по която същият обект е продавал същия продукт през последните 30 дни. Ако не е, „промоцията“ не е под цената отпреди. „Вдигната“ е случаят, когато цената на дребно е била вдигната и после намалена до старата. {{ help('real_promo', 'истинска промоция') }}</p>
+  <p>За първите 30 дни от архива (до 15.11.2025) историята е по-къса: колоната „История“ казва колко дни се гледат.</p></details>
+<form class="ctl" method="get"><label>Ден <select name="d">{% for x in days|reverse %}<option value="{{ x }}" {{ 'selected' if x == day }}>{{ x|date }}</option>{% endfor %}</select></label><button>Покажи</button></form>
+<section class="p"><div class="scroll"><table class="sortable"><thead><tr><th>Верига</th><th class="n">Промоции</th><th class="n">Истински</th><th class="n">Не са под цената отпреди</th><th class="n">От тях с вдигната цена</th><th class="n">Без история</th><th class="n">Дял истински</th><th class="n">Обявена отстъпка</th><th class="n">Отстъпка срещу цената отпреди</th><th class="n">История, дни</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><a class="l" href="/verigi/{{ r.eik }}">{{ r.name }}</a></td><td class="n">{{ r.promos }}</td><td class="n">{{ r.real }}</td><td class="n">{{ r.none }}</td><td class="n">{{ r.raised }}</td><td class="n">{{ r.nohistory }}</td>
+    <td class="n num" data-v="{{ r.real_share if r.real_share is not none else '' }}">{{ ((r.real_share * 100)|num(0) ~ '%') if r.real_share is not none else 'няма данни' }}</td>
+    <td class="n num" data-v="{{ r.declared if r.declared is not none else '' }}">{{ ((r.declared * 100)|num(1) ~ '%') if r.declared is not none else 'няма данни' }}</td>
+    <td class="n num" data-v="{{ r.real_discount if r.real_discount is not none else '' }}">{{ ((r.real_discount * 100)|num(1) ~ '%') if r.real_discount is not none else 'няма данни' }}</td><td class="n">{{ r.window }}</td></tr>{% else %}<tr><td colspan="10">няма данни за деня</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">Колко струва (КЗП), собствено изчисление · <a href="/how">как работи</a></div></section>
+{% endblock %}
