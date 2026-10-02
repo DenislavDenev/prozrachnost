@@ -18,7 +18,7 @@
 <section class="p"><h2>Смяна на валутата</h2><div class="sub">дни, в които вериги са сменили лева с евро или обратно; открива се от цените, не от датата</div><div class="scroll"><table class="sortable"><thead><tr><th>Ден</th><th class="n">Лева към евро</th><th class="n">Евро към лева</th></tr></thead><tbody>
   {% for r in ov.switches %}<tr><td data-v="{{ r[0] }}">{{ r[0]|date }}</td><td class="n">{{ r[1] }}</td><td class="n">{{ r[2] }}</td></tr>{% else %}<tr><td colspan="3">няма</td></tr>{% endfor %}</tbody></table></div></section>
 <section class="p"><h2>Покритие</h2><div class="chart small" data-src="/api/coverage.json"></div><div class="src">Колко струва (КЗП) · брой вериги, подали използваем файл</div></section>
-{% for p in protocols %}<section class="p"><h2>Ръчна сверка със сайтовете на веригите: {{ p.name }}</h2>{% if p.note %}<p>{{ p.note }}</p>{% endif %}
+{% for p in protocols %}<section class="p"><h2>Протокол на ръчна сверка: {{ p.name }}</h2>{% if p.note %}<p>{{ p.note }}</p>{% endif %}
   <div class="scroll"><table class="sortable"><thead><tr>{% for h in p.rows[0].keys() if p.rows %}<th>{{ h }}</th>{% endfor %}</tr></thead><tbody>{% for r in p.rows %}<tr>{% for x in r.values() %}<td>{{ x }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div></section>{% endfor %}
 {% if not protocols %}<section class="p"><h2>Ръчна сверка със сайтовете на веригите</h2><p>Още няма публикуван протокол.</p></section>{% endif %}
 {% endblock %}
