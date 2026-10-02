@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Карта{% endblock %}
+{% block main %}
+<h1>Престъпления по области</h1>
+<p class="lede" id="k-lede">{{ d.lede }}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Колкото по-тъмна е областта, толкова по-висока е стойността. „На 100 хил. души“ е броят регистрирани престъпления на 100 000 жители, както го пресмята МВР; така голяма и малка област се сравняват честно ({{ help('per100k', 'на 100 хил. души') }}). Регистрирани престъпления има повече там, където има повече хора и повече сигнали, затова висока стойност не значи „по-опасно място“.</p>
+  <p>Пример: област с 200 регистрирани престъпления и 40 000 жители има 500 на 100 хил. души. Главните дирекции на МВР нямат територия и не са на картата.</p>
+</details>
+<form class="ctl" id="filters" method="get" action="/karta">
+  <label>Показател <select name="m" aria-label="Показател">{% for k, n in measures.items() %}<option value="{{ k }}" {{ 'selected' if k == d.m }}>{{ n }}</option>{% endfor %}</select></label>
+  <label>Година <select name="y" aria-label="Година">{% for x in years %}<option {{ 'selected' if x|string == d.y }}>{{ x }}</option>{% endfor %}</select></label>
+  <button>Покажи</button>
+</form>
+<div class="grid">
+  <section class="p s8 map" id="k-map"><h2 id="k-h2">{{ d.title }}, {{ d.y }}</h2><div class="sub" id="k-unit">{{ d.unit }}</div>
+    <div class="mapbox">
+      <svg id="k-svg" role="img" aria-label="Карта на областите"><g class="layers"></g><g class="borders"></g><g class="top"></g></svg>
+      <div class="zoom" role="group" aria-label="Мащаб"><button type="button" data-z="in" title="Приближи" aria-label="Приближи">+</button><button type="button" data-z="out" title="Отдалечи" aria-label="Отдалечи">−</button><button type="button" data-z="home" title="Цялата карта" aria-label="Цялата карта">⤢</button></div>
+      <div class="tip" id="k-tip" hidden></div>
+      <noscript><p class="mut">Картата има нужда от JavaScript; данните са в <a class="l" href="{{ d.csv }}">CSV</a>.</p></noscript>
+    </div>
+    <div class="src">МВР · <a href="/sources">набор и четене</a> · <a id="k-csv" href="{{ d.csv }}">CSV</a> · <a href="/api/karta.json?y={{ d.y }}&m={{ d.m }}">JSON</a> · © EuroGeographics за административните граници (Eurostat GISCO) · влачи, за да местиш; Ctrl + колелото или два пръста приближават</div></section>
+  <section class="p s4 fill places"><div class="tools"><h2>Области</h2><input type="search" placeholder="Търси" aria-label="Търси област" data-filter="k-list"></div>
+    <div class="box"><div class="scroll" id="k-box" tabindex="0" aria-label="Списък на областите">
+    <table class="sortable" id="k-list"><thead><tr><th>Област</th><th class="n">Стойност</th><th class="n">Място</th></tr></thead><tbody></tbody></table></div></div></section>
+</div>
+<script id="k-data" type="application/json">{{ d | tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/karta.js?v={{ v }}"></script>{% endblock %}

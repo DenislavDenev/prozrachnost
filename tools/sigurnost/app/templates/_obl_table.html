@@ -1,0 +1,8 @@
+<input type="search" placeholder="Търси област" aria-label="Търси област" data-filter="t-obl">
+<div class="scroll"><table class="sortable" id="t-obl"><thead><tr>
+  <th>Област (ОДМВР)</th><th class="n">Регистрирани {{ help('reg', 'регистрирани') }}</th><th class="n">На 100 хил. души {{ help('per100k', 'на 100 хил. души') }}</th>
+  <th class="n">Разкрити {{ help('solved', 'разкрити') }}</th><th class="n">Разкриваемост {{ help('clearance', 'разкриваемост') }}</th><th class="n">Място по честота</th></tr></thead><tbody>
+{% for r in rows %}<tr class="{{ 'sum' if r.kind != 'oblast' }}"><td>{% if r.kind == 'oblast' %}<a class="l" href="/oblasti/{{ r.code }}?y={{ year }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
+  <td class="n num" data-v="{{ r.reg if r.reg is not none else '' }}">{{ r.reg|num }}</td><td class="n num" data-v="{{ r.per100k if r.per100k is not none else '' }}">{{ r.per100k|num(1) }}</td>
+  <td class="n num" data-v="{{ r.solved if r.solved is not none else '' }}">{{ r.solved|num }}</td><td class="n num" data-v="{{ r.clearance if r.clearance is not none else '' }}">{{ r.clearance|pct(1) }}</td>
+  <td class="n" data-v="{{ r.rank or '' }}">{{ r.rank or '' }}</td></tr>{% endfor %}</tbody></table></div>
