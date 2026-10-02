@@ -303,6 +303,10 @@ def test_freshness_knows_a_stale_list(conn):
     run(conn, src)
     everyone(conn, src)
     assert checks.freshness(conn, TODAY) == []
+    # on the 1st the new month's lists are not read yet: last month's, read the day before, are fresh
+    first = (TODAY.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    conn.execute("UPDATE ops.source_state SET last_ok = %s::date - interval '1 day'", (first,))
+    assert not any("за месеца" in p for p in checks.freshness(conn, first))
     conn.execute("UPDATE ops.source_state SET last_ok = %s::date - interval '5 days' WHERE ref LIKE 'month/%%'", (TODAY,))
     assert any("списъкът на заседанията" in p for p in checks.freshness(conn, TODAY))
     conn.execute("UPDATE ops.source_state SET last_ok = %s::date - interval '5 days' WHERE ref = 'absences'", (TODAY,))
