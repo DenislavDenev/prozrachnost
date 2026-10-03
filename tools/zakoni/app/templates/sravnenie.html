@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Сравнение{% endblock %}
+{% block main %}
+<h1>Сравнение на два периода</h1>
+<p class="lede">Едни и същи мерки за два избрани периода: колко акта е приел Министерският съвет, колко консултации са открити, колко от тях са със срок под 30 дни.</p>
+<details class="explain"><summary>С прости думи</summary><p>Изберете две години (например 2025 и 2020), два месеца (2025-03) или точен период (2025-03-01:2025-06-30). Сравняват се само еднакви неща: актовете по дата на издаване, консултациите по дата на откриване. Преди 4 ноември 2016 г. правилото за 30 дни не е съществувало, затова за такива периоди не се смята кратък срок, вместо да се показва нула.</p></details>
+<form class="ctl" method="get" action="/sravnenie"><label>Първи период <input name="a" value="{{ a }}" size="22" placeholder="2025"></label><label>Втори период <input name="b" value="{{ b }}" size="22" placeholder="2020"></label><button class="btn" type="submit">Сравни</button>
+<span class="src"><a class="l" href="/sravnenie.csv?a={{ a | urlencode }}&amp;b={{ b | urlencode }}">CSV</a> · <a class="l" href="/sravnenie.json?a={{ a | urlencode }}&amp;b={{ b | urlencode }}">JSON</a></span></form>
+{% for n in c.notes %}<p class="warn">{{ n }}</p>{% endfor %}
+<section class="p"><div class="scroll"><table><thead><tr><th>Мярка</th><th class="n">{{ c.a.frm | date }} – {{ c.a.to | date }}</th><th class="n">{{ c.b.frm | date }} – {{ c.b.to | date }}</th></tr></thead><tbody>
+  <tr><td>Приети актове (всички видове)</td><td class="n">{{ c.a.acts_total | num }}</td><td class="n">{{ c.b.acts_total | num }}</td></tr>
+  {% set types = (c.a.acts + c.b.acts) | map(attribute='act_type') | unique | list %}
+  {% for t in types %}<tr><td class="ind">{{ t }}</td><td class="n">{{ (c.a.acts | selectattr('act_type', 'equalto', t) | map(attribute='n') | first) or 0 }}</td><td class="n">{{ (c.b.acts | selectattr('act_type', 'equalto', t) | map(attribute='n') | first) or 0 }}</td></tr>{% endfor %}
+  <tr><td>Открити консултации</td><td class="n">{{ c.a.consultations.n | num }}</td><td class="n">{{ c.b.consultations.n | num }}</td></tr>
+  <tr><td>Медиана на срока, дни {{ help('days', 'срок в дни') }}</td><td class="n">{{ c.a.consultations.median_days | num(0) }}</td><td class="n">{{ c.b.consultations.median_days | num(0) }}</td></tr>
+  <tr><td>Консултации със срок под 30 дни {{ help('short', 'кратък срок') }}</td><td class="n">{{ c.a.consultations.short | num if c.a.frm >= date_rule else 'няма данни' }}</td><td class="n">{{ c.b.consultations.short | num if c.b.frm >= date_rule else 'няма данни' }}</td></tr>
+  <tr><td class="ind">от тях без посочен мотив</td><td class="n">{{ c.a.consultations.short_without_reason | num if c.a.frm >= date_rule else 'няма данни' }}</td><td class="n">{{ c.b.consultations.short_without_reason | num if c.b.frm >= date_rule else 'няма данни' }}</td></tr>
+  <tr><td>Подадени коментари</td><td class="n">{{ c.a.consultations.comments | num }}</td><td class="n">{{ c.b.consultations.comments | num }}</td></tr>
+</tbody></table></div>
+<div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор</a> · лиценз CC-BY · „няма данни“ е различно от нула</div></section>
+{% endblock %}
