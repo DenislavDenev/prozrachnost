@@ -9,6 +9,7 @@
   <div class="scroll"><table><thead><tr><th>Статус</th><th class="n">Дни</th><th>От</th><th>До</th></tr></thead><tbody>
   {% for r in s.days %}<tr><td>{{ {'built': 'построени', 'held': 'задържани до второ четене', 'invalid': 'невалиден отговор'}.get(r[0], r[0]) }}</td><td class="n">{{ r[1] }}</td><td>{{ r[2]|date }}</td><td>{{ r[3]|date }}</td></tr>{% endfor %}</tbody></table></div>
   {% if s.missing %}<p class="warn">{{ s.missing }} дни между първия и последния построен ден още не са построени (наваксване от архива в ход) или нямат файл; страниците показват това, което е построено.</p>{% endif %}
+  {% if s.gold[0] < s.gold[1] %}<p class="warn">Медианите, индексът и картата са построени за {{ s.gold[0] }} от {{ s.gold[1] }} построени дни; останалите се добавят.</p>{% endif %}
   {% for h in s.held %}<p>Задържан: {{ h[0] }} от {{ h[1]|date }} ({{ h[2] }})</p>{% endfor %}
   <p class="mut">Списъкът на категориите: документът на КЗП за чл. 55б от ЗВЕРБ. Общини: ЕКАТТЕ на НСИ, общинският справочник на Прозрачност.</p></section>
 <section class="p"><h2>Горива: бюлетин на ЕК</h2><p>Седмичен файл на Европейската комисия (<a class="l" href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en" rel="noopener">Weekly Oil Bulletin</a>), CC BY 4.0 по правната бележка на Комисията. {% if s.fuel and s.fuel[0] %}Последно четене: {{ s.fuel[0]|string|truncate(16, True, '') }} UTC; последна седмица: {{ s.fuel[1]|date }}.{% else %}Още не е четен.{% endif %}</p></section>

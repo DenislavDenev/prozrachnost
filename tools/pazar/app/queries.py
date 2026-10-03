@@ -402,6 +402,7 @@ def sources():
         days=q("SELECT status, count(*), min(day), max(day) FROM silver.day GROUP BY status ORDER BY 1"),
         missing=q("""SELECT count(*) FROM generate_series((SELECT min(day) FROM silver.day), (SELECT max(day) FROM silver.day), interval '1 day') g(d)
                       WHERE NOT EXISTS (SELECT 1 FROM silver.day x WHERE x.day = g.d::date AND x.status = 'built')""", one=True)[0],
+        gold=q("SELECT (SELECT count(*) FROM gold.day), (SELECT count(*) FROM silver.day WHERE status = 'built')", one=True),
         held=q("SELECT ref, first_seen, reason FROM ops.held ORDER BY ref"),
         fuel=q("SELECT max(read_at), max(newest) FROM silver.fuel_read", one=True),
         jobs=q("SELECT step, started_at, finished_at, status FROM ops.job_run ORDER BY id DESC LIMIT 12"))
