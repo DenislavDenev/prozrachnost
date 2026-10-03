@@ -55,10 +55,16 @@ def resolver(c=None):
 
 
 def candidates(c, year, fam):
+    skip = set(checks.isolated())
+    return [r for r in _candidates(c, year, fam) if r[0] not in skip]
+
+
+def _candidates(c, year, fam):
     return c.execute(
         """SELECT r.resource_uri, r.sha256, r.set_uri, r.template, r.n_rows, r.issues, d.source_updated
            FROM silver.resource r JOIN silver.dataset d USING (set_uri)
            WHERE d.year = %s AND d.kind = 'police' AND r.family = %s AND r.is_current AND r.status = 'built'
+             AND (r.title_year IS NULL OR r.title_year = d.year)
            ORDER BY r.n_rows DESC, d.source_updated DESC NULLS LAST, r.resource_uri""", (year, fam)).fetchall()
 
 
@@ -95,6 +101,9 @@ def _results_for(c, year, picked, resolve):
         for fam in ("types_by_structure",):
             if fam in blocks:
                 res[fam] += checks.blocks_vs_structures(blocks[fam], blocks["structures"][0], resolve, fam)
+    known = checks.known_differences()
+    for fam in res:
+        checks.apply_known(res[fam], picked[fam][0], known)
     return blocks, res
 
 
@@ -146,7 +155,7 @@ def build(c, years=None, rebuild=False):
 
 def _publish(c, year, fam, p, blocks, resolve, note):
     uri, sha, set_uri, tid, n_rows, issues, _ = p
-    inds = templates.indicators(fam)
+    inds = templates.indicators(fam, blocks[0].columns)
     start, end = dt.date(year, 1, 1), dt.date(year, 12, 31)
     with c.transaction():
         for t in ("gold.observation", "gold.crime_row", "gold.unmatched"):
