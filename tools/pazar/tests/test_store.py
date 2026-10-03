@@ -251,3 +251,20 @@ def test_a_day_after_a_long_gap_is_not_held_against_an_old_day(c):
     put(c, "2026-09-26", fixture("2026-09-26"))
     small = derive(D2, only={LIDL, KAUFLAND, TMARKET})       # 3 files of 11, but the day before is more than 3 days away
     assert put(c, D2, small)[0] == "built"
+
+
+def test_a_rewritten_day_rebuilds_the_whole_month_from_the_archive(c, tmp_path, monkeypatch):
+    """Through catch_up the other days of the month come from the archive, not only the rewritten one."""
+    from ingest import archive, config
+    days = {"2026-09-26": fixture("2026-09-26"), D1: fixture(D1), D2: fixture(D2)}
+    arch = archive_dir(tmp_path, days)
+    monkeypatch.setattr(config, "ARCHIVE", arch)
+    build.catch_up(c, st=archive.state(arch))
+    before = spans(c)
+    days[D1] = derive(D1, drop={KAUFLAND})                   # the file of one day is replaced in the archive
+    arch = archive_dir(tmp_path, days)
+    rep = build.catch_up(c, st=archive.state(arch))
+    assert rep["rebuilt"] == 1
+    assert [r[0] for r in c.execute("SELECT day FROM silver.day WHERE status = 'built' ORDER BY day")] == [dt.date(2026, 9, 26), dt.date(2026, 9, 29), dt.date(2026, 9, 30)]
+    assert day_rows(c, D2) == csv_rows(days[D2]) and day_rows(c, "2026-09-26") == csv_rows(days["2026-09-26"]) and day_rows(c, D1) == csv_rows(days[D1])
+    assert spans(c) != before

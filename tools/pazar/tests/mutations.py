@@ -45,6 +45,8 @@ CASES = [
     ("ingest/build.py", "if chains < config.HOLD_CHAINS * prev[0]:", "if False:", "tests/test_store.py::test_a_big_drop_is_held_until_the_second_read_a_day_later"),
     ("ingest/build.py", "now - held[1] >= dt.timedelta(hours=20)", "now - held[1] >= dt.timedelta(0)",
      "tests/test_store.py::test_a_big_drop_is_held_until_the_second_read_a_day_later"),
+    ("ingest/build.py", "source[day] = (raw, sha, path)", "source = {day: (raw, sha, path)}",
+     "tests/test_store.py::test_a_rewritten_day_rebuilds_the_whole_month_from_the_archive"),
     ("ingest/build.py", "if rewritten or later:", "if False:", "tests/test_store.py::test_an_older_day_arriving_late_rebuilds_the_month_in_order"),
     # gold
     ("db/gold/20_category_day.sql", "AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL", "AND cd.day = %(d)s AND cd.filed",
