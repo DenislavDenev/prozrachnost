@@ -24,7 +24,7 @@ data.egov.bg; Администрация на Министерския съве�
 
 ## Данни
 
-Пет слоя, подробно в [docs/methodology.md](docs/methodology.md) и [docs/sources.md](docs/sources.md):
+Как е построено, подробно в [docs/methodology.md](docs/methodology.md) и [docs/sources.md](docs/sources.md):
 
 1. **бронз**: файловете на архива „Наблюдател“ (`/opt/tender/arhiv/egov/18da0fff-…/`), по sha256; инструментът само ги чете;
 2. **сребро** (`silver`): типизирани таблици с формата на източника, версионни (`valid_from`, `valid_to`), всеки ред с хеша на файла;

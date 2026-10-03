@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, exports, opts %}
+{% block title %}Обществени консултации{% endblock %}
+{% block main %}
+<h1>Обществени консултации</h1>
+<p class="lede"><b>{{ total | num }} {{ 'консултация' if total == 1 else 'консултации' }}</b>{% if f.open_on %} са били отворени на {{ f.open_on | date }}{% else %} по избраните условия{% endif %}{% if f.short %}, със срок под 30 дни{% endif %}{% if rows|length < total %}; на страницата са най-новите {{ rows|length }}, всички са в CSV и JSON{% endif %}. {{ shorts }} от показаните имат срок под 30 дни {{ help('short', 'кратък срок') }}.</p>
+<details class="explain"><summary>С прости думи</summary><p>Консултацията е срокът, в който всеки може да изпрати становище по проект на закон, наредба или решение, преди да бъде приет. Законът за нормативните актове изисква срок от поне 30 дни; в изключителни случаи, с причина, посочена в мотивите, той може да е по-кратък, но не под 14. Срокът тук е броят дни от откриването до приключването, както ги дава порталът. „Кратък срок“ е индикатор, не обвинение: показва, че срокът е под 30 дни, и до него е мотивът, когато вносителят го е записал. Индикаторът се смята само за проекти на нормативни актове, открити от 04.11.2016 г., когато правилото влиза в сила.</p></details>
+<form class="ctl filters" method="get" action="/konsultacii" id="cons-form">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Търси в заглавията" aria-label="Търсене в заглавията">
+  <label>Ниво {{ help('kind', 'вид консултация') }} <select name="level"><option value="">всички</option>{{ opts(flt.levels, f.level) }}</select></label>
+  <label>Вид акт <select name="act_type"><option value="">всички</option>{{ opts(flt.act_types, f.act_type) }}</select></label>
+  <label>Област на политика <select name="area"><option value="">всички</option>{{ opts(flt.areas, f.area) }}</select></label>
+  <label>Година на откриване <select name="year"><option value="">всички</option>{{ opts(flt.years, f.year) }}</select></label>
+  <label>Срок <select name="short"><option value="">всички</option><option value="da" {{ 'selected' if f.short == 'da' }}>под 30 дни</option><option value="bez-motiv" {{ 'selected' if f.short == 'bez-motiv' }}>под 30 дни, без посочен мотив</option></select></label>
+  <label>Област (общини) <select name="oblast" id="f-oblast"><option value="">всички</option>{{ opts(flt.oblasts, f.oblast) }}</select></label>
+  <label>Община <select name="municipality" id="f-municipality"><option value="">всички</option>{% for m in flt.municipalities %}<option value="{{ m.id }}" data-oblast="{{ m.oblast }}" {{ 'selected' if m.id == f.municipality }}>{{ m.name_bg }}</option>{% endfor %}</select></label>
+  <label>Отворени на ден <input type="date" name="na" value="{{ f.open_on.isoformat() if f.open_on }}"></label>
+  <button class="btn" type="submit">Покажи</button><a class="l" href="/konsultacii">Изчисти</a>
+</form>
+<section class="p"><div class="ph"><h2>Консултации</h2><div class="src">{{ exports('/konsultacii', query) }}</div></div>
+  <div class="scroll"><table class="sortable" id="cons-table"><thead><tr><th>Открита</th><th>Проект</th><th>Институция</th><th class="n">Срок, дни {{ help('days', 'срок в дни') }}</th><th>Мотив за кратък срок {{ help('reason', 'мотив за кратък срок') }}</th><th class="n">Коментари</th></tr></thead><tbody>
+  {% for c in rows %}<tr><td data-v="{{ c.opened.isoformat() }}">{{ c.opened | date }}</td>
+    <td><a class="l" href="/konsultacii/{{ c.reg_num }}">{{ c.name | truncate(200) }}</a> <span class="mut">{{ c.reg_num }}</span>{% if c.short_term_applies %} <span class="flag">кратък срок</span>{% endif %}</td>
+    <td>{{ c.institution_name or 'няма данни' }}{% if c.municipality %}<br><span class="mut">{{ c.municipality }}, {{ c.oblast }}</span>{% endif %}</td>
+    <td class="n">{{ c.days }}</td>
+    <td>{% if c.short_term_applies %}{% if c.reason_given %}{{ c.short_term_reason | truncate(160) }}{% else %}<span class="mut">не е посочен</span>{% endif %}{% endif %}</td>
+    <td class="n">{{ c.comment_count }}</td></tr>
+  {% else %}<tr><td colspan="6" class="mut">Няма консултации по избраните условия.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор „Справки от Портала за обществени консултации“</a> · лиценз CC-BY · сортирането е само в показаните редове</div></section>
+{% endblock %}

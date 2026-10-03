@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Закони и решения{% endblock %}
+{% block main %}
+<h1>Какво приема държавата и какво обсъжда</h1>
+<p class="lede">{% if week.n %}В седмицата от {{ monday | date }}{% if on != monday %} до {{ on | date }}{% endif %} Министерският съвет е приел <b>{{ week.n }} {{ 'акт' if week.n == 1 else 'акта' }}</b>: {{ week.p }} {{ 'постановление' if week.p == 1 else 'постановления' }}, {{ week.r }} {{ 'решение' if week.r == 1 else 'решения' }}, {{ week.z }} {{ 'разпореждане' if week.z == 1 else 'разпореждания' }}.{% else %}В седмицата от {{ monday | date }} няма приети актове в данните{% if newest %}; последният е от {{ newest | date }}{% endif %}.{% endif %}
+ {{ 'В момента' if is_today else 'На ' ~ (on | date) }} на обществено обсъждане {{ 'е' if cnt.n == 1 else 'са' }} <b>{{ cnt.n }} {{ 'проект' if cnt.n == 1 else 'проекта' }}</b>{% if cnt.short %}, от които <b>{{ cnt.short }}</b> със срок под 30 дни {{ help('short', 'кратък срок') }}{% endif %}.</p>
+<details class="explain"><summary>С прости думи</summary>
+<p>Министерският съвет (правителството) приема постановления, решения и разпореждания. Тук се броят те; протоколните решения и стенограмите на заседанията са отделно, в списъка „Актове на МС“. Преди да приеме много от актовете, държавата публикува проекта на портала за обществени консултации, за да може всеки да изпрати становище. Законът изисква поне 30 дни, а при изключение, с посочена причина, поне 14. Таблото показва кои проекти се обсъждат в избрания ден. Данните са от националния портал за отворени данни и може да закъсняват с до ден-два.</p>
+{% if not is_today %}<p>Показан е денят {{ on | date }}: актовете са тези, приети до него, а отворените консултации са тези, които в този ден са били открити и неприключили.</p>{% endif %}</details>
+<form class="ctl" method="get" action="/"><label>Към ден <input type="date" name="na" value="{{ on.isoformat() }}"></label><button class="btn" type="submit">Покажи</button>{% if not is_today %}<a class="l" href="/">Днес</a>{% endif %}</form>
+
+<div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>Приети актове на Министерския съвет по седмици</h2><div class="sub">Постановления, решения и разпореждания, последните 52 седмици до {{ on | date }}</div></div></div>
+    <div class="legend"><span><i style="background:#0b7a5e"></i>постановления</span><span><i style="background:#121417"></i>решения</span><span><i style="background:#8a5cb8"></i>разпореждания</span></div>
+    <div class="chart" id="weeks-chart" role="img" aria-label="Приети актове по седмици"></div>
+    <script id="weeks-data" type="application/json">{{ weeks | tojson }}</script>
+    <div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор „Справки от Портала за обществени консултации“</a> · <a href="/aktove.csv?from={{ (on - one_year).isoformat() }}&amp;to={{ on.isoformat() }}">CSV</a> · <a href="/api/sedmici.json?to={{ on.isoformat() }}">JSON</a></div></section>
+  <section class="p s12"><div class="ph"><div><h2>Отворени консултации{% if not is_today %} на {{ on | date }}{% endif %}</h2><div class="sub">Най-скоро приключващите първи; срокът е от откриването до приключването</div></div><a class="more" href="/konsultacii?na={{ on.isoformat() }}">Всички отворени →</a></div>
+    <div class="scroll"><table class="sortable" id="open-table"><thead><tr><th>Проект</th><th>Институция</th><th class="n">Приключва</th><th class="n">Остават, дни</th><th class="n">Срок, дни {{ help('days', 'срок в дни') }}</th></tr></thead><tbody>
+    {% for c in open %}<tr><td><a class="l" href="/konsultacii/{{ c.reg_num }}">{{ c.name }}</a>{% if c.short_term_applies %} <span class="flag">кратък срок</span>{% endif %}</td><td>{{ c.institution_name or 'няма данни' }}</td><td class="n" data-v="{{ c.closes.isoformat() }}">{{ c.closes | date }}</td><td class="n">{{ c.left_days }}</td><td class="n">{{ c.days }}</td></tr>
+    {% else %}<tr><td colspan="5" class="mut">Няма отворени консултации в избрания ден.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор</a> · <a href="/konsultacii.csv?na={{ on.isoformat() }}">CSV</a> · <a href="/konsultacii.json?na={{ on.isoformat() }}">JSON</a></div></section>
+</div>
+<p class="mut">Законопроектите, които Министерският съвет одобрява, се четат в парламента: <a class="l" href="{{ hub_url }}">Парламент</a> ги показва с вносители, комисии, етапи и гласувания. Тук актът за одобряване на законопроект е само акт на Министерския съвет.</p>
+{% endblock %}
