@@ -179,10 +179,12 @@ def test_a_failed_check_publishes_nothing_and_leaves_the_previous_gold(c, arch):
 
 def test_two_versions_of_a_year_use_the_fuller_one_and_the_difference_is_logged(c, arch):
     full = h.police_2024()
-    half = json.loads(full[h.A])
-    half["data"] = half["data"][:60]
+    year19 = json.loads(full[h.A])
+    year19["data"][0][0] = "Полицейска статистика 2019"       # the banner names the set's year
+    half = dict(year19, data=year19["data"][:60])
     other = "fcb6aff7-0000-4000-8000-000000000001"
-    st = arch({h.POLICE_2019: {h.A: full[h.A]}, h.POLICE_2019_B: {other: json.dumps(half, ensure_ascii=False).encode()}})
+    enc = lambda d: json.dumps(d, ensure_ascii=False).encode()
+    st = arch({h.POLICE_2019: {h.A: enc(year19)}, h.POLICE_2019_B: {other: enc(half)}})
     rep = run(c, st)
     assert [p for p in rep["gold"]["published"] if p["year"] == 2019] == [{"year": 2019, "family": "types", "rows": 80}]
     note = one(c, "SELECT note FROM gold.source_table WHERE year = 2019 AND family = 'types'")
@@ -262,3 +264,68 @@ def test_the_period_of_a_bulletin_comes_from_its_name():
     assert load.link_period("Бюлетин април 2024 г.") == dt.date(2024, 4, 1)
     assert load.link_period("Бюлетин декември 2025 г.") == dt.date(2025, 12, 1)
     assert load.link_period("Нещо друго") is None and load.link_period("Бюлетин Марсиански 2024") is None
+
+
+def test_a_table_whose_banner_names_another_year_is_kept_in_silver_and_left_out_of_gold(c, arch):
+    """The set of 2016 has a table titled "Полицейска статистика 2015" (real: resource 04c20b3e): whose year is it? We do not guess."""
+    full = h.police_2024()
+    st = arch({h.Y2016: {h.B: full[h.B]}})                     # the banner of this table says 2024
+    rep = run(c, st)
+    assert rep["gold"]["published"] == []
+    assert c.execute("SELECT title_year, family, status, note FROM silver.resource").fetchall() == [
+        (2024, "structures", "built", "заглавието е за 2024 г., наборът е за 2016 г.")]
+    assert one(c, "SELECT count(*) FROM gold.observation") == 0
+
+
+def test_the_other_dialects_are_read_into_their_own_templates_and_years_are_not_compared_across_them(c, arch):
+    sets = {h.Y2016: {h.uri(h.Y2016, "b6369887"): h.fixture(h.Y2016, "b6369887"), h.uri(h.Y2016, "b9a2090b"): h.fixture(h.Y2016, "b9a2090b")},
+            h.Y2023: {h.uri(h.Y2023, "b1b14807"): h.fixture(h.Y2023, "b1b14807"), h.uri(h.Y2023, "eb0edc37"): h.fixture(h.Y2023, "eb0edc37")},
+            h.POLICE: {h.A: h.fixture(h.POLICE, h.A)}}
+    rep = run(c, arch(sets))
+    assert rep["outcomes"] == {"new": 5} and rep["gold"]["held"] == [] and rep["gold"]["problems"] == []
+    got = c.execute("SELECT year, family, template FROM gold.source_table ORDER BY year, family").fetchall()
+    assert [(g[0], g[1]) for g in got] == [(2016, "structures"), (2016, "types"), (2023, "structures"), (2023, "types"), (2024, "types")]
+    types = {g[0]: g[2] for g in got if g[1] == "types"}
+    assert len(set(types.values())) == 3
+    from app import queries as Q
+    rows24, _ = Q.type_rows(2024)
+    rows23, _ = Q.type_rows(2023)
+    Q.compare(rows24, rows23, "reg")
+    assert all(r["other_reg"] is None for r in rows24)          # not comparable: a different template
+    # the swapped columns of 2023 are in the right indicators
+    assert one(c, "SELECT value FROM gold.observation WHERE year = 2023 AND family = 'types' AND row_no = 1 AND indicator = 'share_solved_unknown'") is not None
+    # the stray 13th column of the object rows is not an indicator and is said in the note
+    assert one(c, "SELECT note FROM silver.resource WHERE resource_uri = %s", h.uri(h.Y2023, "eb0edc37")).startswith("колона 12: 2 клетки без заглавие")
+
+
+E23 = h.uri(h.Y2023, "eb0edc37")
+
+
+def test_a_known_difference_and_a_duplicate_row_publish_the_table_with_the_difference_named(c, arch):
+    """2023 (real resource eb0edc37): the duplicate "25. Търговище" is out of gold and the missing directorate makes the rows 397 short
+    of the total: the recorded difference, so the table is published and the result is marked source."""
+    rep = run(c, arch({h.Y2023: {E23: h.fixture(h.Y2023, "eb0edc37")}}))
+    assert [p["family"] for p in rep["gold"]["published"]] == ["structures"] and rep["gold"]["held"] == []
+    assert one(c, "SELECT count(*) FROM gold.crime_row WHERE family = 'structures'") == 31          # 32 rows less the repeat
+    assert one(c, "SELECT count(*) FROM silver.row WHERE dup") == 1
+    got = c.execute("SELECT scope, expected, got, status FROM gold.check_result WHERE check_id = 'structures_sum' ORDER BY scope").fetchall()
+    assert got == [("reg", 73111, 72714, "source"), ("reg_unknown", 59208, 58811, "source"), ("solved", 38465, 38407, "source"),
+                   ("solved_unknown", 26236, 26178, "source")]
+    assert one(c, "SELECT note FROM silver.resource") == "колона 12: 2 клетки без заглавие; повторен ред: 25. Търговище (ред 32)"
+    assert checks.freshness(c, now=dt.datetime(2025, 2, 3, 8, tzinfo=UTC), st=arch({h.Y2023: {E23: h.fixture(h.Y2023, "eb0edc37")}}))[0] == []
+
+
+def test_a_changed_number_is_not_covered_by_the_recorded_difference(c, arch):
+    d = json.loads(h.fixture(h.Y2023, "eb0edc37"))
+    d["data"][12]["2"] = str(int(d["data"][12]["2"]) + 1)
+    rep = run(c, arch({h.Y2023: {E23: json.dumps(d, ensure_ascii=False).encode()}}))
+    assert rep["gold"]["published"] == [] and "structures_sum reg" in rep["gold"]["problems"][0]
+
+
+def test_an_isolated_table_is_kept_in_silver_and_out_of_gold_without_an_alarm(c, arch, monkeypatch):
+    monkeypatch.setattr(checks, "isolated", lambda: {h.B: dict(resource_uri=h.B, year="2024", family="structures", reason="проба")})
+    st = arch({h.POLICE: h.police_2024()})
+    rep = run(c, st)
+    assert "structures" not in {p["family"] for p in rep["gold"]["published"]}
+    assert one(c, "SELECT count(*) FROM silver.resource WHERE resource_uri = %s AND is_current", h.B) == 1
+    assert [p for p in checks.freshness(c, now=dt.datetime(2026, 10, 3, 8, tzinfo=UTC), st=st)[0] if "structures" in p] == []
