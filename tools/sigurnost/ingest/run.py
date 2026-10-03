@@ -24,7 +24,6 @@ def step_build(c, a):
     rep = load.ingest(c, st)
     rep["gold"] = gold.build(c, rebuild=a.rebuild)
     rep["problems"] += rep["gold"].pop("problems")
-    rep["problems"] += [f"Сигурност: {n} ресурса са невалидни" for n in [rep["outcomes"].get("invalid", 0)] if n]
     return rep
 
 

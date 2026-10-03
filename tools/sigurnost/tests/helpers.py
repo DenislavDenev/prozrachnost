@@ -7,6 +7,8 @@ FIX = Path(__file__).resolve().parent / "fixtures" / "egov"
 POLICE = "386ae85b-0c5c-4a5e-bd88-a8c7c123b765"      # Полицейска статистика 2024 г.
 OLD = "dc074958-c8d5-4484-808a-800335ea4a23"         # Статистически данни на престъпността (2014, 2015)
 BULLETIN = "32cdf912-38b5-4e58-bfc0-70df0b02a36b"      # Ежемесечен бюлетин: 104 hyperlinks to PDF files on mvr.bg
+Y2016, Y2017, Y2019, Y2020, Y2023 = ("28dd128d-667c-44e6-bb5a-c9be1334941d", "88669f04-0bb3-4d6a-be84-4da97d77b084", "9c037c22-aeaa-4e4a-8be2-4eda7fa4b4f6",
+                                     "230a6a9c-f7b7-456f-b8db-ba67d66a6b91", "b03e8542-0576-4770-8b44-977c0015589a")
 POLICE_2019 = "9c037c22-aeaa-4e4a-8be2-4eda7fa4b4f6"
 POLICE_2019_B = "fcb6aff7-f948-402d-8005-90091f80f02f"
 
@@ -22,6 +24,11 @@ NOLABELS = "181dd1cb-6d47-4a28-8914-d78d9407f351"
 def fixture(set_uri, res):
     hits = sorted((FIX / set_uri).glob(res + "*.json"))
     return hits[0].read_bytes()
+
+
+def uri(set_uri, prefix):
+    """The full uri of a resource from the name of its fixture file."""
+    return sorted((FIX / set_uri).glob(prefix + "*.json"))[0].name.split(".")[0]
 
 
 def listing(set_uri):

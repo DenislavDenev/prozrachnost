@@ -3,7 +3,7 @@ only the newest year gold holds. The same function feeds a page, its CSV and its
 import re
 from decimal import Decimal
 
-from ingest import db, templates
+from ingest import checks as C, db, templates
 
 AB = ["reg", "reg_unknown", "per100k", "solved", "clearance"]          # shown for the structures and the types of a country
 BLOCK = ["reg", "per100k", "solved", "clearance", "persons", "persons_women", "persons_minors", "persons_foreigners"]
@@ -141,7 +141,15 @@ def sources():
     held = q("SELECT * FROM ops.held")
     links = q("SELECT name, url, period, source_updated_at FROM silver.link ORDER BY period DESC NULLS LAST, name")
     changes = q("SELECT detected_at, ref, field, old, new, cause FROM ops.change_log ORDER BY id DESC LIMIT 30")
-    return dict(datasets=ds, links=links, tables=tables, held=held, changes=changes, unmatched=q("SELECT * FROM gold.unmatched ORDER BY year, name"),
+    known = C.known_differences()
+    diffs = q("""SELECT year, family, check_id, scope, expected, got, diff, resource_uri FROM gold.check_result
+                 WHERE status = 'source' AND gating ORDER BY year, family, check_id, scope""")
+    for d in diffs:
+        d["note"] = known.get((d["resource_uri"], d["check_id"], d["scope"], d["expected"], d["got"]), "")
+    iso = list(C.isolated().values())
+    mismatch = q("""SELECT d.year AS set_year, r.title_year, r.resource_uri, r.family FROM silver.resource r JOIN silver.dataset d USING (set_uri)
+                    WHERE r.is_current AND r.title_year IS NOT NULL AND r.title_year <> d.year ORDER BY d.year, r.resource_uri""")
+    return dict(datasets=ds, links=links, diffs=diffs, isolated=iso, mismatch=mismatch, tables=tables, held=held, changes=changes, unmatched=q("SELECT * FROM gold.unmatched ORDER BY year, name"),
                 issues=q("""SELECT r.resource_uri, r.n_rows, r.issues FROM silver.resource r WHERE r.is_current AND r.issues > 0 ORDER BY r.issues DESC"""))
 
 
