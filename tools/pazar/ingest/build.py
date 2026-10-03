@@ -82,7 +82,11 @@ def build_one(c, day, raw, sha, path, now=None, month_replay=False, st=None, sou
     if rewritten or later:
         if rewritten:
             log(c, day, "sha256", row[1], sha, "rewritten")
-        report = rebuild_month(c, day.replace(day=1), st=st, source=source or {day: (raw, sha, path)})
+        if source is None:        # the month is read from the archive, with this day's bytes as they are now
+            st = st or archive.state()
+            source = {d(k): None for k in archive.days(st)}
+            source[day] = (raw, sha, path)
+        report = rebuild_month(c, day.replace(day=1), st=st, source=source)
         return "rebuilt", report
     report = load.build_day(c, day, parsed, sha, path, size, note="confirmed after a second read" if confirmed else None, replace=bool(row))
     if confirmed:
