@@ -1,0 +1,4 @@
+{% macro help(id, label) %}<button type="button" class="help-trigger" data-help="{{ id }}" aria-label="Обяснение: {{ label }}">?</button>{% endmacro %}
+{% macro exports(base, query) %}<a class="l" href="{{ base }}.csv{{ '?' ~ query if query }}">CSV</a> · <a class="l" href="{{ base }}.json{{ '?' ~ query if query }}">JSON</a>{% endmacro %}
+{% macro opts(items, selected) %}{% for i in items %}<option value="{{ i }}" {{ 'selected' if i|string == selected|string }}>{{ i }}</option>{% endfor %}{% endmacro %}
+{% macro short_badge(c) %}{% if c.short_term_applies %}<span class="flag">кратък срок</span>{% endif %}{% endmacro %}
