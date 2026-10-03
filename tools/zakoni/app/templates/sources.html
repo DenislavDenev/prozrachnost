@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Източници{% endblock %}
+{% block main %}
+<h1>Източници</h1>
+<p class="lede">Всички данни са от един набор на националния портал за отворени данни: <a class="l" href="{{ source_url }}" rel="noopener">„Справки от Портала за обществени консултации“</a> на Администрацията на Министерския съвет, 14 ресурса. Лиценз: CC-BY (условия 2), проверен на 02.10.2026; кой да бъде посочен: Администрацията на Министерския съвет, чрез data.egov.bg.</p>
+<p>Ние не викаме data.egov.bg: четем файловете, които архивът „Наблюдател“ сваля от портала всеки ден в 02:50 UTC.
+ {% if archive_read %}Последното успешно четене на портала е от <b>{{ archive_read | date }}</b>{% endif %}{% if build %}; последното изграждане е № {{ build.build_id }} от {{ build.built_at | date }}{% endif %}.</p>
+{% if problems %}<section class="p" style="border-color:var(--amber)"><h2 class="warn">{{ problems | length }} {{ 'проблем' if problems | length == 1 else 'проблема' }}</h2>
+  <details class="why" open><summary>Какво е</summary><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></details></section>{% else %}<p class="mut">Няма открити проблеми със свежестта и сверките.</p>{% endif %}
+<section class="p"><div class="ph"><h2>Ресурси</h2><div class="src"><a class="l" href="/sources.json">JSON</a></div></div>
+<div class="scroll"><table class="sortable" id="sources-table"><thead><tr><th>Ресурс</th><th>Роля</th><th>Състояние</th><th class="n">Записи</th><th class="n">Версия</th><th>Прочетен</th><th>Последна промяна</th></tr></thead><tbody>
+{% for r in rows %}{% set n = names.get(r.ref) %}<tr><td>{{ n.name if n else r.ref }}<br><span class="mut">{{ r.ref }} · sha256 {{ (r.sha256 or '')[:12] }}</span></td>
+ <td>{{ {'load': 'зарежда се', 'check': 'за сверка', 'skip': 'прочетен и преброен', 'same': 'същият файл'}.get(r.role, r.role) }}</td>
+ <td>{{ r.status or 'не е четен' }}{% if r.error %}<details class="why"><summary>1 проблем</summary><p>{{ r.error }}</p></details>{% endif %}</td>
+ <td class="n">{{ r.rows | num if r.rows is not none else 'няма данни' }}</td><td class="n">{{ r.version or '' }}</td><td>{{ r.last_ok | date if r.last_ok else 'не е четен' }}</td><td>{{ r.last_change | date if r.last_change else 'няма' }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section class="p"><h2>Сверки при всяко изграждане</h2><p class="mut">Броят на записите във файла срещу броя в нашата база. Разлика спира публикуването. Сверките с другите справки на източника са информативни: те показват къде самият източник не си съвпада.</p>
+<div class="scroll"><table><thead><tr><th>Сверка</th><th class="n">Очаквано</th><th class="n">Намерено</th><th>Вид</th><th>Бележка</th></tr></thead><tbody>
+{% for r in recon %}<tr><td>{{ r.name }}</td><td class="n">{{ r.expected | num }}</td><td class="n">{{ r.actual | num }}</td><td>{{ {'block': 'блокира', 'known': 'известна разлика', 'info': 'информация'}.get(r.kind) }}{% if not r.ok and r.kind == 'block' %} <span class="flag">разлика</span>{% endif %}</td><td>{{ r.note or '' }}</td></tr>{% endfor %}</tbody></table></div></section>
+{% endblock %}
