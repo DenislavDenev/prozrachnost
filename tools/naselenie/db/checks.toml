@@ -1,0 +1,115 @@
+# The quality rules of Население. Each query returns one row: expected, actual. They run after every step.
+# The sums inside one table (settlements to the municipality, municipalities to the oblast) are checked by the
+# parser, which refuses the table; the rules here check what is stored.
+
+[[check]]
+name = "municipalities_per_table"
+title_bg = "Всяка публикувана таблица има поне 264 общини"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM (SELECT as_of, table_kind FROM naselenie.population WHERE superseded_at IS NULL GROUP BY 1, 2 HAVING count(*) < 264) t"
+
+[[check]]
+name = "clean_matches_landing"
+title_bg = "Действащите редове по общини са колкото общинските редове в действащите таблици на ГРАО"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM naselenie_src.grao_row g JOIN naselenie.snapshot s USING (load_id) WHERE g.row_kind = 'municipality'), (SELECT count(*) FROM naselenie.population WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "clean_settlements_match_landing"
+title_bg = "Действащите редове по населени места са колкото в действащите подробни таблици"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM naselenie_src.grao_row g JOIN naselenie.snapshot s USING (load_id) WHERE g.row_kind = 'settlement'), (SELECT count(*) FROM naselenie.settlement_population WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "settlements_sum_to_municipality"
+title_bg = "Сборът на населените места е общинският сбор в същата подробна таблица"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM naselenie.population p JOIN (SELECT as_of, municipality_code, sum(permanent) a, sum(current) b, sum(both_here) c FROM naselenie.settlement_population WHERE superseded_at IS NULL GROUP BY 1, 2) s USING (as_of, municipality_code) WHERE p.table_kind = 'detailed' AND p.superseded_at IS NULL AND (p.permanent, p.current, p.both_here) <> (s.a, s.b, s.c)"
+
+[[check]]
+name = "current_total_sum"
+title_bg = "Сборът по настоящ адрес в чистата таблица е сборът на редовете от ГРАО"
+kind = "reconcile"
+sql = "SELECT (SELECT COALESCE(sum(g.current), 0) FROM naselenie_src.grao_row g JOIN naselenie.snapshot s USING (load_id) WHERE g.row_kind = 'municipality'), (SELECT COALESCE(sum(current), 0) FROM naselenie.population WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "ekatte_unmatched"
+title_bg = "Редове без еднозначен ЕКАТТЕ в последната подробна таблица (на 10 000 реда)"
+kind = "unmatched"
+tolerance = 50
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE ekatte IS NULL) / NULLIF(count(*), 0)), 0) FROM naselenie.settlement_population WHERE superseded_at IS NULL AND as_of = (SELECT max(as_of) FROM naselenie.snapshot WHERE table_kind = 'detailed')"
+
+[[check]]
+name = "monthly_table_recent"
+title_bg = "Последната месечна таблица на ГРАО е от последните 45 дни (дни над прага)"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, COALESCE(CURRENT_DATE - max(as_of), 9999) - 45) FROM naselenie.snapshot WHERE table_kind = 'monthly'"
+
+[[check]]
+name = "monthly_total_jump"
+title_bg = "Националният сбор по настоящ адрес не се мени с над 2% между две поредни месечни таблици (на 10 000)"
+kind = "drop"
+tolerance = 200
+sql = "SELECT 0, COALESCE(max(round(10000.0 * abs(t - prev) / prev)), 0) FROM (SELECT sum(current) t, lag(sum(current)) OVER (ORDER BY as_of) prev FROM naselenie.population WHERE table_kind = 'monthly' AND superseded_at IS NULL GROUP BY as_of) x WHERE prev > 0"
+
+# The move from the tool's own database to the shared one: the step `parity` records these.
+[[check]]
+name = "parity_files"
+title_bg = "Публикувани таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_rows"
+title_bg = "Редове по общини: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_permanent"
+title_bg = "Сбор по постоянен адрес, общини: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_current"
+title_bg = "Сбор по настоящ адрес, общини: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_both"
+title_bg = "Сбор с двата адреса на едно място, общини: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_settlement_rows"
+title_bg = "Редове по населени места: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_settlement_permanent"
+title_bg = "Сбор по постоянен адрес, населени места: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_settlement_current"
+title_bg = "Сбор по настоящ адрес, населени места: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_settlement_both"
+title_bg = "Сбор с двата адреса на едно място, населени места: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_subdivision_rows"
+title_bg = "Редове за райони и кметства: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_rows_differ"
+title_bg = "Таблици с ред, който се различава между старата и общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_ekatte_differ"
+title_bg = "Редове с различен ЕКАТТЕ между старата и общата база"
+kind = "parity"
+gating = false

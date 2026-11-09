@@ -8,18 +8,35 @@
 
 Импортът проверява числата във файла срещу публикуваните общински и областни сборове, пази суровите отговори по sha256, задържа изчезналите редове до второ еднакво четене поне ден по-късно и отчита свежестта. Той не приравнява квартал или нееднозначно село с населено място от ЕКАТТЕ.
 
+## Данни
+
+От 10.11.2026 инструментът е в общата база `prozrachnost` ([tools/danni](../danni/README.md)), не в своя. Данните са таблици, не JSON документи:
+
+| Таблица | Какво е |
+|---|---|
+| `naselenie_src.grao_catalog`, `grao_file`, `grao_row` | приемната зона: каталогът и всяка таблица на ГРАО ред по ред, с имената от източника |
+| `naselenie.population` | регистрациите по община към дата, от месечната (`monthly`) или от подробната (`detailed`) таблица; ключ към `core.municipality` |
+| `naselenie.settlement_population` | редовете на подробната таблица; `ekatte` към `core.settlement` само при еднозначно съвпадение |
+| `naselenie.snapshot`, `naselenie.source_state` | изгледи: действащите публикувани таблици и последното четене на всеки адрес |
+
+Поправена от ГРАО стойност не презаписва старата: старият ред получава `superseded_at`, новият се добавя. Общините и населените места идват от `core`; инструментът вече не чете ЕКАТТЕ сам и не носи `municipality.csv`. Пусканията, файловете, задържането, промените и проверките са в общата схема `ops`; правилата са в `db/checks.toml`, наборът и източниците в `db/datasets.toml`.
+
 ```bash
-python -m ingest.run --step migrate
+python -m ingest.run --step migrate      # иска миграциите на tools/danni да са приложени
 python -m ingest.run --step grao --backfill
+python -m ingest.run --step build        # чистите таблици наново от приемната зона, след промяна в ЕКАТТЕ
+python -m ingest.run --step check
 python -m ingest.run --step freshness
 uvicorn app.main:app --port 8017
 ```
 
-Изисквания: Python 3.13, PostgreSQL 17, пакетите от `requirements.txt`; `NASELENIE_DSN` и `NASELENIE_DATA`. Тестовете ползват само база, чието име съдържа `test`:
+Стъпките `replay` и `parity` са за преминаването от старата база: първата зарежда вече свалените файлове от `raw/` през същия парсер, втората сравнява старата и новата база число по число и записва резултата като правила от вид `parity`.
+
+Изисквания: Python 3.13, PostgreSQL 17, пакетите от `requirements.txt`; `NASELENIE_DSN` (по подразбиране `dbname=prozrachnost`) и `NASELENIE_DATA`. Тестовете ползват само база, чието име съдържа `test`, и папката `tools/danni` до инструмента:
 
 ```bash
 NASELENIE_TEST_DSN=dbname=naselenie_test python -m pytest -q
-python tests/mutations.py
+NASELENIE_TEST_DSN=dbname=naselenie_test python tests/mutations.py
 ```
 
 Източниците са описани в [sources.md](docs/sources.md), проверките в [methodology.md](docs/methodology.md).
