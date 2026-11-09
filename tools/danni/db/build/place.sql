@@ -5,7 +5,7 @@ VALUES ('BG', 0, 'България', 'България', 'Bulgaria', NULL)
 ON CONFLICT (nuts_code) DO NOTHING;
 
 INSERT INTO core.nuts (nuts_code, level, name_bg, label_bg, name_en, parent_code)
-SELECT r.region, length(r.region) - 2, r.name, regexp_replace(r.name, '^район "(.*?)"+$', ''), r.name_en, left(r.region, length(r.region) - 1)
+SELECT r.region, length(r.region) - 2, r.name, regexp_replace(r.name, '^район "(.*?)"+$', '\1'), r.name_en, left(r.region, length(r.region) - 1)
 FROM danni_src.ekatte_region r JOIN ops.load l USING (load_id)
 WHERE l.is_current
 ORDER BY length(r.region), r.region
