@@ -1,0 +1,58 @@
+# The datasets and sources of the shared dimensions. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be distributed is set only in db/licences.toml.
+
+[[dataset]]
+dataset = "danni.ekatte"
+title_bg = "ЕКАТТЕ: области, общини и населени места"
+description_bg = "Единният класификатор на административно-териториалните и териториалните единици."
+source_org = "Национален статистически институт"
+source_url = "https://www.nsi.bg/nrnm/ekatte"
+channel = "file"
+licence = "не е посочен (на сайта: Всички права запазени)"
+cadence = "при промяна; чете се всеки ден"
+tables = ["core.nuts", "core.oblast", "core.settlement", "danni_src.ekatte_region", "danni_src.ekatte_oblast", "danni_src.ekatte_municipality", "danni_src.ekatte_settlement"]
+
+[[dataset]]
+dataset = "danni.municipality"
+title_bg = "Общините с код по НСИ и ЕИК"
+description_bg = "Съответствие между кода на общината в ЕКАТТЕ и ЕИК на общинската администрация."
+source_org = "Прозрачност (от ЕКАТТЕ и справочника на Тендер)"
+channel = "derived"
+licence = "зависи от ЕКАТТЕ"
+tables = ["core.municipality", "danni_src.municipality_ref"]
+
+[[dataset]]
+dataset = "danni.org"
+title_bg = "Юридически лица и институции по ЕИК"
+description_bg = "Фирмите от Търговския регистър и възложителите от ЦАИС ЕОП, които Тендер е срещнал, с валиден ЕИК."
+source_org = "Агенция по вписванията; Агенция по обществени поръчки"
+source_url = "https://data.egov.bg"
+channel = "derived"
+licence = "CC0 за Търговския регистър в data.egov.bg; ЦАИС ЕОП чака проверка"
+personal_data = "names"
+cadence = "след всяко публикуване на Тендер"
+tables = ["core.org", "danni_src.org_tender"]
+
+[[source]]
+source = "ekatte"
+title_bg = "ЕКАТТЕ от архива на Наблюдател"
+url = "https://www.nsi.bg/nrnm/ekatte/zip/download?files_type=json"
+channel = "file"
+dataset = "danni.ekatte"
+cadence = "всеки ден"
+stale_after = "3 days"
+
+[[source]]
+source = "municipality-ref"
+title_bg = "Справочник на общините (код по НСИ и ЕИК)"
+channel = "derived"
+dataset = "danni.municipality"
+
+[[source]]
+source = "org-tender"
+title_bg = "Юридическите лица от Тендер"
+channel = "derived"
+dataset = "danni.org"
+cadence = "всеки ден"
+stale_after = "3 days"
+landing = "latest"

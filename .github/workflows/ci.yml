@@ -138,6 +138,33 @@ jobs:
       - run: python -m pytest -q
       - run: python tests/mutations.py
 
+  danni:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/danni } }
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: danni_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DANNI_TEST_DSN: host=localhost user=postgres password=postgres dbname=danni_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt
+      # the group roles are made by the provision script on the server; here the privilege test needs them too
+      - run: python -c "import os, psycopg; psycopg.connect(os.environ['DANNI_TEST_DSN'], autocommit=True).execute('CREATE ROLE pz_ingest; CREATE ROLE pz_web; CREATE ROLE api_ro')"
+      - run: |
+          set -o pipefail
+          python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
+          ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+      - run: python tests/mutations.py
+
   naselenie:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: tools/naselenie } }
@@ -404,7 +431,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, naselenie, obrazovanie, byudzhet, pazar, sobstvenost, kontrol, subsidii, zakoni, sigurnost]
+    needs: [shared, hub, patna-obstanovka, tender, ikonomika, parlament, nablyudatel, danni, naselenie, obrazovanie, byudzhet, pazar, sobstvenost, kontrol, subsidii, zakoni, sigurnost]
     runs-on: ubuntu-latest
     steps:
       - run: |
