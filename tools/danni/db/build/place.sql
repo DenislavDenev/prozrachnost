@@ -1,32 +1,35 @@
 -- core.nuts, core.oblast, core.municipality and core.settlement from the current loads of EKATTE and of the
 -- municipality reference. Runs in one transaction. Nothing is deleted: what left the source gets gone_at.
-INSERT INTO core.nuts (nuts_code, level, name_bg, name_en, parent_code)
-VALUES ('BG', 0, 'България', 'Bulgaria', NULL)
+INSERT INTO core.nuts (nuts_code, level, name_bg, label_bg, name_en, parent_code)
+VALUES ('BG', 0, 'България', 'България', 'Bulgaria', NULL)
 ON CONFLICT (nuts_code) DO NOTHING;
 
-INSERT INTO core.nuts (nuts_code, level, name_bg, name_en, parent_code)
-SELECT r.region, length(r.region) - 2, r.name, r.name_en, left(r.region, length(r.region) - 1)
+INSERT INTO core.nuts (nuts_code, level, name_bg, label_bg, name_en, parent_code)
+SELECT r.region, length(r.region) - 2, r.name, regexp_replace(r.name, '^район "(.*?)"+$', ''), r.name_en, left(r.region, length(r.region) - 1)
 FROM danni_src.ekatte_region r JOIN ops.load l USING (load_id)
 WHERE l.is_current
 ORDER BY length(r.region), r.region
-ON CONFLICT (nuts_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, name_en = EXCLUDED.name_en, parent_code = EXCLUDED.parent_code
-WHERE (core.nuts.name_bg, core.nuts.name_en, core.nuts.parent_code) IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.name_en, EXCLUDED.parent_code);
+ON CONFLICT (nuts_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, label_bg = EXCLUDED.label_bg, name_en = EXCLUDED.name_en, parent_code = EXCLUDED.parent_code
+WHERE (core.nuts.name_bg, core.nuts.label_bg, core.nuts.name_en, core.nuts.parent_code)
+      IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.label_bg, EXCLUDED.name_en, EXCLUDED.parent_code);
 
-INSERT INTO core.nuts (nuts_code, level, name_bg, name_en, parent_code)
-SELECT o.nuts3, 3, o.name, o.name_en, o.nuts2
+INSERT INTO core.nuts (nuts_code, level, name_bg, label_bg, name_en, parent_code)
+SELECT o.nuts3, 3, o.name, CASE WHEN o.oblast = 'SFO' THEN 'София област' ELSE o.name END, o.name_en, o.nuts2
 FROM danni_src.ekatte_oblast o JOIN ops.load l USING (load_id)
 WHERE l.is_current
 ORDER BY o.nuts3
-ON CONFLICT (nuts_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, name_en = EXCLUDED.name_en, parent_code = EXCLUDED.parent_code
-WHERE (core.nuts.name_bg, core.nuts.name_en, core.nuts.parent_code) IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.name_en, EXCLUDED.parent_code);
+ON CONFLICT (nuts_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, label_bg = EXCLUDED.label_bg, name_en = EXCLUDED.name_en, parent_code = EXCLUDED.parent_code
+WHERE (core.nuts.name_bg, core.nuts.label_bg, core.nuts.name_en, core.nuts.parent_code)
+      IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.label_bg, EXCLUDED.name_en, EXCLUDED.parent_code);
 
-INSERT INTO core.oblast (oblast_code, name_bg, name_en, nuts3_code)
-SELECT o.oblast, o.name, o.name_en, o.nuts3
+INSERT INTO core.oblast (oblast_code, name_bg, label_bg, name_en, nuts3_code)
+SELECT o.oblast, o.name, CASE WHEN o.oblast = 'SFO' THEN 'София област' ELSE o.name END, o.name_en, o.nuts3
 FROM danni_src.ekatte_oblast o JOIN ops.load l USING (load_id)
 WHERE l.is_current
 ORDER BY o.oblast
-ON CONFLICT (oblast_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, name_en = EXCLUDED.name_en, nuts3_code = EXCLUDED.nuts3_code
-WHERE (core.oblast.name_bg, core.oblast.name_en, core.oblast.nuts3_code) IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.name_en, EXCLUDED.nuts3_code);
+ON CONFLICT (oblast_code) DO UPDATE SET name_bg = EXCLUDED.name_bg, label_bg = EXCLUDED.label_bg, name_en = EXCLUDED.name_en, nuts3_code = EXCLUDED.nuts3_code
+WHERE (core.oblast.name_bg, core.oblast.label_bg, core.oblast.name_en, core.oblast.nuts3_code)
+      IS DISTINCT FROM (EXCLUDED.name_bg, EXCLUDED.label_bg, EXCLUDED.name_en, EXCLUDED.nuts3_code);
 
 -- a municipality enters only with both codes: the one of EKATTE and the ЕИК from the reference
 INSERT INTO core.municipality (municipality_code, oblast_code, name_bg, name_en, eik, drawn_as_eik, center_ekatte)

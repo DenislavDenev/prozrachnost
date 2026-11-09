@@ -104,6 +104,11 @@ def test_place_builds_core_and_reconciles(conn, archive, tmp_path):
         JOIN core.nuts n1 ON n1.nuts_code = n2.parent_code WHERE s.ekatte = '02676' ''').fetchone() == (
         'гр.', 'Банско', 'Банско', '000024663', 'Благоевград', 'BG413', 'Югозападен', 'BG4')
     assert one(conn, "SELECT center_ekatte FROM core.municipality WHERE municipality_code = 'SOF46'") == '68134'
+    assert conn.execute("SELECT nuts_code, label_bg FROM core.nuts WHERE level = 1 OR nuts_code IN ('BG412', 'BG31') ORDER BY 1").fetchall() == [
+        ('BG3', 'Северна и Югоизточна България'), ('BG31', 'Северозападен'), ('BG4', 'Югозападна и Южна централна България'),
+        ('BG412', 'София област')]
+    assert conn.execute("SELECT oblast_code, name_bg, label_bg FROM core.oblast WHERE name_bg <> label_bg OR oblast_code = 'SOF' ORDER BY 1").fetchall() == [
+        ('SFO', 'София', 'София област'), ('SOF', 'София (столица)', 'София (столица)')]
     with pipeline.run(conn, 'danni', 'check') as r:
         assert pipeline.run_checks(conn, r) == []
     # four municipalities have their seat in a town outside their own territory; that is the source, not an error

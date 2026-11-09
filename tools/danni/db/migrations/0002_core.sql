@@ -29,6 +29,7 @@ CREATE TABLE core.nuts (
   nuts_code   text NOT NULL,
   level       smallint NOT NULL,
   name_bg     text NOT NULL,
+  label_bg    text NOT NULL,
   name_en     text,
   parent_code text,
   CONSTRAINT nuts_pk PRIMARY KEY (nuts_code),
@@ -37,10 +38,12 @@ CREATE TABLE core.nuts (
   CONSTRAINT nuts_parent_ck CHECK ((level = 0) = (parent_code IS NULL))
 );
 COMMENT ON TABLE core.nuts IS 'Статистическите райони по NUTS: държава (0), макрорайон (1), район (2), област (3).';
+COMMENT ON COLUMN core.nuts.label_bg IS 'Името за показване: без „район“ и кавичките, с които ЕКАТТЕ записва макрорайоните.';
 
 CREATE TABLE core.oblast (
   oblast_code text NOT NULL,
   name_bg     text NOT NULL,
+  label_bg    text NOT NULL,
   name_en     text,
   nuts3_code  text NOT NULL,
   CONSTRAINT oblast_pk PRIMARY KEY (oblast_code),
@@ -49,6 +52,7 @@ CREATE TABLE core.oblast (
   CONSTRAINT oblast_code_ck CHECK (oblast_code ~ '^[A-Z]{3}$')
 );
 COMMENT ON TABLE core.oblast IS 'Областите с кода им по НСИ (ЕКАТТЕ) и по NUTS 3.';
+COMMENT ON COLUMN core.oblast.label_bg IS 'Името за показване: като name_bg, освен „София област“ за SFO, която в ЕКАТТЕ е само „София“ и се бърка със столицата.';
 
 CREATE TABLE core.municipality (
   municipality_code text NOT NULL,
