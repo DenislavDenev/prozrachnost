@@ -1,7 +1,7 @@
 """Cuts the real daily ZIPs of "Колко струва" down to a few chains and a few dozen rows each, byte-exact lines.
 
 Not part of the tests: the cut files in kolkostruva/ are committed. To redo them, point ARCHIVE at the Наблюдател
-archive (`/opt/tender/arhiv/kolkostruva` on the server) and run `python tests/fixtures/make_fixtures.py`.
+archive (`/srv/prozrachnost/nablyudatel/kolkostruva` on the server) and run `python tests/fixtures/make_fixtures.py`.
 Every kept line is a line of the real file; for each chain the first 40 rows of the base day, one example of every
 odd flag, and every bad row of the day are kept, so the fixtures hold the dirt of the source, not hand-written rows.
 """
@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 from ingest import parse  # noqa: E402
 
-ARCHIVE = Path(os.environ.get("ARCHIVE", "/opt/tender/arhiv/kolkostruva"))
+ARCHIVE = Path(os.environ.get("ARCHIVE", "/srv/prozrachnost/nablyudatel/kolkostruva"))
 BASE = "2026-09-30"
 DAYS = ["2025-10-16", "2026-01-15", "2026-09-26", "2026-09-29", "2026-09-30", "2026-10-01"]
 # EIK -> why it is here
