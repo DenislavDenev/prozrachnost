@@ -274,6 +274,9 @@ def test_a_tool_role_cannot_open_a_dataset(conn):
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'ops.change_log', 'DELETE')") is False
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'core.org', 'INSERT')") is False
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'ops.load', 'INSERT')") is True
+    # a tool's tables point to the ledger and to the dimensions with foreign keys
+    for table in ('ops.load', 'ops.run', 'ops.raw_file', 'core.municipality', 'core.settlement', 'core.org'):
+        assert one(conn, "SELECT has_table_privilege('pz_ingest', %s, 'REFERENCES')", table) is True, table
 
 
 def test_to_eur_never_guesses(conn):
