@@ -1,0 +1,186 @@
+# The datasets, sources and indicators of Партии и пари (read into core.dataset, ops.source, core.indicator by migrate).
+# Whether a dataset may be distributed is not set here: ЕРИК states no licence, so none of them is.
+
+[[dataset]]
+dataset = "partii.donations"
+title_bg = "Дарения за предизборните кампании"
+description_bg = "Всяко дарение от регистъра на Сметната палата: избор, получател (партия, коалиция, инициативен комитет), дата, вид (парично или непарично), размер в евро и дали има декларация за произход на средствата. Дарителите са физически лица и не се назовават. Всеки прочит на регистъра се пази, така че се вижда какво е показвал на всеки ден."
+source_org = "Сметна палата, Единен публичен регистър по Изборния кодекс (ЕРИК)"
+source_url = "https://erik.bulnao.government.bg/"
+channel = "site-json"
+licence = "не е посочен"
+personal_data = "public-role"
+cadence = "всеки ден за шестте най-нови избора, в неделя за всички"
+tables = ["partii_src.election_row", "partii_src.page_fact", "partii_src.answer", "partii_src.participant_row", "partii_src.donation",
+          "partii.election", "partii.participant", "partii.participant_label", "partii.participant_money", "partii.observation", "partii.unmatched",
+          "partii.reading", "partii.donation", "partii.source_state", "partii.run_state",
+          "pub_partii.election", "pub_partii.participant", "pub_partii.participant_money", "pub_partii.unmatched", "pub_partii.reading", "pub_partii.donation",
+          "pub_partii.source_state", "pub_partii.health"]
+
+[[dataset]]
+dataset = "partii.candidates"
+title_bg = "Средства на кандидатите и на членовете на инициативни комитети"
+description_bg = "Парите и непаричните средства, които кандидатите и членовете на инициативните комитети са дали за собствената си кампания, по участник в изборите. Имената не се записват."
+source_org = "Сметна палата, ЕРИК"
+source_url = "https://erik.bulnao.government.bg/"
+channel = "site-json"
+licence = "не е посочен"
+personal_data = "public-role"
+cadence = "всеки ден за шестте най-нови избора, в неделя за всички"
+tables = ["partii_src.candidate_fund", "partii.candidate_fund", "pub_partii.candidate_fund"]
+
+[[dataset]]
+dataset = "partii.agencies"
+title_bg = "Агенции, с които работят участниците в изборите"
+description_bg = "Рекламните, социологическите и PR агенциите, които всеки участник е обявил, с ЕИК, където източникът го дава. Обявена агенция не означава платена сума: сумите са в отчетите."
+source_org = "Сметна палата, ЕРИК"
+source_url = "https://erik.bulnao.government.bg/"
+channel = "site-json"
+licence = "не е посочен"
+personal_data = "public-role"
+cadence = "всеки ден за шестте най-нови избора, в неделя за всички"
+tables = ["partii_src.agency_use", "partii.agency_use", "partii.agency", "pub_partii.agency_use", "pub_partii.agency"]
+
+[[dataset]]
+dataset = "partii.reports"
+title_bg = "Отчети за приходите и разходите след изборите"
+description_bg = "Обобщената справка на Сметната палата от отчетите на партиите, коалициите, инициативните комитети и местните коалиции: приходи по източник и разходи по вид, както са подадени. Отчетите за избори преди 01.01.2026 са в лева; до тях стои сумата в евро по 1,95583."
+source_org = "Сметна палата, ЕРИК"
+source_url = "https://erik.bulnao.government.bg/"
+channel = "file"
+licence = "не е посочен"
+personal_data = "public-role"
+cadence = "при всяко четене на избора; файлът се сравнява по съдържание"
+tables = ["partii_src.report_row", "partii_src.report_cell", "partii.report_row", "partii.report_cell", "partii.report_column", "partii.report_label",
+          "pub_partii.report_row", "pub_partii.report_cell", "pub_partii.report_column"]
+
+# The archive of Наблюдател reads ЕРИК once a day; the list of elections is looked at on every run, so it is the one
+# source with a staleness threshold: it says the archive is alive. A table of an election changes only when its
+# register does, so the tables have none. A held answer of a table is a problem after 8 days: the archive reads the
+# older elections only on Sunday, and only that read can confirm it.
+[[source]]
+source = "home"
+title_bg = "ЕРИК: списъкът на изборите (от архива)"
+url = "https://erik.bulnao.government.bg/"
+channel = "html"
+dataset = "partii.donations"
+cadence = "всеки ден"
+stale_after = "36 hours"
+
+[[source]]
+source = "page-participants"
+title_bg = "ЕРИК: брой участници по страницата на избора"
+url = "https://erik.bulnao.government.bg/Reports"
+channel = "html"
+dataset = "partii.donations"
+
+[[source]]
+source = "page-donation"
+title_bg = "ЕРИК: праг за декларация по страницата на избора"
+url = "https://erik.bulnao.government.bg/Reports/Donation"
+channel = "html"
+dataset = "partii.donations"
+
+[[source]]
+source = "participants"
+title_bg = "ЕРИК: списъци на участниците"
+url = "https://erik.bulnao.government.bg/Reports/GetParticipantsByElectionId"
+channel = "site-json"
+dataset = "partii.donations"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "donors"
+title_bg = "ЕРИК: дарители"
+url = "https://erik.bulnao.government.bg/Reports/GetDonorsByElectionId"
+channel = "site-json"
+dataset = "partii.donations"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "candidates"
+title_bg = "ЕРИК: средства на кандидати и членове на инициативни комитети"
+url = "https://erik.bulnao.government.bg/Reports/GetCandidateDeclarations"
+channel = "site-json"
+dataset = "partii.candidates"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "agencies"
+title_bg = "ЕРИК: агенции"
+url = "https://erik.bulnao.government.bg/Reports/GetAgencies"
+channel = "site-json"
+dataset = "partii.agencies"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "results"
+title_bg = "ЕРИК: проверка на доходите (само брой и суми)"
+url = "https://erik.bulnao.government.bg/Reports/GetResultsByElectionId"
+channel = "site-json"
+dataset = "partii.donations"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "report"
+title_bg = "ЕРИК: обобщена справка от отчетите след изборите"
+url = "https://erik.bulnao.government.bg/Reports/AfterElectionExport/"
+channel = "file"
+dataset = "partii.reports"
+hold_alert_after = "8 days"
+
+[[indicator]]
+indicator_code = "partii.donations.money"
+dataset = "partii.donations"
+title_bg = "Парични дарения"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сборът на колоната „Размер“ на даренията за избора или участника. За целия избор е равен на TotalDonationPrice на източника."
+
+[[indicator]]
+indicator_code = "partii.donations.in_kind"
+dataset = "partii.donations"
+title_bg = "Непарични дарения"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сборът на колоната „Стойност“ (стоки, услуги, материали). Не се събира с паричните в едно число. За целия избор е равен на TotalDonationValue."
+
+[[indicator]]
+indicator_code = "partii.donations.count"
+dataset = "partii.donations"
+title_bg = "Брой дарения"
+unit_code = "count"
+kind = "count"
+definition_bg = "Броят редове в регистъра на дарителите. За целия избор е равен на recordsTotal. Един човек може да има няколко реда; хора не се броят."
+
+[[indicator]]
+indicator_code = "partii.candidates.money"
+dataset = "partii.candidates"
+title_bg = "Парични средства от кандидати"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сборът на паричните средства, предоставени от кандидати и членове на инициативни комитети (totalDonationsMoney)."
+
+[[indicator]]
+indicator_code = "partii.candidates.in_kind"
+dataset = "partii.candidates"
+title_bg = "Непарични средства от кандидати"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сборът на непаричните средства от кандидати и членове на инициативни комитети (totalDonationsNoMoney)."
+
+[[indicator]]
+indicator_code = "partii.reports.income"
+dataset = "partii.reports"
+title_bg = "Набрани средства по отчет"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Редът „Общ размер на набраните средства за финансиране на предизборната кампания“ от отчета на участника, както е подаден; в евро по 1,95583, когато отчетът е в лева."
+
+[[indicator]]
+indicator_code = "partii.reports.expense"
+dataset = "partii.reports"
+title_bg = "Разходи по отчет"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Редът „Общ размер на разходите, извършени по време на предизборната кампания“ от отчета на участника, както е подаден."

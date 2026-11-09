@@ -1,0 +1,8 @@
+{% from "_macros.html" import help, th %}
+<div class="scroll"><table class="sortable" id="t-el"><thead><tr><th>Избор</th><th>Дата</th><th class="n">Дарения, брой</th>{{ th('Парични, €', 'money', 'n') }}{{ th('Непарични, €', 'in_kind', 'n') }}{{ th('От кандидати, парични, €', 'candidate', 'n') }}<th class="n">Получатели</th></tr></thead><tbody>
+{% for x in elections %}<tr><td><a class="l" href="/izbori/{{ x.erik_id }}">{{ x.title }}</a>{% if x.gone_at %} <span class="badge warn">вече не е в регистъра</span>{% endif %}</td>
+  <td data-v="{{ x.election_day or '' }}" class="nowrap">{{ x.election_day|date }}</td>
+  <td class="n" data-v="{{ x.donations if x.donations is not none else '' }}">{{ x.donations if x.donations is not none else 'няма данни' }}</td>
+  <td class="n num" data-v="{{ x.money if x.money is not none else '' }}">{{ x.money|num }}</td><td class="n num" data-v="{{ x.in_kind if x.in_kind is not none else '' }}">{{ x.in_kind|num }}</td>
+  <td class="n num" data-v="{{ x.candidate_money if x.candidate_money is not none else '' }}">{{ x.candidate_money|num }}</td>
+  <td class="n" data-v="{{ x.recipients if x.donations is not none else '' }}">{{ x.recipients if x.donations is not none else 'няма данни' }}</td></tr>{% endfor %}</tbody></table></div>

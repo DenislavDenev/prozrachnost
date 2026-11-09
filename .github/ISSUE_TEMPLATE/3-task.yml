@@ -35,6 +35,7 @@ body:
         - Субсидии и помощи
         - Закони и решения
         - Престъпност и пожари
+        - Партии и пари
     validations:
       required: true
   - type: textarea

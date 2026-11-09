@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, src %}
+{% block title %}Агенции{% endblock %}
+{% block main %}
+<h1>Агенции в кампаниите</h1>
+<p class="lede"><b>{{ rows|length }}</b> агенции с ЕИК, обявени от участниците в изборите {{ help('agency', 'обявени агенции') }}. Обявяването не показва платена сума.</p>
+<details class="explain"><summary>С прости думи</summary><p>Всеки участник в избори обявява с кои рекламни, социологически и PR агенции работи. Тук една агенция е един ЕИК, събран от всички избори. „Участници“ е броят регистрации, които са я обявили. Например агенция, обявена от една партия в три избора, има 3 участници. Агенциите без ЕИК или с ЕИК с грешна контролна цифра не са събрани по фирма и са в отделен списък долу.</p></details>
+<form class="ctl" method="get" action="/agencii"><label>Име или ЕИК <input type="search" name="q" value="{{ q }}" aria-label="Търси агенция по име или ЕИК"></label><button>Търси</button></form>
+<section class="p"><div class="scroll tall"><table class="sortable" id="t-ag"><thead><tr><th>Агенция</th><th>ЕИК</th><th class="n">Участници</th><th class="n">Избори</th><th class="n">Редове</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><a class="l" href="/agencii/{{ r.eik }}">{{ r.name }}</a>{% if r.names > 1 %} <span class="badge">{{ r.names }} изписвания</span>{% endif %}</td><td>{{ r.eik }}</td><td class="n">{{ r.participants }}</td><td class="n">{{ r.elections }}</td><td class="n">{{ r.rows }}</td></tr>
+  {% else %}<tr><td colspan="5">няма агенция с това име или ЕИК</td></tr>{% endfor %}</tbody></table></div>
+  {{ src(None, [('CSV', '/export-agencii.csv'), ('JSON', '/export-agencii.json')]) }}</section>
+{% if unmatched %}<section class="p"><h2>Без валиден ЕИК</h2><div class="sub">{{ unmatched|length }} изписвания: източникът не дава ЕИК (по-старите избори) или контролната цифра е грешна; не се свързват с фирма</div>
+  <input type="search" placeholder="Търси" aria-label="Търси в агенциите без ЕИК" data-filter="t-un">
+  <div class="scroll tall"><table class="sortable" id="t-un"><thead><tr><th>ЕИК и име, както са в регистъра</th><th class="n">Редове</th><th>Причина</th></tr></thead><tbody>
+  {% for r in unmatched %}<tr><td>{{ r.key }}</td><td class="n">{{ r.n }}</td><td>{{ r.reason }}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+{% endblock %}

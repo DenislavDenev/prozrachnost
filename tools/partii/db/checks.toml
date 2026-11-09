@@ -1,0 +1,138 @@
+# The quality rules of Партии и пари (read into ops.check_rule by migrate). Every rule returns (expected, actual).
+# The reconciliations look at EVERY accepted reading, not only at the newest one.
+
+[[check]]
+name = "donations_reconcile"
+title_bg = "Четения на дарителите, чиито записани редове или суми не са броячът и сумите на източника (парични и непарични поотделно)"
+kind = "reconcile"
+dataset = "partii.donations"
+sql = """SELECT 0, count(*) FROM partii.reading r CROSS JOIN LATERAL (
+  SELECT count(*) AS n, coalesce(sum(money), 0) AS m, coalesce(sum(in_kind), 0) AS v FROM partii.donation d WHERE d.load_id = r.load_id) x
+WHERE r.tbl = 'donors' AND (x.n <> r.records_total OR abs(x.m - r.total_money) > 0.000001 OR abs(x.v - r.total_in_kind) > 0.000001)"""
+
+[[check]]
+name = "candidates_reconcile"
+title_bg = "Четения на средствата на кандидати, чиито записани редове или суми не са броячът и сумите на източника"
+kind = "reconcile"
+dataset = "partii.candidates"
+sql = """SELECT 0, count(*) FROM partii.reading r CROSS JOIN LATERAL (
+  SELECT count(*) AS n, coalesce(sum(money), 0) AS m, coalesce(sum(in_kind), 0) AS v FROM partii.candidate_fund d WHERE d.load_id = r.load_id) x
+WHERE r.tbl = 'candidates' AND (x.n <> r.records_total OR abs(x.m - r.total_money) > 0.000001 OR abs(x.v - r.total_in_kind) > 0.000001)"""
+
+[[check]]
+name = "agencies_count"
+title_bg = "Четения на агенциите, чиито записани редове не са броячът на източника"
+kind = "reconcile"
+dataset = "partii.agencies"
+sql = """SELECT 0, count(*) FROM partii.reading r CROSS JOIN LATERAL (SELECT count(*) AS n FROM partii.agency_use d WHERE d.load_id = r.load_id) x
+WHERE r.tbl = 'agencies' AND x.n <> r.records_total"""
+
+[[check]]
+name = "income_check_reconcile"
+title_bg = "Четения на проверката на доходите, чиито брой и суми не се връзват"
+kind = "reconcile"
+dataset = "partii.donations"
+sql = """SELECT 0, count(*) FROM partii.reading r
+WHERE r.tbl = 'results' AND (r.checked IS DISTINCT FROM r.records_total OR r.compliant > r.checked OR abs(r.total_money + r.total_in_kind - r.total_sum) > 0.00001)"""
+
+[[check]]
+name = "report_cells"
+title_bg = "Справки от отчетите, в които участник няма клетка за всяка колона"
+kind = "reconcile"
+dataset = "partii.reports"
+sql = """SELECT 0, count(*) FROM partii.reading r CROSS JOIN LATERAL (
+  SELECT (SELECT count(*) FROM partii.report_row x WHERE x.load_id = r.load_id) AS n, (SELECT count(*) FROM partii.report_cell x WHERE x.load_id = r.load_id) AS cells,
+         (SELECT count(*) FROM partii.report_column k WHERE k.layout = (ARRAY['party', 'coalition', 'committee', 'local_coalition'])[r.variant::int + 1]) AS cols) x
+WHERE r.tbl = 'report' AND (x.n <> r.records_total OR x.cells <> x.n * x.cols)"""
+
+[[check]]
+name = "no_person_named"
+title_bg = "Дарения с име на дарител, който не е юридическо лице"
+kind = "not_null"
+dataset = "partii.donations"
+sql = "SELECT 0, count(*) FROM partii.donation WHERE donor_name IS NOT NULL AND donor_kind <> 'legal'"
+
+[[check]]
+name = "money_totals"
+title_bg = "Избори, за които даренията по участници не дават брояча и двете суми на източника"
+kind = "reconcile"
+dataset = "partii.donations"
+tolerance = 0
+sql = """SELECT 0, count(*) FROM partii.as_of('infinity') s
+LEFT JOIN (SELECT p.erik_id, sum(m.donation_count) AS n, sum(m.donated_money) AS m, sum(m.donated_in_kind) AS v
+           FROM partii.participant_money m JOIN partii.participant p USING (participant_id) GROUP BY p.erik_id) g USING (erik_id)
+WHERE s.tbl = 'donors' AND (coalesce(g.n, 0) <> s.records_total OR abs(coalesce(g.m, 0) - s.total_money) > 0.01 * greatest(s.records_total, 1)
+                            OR abs(coalesce(g.v, 0) - s.total_in_kind) > 0.01 * greatest(s.records_total, 1))"""
+
+[[check]]
+name = "agency_eik"
+title_bg = "Агенции в чистата таблица без ЕИК с вярна контролна цифра"
+kind = "fk"
+dataset = "partii.agencies"
+sql = "SELECT 0, count(*) FROM partii.agency a WHERE NOT EXISTS (SELECT 1 FROM partii.agency_use u WHERE u.agency_eik = a.eik AND u.is_eik_valid)"
+
+[[check]]
+name = "observation_original"
+title_bg = "Наблюдения в евро без оригинал или с непозната оригинална единица"
+kind = "not_null"
+dataset = "partii.donations"
+sql = "SELECT 0, count(*) FROM partii.observation WHERE unit_code = 'EUR' AND (amount_source IS NULL OR unit_source NOT IN ('EUR', 'BGN'))"
+
+[[check]]
+name = "report_currency"
+title_bg = "Избори с отчети, чиято валута не е установена (сумите им се показват само в оригинал)"
+kind = "reconcile"
+dataset = "partii.reports"
+sql = """SELECT 0, count(*) FROM partii.election e WHERE e.report_currency IS NULL
+  AND EXISTS (SELECT 1 FROM partii.as_of('infinity') s WHERE s.erik_id = e.erik_id AND s.tbl = 'report' AND s.records_total > 0)"""
+
+[[check]]
+name = "last_answer_valid"
+title_bg = "Таблици, чийто последен отговор е отхвърлен като невалиден (показваното е по-старо от източника)"
+kind = "parser"
+dataset = "partii.donations"
+sql = """SELECT 0, count(*) FROM (SELECT DISTINCT ON (source, ref) status FROM ops.load
+  WHERE tool = 'partii' AND status IN ('loaded', 'confirmed', 'rejected') ORDER BY source, ref, load_id DESC) x WHERE status = 'rejected'"""
+
+[[check]]
+name = "agencies_without_company"
+title_bg = "Редове за агенции без ЕИК с вярна контролна цифра (на 10 000 реда)"
+kind = "unmatched"
+gating = false
+tolerance = 1500
+dataset = "partii.agencies"
+sql = """SELECT 0, coalesce(round(10000.0 * count(*) FILTER (WHERE u.is_eik_valid IS NOT TRUE) / nullif(count(*), 0)), 0)
+FROM partii.as_of('infinity') s JOIN partii.agency_use u USING (load_id) WHERE s.tbl = 'agencies'"""
+
+# What is published is what the clean side says: run by pipeline.publish inside its transaction; a difference rolls the
+# publication back and the pages keep the version they had.
+
+[[check]]
+name = "published_readings"
+title_bg = "Публикуваните четения не са приетите четения"
+kind = "publish"
+dataset = "partii.donations"
+sql = "SELECT (SELECT count(*) FROM partii.reading), (SELECT count(*) FROM pub_partii.reading)"
+
+[[check]]
+name = "published_donations"
+title_bg = "Публикуваните дарения не дават сумите на приетите четения (парични и непарични заедно само за тази сверка)"
+kind = "publish"
+dataset = "partii.donations"
+tolerance = 0.000001
+sql = """SELECT (SELECT coalesce(sum(total_money + total_in_kind), 0) FROM partii.reading WHERE tbl = 'donors'),
+       (SELECT coalesce(sum(money + in_kind), 0) FROM pub_partii.donation)"""
+
+[[check]]
+name = "published_donation_rows"
+title_bg = "Публикуваните редове на дарения не са броячът на приетите четения"
+kind = "publish"
+dataset = "partii.donations"
+sql = "SELECT (SELECT coalesce(sum(records_total), 0) FROM partii.reading WHERE tbl = 'donors'), (SELECT count(*) FROM pub_partii.donation)"
+
+[[check]]
+name = "published_no_person"
+title_bg = "Публикувано дарение с име на дарител, който не е юридическо лице"
+kind = "publish"
+dataset = "partii.donations"
+sql = "SELECT 0, count(*) FROM pub_partii.donation WHERE donor_name IS NOT NULL AND donor_kind <> 'legal'"

@@ -1,0 +1,7 @@
+{% from "_macros.html" import help %}
+<input type="search" placeholder="Търси ред" aria-label="Търси ред от отчета" data-filter="t-lines">
+<div class="scroll"><table class="sortable state-budget" id="t-lines"><thead><tr><th>Ред от отчета</th><th class="n">Както е подаден{{ ', лв.' if lines[0].currency == 'BGN' else ', €' if lines[0].currency == 'EUR' else '' }}</th><th class="n">В евро, € {{ help('report_currency', 'валута на отчета') }}</th></tr></thead><tbody>
+{% for r in lines %}<tr class="{{ 'budget-summary' if r.depth == 0 else 'budget-subtotal' if r.has_parts else 'budget-part' }}" style="--depth:{{ [r.depth - 1, 0]|max }}"><td data-v="{{ '%03d'|format(r.col) }}">{{ r.label }} <button type="button" class="help-trigger" data-help="row-{{ loop.index0 }}" aria-label="Обяснение: {{ r.label }}">?</button>
+  <span class="row-role">{{ 'Обобщен раздел' if r.depth == 0 else 'Обобщен ред' if r.has_parts else 'Включен подред' if r.parent else 'Ред' }} · {{ 'приходи' if r.section == 'income' else 'разходи' if r.section == 'expense' else 'общо' }}</span></td>
+  <td class="n num" data-v="{{ r.amount if r.amount is not none else '' }}">{% if r.amount is none %}<span class="missing">няма подадено</span>{% else %}{{ r.amount|num }}{% endif %}</td>
+  <td class="n num" data-v="{{ r.amount_eur if r.amount_eur is not none else '' }}">{% if r.amount is none %}<span class="missing">няма подадено</span>{% else %}{{ r.amount_eur|num }}{% endif %}</td></tr>{% endfor %}</tbody></table></div>

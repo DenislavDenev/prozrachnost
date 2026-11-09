@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, src %}
+{% block title %}Избори{% endblock %}
+{% block main %}
+<h1>Избори</h1>
+<p class="lede">В регистъра има <b>{{ elections|length }} избора</b>{% if elections %}, от {{ (elections|last).election_day|date }} до {{ (elections|first).election_day|date }}{% endif %}. Регистърът пази един избор само до следващия от същия вид; ние пазим всеки прочит.</p>
+<details class="explain"><summary>С прости думи</summary><p>Всеки ред е един избор: президентски, парламентарен, европейски, местен, частичен или нов. За всеки показваме колко дарения са обявени и за колко пари. Парите и безплатните стоки и услуги са отделни колони ({{ help('in_kind', 'непарични дарения') }}). Например при частичен избор за кмет на едно село често няма нито едно дарение: тогава пише 0, защото регистърът е прочетен и е празен.</p></details>
+<section class="p"><input type="search" placeholder="Търси избор" aria-label="Търси избор" data-filter="t-el">
+  {% include "_elections.html" %}
+  {{ src(None, [('CSV', '/export-izbori.csv'), ('JSON', '/export-izbori.json')]) }}</section>
+{% endblock %}

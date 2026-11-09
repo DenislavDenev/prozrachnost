@@ -27,3 +27,27 @@ dataset = "naselenie.grao"
 checked_on = 2026-10-02
 display = true
 note = "public information of a state body, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "partii.donations"
+checked_on = 2026-11-10
+display = true
+note = "public register of a state body (the National Audit Office), no licence stated: shown with a link to the source, not handed out; no names of donors are kept"
+
+[[licence]]
+dataset = "partii.candidates"
+checked_on = 2026-11-10
+display = true
+note = "public register of a state body (the National Audit Office), no licence stated: shown with a link to the source, not handed out; no names of donors are kept"
+
+[[licence]]
+dataset = "partii.agencies"
+checked_on = 2026-11-10
+display = true
+note = "public register of a state body (the National Audit Office), no licence stated: shown with a link to the source, not handed out; no names of donors are kept"
+
+[[licence]]
+dataset = "partii.reports"
+checked_on = 2026-11-10
+display = true
+note = "public register of a state body (the National Audit Office), no licence stated: shown with a link to the source, not handed out; no names of donors are kept"

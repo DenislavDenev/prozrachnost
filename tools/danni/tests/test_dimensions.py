@@ -197,9 +197,9 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
 
 
 def test_licence_list_is_the_only_switch(conn, monkeypatch, tmp_path):
-    assert run.licences(conn) == 4
+    assert run.licences(conn) == 8
     assert conn.execute('SELECT dataset, is_distributable FROM core.dataset WHERE is_displayable ORDER BY 1').fetchall() == [
-        ('danni.catalog', True), ('danni.ekatte', False), ('danni.municipality', False)]   # naselenie.grao is not registered here
+        ('danni.catalog', True), ('danni.ekatte', False), ('danni.municipality', False)]   # the datasets of naselenie and partii are not registered here
     conn.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = '2026-01-01' WHERE dataset = 'danni.ekatte'")
     conn.execute("UPDATE core.dataset SET is_displayable = true WHERE dataset = 'danni.org'")
     run.licences(conn)   # not in the list: closed again
