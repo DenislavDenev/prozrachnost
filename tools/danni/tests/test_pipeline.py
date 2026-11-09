@@ -279,6 +279,34 @@ def test_a_tool_role_cannot_open_a_dataset(conn):
         assert one(conn, "SELECT has_table_privilege('pz_ingest', %s, 'REFERENCES')", table) is True, table
 
 
+def test_a_tool_role_can_do_its_work_and_nothing_more(conn):
+    """The same statements a tool runs, as a role that is only a member of pz_ingest and owns only its schema.
+    The other tests run as the owner of the database, who may do anything; this one is the proof of the grants."""
+    if not one(conn, 'SELECT rolsuper OR rolcreaterole FROM pg_roles WHERE rolname = current_user'):
+        pytest.skip('needs a role that can create roles (CI)')
+    conn.execute('DROP SCHEMA IF EXISTS demo_src CASCADE; DROP ROLE IF EXISTS pz_probe')
+    conn.execute('CREATE ROLE pz_probe IN ROLE pz_ingest; CREATE SCHEMA demo_src AUTHORIZATION pz_probe')
+    conn.execute("INSERT INTO ops.source (tool, source, title_bg, channel) VALUES ('demo','list','Списък','file')")
+    conn.execute('SET ROLE pz_probe')
+    try:
+        conn.execute("""CREATE TABLE demo_src.item (load_id bigint NOT NULL REFERENCES ops.load, key text NOT NULL, name text, n integer,
+            place text REFERENCES core.municipality, PRIMARY KEY (load_id, key))""")
+        conn.execute('CREATE TEMP TABLE probe_stage (k text) ON COMMIT DROP')
+        with pipeline.run(conn, 'demo', 'list') as r:
+            assert pipeline.load(conn, r, 'list', 'x', ROWS, write, current=current).status == 'loaded'
+            assert pipeline.run_checks(conn, r) == []
+        assert pipeline.freshness(conn, 'demo') == []
+        for forbidden in ('DELETE FROM ops.change_log', 'TRUNCATE ops.load CASCADE', "UPDATE core.municipality SET name_bg = 'x'",
+                          "INSERT INTO core.org (eik, name, source) VALUES ('000024663', 'x', 'tr')",
+                          "UPDATE core.dataset SET is_distributable = true, licence_checked_on = now()",
+                          'CREATE TABLE core.mine (x int)', 'CREATE VIEW api_v1.mine AS SELECT 1 AS x', 'CREATE SCHEMA other'):
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(forbidden)
+    finally:
+        conn.execute('RESET ROLE')
+        conn.execute('DROP SCHEMA IF EXISTS demo_src CASCADE; DROP OWNED BY pz_probe; DROP ROLE pz_probe')
+
+
 def test_to_eur_never_guesses(conn):
     q = "SELECT core.to_eur(%s::numeric, %s, %s)"
     assert str(one(conn, q, 195.583, 'BGN', dt.date(2020, 1, 1))) == '100.00'
