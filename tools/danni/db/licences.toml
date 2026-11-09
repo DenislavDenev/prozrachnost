@@ -1,0 +1,13 @@
+# The only place that says a dataset may be distributed through the public API.
+# Each entry follows a source that the licence list of the project marks as allowed. Applied by
+# `python -m ingest.run --step migrate` of danni; a tool cannot set this for itself.
+#
+# [[licence]]
+# dataset = "byudzhet.kfp"
+# checked_on = 2026-10-02
+# note = "data.egov.bg, terms 1 (CC0)"
+
+[[licence]]
+dataset = "danni.catalog"
+checked_on = 2026-11-10
+note = "our own description of the datasets, CC BY 4.0"

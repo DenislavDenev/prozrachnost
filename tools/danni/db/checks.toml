@@ -1,0 +1,48 @@
+# The quality rules of the shared dimensions. Each query returns one row: expected, actual.
+# A rule without sql is computed in the code and recorded with pipeline.record_check().
+
+[[check]]
+name = "api_licence"
+title_bg = "Изгледите за API-то стъпват само на набори с право на разпространение"
+kind = "licence"
+sql = "SELECT 0, count(*) FROM core.api_licence_violation"
+
+[[check]]
+name = "settlement_count_matches_ekatte"
+title_bg = "Действащите населени места в core са колкото в последния файл на ЕКАТТЕ"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM danni_src.ekatte_settlement s JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM core.settlement WHERE gone_at IS NULL)"
+
+[[check]]
+name = "municipality_count_matches_ekatte"
+title_bg = "Общините в core са колкото в последния файл на ЕКАТТЕ"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM danni_src.ekatte_municipality m JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM core.municipality WHERE gone_at IS NULL)"
+
+[[check]]
+name = "municipality_has_center"
+title_bg = "Центърът на всяка община е населено място от ЕКАТТЕ"
+kind = "fk"
+sql = "SELECT 0, count(*) FROM core.municipality m LEFT JOIN core.settlement s ON s.ekatte = m.center_ekatte WHERE s.ekatte IS NULL"
+
+[[check]]
+name = "municipality_eik_is_buyer"
+title_bg = "ЕИК на всяка община е на възложител с думата „община“ в Тендер"
+kind = "reconcile"
+gating = false
+
+[[check]]
+name = "org_count_matches_tender"
+title_bg = "Организациите в core са колкото различните валидни ЕИК в Тендер"
+kind = "reconcile"
+
+[[check]]
+name = "org_invalid_eik"
+title_bg = "Редове в Тендер с ЕИК, който не минава контролната цифра (на 10 000 реда)"
+kind = "unmatched"
+tolerance = 150
+
+[[check]]
+name = "org_buyer_valid_matches_tender"
+title_bg = "Възложителите с валиден ЕИК по нашата проверка са колкото по проверката на Тендер"
+kind = "reconcile"
