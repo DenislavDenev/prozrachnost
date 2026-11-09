@@ -1,0 +1,47 @@
+# The datasets and sources of Население. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be distributed is decided only in tools/danni/db/licences.toml.
+
+[[dataset]]
+dataset = "naselenie.grao"
+title_bg = "Адресни регистрации по общини и населени места"
+description_bg = "Брой на лицата с постоянен и с настоящ адрес по таблиците на ГРАО. Това е адресна регистрация, не преброяване."
+source_org = "Главна дирекция ГРАО, МРРБ"
+source_url = "https://www.grao.bg/tables.html"
+channel = "file"
+licence = "не е посочен"
+cadence = "месечно по общини; тримесечно и годишно по населени места"
+tables = ["naselenie.population", "naselenie.settlement_population", "naselenie_src.grao_catalog", "naselenie_src.grao_file", "naselenie_src.grao_row"]
+
+[[source]]
+source = "grao-catalog"
+title_bg = "Каталогът на ГРАО"
+url = "https://www.grao.bg/tables.html"
+channel = "html"
+dataset = "naselenie.grao"
+cadence = "всеки ден"
+stale_after = "36 hours"
+
+[[source]]
+source = "grao"
+title_bg = "Таблиците на ГРАО"
+url = "https://www.grao.bg/tna/"
+channel = "file"
+dataset = "naselenie.grao"
+cadence = "всеки ден се четат текущите таблици"
+stale_after = "36 hours"
+
+[[indicator]]
+indicator_code = "naselenie.permanent"
+dataset = "naselenie.grao"
+title_bg = "Регистрирани по постоянен адрес"
+unit_code = "person"
+kind = "stock"
+definition_bg = "Брой на лицата с постоянен адрес в общината или населеното място към датата на таблицата."
+
+[[indicator]]
+indicator_code = "naselenie.current"
+dataset = "naselenie.grao"
+title_bg = "Регистрирани по настоящ адрес"
+unit_code = "person"
+kind = "stock"
+definition_bg = "Брой на лицата с настоящ адрес в общината или населеното място към датата на таблицата."

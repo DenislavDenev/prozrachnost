@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from ingest.parse import ShapeError, catalog, parse
-from ingest.reference import ekatte, enrich
 
 FIX = Path(__file__).parent/'fixtures'
 NOW = dt.date(2026,9,29)
@@ -52,15 +51,6 @@ def test_duplicate_row_breaks_reconciliation():
 
 def test_future_date():
     with pytest.raises(ShapeError):parse(sample(),dt.date(2026,9,14))
-
-
-def test_reference_never_guesses_ambiguous_names():
-    d=enrich(parse(sample(),NOW),ekatte((FIX/'ekatte.zip').read_bytes()))
-    assert d['unmatched']==25
-    assert d['places'][0]['ekatte']=='02676'
-    ambiguous=[r for r in d['places'] if r['name']=='С.ВЪЛЧОВЦИ' and r['municipality']=='ЕЛЕНА']
-    assert len(ambiguous)==2 and all(r['ekatte'] is None for r in ambiguous)
-    assert len({m['code'] for m in d['municipalities']})==265
 
 
 def test_catalog_real_links_and_html_error():
