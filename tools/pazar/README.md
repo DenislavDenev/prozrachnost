@@ -22,7 +22,7 @@ FastAPI, Jinja, Postgres 17. Булмаг не е част от инструме
 `build` строи всеки непостроен ден от архива и отказва архив с последно успешно четене преди над 30 часа; тежките стъпки
 вървят под общото заключване `/run/lock/prozrachnost-heavy.lock` (виж частното репо).
 
-**Настройки.** `PAZAR_DSN`, `PAZAR_DATA`, `PAZAR_ARCHIVE` (по подразбиране `/opt/tender/arhiv`), `PAZAR_FEEDBACK`, `HUB_URL`.
+**Настройки.** `PAZAR_DSN`, `PAZAR_DATA`, `PAZAR_ARCHIVE` (по подразбиране `/srv/prozrachnost/nablyudatel`), `PAZAR_FEEDBACK`, `HUB_URL`.
 Уеб: `uvicorn app.main:app --port 8023`.
 
 **Тестове.** `PAZAR_TEST_DSN=dbname=pazar_test python -m pytest -q` (разрушителни: само в база с „test“ в името) и

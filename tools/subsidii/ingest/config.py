@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DSN = os.environ.get("SUBSIDII_DSN", "dbname=subsidii")
 DATA = Path(os.environ.get("SUBSIDII_DATA", str(ROOT / "data")))
 # the archive of Наблюдател: the bronze layer of this tool. Nothing is downloaded here, the source is never asked.
-ARCHIVE = Path(os.environ.get("SUBSIDII_ARCHIVE", "/opt/tender/arhiv"))
+ARCHIVE = Path(os.environ.get("SUBSIDII_ARCHIVE", "/srv/prozrachnost/nablyudatel"))
 USER_AGENT = "Prozrachnost/subsidii (+https://github.com/DenislavDenev/prozrachnost)"
 LOCK = Path("/run/lock/prozrachnost-heavy.lock")
 

@@ -30,7 +30,7 @@ Postgres 17. Порт 8019.
 **Страници.** `/` табло, `/karta` (по области), `/vidove` (видове, със сравнение на две години при същия шаблон), `/oblasti`,
 `/oblasti/<код>`, `/pozhari`, `/sources`, `/sources.json`, `/how`. Всяка таблица има `.csv` и `.json` със същия обхват.
 
-**Настройки.** `SIGURNOST_DSN`, `SIGURNOST_DATA`, `SIGURNOST_ARCHIVE` (по подразбиране `/opt/tender/arhiv`),
+**Настройки.** `SIGURNOST_DSN`, `SIGURNOST_DATA`, `SIGURNOST_ARCHIVE` (по подразбиране `/srv/prozrachnost/nablyudatel`),
 `SIGURNOST_FEEDBACK`, `HUB_URL`, `PATNA_URL`. Уеб: `uvicorn app.main:app --port 8019`.
 
 **Тестове.** `SIGURNOST_TEST_DSN=dbname=sigurnost_test python -m pytest -q` (разрушителни: само в база с „test“ в името) и

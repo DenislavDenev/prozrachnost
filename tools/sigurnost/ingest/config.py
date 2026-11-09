@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DSN = os.environ.get("SIGURNOST_DSN", "dbname=sigurnost")
 DATA = Path(os.environ.get("SIGURNOST_DATA", str(ROOT / "data")))
 # the archive of Наблюдател is the bronze layer of this tool. Nothing is downloaded here: data.egov.bg is read by the archive only.
-ARCHIVE = Path(os.environ.get("SIGURNOST_ARCHIVE", "/opt/tender/arhiv"))
+ARCHIVE = Path(os.environ.get("SIGURNOST_ARCHIVE", "/srv/prozrachnost/nablyudatel"))
 USER_AGENT = "Prozrachnost/sigurnost (+https://github.com/DenislavDenev/prozrachnost)"
 LOCK = Path("/run/lock/prozrachnost-heavy.lock")
 

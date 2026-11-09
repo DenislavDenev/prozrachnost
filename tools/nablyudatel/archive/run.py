@@ -56,7 +56,7 @@ def run(store, names, full=False, budget=3000):
 
 
 def main(argv):
-    store = Store(os.environ.get("ARHIV_DIR", "/opt/tender/arhiv"))
+    store = Store(os.environ.get("ARHIV_DIR", "/srv/prozrachnost/nablyudatel"))
     if argv[:1] == ["freshness"]:
         problems = freshness(store.all_states())
         print(json.dumps({"step": "freshness", "ok": not problems, "problems": problems}, ensure_ascii=False))

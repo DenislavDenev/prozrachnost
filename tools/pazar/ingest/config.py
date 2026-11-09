@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DSN = os.environ.get("PAZAR_DSN", "dbname=pazar")
 DATA = Path(os.environ.get("PAZAR_DATA", str(ROOT / "data")))
 # the archive of Наблюдател: the bronze layer of this tool. Nothing is downloaded again.
-ARCHIVE = Path(os.environ.get("PAZAR_ARCHIVE", "/opt/tender/arhiv"))
+ARCHIVE = Path(os.environ.get("PAZAR_ARCHIVE", "/srv/prozrachnost/nablyudatel"))
 USER_AGENT = "Prozrachnost/pazar (+https://github.com/DenislavDenev)"
 FIRST_DAY = "2025-10-16"
 LOCK = Path("/run/lock/prozrachnost-heavy.lock")

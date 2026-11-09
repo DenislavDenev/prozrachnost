@@ -1,4 +1,4 @@
-"""The bronze layer: the files of the Наблюдател archive (/opt/tender/arhiv/egov/<set>/<resource>/<version>.<sha12>.json).
+"""The bronze layer: the files of the Наблюдател archive (/srv/prozrachnost/nablyudatel/egov/<set>/<resource>/<version>.<sha12>.json).
 
 This tool only reads them, as a member of the archive's group; it refuses an archive older than STALE_HOURS (the archive
 reads data.egov.bg once a day) and a file whose content does not match the sha256 prefix in its name.
