@@ -29,6 +29,7 @@ ROLES = [  # eik, field, role, kind, holder, name, from
     (B, "00070", "manager", "person", P3, "МАРИЯ ПЕТРОВА ИВАНОВА", "2015-01-01"),
     (D, "00190", "partner", "entity", A, "А ООД", "2019-01-01"),                     # a company holds a share: not a person
     (D, "00070", "manager", "person", f"local:{D}:JOHN SMITH", "JOHN SMITH", "2016-01-01"),
+    (D, "00190", "partner", "person", f"local:{D}:JOHN SMITH", "JOHN  SMYTH", "2017-01-01"),   # the same holder, written another way
 ]
 
 
@@ -87,7 +88,9 @@ def test_people_are_shown_only_in_entities_with_public_money_and_under_a_token_o
     fill(conn)
     build(conn)
     # the ingest side holds every role and every person
-    assert one(conn, "SELECT count(*) FROM tender.edge WHERE holder_kind = 'person'") == 5
+    assert one(conn, "SELECT count(*) FROM tender.edge WHERE holder_kind = 'person'") == 6
+    # a holder written in two ways is one node, named the same in every build (the first spelling by the alphabet)
+    assert conn.execute("SELECT label::text FROM tender.node WHERE kind = 'local_person'").fetchall() == [("JOHN SMITH",)]
     assert one(conn, "SELECT count(*) FROM tender.person") == 3
     # the pages: the two people with a role in a company with a contract, and only those roles
     shown = conn.execute("SELECT name::text, id FROM pub_tender.person ORDER BY 1").fetchall()
@@ -117,7 +120,8 @@ def test_people_are_shown_only_in_entities_with_public_money_and_under_a_token_o
     build(conn)
     assert {r[0] for r in conn.execute("SELECT name::text FROM pub_tender.person")} == {
         "ИВАН ИВАНОВ ПЕТРОВ", "МАРИЯ ПЕТРОВА ИВАНОВА", "ПЕТЪР ПЕТРОВ СТОЯНОВ"}
-    assert one(conn, "SELECT count(*) FROM pub_tender.edge WHERE holder LIKE 'l:%'") == 1          # JOHN SMITH, under a token
+    assert one(conn, "SELECT count(DISTINCT holder) FROM pub_tender.edge WHERE holder LIKE 'l:%'") == 1   # JOHN SMITH, under a token
+    assert conn.execute("SELECT label::text FROM pub_tender.node WHERE kind = 'local_person'").fetchall() == [("JOHN SMITH",)]
     assert one(conn, "SELECT count(*) FROM pub_tender.edge e JOIN tender.edge o ON o.holder = e.holder WHERE e.holder_kind = 'person'") == 0
     # nothing of the guards of the foundation is left open
     assert one(conn, "SELECT count(*) FROM core.serving_violation") == 0
@@ -235,6 +239,8 @@ def test_replay_copies_the_old_database_and_parity_sees_a_difference(conn, test_
     stats = step("replay", lambda r: move.replay(conn, r, old_dsn=test_database, old_ops="old_ops"))
     assert {new: one(conn, f"SELECT count(*) FROM tender_src.{new}") for _, new in move.STATE} == kept and stats["runs"] == 2
     assert stats["tr_role"] == len(ROLES) and stats["changes"] == 2
+    # the old build named a holder with two spellings by either of them: that is not a difference of the move
+    conn.execute("UPDATE live.node SET label = 'JOHN SMYTH' WHERE kind = 'local_person'")
     # the D-1 chain finds the day the old database had done; a run it left as running is not left so
     assert one(conn, "SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'ok' AND params->>'day' = '2026-11-09'") == 1
     assert one(conn, "SELECT status FROM ops.run WHERE tool = 'tender' AND step = 'tr-read'") == "failed"
@@ -252,11 +258,13 @@ def test_replay_copies_the_old_database_and_parity_sees_a_difference(conn, test_
     # the number of a network component is arbitrary: the same components under other numbers are the same
     conn.execute("UPDATE live.network_component SET component = component + 1000; UPDATE live.network_component_stats SET component = component + 1000")
     assert step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))["differ"] == []
-    # one cent in one contract of the old database, one letter in one role: parity names exactly those tables
+    # one cent in one contract of the old database, one letter in one role, another name of a company: parity names
+    # exactly those tables
+    conn.execute("UPDATE live.node SET label = 'ДРУГО ИМЕ' WHERE id = %s", ("c:" + B,))
     conn.execute("UPDATE live.contract SET amount_eur = amount_eur + 0.01 WHERE id = (SELECT min(id) FROM live.contract)")
     conn.execute("UPDATE tr.role SET holder_name = holder_name || 'А' WHERE holder_id = %s AND eik = %s", (P1, A))
     stats = step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))
-    assert stats["differ"] == ["contract", "tr_role"]
+    assert stats["differ"] == ["contract", "node", "tr_role"]
     bad = [r[0] for r in conn.execute("SELECT name FROM ops.check_latest WHERE tool = 'tender' AND kind = 'parity' AND ok = false ORDER BY 1")]
-    assert bad == ["parity_contract_amount_eur_sum", "parity_contract_content", "parity_tr_role_content"]
+    assert bad == ["parity_contract_amount_eur_sum", "parity_contract_content", "parity_node_content", "parity_tr_role_content"]
     assert db.RUNS == {}

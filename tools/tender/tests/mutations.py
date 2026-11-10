@@ -37,6 +37,7 @@ CASES = [
      'pipeline.record_check(conn, r, f"parity_{table}_content", was[1], was[1])', MOVE),
     ('parity-blind-to-the-money', 'ingest/move.py', 'pipeline.record_check(conn, r, f"parity_{table}_{column}_sum", was, now)',
      'pipeline.record_check(conn, r, f"parity_{table}_{column}_sum", was, was)', MOVE),
+    ('parity-blind-to-the-names-of-nodes', 'ingest/move.py', "THEN NULL ELSE n.label END AS label FROM {0}.node n) x", "THEN NULL ELSE NULL END AS label FROM {0}.node n) x", MOVE),
     ('replay-over-what-was-read-since', 'ingest/move.py', "    if filled and not again:", "    if False:", MOVE),
     ('an-invented-key-to-core', 'db/derive/90_core.sql', "UPDATE company c SET org_eik = o.eik FROM core.org o WHERE o.eik = c.eik;",
      "UPDATE company c SET org_eik = c.eik WHERE c.eik ~ '^[0-9]{9}$';",
