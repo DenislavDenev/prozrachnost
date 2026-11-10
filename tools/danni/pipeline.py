@@ -153,13 +153,14 @@ def sync_registry(conn, tool, root):
                          (i['indicator_code'], i['dataset'], i['title_bg'], i['unit_code'], i['kind'],
                           i.get('definition_bg'), i.get('official_code')))
         for s in reg.get('source', []):
-            conn.execute('''INSERT INTO ops.source (tool, source, title_bg, url, channel, dataset, cadence, stale_after, landing)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::interval,%s)
+            conn.execute('''INSERT INTO ops.source (tool, source, title_bg, url, channel, dataset, cadence, stale_after, landing,
+                  hold_alert_after)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::interval,%s,%s::interval)
                 ON CONFLICT (tool, source) DO UPDATE SET title_bg=EXCLUDED.title_bg, url=EXCLUDED.url,
                   channel=EXCLUDED.channel, dataset=EXCLUDED.dataset, cadence=EXCLUDED.cadence,
-                  stale_after=EXCLUDED.stale_after, landing=EXCLUDED.landing''',
+                  stale_after=EXCLUDED.stale_after, landing=EXCLUDED.landing, hold_alert_after=EXCLUDED.hold_alert_after''',
                          (tool, s['source'], s['title_bg'], s.get('url'), s['channel'], s.get('dataset'), s.get('cadence'),
-                          s.get('stale_after'), s.get('landing', 'versions')))
+                          s.get('stale_after'), s.get('landing', 'versions'), s.get('hold_alert_after', '1 day')))
         names = []
         for c in checks.get('check', []):
             names.append(c['name'])
@@ -319,7 +320,21 @@ def diff(conn, r, source, ref, old, new, at=None):
     return n
 
 
-def load(conn, r, source, ref, rows, write, *, raw_file_id=None, current=None, now=None, hold=HOLD):
+def fewer_rows(old, rows):
+    """hold_when for a register that grows and corrects its rows: a read is suspicious only when it is shorter."""
+    return max(len(old) - len(rows), 0)
+
+
+def missing_over(share):
+    """hold_when for a list where a few rows may leave between two reads: held only when more than `share` of the
+    current keys are missing."""
+    def rule(old, rows):
+        missing = len(old.keys() - rows.keys())
+        return missing if missing > share * len(old) else 0
+    return rule
+
+
+def load(conn, r, source, ref, rows, write, *, raw_file_id=None, current=None, now=None, hold=HOLD, hold_when=None):
     """Load one resource into the landing zone as one batch, in one transaction.
 
     rows     {key: row}: the parsed rows of the resource, each under a key that is stable between reads
@@ -328,7 +343,14 @@ def load(conn, r, source, ref, rows, write, *, raw_file_id=None, current=None, n
              keys of the current version is held and every difference is logged field by field. Without it
              (large resources) a read with fewer rows is held and nothing is logged per field.
 
-    The same content as the current version writes nothing (unchanged). A smaller read replaces the current
+    hold_when  hold_when(old, rows) -> how many rows count as missing; 0 accepts the read. Needs `current`.
+             The default holds a read that lacks any key of the current version, which is right for a list
+             whose rows keep their keys. A source that corrects rows whose key holds the corrected value (it
+             has no row number) loses a key with every correction; with the default each daily read would be
+             held and the one after it would start the clock again, so the history between would be lost.
+             Such a source passes fewer_rows or missing_over(share). What left is still logged as removed.
+
+    The same content as the current version writes nothing (unchanged). A read that is held replaces the current
     version only when a second read with the same content comes at least `hold` later (confirmed).
     """
     if not rows:
@@ -353,7 +375,12 @@ def load(conn, r, source, ref, rows, write, *, raw_file_id=None, current=None, n
         old = current(conn, cur[0]) if cur and current else None
         status = 'loaded'
         if cur:
-            missing = len(old.keys() - rows.keys()) if old is not None else max(cur[2] - n, 0)
+            if old is None:
+                missing = max(cur[2] - n, 0)
+            elif hold_when:
+                missing = hold_when(old, rows)
+            else:
+                missing = len(old.keys() - rows.keys())
             if missing:
                 reason = f'липсват {missing} от {cur[2]} реда'
                 held = conn.execute('SELECT content_sha256, first_at FROM ops.hold WHERE tool = %s AND source = %s AND ref = %s',
@@ -383,11 +410,13 @@ def load(conn, r, source, ref, rows, write, *, raw_file_id=None, current=None, n
     return Loaded(status, load_id, cur[0] if cur else None)
 
 
-def reject(conn, r, source, ref, reason, raw_file_id=None):
-    """The answer is not valid (ShapeError and the like): recorded, nothing replaced."""
-    conn.execute('''INSERT INTO ops.load (run_id, tool, source, ref, raw_file_id, status, reason)
-        VALUES (%s,%s,%s,%s,%s,'rejected',%s)''', (r.run_id, r.tool, source, ref, raw_file_id, str(reason)[:2000]))
-    log_change(conn, r, source, ref, None, None, str(reason)[:2000], 'invalid')
+def reject(conn, r, source, ref, reason, raw_file_id=None, now=None):
+    """The answer is not valid (ShapeError and the like): recorded, nothing replaced.
+    `now` is the time of the read when an older answer is replayed from the archive."""
+    conn.execute('''INSERT INTO ops.load (run_id, tool, source, ref, raw_file_id, status, reason, loaded_at)
+        VALUES (%s,%s,%s,%s,%s,'rejected',%s,COALESCE(%s, now()))''',
+                 (r.run_id, r.tool, source, ref, raw_file_id, str(reason)[:2000], now))
+    log_change(conn, r, source, ref, None, None, str(reason)[:2000], 'invalid', now)
     r.count('rejected')
 
 
@@ -512,13 +541,16 @@ def publish(conn, r, root):
 # ---------------------------------------------------------------- freshness and the report
 
 def freshness(conn, tool):
-    """The problems of a tool, empty when all is well: stale sources, holds over a day, failed gating checks,
+    """The problems of a tool, empty when all is well: stale sources, holds past their time, failed gating checks,
     and steps whose last run failed."""
     problems = []
     for title, last_ok in conn.execute('SELECT title_bg, last_ok_at FROM ops.freshness WHERE tool = %s AND is_stale ORDER BY source', (tool,)):
         problems.append(f'{title}: ' + ('няма успешно четене' if last_ok is None else f'последно успешно четене {last_ok:%d.%m.%Y %H:%M} UTC'))
-    for source, ref, reason, first_at in conn.execute('''SELECT source, ref, reason, first_at FROM ops.hold
-            WHERE tool = %s AND first_at < now() - interval '1 day' ORDER BY first_at''', (tool,)):
+    # a hold is a problem once the source has had its chance to confirm it: a day for a source read daily,
+    # longer for one read weekly (ops.source.hold_alert_after)
+    for source, ref, reason, first_at in conn.execute('''SELECT h.source, h.ref, h.reason, h.first_at
+            FROM ops.hold h JOIN ops.source s USING (tool, source)
+            WHERE h.tool = %s AND h.first_at < now() - s.hold_alert_after ORDER BY h.first_at''', (tool,)):
         problems.append(f'{source} {ref}: задържан от {first_at:%d.%m.%Y} ({reason})')
     for title, expected, actual in conn.execute('''SELECT title_bg, expected, actual FROM ops.check_latest
             WHERE tool = %s AND gating AND ok = false ORDER BY name''', (tool,)):

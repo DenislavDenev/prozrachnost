@@ -147,6 +147,39 @@ def test_a_hold_over_a_day_is_a_problem_and_the_full_answer_clears_it(demo):
     assert one(demo, 'SELECT count(*) FROM ops.hold') == 0
 
 
+def test_a_register_that_grows_and_corrects_rows_keeps_every_day(demo):
+    """The key holds the amount, because the source has no row number: a corrected row loses its key."""
+    day = dt.timedelta(days=1)
+    v1 = {'ivan/100': {'name': 'Иван', 'n': 100}, 'petar/50': {'name': 'Петър', 'n': 50}}
+    v2 = {'ivan/120': {'name': 'Иван', 'n': 120}, 'petar/50': v1['petar/50'], 'maria/30': {'name': 'Мария', 'n': 30}}
+    v3 = {'ivan/120': v2['ivan/120'], 'petar/55': {'name': 'Петър', 'n': 55}, 'maria/30': v2['maria/30'], 'ana/10': {'name': 'Ана', 'n': 10}}
+    assert [load(demo, v, NOW + i * day).status for i, v in enumerate((v1, v2, v3))] == ['loaded', 'held', 'held']   # the default loses the days
+    demo.execute("DELETE FROM ops.hold; DELETE FROM demo_src.item; DELETE FROM ops.change_log; DELETE FROM ops.load WHERE tool = 'demo'")
+    got = [load(demo, v, NOW + i * day, hold_when=pipeline.fewer_rows) for i, v in enumerate((v1, v2, v3))]
+    assert [x.status for x in got] == ['loaded', 'loaded', 'loaded']
+    assert [current(demo, x.load_id) for x in got] == [v1, v2, v3]   # each day can be read back
+    assert sorted(x[0] for x in demo.execute("SELECT field FROM ops.change_log WHERE cause = 'removed'")) == ['ivan/100', 'petar/50']
+    # a shorter answer is still held, and so is one that loses too many keys under a share rule
+    assert load(demo, v1, NOW + 3 * day, hold_when=pipeline.fewer_rows).status == 'held'
+    demo.execute('DELETE FROM ops.hold')
+    assert load(demo, {**v3, 'x/1': {'name': 'Х', 'n': 1}, 'petar/60': {'name': 'Петър', 'n': 60}}, NOW + 4 * day,
+                hold_when=pipeline.missing_over(0.5)).status == 'loaded'
+    assert load(demo, {'z/1': {'name': 'Я', 'n': 1}, 'z/2': {'name': 'Я', 'n': 2}, 'z/3': {'name': 'Я', 'n': 3},
+                       'z/4': {'name': 'Я', 'n': 4}, 'z/5': {'name': 'Я', 'n': 5}, 'z/6': {'name': 'Я', 'n': 6}}, NOW + 5 * day,
+                hold_when=pipeline.missing_over(0.5)).status == 'held'
+
+
+def test_a_hold_is_a_problem_only_after_the_time_of_its_source(demo):
+    load(demo, ROWS)
+    load(demo, {'a': ROWS['a']})
+    demo.execute("UPDATE ops.hold SET first_at = now() - interval '2 days'")
+    assert any('задържан' in p for p in pipeline.freshness(demo, 'demo'))
+    demo.execute("UPDATE ops.source SET hold_alert_after = '8 days' WHERE tool = 'demo'")   # a source read once a week
+    assert not any('задържан' in p for p in pipeline.freshness(demo, 'demo'))
+    demo.execute("UPDATE ops.hold SET first_at = now() - interval '9 days'")
+    assert any('задържан' in p for p in pipeline.freshness(demo, 'demo'))
+
+
 def test_without_current_a_shorter_answer_is_held_by_count(demo):
     with pipeline.run(demo, 'demo', 'list') as r:
         assert pipeline.load(demo, r, 'list', 'x', ROWS, write, now=NOW).status == 'loaded'
@@ -174,8 +207,12 @@ def test_a_failed_write_leaves_the_current_version(demo):
 def test_reject_is_recorded(demo):
     with pipeline.run(demo, 'demo', 'list') as r:
         pipeline.reject(demo, r, 'list', 'x', ShapeError('HTML вместо данни'))
-    assert demo.execute('SELECT status, reason FROM ops.load').fetchall() == [('rejected', 'HTML вместо данни')]
-    assert one(demo, 'SELECT cause FROM ops.change_log') == 'invalid'
+        pipeline.reject(demo, r, 'list', 'y', ShapeError('стар отговор'), now=NOW)   # replayed from the archive
+    assert demo.execute('SELECT status, reason FROM ops.load ORDER BY load_id').fetchall() == [
+        ('rejected', 'HTML вместо данни'), ('rejected', 'стар отговор')]
+    assert demo.execute("SELECT loaded_at FROM ops.load WHERE ref = 'y'").fetchone()[0] == NOW
+    assert demo.execute("SELECT detected_at FROM ops.change_log WHERE ref = 'y'").fetchone()[0] == NOW
+    assert one(demo, 'SELECT DISTINCT cause FROM ops.change_log') == 'invalid'
 
 
 def test_checks_are_rows_with_a_tolerance(demo):
@@ -225,6 +262,7 @@ title_bg = "Списък 2"
 channel = "api"
 dataset = "demo.list"
 stale_after = "1 day"
+hold_alert_after = "8 days"
 [[indicator]]
 indicator_code = "demo.n"
 dataset = "demo.list"
@@ -242,7 +280,8 @@ sql = "SELECT 0, 0"
     demo.execute("INSERT INTO ops.check_rule (tool, name, title_bg, kind) VALUES ('demo','old','Старо','parser')")
     pipeline.sync_registry(demo, 'demo', tmp_path)
     pipeline.sync_registry(demo, 'demo', tmp_path)
-    assert demo.execute("SELECT title_bg, channel, stale_after FROM ops.source WHERE tool='demo'").fetchone() == ('Списък 2', 'api', dt.timedelta(days=1))
+    assert demo.execute("SELECT title_bg, channel, stale_after, hold_alert_after FROM ops.source WHERE tool='demo'").fetchone() == (
+        'Списък 2', 'api', dt.timedelta(days=1), dt.timedelta(days=8))
     assert dict(demo.execute("SELECT name, is_active FROM ops.check_rule WHERE tool='demo'").fetchall()) == {'a': True, 'old': False}
     assert one(demo, "SELECT is_distributable FROM core.dataset WHERE dataset='demo.list'") is False
     assert one(demo, "SELECT dataset FROM core.column_doc WHERE schema_name='demo_src' AND column_name='n'") == 'demo.list'
