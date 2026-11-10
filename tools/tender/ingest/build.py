@@ -177,6 +177,10 @@ def serve(conn, stats):
         problems = done.problems
         stats["publication"] = done.publication_id
         stats["published_tables"] = len(done.changes)
+        # A table that was just filled has no statistics until autovacuum reaches it, and the pages are read at once:
+        # on 10.11.2026 the first page after a publication ran into the 15 seconds the web role is given.
+        for table in sorted(done.changes):
+            conn.execute(f"ANALYZE {table}")
     if problems:
         raise RuntimeError("; ".join(problems))
 
