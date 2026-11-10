@@ -54,7 +54,8 @@ SELECT DISTINCT ON (id) id, kind, label::core.person_name AS label, ref FROM (
   SELECT 'c:' || left(eik, 9), 'company', name, key FROM company WHERE eik ~ '^\d{9}(\d{4})?$'
   UNION ALL
   SELECT company, 'company', NULL, 'eik:' || substr(company, 3) FROM edge
-) x ORDER BY id, label IS NULL, kind;
+-- a holder the register writes in more than one way gets the same spelling in every build: the first by the alphabet
+) x ORDER BY id, label IS NULL, kind, label;
 ALTER TABLE node ADD PRIMARY KEY (id);
 
 -- the contracts a company node won (supplier or joint member), for network sums

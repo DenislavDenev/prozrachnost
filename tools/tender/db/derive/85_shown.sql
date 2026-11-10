@@ -68,7 +68,7 @@ SELECT DISTINCT ON (id) id, kind, label, ref FROM (
   SELECT 'p:' || id AS id, 'person' AS kind, name AS label, id AS ref FROM shown_person
   UNION ALL
   SELECT holder, 'local_person', holder_name, NULL FROM shown_person_edge WHERE holder LIKE 'l:%'
-) x ORDER BY id, label IS NULL, kind;
+) x ORDER BY id, label IS NULL, kind, label;
 ALTER TABLE shown_person_node ADD PRIMARY KEY (id);
 
 CREATE TABLE shown_person_search AS

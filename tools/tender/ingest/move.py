@@ -40,9 +40,15 @@ NOT_COMPARED = {"build_state"}   # one row with the time of the last build: each
 # smallest node, and its statistics are compared without the number.
 BY_CONTENT = {
     "network_component": (["view", "mode", "node", "named"],
-                          "(SELECT view, mode, node, min(node) OVER (PARTITION BY view, mode, component) AS named FROM {}.network_component) x"),
+                          "(SELECT view, mode, node, min(node) OVER (PARTITION BY view, mode, component) AS named FROM {0}.network_component) x"),
     "network_component_stats": (["view", "mode", "nodes", "persons", "companies", "contracts", "amount_eur"],
-                                "(SELECT view, mode, nodes, persons, companies, contracts, amount_eur FROM {}.network_component_stats) x"),
+                                "(SELECT view, mode, nodes, persons, companies, contracts, amount_eur FROM {0}.network_component_stats) x"),
+    # The old build named a holder that the register writes in more than one way by whichever spelling it met first
+    # (found on 10.11.2026: 40 of 941 294 nodes differed between two builds of the same data, all of them people
+    # without an identifier with several spellings). The name of such a node is not compared; every other is.
+    "node": (["id", "kind", "ref", "label"],
+             """(SELECT n.id, n.kind, n.ref, CASE WHEN (SELECT count(DISTINCT e.holder_name) FROM {0}.edge e WHERE e.holder = n.id) > 1
+                                                THEN NULL ELSE n.label END AS label FROM {0}.node n) x"""),
 }
 
 
