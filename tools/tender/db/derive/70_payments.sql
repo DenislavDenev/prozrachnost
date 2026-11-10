@@ -20,8 +20,8 @@ WITH co AS (SELECT k, CASE WHEN nreg = 1 THEN kreg WHEN nreg = 0 AND neik = 1 TH
               FROM company WHERE name IS NOT NULL GROUP BY 1) x),
      bu AS (SELECT pay_key(name) k, min(eik) AS eik FROM buyer WHERE name IS NOT NULL GROUP BY 1 HAVING count(*) = 1)
 SELECT p.resource_uri, p.row_no, p.settlement_date, p.receiver_name, p.is_person, p.receiver_iban,
-       p.amount, p.currency,
-       CASE upper(coalesce(p.currency, 'BGN')) WHEN 'EUR' THEN p.amount WHEN 'BGN' THEN round(p.amount / 1.95583, 2) END AS amount_eur,
+       p.amount::numeric(20,2) AS amount, p.currency,
+       (CASE upper(coalesce(p.currency, 'BGN')) WHEN 'EUR' THEN p.amount WHEN 'BGN' THEN round(p.amount / 1.95583, 2) END)::numeric(20,2) AS amount_eur,
        p.reason, p.reg_date, p.reg_no, p.pay_code, p.fin_code, p.fin_name, p.organization, p.primary_organization, p.primary_org_code,
        CASE WHEN NOT p.is_person THEN coalesce(ce.key, co.key) END AS company_key,
        bu.eik AS buyer_eik

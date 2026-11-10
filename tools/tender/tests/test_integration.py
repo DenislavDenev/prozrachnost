@@ -69,6 +69,7 @@ def built(test_database):
                 for t in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract"):
                     build._copy(conn, t, res[t])
             build.step_derive(conn, {})
+            __import__("conftest").landed(conn)
             build.step_publish(conn, {})
         tok = dict(conn.execute("SELECT node, shown FROM tender.person_token").fetchall())
     from app import queries as Q

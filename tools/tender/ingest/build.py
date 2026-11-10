@@ -5,32 +5,72 @@ tender_stage, then moved into schema tender in one transaction, only after every
 The pages read neither: they read the serving layer pub_tender, which the last step publishes when the rules hold.
 """
 import datetime as dt
-import json
+import os
+import re
+import shutil
 
 from . import db, eop, fx, normalize, pipeline
 from .config import RAW_EOP, ROOT, TOOL
 
-# what a build is judged by; the rules of kind `publish` run inside the publication, those of kind `parity` belong
-# to the move from the old database
+# what a build is judged by; the rules of kind `publish` run inside the publication
 RULE_KINDS = ["reconcile", "unique", "not_null", "fk", "unmatched", "drop"]
 
 DERIVE = ROOT / "db" / "derive"
 
 
+def land_file(conn, day, kind, f, fetched_at, at=None):
+    """One file of a day through the shared module. The file on disk is linked under its sha256 (no second copy;
+    the reader never writes into a file, it puts a new one in its place, and the build checks the sha256 of what
+    it reads), registered in ops.raw_file, and its rows are one load: the same rows write nothing, a file with fewer rows than
+    the one we hold is held until a second read a day or more later says the same. tender_src.eop_file names the
+    file of the current load, which is the one the build reads. Returns the status of the load."""
+    path, kept = eop.RAW_EOP / day / f"{kind}.json", eop.stored(f["sha256"])
+    if not kept.exists():
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(path, kept)
+        except OSError:   # another file system, or one without hard links
+            shutil.copyfile(path, kept)
+    r = db.run_of(conn)
+    file, raw = pipeline.register_raw(conn, r, "eop-file", f"{day}/{kind}", kept, media_type="application/json",
+                                      fetched_at=fetched_at, expect_sha=f["sha256"])
+    try:
+        rows = eop.rows_of(raw, kind)
+        if not all(isinstance(x, dict) for x in rows):
+            raise pipeline.ShapeError("редовете на файла не са записи")
+    except (ValueError, AttributeError) as e:   # valid JSON of another shape: recorded, what we hold stays
+        pipeline.reject(conn, r, "eop-file", f"{day}/{kind}", e, file.raw_file_id)
+        return "rejected"
+
+    def write(conn, load_id, _):
+        conn.execute(
+            "INSERT INTO tender_src.eop_file(day, kind, key, sha256, size, fetched_at, rows, load_id, raw_file_id) "
+            "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (day, kind) DO UPDATE SET key=EXCLUDED.key, "
+            "sha256=EXCLUDED.sha256, size=EXCLUDED.size, fetched_at=EXCLUDED.fetched_at, rows=EXCLUDED.rows, "
+            "load_id=EXCLUDED.load_id, raw_file_id=EXCLUDED.raw_file_id",
+            (day, kind, f["key"], f["sha256"], f["size"], fetched_at, len(rows), load_id, file.raw_file_id))
+
+    # a file may be published empty (a day without annexes); the load still needs a row to stand for it
+    done = db.land(conn, "eop-file", f"{day}/{kind}", {str(i): x for i, x in enumerate(rows)} or {"empty": True}, write, file, now=at)
+    return done.status
+
+
 def step_eop(conn, stats, start=None, end=None):
-    """Mirror new days (and refetch the last 3) and record them in tender_src.eop_file / tender_src.eop_day."""
+    """Mirror new days (and refetch the last 3), record them in tender_src.eop_day, and land every file that is not
+    the one we hold (land_file)."""
     manifests = eop.sync(start or eop.EOP_FIRST_DAY, end)
+    held = {(str(d), k): sha for d, k, sha in conn.execute("SELECT day, kind, sha256 FROM tender_src.eop_file WHERE load_id IS NOT NULL")}
+    for m in manifests:
+        for kind, f in m["files"].items():
+            if f.get("dropped") or kind in m.get("invalid", []) or held.get((m["day"], kind)) == f["sha256"]:
+                continue
+            status = land_file(conn, m["day"], kind, f, m["fetched_at"])
+            stats[status] = stats.get(status, 0) + 1
     with conn.transaction():
         for m in manifests:
             conn.execute("INSERT INTO tender_src.eop_day(day, published, checked_at) VALUES (%s,%s,%s) "
                          "ON CONFLICT (day) DO UPDATE SET published=EXCLUDED.published, "
                          "checked_at=EXCLUDED.checked_at", (m["day"], m["published"], m["fetched_at"]))
-            for kind, f in m["files"].items():
-                conn.execute(
-                    "INSERT INTO tender_src.eop_file(day, kind, key, sha256, size, fetched_at) "
-                    "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (day, kind) DO UPDATE SET key=EXCLUDED.key, "
-                    "sha256=EXCLUDED.sha256, size=EXCLUDED.size, fetched_at=EXCLUDED.fetched_at",
-                    (m["day"], kind, f["key"], f["sha256"], f["size"], m["fetched_at"]))
             # a refetched recent day whose files changed (late additions), a file that is not JSON, a day gone
             for kind in m.get("changed", []):
                 db.log_change(conn, "eop-file", f"{m['day']}/{kind}", None, None, (m["files"].get(kind) or {}).get("sha256"), "late")
@@ -44,8 +84,13 @@ def step_eop(conn, stats, start=None, end=None):
 def step_eop_audit(conn, stats, full=False):
     """Compare what the source lists with what we hold: every day (full, weekly) or the last 90 days
     (daily). Days that differ are refetched (old copies kept in <day>/history) and logged."""
-    held = sorted(p.name for p in RAW_EOP.iterdir() if p.is_dir())
+    held = sorted(p.name for p in RAW_EOP.iterdir() if p.is_dir() and re.fullmatch(r"\d{4}-\d\d-\d\d", p.name))
     rep = eop.audit(held if full else held[-90:])
+    for ch in rep["changed"]:   # the refetched files become loads; a smaller one is held
+        for kind, f in (ch["new"] or {}).items():
+            if f and not f.get("dropped") and kind not in ch["invalid"]:
+                status = land_file(conn, ch["day"], kind, f, dt.datetime.now(dt.timezone.utc))
+                stats[status] = stats.get(status, 0) + 1
     with conn.transaction():
         for ch in rep["changed"]:
             for kind in ch["kinds"]:
@@ -63,10 +108,18 @@ def step_fx(conn, stats):
     stats["rates"] = fx.refresh(conn)
 
 
-def _days_rows():
-    for folder in sorted(p for p in RAW_EOP.iterdir() if p.is_dir()):
+def _days_rows(conn):
+    """The rows of every loaded file, day by day, each kind in the order the build expects. The file is the one of
+    the current load, read through the register of raw files (its bytes are checked against its sha256)."""
+    files = {}
+    for day, kind, raw_file_id in conn.execute("SELECT day, kind, raw_file_id FROM tender_src.eop_file"):
+        if raw_file_id is None:   # a file from before the loads that the step `adopt` has not taken yet
+            raise RuntimeError(f"{day}/{kind} has no load: run the step adopt before a build")
+        files[(str(day), kind)] = raw_file_id
+    for day in sorted({d for d, _ in files}):
         for kind in eop.KINDS:
-            yield folder.name, kind, eop.read_rows(folder.name, kind)
+            rid = files.get((day, kind))
+            yield day, kind, eop.rows_of(pipeline.read_raw(conn, rid), kind) if rid else []
 
 
 def _copy(conn, table, rows):
@@ -98,8 +151,8 @@ def start_stage(conn):
 
 
 def step_normalize(conn, stats):
-    """Rebuild the build schema from the raw files: base procurement tables."""
-    res = normalize.normalize(_days_rows(), normalize.Fx(fx.load(conn)))
+    """Rebuild the build schema from the loaded raw files: base procurement tables."""
+    res = normalize.normalize(_days_rows(conn), normalize.Fx(fx.load(conn)))
     with conn.transaction():
         start_stage(conn)
         for table in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract",

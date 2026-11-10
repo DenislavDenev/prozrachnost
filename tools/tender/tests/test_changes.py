@@ -17,8 +17,21 @@ YESTERDAY = dt.date.today() - dt.timedelta(days=1)
 
 
 def log(conn, source=None):
+    """The changes logged, without the one line the shared module writes for the first load of a resource."""
     return conn.execute("SELECT source, ref, field, old, new, cause FROM ops.change_log WHERE tool = 'tender' "
+                        "AND NOT (field = 'rows' AND cause = 'new-record' AND old IS NULL) "
                         + ("AND source = %s " if source else "") + "ORDER BY change_id", (source,) if source else None).fetchall()
+
+
+@pytest.fixture
+def at_once(monkeypatch):
+    """A held answer is confirmed by the next read that agrees, without the day between them."""
+    from ingest import db
+    monkeypatch.setattr(db, "HOLD", dt.timedelta(0))
+
+
+def loads(conn, source):
+    return conn.execute("SELECT status, rows, is_current FROM ops.load WHERE tool = 'tender' AND source = %s ORDER BY load_id", (source,)).fetchall()
 
 
 # ---------- offers ----------
@@ -30,7 +43,7 @@ def answer(*offers):
 
 
 def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch):
-    from ingest import eop_offers as E
+    from ingest import db, eop_offers as E
     monkeypatch.setattr(E, "RAW", tmp_path)
     conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason) VALUES (7, 'backfill')")
     count = lambda: conn.execute("SELECT count(*) FROM tender_src.eopsvc_offer WHERE tender_id = 7").fetchone()[0]
@@ -42,10 +55,15 @@ def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch)
     assert count() == 3                                               # ours stays
     q = conn.execute("SELECT status, reason, next_at > now() + interval '23 hours' FROM tender_src.eopsvc_queue WHERE tender_id = 7").fetchone()
     assert q == ("pending", "confirm", True)
-    assert log(conn)[-1][4:] == ("2", "held")
+    assert log(conn)[-1][3:] == ("4", "3", "held")                    # rows of the answer: the offers and the page
+    assert conn.execute("SELECT rows FROM ops.hold WHERE tool = 'tender' AND source = 'offers' AND ref = '7'").fetchone() == (3,)
     other = answer((1, 1, "А", 100), (1, 3, "В", 120))                # a different smaller answer is held again
     assert E.store(conn, 7, other, b"c") == "held" and count() == 3
+    assert E.store(conn, 7, other, b"c") == "held" and count() == 3   # the same answer at once: a day has not passed
+    monkeypatch.setattr(db, "HOLD", dt.timedelta(0))
     assert E.store(conn, 7, other, b"c") == "stored" and count() == 2  # the second read agrees
+    assert [s for s, _, _ in loads(conn, "offers")] == ["loaded", "held", "held", "held", "confirmed"]
+    assert conn.execute("SELECT count(DISTINCT load_id), count(*) FILTER (WHERE load_id IS NULL) FROM tender_src.eopsvc_offer").fetchone() == (1, 0)
     causes = [r[5] for r in log(conn)]
     assert causes[-2:] == ["confirmed", "rewritten"] and log(conn)[-1][1] == "7/1/1/2"   # offer 2 gone
     assert conn.execute("SELECT status, held_sha FROM tender_src.eopsvc_queue WHERE tender_id = 7").fetchone() == ("done", None)
@@ -53,7 +71,11 @@ def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch)
     assert log(conn)[-1] == ("offers", "7/1/1/3", "price", "120", "125", "rewritten")
     more = answer((1, 1, "А", 100), (1, 3, "В", 125), (1, 4, "Г", 90))  # more offers need no confirmation
     assert E.store(conn, 7, more, b"e") == "stored" and count() == 3
-    assert len(list(tmp_path.glob("7/*.json.gz"))) >= 1
+    # every answer is in the register of raw files, the held ones too, and the same answer is one file
+    assert len(list(tmp_path.glob("store/*/*-7.json.gz"))) == 5
+    assert conn.execute("SELECT count(*), count(DISTINCT raw_file_id) FROM ops.fetch WHERE tool = 'tender' AND source = 'offers'").fetchone() == (7, 5)
+    E.store(conn, 7, more, b"e")                                        # read again, nothing new: no row is written
+    assert loads(conn, "offers")[-1] == ("unchanged", 4, False)
 
 
 def live_tables(conn):
@@ -137,6 +159,74 @@ def test_a_partida_that_stops_answering_is_kept_until_confirmed(conn, tmp_path, 
     T.process(conn, 30, st)
     assert st["rotate_missed"] == 1 and log(conn)[-1][5] == "rotate"
     assert conn.execute("SELECT why, status FROM tender_src.tr_queue WHERE eik = %s", (eik,)).fetchone() == (None, "done")
+    assert conn.execute("SELECT count(*) FILTER (WHERE load_id IS NULL), count(DISTINCT load_id) FROM tender_src.tr_role").fetchone() == (0, 1)
+    assert len(list(tmp_path.glob("store/*/*.xml.gz"))) == 2             # the two answers, each once
+
+
+def partida_of_two(eik):
+    return partida(eik).replace(b"</Manager>", b"</Manager><Manager RecordID=\"2\"><Person><Indent>" + b"b" * 64
+                                + b"</Indent><Name>\xd0\x9f\xd0\x95\xd0\xa2\xd0\xaa\xd0\xa0 \xd0\x98\xd0\x92\xd0\x90\xd0\x9d\xd0\x9e\xd0\x92</Name><IndentType>EGN</IndentType></Person></Manager>")
+
+
+def test_a_partida_with_fewer_rows_is_held_until_a_second_read_agrees(conn, tmp_path, monkeypatch):
+    from ingest import db, registry as R, tr_worker as T
+    monkeypatch.setattr(T, "RAW_TR", tmp_path)
+    monkeypatch.setattr(T.time, "sleep", lambda s: None)
+    answers = []
+    monkeypatch.setattr(R, "fetch_deed", lambda eik: answers.pop(0))
+    eik = "121212121"
+    conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority) VALUES (%s, 'contract', 1)", (eik,))
+    roles = lambda: conn.execute("SELECT count(*) FROM tender_src.tr_role WHERE eik = %s", (eik,)).fetchone()[0]
+    again = lambda: conn.execute("UPDATE tender_src.tr_queue SET status = 'pending', next_at = now() WHERE eik = %s", (eik,))
+    answers.append(partida_of_two(eik))
+    T.process(conn, 30, {})
+    assert roles() == 2
+    answers.append(partida(eik))                                         # one manager is gone from the answer
+    again()
+    T.process(conn, 30, st := {})
+    assert roles() == 2 and st["held"] == 1                              # ours stay
+    assert conn.execute("SELECT status, held_sha, next_at > now() + interval '23 hours' FROM tender_src.tr_queue WHERE eik = %s", (eik,)).fetchone() == ("pending", "rows", True)
+    monkeypatch.setattr(db, "HOLD", dt.timedelta(0))
+    answers.append(partida(eik))
+    again()
+    T.process(conn, 30, {})
+    assert roles() == 1 and [s for s, _, _ in loads(conn, "tr")] == ["loaded", "held", "confirmed"]
+    assert conn.execute("SELECT status, held_sha FROM tender_src.tr_queue WHERE eik = %s", (eik,)).fetchone() == ("done", None)
+    answers.append(partida(eik))                                         # the rotation reads it again, unchanged
+    again()
+    before = conn.execute("SELECT fetched_at FROM tender_src.tr_deed WHERE eik = %s", (eik,)).fetchone()[0]
+    T.process(conn, 30, {})
+    assert loads(conn, "tr")[-1][0] == "unchanged"
+    assert conn.execute("SELECT fetched_at FROM tender_src.tr_deed WHERE eik = %s", (eik,)).fetchone()[0] > before   # so the rotation moves on
+
+
+def test_the_change_list_is_read_beside_the_hourly_read_and_catches_up(conn, monkeypatch):
+    """The portal's list of a day is long. A day a run did not finish is resumed at its page by the next run, an
+    older day of the window that was never read is read too, and the step does not wait for the lane of the read."""
+    from ingest import db, registry as R, tr_worker as T
+    monkeypatch.setattr(T.time, "sleep", lambda s: None)
+    today = dt.date(2026, 11, 10)
+    asked = []
+
+    def changes(day, page):
+        asked.append((day, page))
+        return {"items": [{"uic": "121212121"}] if page == 1 else [], "has_more": page < 3}
+    monkeypatch.setattr(R, "changes", changes)
+    conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority, status) VALUES ('121212121', 'contract', 1, 'done')")
+    conn.execute("INSERT INTO tender_src.tr_change_day (day, pass, next_page, done) VALUES ('2026-11-09', 1, 2, false), ('2026-11-08', 1, 4, true)")
+    with db.job("tr-read", lane="tr"):                                   # the hourly read is running
+        with db.job("tr-changes", lane="tr-changes") as (c, st):
+            T.read_changes(c, 600, st, today)
+    assert asked[:2] == [("2026-11-09", 2), ("2026-11-09", 3)]            # yesterday, from the page it stopped on
+    assert ("2026-10-27", 1) in asked and ("2026-11-07", 1) in asked      # the second pass, and a day never read
+    assert not [a for a in asked if a[0] == "2026-11-08"]                 # a day read to its end is not asked again
+    assert conn.execute("SELECT count(*), bool_and(done) FROM tender_src.tr_change_day").fetchone() == (14, True)
+    assert conn.execute("SELECT status, why FROM tender_src.tr_queue").fetchone() == ("pending", "change")
+    asked.clear()
+    T.read_changes(conn, 600, {}, today)
+    assert asked == []                                                    # all read: nothing is asked twice
+    T.read_changes(conn, 0, st := {}, today + dt.timedelta(days=1))       # no time left: the day waits for the next run
+    assert st == {"left": 14} and asked == []
 
 
 def test_rotation_queues_the_oldest_share_and_reads_it_last(conn):
@@ -155,7 +245,7 @@ def test_rotation_queues_the_oldest_share_and_reads_it_last(conn):
 
 # ---------- СЕБРА ----------
 
-def test_sebra_verify_hold_and_history(conn, tmp_path, monkeypatch):
+def test_sebra_verify_hold_and_history(conn, tmp_path, monkeypatch, at_once):
     from ingest import sebra as S
     monkeypatch.setattr(S, "RAW", tmp_path)
     res = {"uri": "r1", "name": "За периода", "format": "csv", "updated_at": "2026-01-01T00:00:00+00:00"}
@@ -183,7 +273,9 @@ def test_sebra_verify_hold_and_history(conn, tmp_path, monkeypatch):
     assert st["held"] == 1 and count() == 3 and log(conn)[-1][5] == "held"
     S.load(conn, st := {}, verify=True)
     assert st["files"] == 1 and count() == 2 and log(conn)[-1][5] == "confirmed"
-    assert len(list(tmp_path.glob("r1.*.csv.gz"))) == 1                  # the old copy is kept
+    assert len(list(tmp_path.glob("*/*-r1.csv.gz"))) == 2                # both answers are kept, each under its sha256
+    assert [s for s, _, _ in loads(conn, "sebra")] == ["loaded", "unchanged", "held", "confirmed"]
+    assert conn.execute("SELECT count(*) FILTER (WHERE load_id IS NULL), count(DISTINCT load_id) FROM tender_src.sebra_payment").fetchone() == (0, 1)
     state.update(n=4)                                                    # more rows, same date: rewritten
     S.load(conn, st := {}, verify=True)
     assert count() == 4 and log(conn)[-1][3:] == ("2", "4", "rewritten")
@@ -220,10 +312,20 @@ def test_record_changes_between_builds(conn):
 # ---------- freshness and the D-1 chain ----------
 
 def test_freshness_names_each_late_source(conn):
-    from ingest import daily
+    from ingest import daily, db
     conn.execute("INSERT INTO tender_src.eop_day VALUES (%s, true, now())", (YESTERDAY,))
     conn.execute("INSERT INTO tender_src.build_state (id, at) VALUES (1, now())")
+    stale = daily.freshness(conn)                                        # no source has been read: the shared freshness names each
+    assert len(stale) == 5 and all("няма успешно четене" in b for b in stale), stale
+    for source in ("eop-file", "offers", "tr", "sebra", "ecb"):
+        db.land(conn, source, "x", {"a": 1}, lambda c, load_id, rows: None)
     assert daily.freshness(conn) == []
+    conn.execute("UPDATE ops.load SET loaded_at = now() - interval '2 days' WHERE tool = 'tender' AND source = 'tr'")
+    assert [b for b in daily.freshness(conn) if "Търговски регистър" in b]   # the register is read hourly: two days is late
+    conn.execute("UPDATE ops.load SET loaded_at = now() WHERE tool = 'tender'")
+    conn.execute("INSERT INTO ops.hold (tool, source, ref, content_sha256, rows, reason, first_at) VALUES ('tender', 'tr', '1', 'x', 1, 'липсват 2 от 3 реда', now() - interval '3 days')")
+    assert [b for b in daily.freshness(conn) if "задържан" in b]          # an answer held past its time
+    conn.execute("DELETE FROM ops.hold WHERE tool = 'tender'")
     conn.execute("UPDATE tender_src.build_state SET at = now() - interval '30 hours'")
     conn.execute("DELETE FROM tender_src.eop_day")
     conn.execute("INSERT INTO tender_src.eop_day VALUES (%s, true, now())", (YESTERDAY - dt.timedelta(days=2),))
@@ -301,18 +403,22 @@ def test_notices_appeals_documents_and_messages_are_never_dropped_on_one_answer(
 
 
 def test_reparse_takes_the_participant_from_the_raw_answer_we_hold(conn, tmp_path, monkeypatch):
-    import gzip, hashlib, json
+    import hashlib, json
     from pathlib import Path
     from ingest import eop_offers as E
     monkeypatch.setattr(E, "RAW", tmp_path)
     fx = json.loads((Path(__file__).parent / "fixtures" / "eop_svc" / "563386.json").read_text(encoding="utf-8"))
+    from ingest import db
     blob = json.dumps({"participation": fx["participation"], "lots": fx["lots"]}, ensure_ascii=False).encode()
-    (tmp_path / "563386").mkdir()
-    (tmp_path / "563386" / "202609271123.json.gz").write_bytes(gzip.compress(blob))
-    (tmp_path / "563386" / "202609271200.json.gz").write_bytes(gzip.compress(b'{"participation": null}'))   # a later, held answer
     conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason, status, sha256) VALUES (563386, 'backfill', 'done', %s)",
                  (hashlib.sha256(blob).hexdigest(),))
     old = E.parse(563386, fx["participation"], fx["lots"])
+    # the answer behind the current load; a later answer that is held is in the register too, and is not ours yet
+    db.land(conn, "offers", 563386, {str(i): 1 for i in range(len(old) + 1)}, lambda c, load_id, rows: None,
+            db.keep_raw(conn, "offers", 563386, blob, tmp_path / "store", "563386.json"))
+    db.land(conn, "offers", 563386, {"page": 1}, lambda c, load_id, rows: None,
+            db.keep_raw(conn, "offers", 563386, b'{"participation": null}', tmp_path / "store", "563386.json"))
+    assert [s for s, _, _ in loads(conn, "offers")] == ["loaded", "held"]
     for r in old:   # as the reader before 27.09.2026 stored them: the submitting account as the participant
         o = next(x for rd in fx["participation"]["Rounds"] for x in rd["Offers"] if x["OfferId"] == r["offer_id"])
         r.update(bidder_name=o["OrganizationName"], bidder_eik=E.eik(o["RegistryNumber"]))
@@ -321,7 +427,7 @@ def test_reparse_takes_the_participant_from_the_raw_answer_we_hold(conn, tmp_pat
     assert st == {"procedures": 1, "changed": 4, "missing_raw": 0}         # the ДЗЗД and the branch: name and ЕИК each
     names = {r[0] for r in conn.execute("SELECT bidder_name FROM tender_src.eopsvc_offer WHERE tender_id = 563386")}
     assert '"ЗА ЧИСТА ВАРНА" ДЗЗД' in names and not any("IVAN" in n for n in names)
-    assert {r[5] for r in log(conn)} == {"reparsed"}
+    assert {r[5] for r in log(conn)} == {"held", "reparsed"}
     assert conn.execute("SELECT min(fetched_at) FROM tender_src.eopsvc_offer").fetchone()[0] == dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc)
 
 
@@ -333,6 +439,7 @@ def build_small(conn, res):
                   "award", "notice", "annex_orphan"):
             build._copy(conn, t, res[t])
     build.step_derive(conn, {})
+    __import__("conftest").landed(conn)
     build.step_publish(conn, {})
 
 
@@ -443,3 +550,120 @@ def test_the_map_by_supplier_places_each_member_and_says_what_it_cannot(conn):
     for bad in (("country", "bg"), ("muni", "eu"), ("oblast", "xx"), ("oblast", "world")):
         with pytest.raises(main.HTTPException):
             main.supplier_map("true", [], *bad)
+
+
+# ---------- the files of the open data, and what was read before the loads ----------
+
+def day_folder(raw, day, rows, kind="contracts"):
+    import hashlib, json
+    body = json.dumps(rows).encode()
+    (raw / day).mkdir(parents=True, exist_ok=True)
+    tmp = raw / day / f"{kind}.tmp"                                      # as the reader writes: a new file in place of the old
+    tmp.write_bytes(body)
+    tmp.replace(raw / day / f"{kind}.json")
+    f = {"key": "k", "size": len(body), "sha256": hashlib.sha256(body).hexdigest(), "modified": None}
+    (raw / day / "manifest.json").write_text(json.dumps({"day": day, "published": True, "files": {kind: f}, "changed": [], "invalid": [],
+                                                         "fetched_at": "2026-09-01T06:00:00+00:00"}), encoding="utf-8")
+    return f
+
+
+def test_the_build_reads_the_loaded_file_not_the_newest_answer(conn, tmp_path, monkeypatch):
+    """A file of a day that comes back shorter is on disk as the newest answer, and is not ours until a second read
+    agrees: the build and the pages go on reading the file of the current load."""
+    from ingest import build, db, eop
+    monkeypatch.setattr(eop, "RAW_EOP", tmp_path)
+    now = dt.datetime.now(dt.timezone.utc)
+    three = [{"contractNumber": str(i)} for i in range(3)]
+    read = lambda: [(d, k, len(rows)) for d, k, rows in build._days_rows(conn) if rows]
+    assert build.land_file(conn, "2024-05-01", "contracts", day_folder(tmp_path, "2024-05-01", three), now) == "loaded"
+    assert read() == [("2024-05-01", "contracts", 3)]
+    first = conn.execute("SELECT sha256, rows, load_id FROM tender_src.eop_file").fetchone()
+    shorter = day_folder(tmp_path, "2024-05-01", three[:2])              # the source rewrote the day with fewer records
+    assert build.land_file(conn, "2024-05-01", "contracts", shorter, now) == "held"
+    assert read() == [("2024-05-01", "contracts", 3)] and conn.execute("SELECT sha256, rows, load_id FROM tender_src.eop_file").fetchone() == first
+    assert len(eop.read_rows("2024-05-01", "contracts")) == 2 and len(eop.read_rows("2024-05-01", "contracts", first[0])) == 3
+    monkeypatch.setattr(db, "HOLD", dt.timedelta(0))
+    assert build.land_file(conn, "2024-05-01", "contracts", shorter, now) == "confirmed"
+    assert read() == [("2024-05-01", "contracts", 2)]
+    assert build.land_file(conn, "2024-05-01", "contracts", shorter, now) == "unchanged"
+    # a file that is JSON of another shape is recorded and replaces nothing; an empty file is a load
+    assert build.land_file(conn, "2024-05-01", "contracts", day_folder(tmp_path, "2024-05-01", ["not a record"]), now) == "rejected"
+    assert read() == [("2024-05-01", "contracts", 2)]
+    assert build.land_file(conn, "2024-05-02", "annexes", day_folder(tmp_path, "2024-05-02", [], "annexes"), now) == "loaded"
+    # a file without a load stops the build instead of being left out of it
+    conn.execute("INSERT INTO tender_src.eop_file (day, kind, key, sha256, size, fetched_at) VALUES ('2024-05-03', 'contracts', 'k', 'x', 1, now())")
+    with pytest.raises(RuntimeError, match="adopt"):
+        read()
+
+
+def test_adopt_gives_a_load_to_what_was_read_before(conn, tmp_path, monkeypatch):
+    """What the readers wrote before they landed through the shared module: each kept answer is read once more and
+    becomes the load of its rows, dated when it was read. An answer that is not the one the table was written from
+    is not taken; its resource is queued for a new read."""
+    import gzip, hashlib, json
+    from pathlib import Path
+    from ingest import adopt, eop, eop_offers as E, fx, sebra as S
+    monkeypatch.setattr(eop, "RAW_EOP", tmp_path / "eop")
+    monkeypatch.setattr(adopt, "RAW_TR", tmp_path / "tr")
+    monkeypatch.setattr(E, "RAW", tmp_path / "svc")
+    monkeypatch.setattr(S, "RAW", tmp_path / "sebra")
+    monkeypatch.setattr(fx, "refresh", lambda c: 0)
+    read_at = dt.datetime(2026, 9, 1, 6, tzinfo=dt.timezone.utc)
+    # a day of the open data, as step_eop recorded it
+    f = day_folder(tmp_path / "eop", "2024-05-01", [{"contractNumber": "1"}])
+    conn.execute("INSERT INTO tender_src.eop_file (day, kind, key, sha256, size, fetched_at) VALUES ('2024-05-01', 'contracts', 'k', %s, %s, %s)",
+                 (f["sha256"], f["size"], read_at))
+    # two partidas: one whose kept XML is the one the table names, one whose kept XML is another
+    for eik, kept in (("121212121", partida("121212121")), ("131313131", partida("131313131", "ДРУГ"))):
+        xml = partida(eik)
+        path = tmp_path / "tr" / "deeds" / eik[:3] / f"{eik}.xml.gz"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(gzip.compress(kept))
+        conn.execute("INSERT INTO tender_src.tr_deed (eik, status, fetched_at, sha256) VALUES (%s, 'ok', %s, %s)", (eik, read_at, hashlib.sha256(xml).hexdigest()))
+        conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority, status) VALUES (%s, 'contract', 1, 'done')", (eik,))
+        conn.execute("""INSERT INTO tender_src.tr_role (eik, sub_uic, field_ident, role, holder_kind, holder_id, holder_name, entry_no, valid_from, observed_at)
+            VALUES (%s, '0001', '00070', 'manager', 'person', %s, 'ИВАН ПЕТРОВ', '1', '2020-01-01', %s)""", (eik, "a" * 64, read_at))
+    conn.execute("INSERT INTO tender_src.tr_person (id, indent, name, name_key) VALUES ('T1', %s, 'ИВАН ПЕТРОВ', 'ИВАН ПЕТРОВ')", ("a" * 64,))
+    # a procedure: the answer the queue names, and a later one that was held
+    fxt = json.loads((Path(__file__).parent / "fixtures" / "eop_svc" / "563386.json").read_text(encoding="utf-8"))
+    blob = json.dumps({"participation": fxt["participation"], "lots": fxt["lots"]}, ensure_ascii=False).encode()
+    (tmp_path / "svc" / "563386").mkdir(parents=True)
+    (tmp_path / "svc" / "563386" / "202609010600.json.gz").write_bytes(gzip.compress(blob))
+    (tmp_path / "svc" / "563386" / "202609020600.json.gz").write_bytes(gzip.compress(b'{"participation": null}'))
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason, status, sha256, fetched_at) VALUES (563386, 'backfill', 'done', %s, %s)",
+                 (hashlib.sha256(blob).hexdigest(), read_at))
+    offers = E.parse(563386, fxt["participation"], fxt["lots"])
+    E.write_offers(conn, offers, read_at)
+    # a period of the payments
+    res = {"success": True, "data": [S.COLS, ["01.02.2026", "ФИРМА ООД", "BG00", "BIC", "1", "Банка", "10,50", "BGN", "о1", "о2", "01.02.2026", "7", "10", "О", "П", "1"]]}
+    raw = json.dumps(res, ensure_ascii=False).encode()
+    (tmp_path / "sebra").mkdir()
+    (tmp_path / "sebra" / "r1.csv.gz").write_bytes(gzip.compress(raw))
+    conn.execute("INSERT INTO tender_src.sebra_resource (uri, name, format, sha256, rows, loaded_at) VALUES ('r1', 'За периода', 'csv', %s, 1, %s)",
+                 (hashlib.sha256(raw).hexdigest(), read_at))
+    conn.execute("INSERT INTO tender_src.sebra_payment (resource_uri, row_no, is_person, amount) VALUES ('r1', 0, false, 10.5)")
+
+    adopt.run(conn, st := {})
+    assert (st["tr"], st["tr_missing_raw"], st["offers"], st["sebra_files"], st["eop_loaded"]) == (1, 1, 1, 1, 1), st
+    assert st["without_load"] == {"eop_file": 0, "fx_rate": 0, "tr_deed": 1, "tr_role": 1, "eopsvc_offer": 0, "eopsvc_publication": 0,
+                                  "eopsvc_document": 0, "sebra_payment": 0}
+    # each load is dated when the answer was read, points at the kept file, and the rows carry it
+    got = conn.execute("""SELECT l.source, l.ref, l.loaded_at, f.path FROM ops.load l JOIN ops.raw_file f USING (raw_file_id)
+        WHERE l.tool = 'tender' AND l.is_current AND l.source IN ('tr', 'offers') ORDER BY 1""").fetchall()
+    assert [(s, r, at) for s, r, at, _ in got] == [("offers", "563386", read_at), ("tr", "121212121", read_at)]
+    assert got[0][3].endswith("202609010600.json.gz") and got[1][3].endswith("121212121.xml.gz")
+    assert conn.execute("SELECT count(*) FILTER (WHERE load_id IS NULL), count(*) FROM tender_src.eopsvc_offer").fetchone() == (0, len(offers))
+    assert conn.execute("SELECT eik FROM tender_src.tr_role WHERE load_id IS NULL").fetchall() == [("131313131",)]
+    assert conn.execute("SELECT load_id IS NOT NULL FROM tender_src.tr_person").fetchone() == (True,)
+    assert conn.execute("SELECT amount, load_id IS NOT NULL, receiver_name FROM tender_src.sebra_payment").fetchall() == [(10.5, True, "ФИРМА ООД")]
+    # the partida without its answer is queued for a new read, after what someone waits for
+    assert conn.execute("SELECT eik, status, why FROM tender_src.tr_queue ORDER BY 1").fetchall() == [
+        ("121212121", "done", None), ("131313131", "pending", "rotate")]
+    # the rows of a load are those a read today would make: the same answer again is unchanged, and reparse finds it
+    assert E.store(conn, 563386, E.parsed(563386, json.loads(blob)), blob) == "stored"
+    assert loads(conn, "offers")[-1][0] == "unchanged"
+    E.reparse(conn, rp := {})
+    assert rp == {"procedures": 1, "changed": 0, "missing_raw": 0}
+    # again: nothing to do
+    adopt.run(conn, st2 := {})
+    assert st2["tr"] == 0 and "offers" not in st2 and st2["sebra_files"] == 0 and "eop_loaded" not in st2

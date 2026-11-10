@@ -1,4 +1,4 @@
-"""Ingest against serving, the rule for the names of people, and the move from the old database.
+"""Ingest against serving, and the rule for the names of people.
 
 The pages read only pub_tender and pub. A person is published only in a role in an entity that received public
 money, under a token that lives for one build. The serving layer follows a build only when the rules hold.
@@ -59,6 +59,7 @@ def build(conn, rows=None):
             B_._copy(conn, t, res[t])
     B_.step_derive(conn, {})
     stats = {}
+    __import__("conftest").landed(conn)
     B_.step_publish(conn, stats)
     return stats
 
@@ -208,80 +209,3 @@ def test_the_build_links_to_the_shared_dimensions(conn):
     finally:
         conn.execute("DROP SCHEMA tender CASCADE; CREATE SCHEMA tender")
         conn.execute("DELETE FROM core.org WHERE eik = %s", (A,))
-
-
-def old_database(conn):
-    """The old database of Тендер, made in the test database from its own migrations (db/legacy), its ledger under the
-    name old_ops, and filled with what the new one holds now."""
-    from ingest import move
-    conn.execute("CREATE SCHEMA old_ops; CREATE SCHEMA live")
-    for f in sorted((ROOT / "db" / "legacy").glob("*.sql")):
-        text = re.sub(r"\bops\.", "old_ops.", f.read_text(encoding="utf-8")).replace("CREATE SCHEMA IF NOT EXISTS ops;", "")
-        conn.execute(re.sub(r"CREATE EXTENSION IF NOT EXISTS \w+;", "", text))
-    for source, new in move.STATE:
-        schema, table = source.split(".")
-        schema = "old_ops" if schema == "ops" else schema
-        cols = ", ".join(move._columns(conn, schema, table))
-        conn.execute(f"INSERT INTO {schema}.{table} ({cols}) SELECT {cols} FROM tender_src.{new}")
-    for t in move.BUILT:
-        cols = [c for c in move._columns(conn, "tender", t) if c not in ("org_eik", "municipality_code")]
-        conn.execute(f"CREATE TABLE live.{t} AS SELECT {', '.join(cols)} FROM tender.{t}")
-    conn.execute("""CREATE TABLE live.municipality AS
-        SELECT m.eik AS id, m.name_bg, m.name_en, m.drawn_as_eik AS drawn_as, o.label_bg AS oblast, o.nuts3_code AS nuts3,
-               n3.parent_code AS nuts2, n2.parent_code AS nuts1
-        FROM core.municipality m JOIN core.oblast o USING (oblast_code) JOIN core.nuts n3 ON n3.nuts_code = o.nuts3_code
-        JOIN core.nuts n2 ON n2.nuts_code = n3.parent_code""")
-    conn.execute("""INSERT INTO old_ops.job_run (step, status, inputs, finished_at) VALUES ('daily', 'ok', '{"day": "2026-11-09"}', now()),
-        ('tr-read', 'running', '{}', NULL)""")
-    conn.execute("INSERT INTO old_ops.change_log (source, ref, cause) VALUES ('tr', '1', 'rotate'), ('eop-file', '2021-02-22/contracts', 'late')")
-
-
-def test_replay_copies_the_old_database_and_parity_sees_a_difference(conn, test_database):
-    from ingest import db, move, pipeline
-    fill(conn)
-    conn.execute("INSERT INTO tender_src.fx_rate VALUES ('2025-01-01', 'USD', 1.1)")
-    conn.execute("INSERT INTO tender_src.ed_tag (entity_type, entity_id, code, note, author) VALUES ('company', 'eik:1', 'x', 'основание', 'admin')")
-    build(conn)
-    old_database(conn)
-    kept = {new: one(conn, f"SELECT count(*) FROM tender_src.{new}") for _, new in move.STATE}
-    # an empty landing zone again, then the move: replay, build, parity
-    conn.execute("TRUNCATE " + ", ".join(f"tender_src.{new}" for _, new in move.STATE))
-    conn.execute("DELETE FROM ops.check_result WHERE tool = 'tender'; DELETE FROM ops.run WHERE tool = 'tender'; DELETE FROM ops.change_log WHERE tool = 'tender'")
-
-    def step(name, fn):
-        with pipeline.run(conn, "tender", name) as r:
-            fn(r)
-            return r.stats
-    stats = step("replay", lambda r: move.replay(conn, r, old_dsn=test_database, old_ops="old_ops"))
-    assert {new: one(conn, f"SELECT count(*) FROM tender_src.{new}") for _, new in move.STATE} == kept and stats["runs"] == 2
-    assert stats["tr_role"] == len(ROLES) and stats["changes"] == 2
-    # the old build named a holder with two spellings by either of them: that is not a difference of the move
-    conn.execute("UPDATE live.node SET label = 'JOHN SMYTH' WHERE kind = 'local_person'")
-    conn.execute("UPDATE live.node SET label = 'A КЛОН', ref = %s WHERE id = %s", ("eik:" + UNIT, "c:" + E))   # and a company by its unit
-    # the D-1 chain finds the day the old database had done; a run it left as running is not left so
-    assert one(conn, "SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'ok' AND params->>'day' = '2026-11-09'") == 1
-    assert one(conn, "SELECT status FROM ops.run WHERE tool = 'tender' AND step = 'tr-read'") == "failed"
-    assert one(conn, "INSERT INTO tender_src.ed_tag (entity_type, entity_id, code, note, author) VALUES ('company', 'eik:2', 'y', 'z', 'admin') RETURNING id") == 2
-    conn.execute("DELETE FROM tender_src.ed_tag WHERE id = 2")
-    with pytest.raises(RuntimeError, match="not empty"):       # a second copy would undo what was read since
-        step("replay", lambda r: move.replay(conn, r, old_dsn=test_database, old_ops="old_ops"))
-    build(conn)
-    stats = step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))
-    bad = conn.execute("SELECT name FROM ops.check_latest WHERE tool = 'tender' AND kind = 'parity' AND ok IS NOT true ORDER BY 1").fetchall()
-    assert bad == [] and stats["differ"] == [] and stats["tables"] > 50
-    # every rule the step records is in db/checks.toml, and the other way round
-    listed = {r[0] for r in conn.execute("SELECT name FROM ops.check_rule WHERE tool = 'tender' AND kind = 'parity'")}
-    assert listed == set(move.parity_rules())
-    # the number of a network component is arbitrary: the same components under other numbers are the same
-    conn.execute("UPDATE live.network_component SET component = component + 1000; UPDATE live.network_component_stats SET component = component + 1000")
-    assert step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))["differ"] == []
-    # one cent in one contract of the old database, one letter in one role, another name of a company: parity names
-    # exactly those tables
-    conn.execute("UPDATE live.node SET label = 'ДРУГО ИМЕ' WHERE id = %s", ("c:" + B,))
-    conn.execute("UPDATE live.contract SET amount_eur = amount_eur + 0.01 WHERE id = (SELECT min(id) FROM live.contract)")
-    conn.execute("UPDATE tr.role SET holder_name = holder_name || 'А' WHERE holder_id = %s AND eik = %s", (P1, A))
-    stats = step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))
-    assert stats["differ"] == ["contract", "node", "tr_role"]
-    bad = [r[0] for r in conn.execute("SELECT name FROM ops.check_latest WHERE tool = 'tender' AND kind = 'parity' AND ok = false ORDER BY 1")]
-    assert bad == ["parity_contract_amount_eur_sum", "parity_contract_content", "parity_node_content", "parity_tr_role_content"]
-    assert db.RUNS == {}

@@ -4,14 +4,19 @@ import datetime as dt
 import io
 import zipfile
 
+from . import db
+from .config import DATA
 from .http import get
 
 ECB_HIST = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
 
 
 def refresh(conn):
-    """Replace tender_src.fx_rate with the ECB history. Returns the number of rows."""
+    """Bring tender_src.fx_rate up to the ECB history, as one load of the shared module: the file goes to the register
+    of raw files, the same rates write nothing, a history with fewer rates than we hold is held. Returns the number
+    of rows of the answer."""
     data = get(ECB_HIST)
+    file = db.keep_raw(conn, "ecb", ECB_HIST, data, DATA / "raw" / "ecb", "eurofxref-hist.zip", media_type="application/zip", compress=False)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         rows = list(csv.DictReader(io.TextIOWrapper(z.open(z.namelist()[0]), encoding="utf-8")))
     out = []
@@ -23,12 +28,14 @@ def refresh(conn):
             cur = (cur or "").strip()
             v = (v or "").strip()
             if cur and cur != "Date" and v and v != "N/A":
-                out.append((d, cur, float(v)))
-    with conn.transaction():
+                out.append((d, cur, v))
+    def write(conn, load_id, _):
         conn.execute("DELETE FROM tender_src.fx_rate")
-        with conn.cursor().copy("COPY tender_src.fx_rate(day, currency, per_eur) FROM STDIN") as cp:
+        with conn.cursor().copy("COPY tender_src.fx_rate(day, currency, per_eur, load_id) FROM STDIN") as cp:
             for row in out:
-                cp.write_row(row)
+                cp.write_row((*row, load_id))
+
+    db.land(conn, "ecb", ECB_HIST, {f"{d}/{cur}": v for d, cur, v in out}, write, file)
     return len(out)
 
 

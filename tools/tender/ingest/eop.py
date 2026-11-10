@@ -160,17 +160,31 @@ def sync(start=EOP_FIRST_DAY, end=None, refetch_last=3, workers=4):
         return list(ex.map(lambda d: fetch_day(d, force=d in recent), all_days))
 
 
-def read_rows(day, kind):
+STORE = "_store"   # under RAW_EOP: every file once more under its sha256, the name the register of raw files knows
+
+
+def stored(sha):
+    """Where the file with this sha256 is kept for good. <day>/<kind>.json is the newest answer of the source,
+    which is not ours until it is loaded; a held file and the file the build reads can differ."""
+    return RAW_EOP / STORE / sha[:2] / f"{sha}.json"
+
+
+def rows_of(raw, kind):
     """Rows of a raw file: flat files are a JSON list (or a dict holding one); OCDS -> releases."""
-    path = RAW_EOP / day / f"{kind}.json"
-    if not path.exists():
-        return []
-    doc = json.loads(path.read_bytes())
+    doc = json.loads(raw)
     if kind == "ocds":
         return doc.get("releases", [])
     if isinstance(doc, list):
         return doc
     return next((v for v in doc.values() if isinstance(v, list)), [])
+
+
+def read_rows(day, kind, sha=None):
+    """The rows of the file of a day: the loaded copy when its sha256 is given, else the newest answer."""
+    path = RAW_EOP / day / f"{kind}.json"
+    if sha and stored(sha).exists():
+        path = stored(sha)
+    return rows_of(path.read_bytes(), kind) if path.exists() else []
 
 
 if __name__ == "__main__":

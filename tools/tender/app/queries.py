@@ -109,7 +109,7 @@ def dashboard():
         "procedures": rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,
                 round(100.0 * count(*) FILTER (WHERE offers_count = 1)
                       / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
-                FROM pub_tender.contract c GROUP BY 1 ORDER BY n DESC LIMIT 6"""),
+                FROM pub_tender.contract c GROUP BY 1 ORDER BY n DESC, 1 LIMIT 6"""),
         "sectors": rows(f"""WITH s AS (SELECT left(cpv, 2) d, count(*) n, {SUM} eur,
                   round(100.0 * count(*) FILTER (WHERE offers_count = 1)
                         / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct,
@@ -119,15 +119,15 @@ def dashboard():
                 SELECT s.d, round(s.eur) eur, s.n, s.single_pct, s.single_eur_pct,
                   coalesce((SELECT c.cpv_description FROM pub_tender.contract c WHERE c.cpv LIKE s.d || '000000%%' LIMIT 1),
                            'CPV ' || s.d) name
-                FROM s ORDER BY eur DESC NULLS LAST LIMIT 6"""),
+                FROM s ORDER BY eur DESC NULLS LAST, s.d LIMIT 6"""),
         "top_buyers": rows("""SELECT b.name, s.eik, s.contracts n, round(s.amount_eur) eur FROM pub_tender.buyer_stats s
-                JOIN pub_tender.buyer b USING (eik) ORDER BY s.amount_eur DESC NULLS LAST LIMIT 6"""),
+                JOIN pub_tender.buyer b USING (eik) ORDER BY s.amount_eur DESC NULLS LAST, s.eik LIMIT 6"""),
         "top_companies": rows("""SELECT c.name, c.key, s.contracts n, round(s.amount_eur) eur FROM pub_tender.company_stats s
-                JOIN pub_tender.company c USING (key) ORDER BY s.amount_eur DESC NULLS LAST LIMIT 6"""),
+                JOIN pub_tender.company c USING (key) ORDER BY s.amount_eur DESC NULLS LAST, c.key LIMIT 6"""),
         "recent_big": rows("""SELECT c.id, c.effective_date, c.subject, b.name buyer, c.buyer_eik, c.supplier_display supplier,
                 round(c.amount_eur) eur, c.offers_count FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
                 WHERE c.effective_date >= current_date - 60 AND NOT c.is_framework AND c.value_flag = 'ok'
-                ORDER BY c.amount_eur DESC NULLS LAST LIMIT 8"""),
+                ORDER BY c.amount_eur DESC NULLS LAST, c.id LIMIT 8"""),
     }
 
 
@@ -148,10 +148,10 @@ def company(key):
         FROM pub_tender.contract_supplier s JOIN pub_tender.contract c ON c.id = s.contract_id WHERE s.party_key = %s GROUP BY 1""", k)
     c["cpv"] = rows(f"""SELECT c.cpv_description d, count(DISTINCT c.id) n, round({SUM}) eur
         FROM pub_tender.contract_supplier s JOIN pub_tender.contract c ON c.id = s.contract_id WHERE s.party_key = %s
-        GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 5""", k)
+        GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 5""", k)
     c["buyers_top"] = rows(f"""SELECT b.name, c.buyer_eik eik, count(DISTINCT c.id) n, round({SUM}) eur
         FROM pub_tender.contract_supplier s JOIN pub_tender.contract c ON c.id = s.contract_id LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
-        WHERE s.party_key = %s GROUP BY 1, 2 ORDER BY eur DESC NULLS LAST LIMIT 6""", k)
+        WHERE s.party_key = %s GROUP BY 1, 2 ORDER BY eur DESC NULLS LAST, 2, 1 LIMIT 6""", k)
     c["tags"] = rows("""SELECT t.code, d.label, d.kind, t.reason FROM pub_tender.tag t JOIN pub_tender.tag_def d USING (code)
         WHERE t.entity_type = 'company' AND t.entity_id = %s
         UNION ALL SELECT e.code, e.code, 'editorial', e.note FROM pub_tender.editorial_tag e
@@ -165,13 +165,13 @@ def company(key):
         e.valid_from, e.valid_to, e.uncertain_after, e.entry_no, n.ref person_id,
         (SELECT count(DISTINCT e2.company) FROM pub_tender.edge e2 WHERE e2.holder = e.holder AND e2.company <> e.company) others
         FROM pub_tender.edge e LEFT JOIN pub_tender.node n ON n.id = e.holder WHERE e.company = %s
-        ORDER BY e.holder, e.valid_from""", node) if node else []
+        ORDER BY e.holder, e.valid_from, e.id""", node) if node else []
     return c
 
 
 def articles(kind, ref):
     return rows("""SELECT url, title, source, published_at FROM pub_tender.article WHERE entity_type = %s AND entity_id = %s
-                   AND status = 'confirmed' ORDER BY published_at DESC NULLS LAST LIMIT 20""", kind, ref)
+                   AND status = 'confirmed' ORDER BY published_at DESC NULLS LAST, url LIMIT 20""", kind, ref)
 
 
 def indicators(key):
@@ -183,7 +183,7 @@ def indicators(key):
     b = rows("""SELECT c.buyer_eik, bu.name, sum(c.amount_eur) v FROM pub_tender.contract_supplier s
                JOIN pub_tender.contract c ON c.id = s.contract_id LEFT JOIN pub_tender.buyer bu ON bu.eik = c.buyer_eik
                WHERE s.party_key = %s AND c.effective_date >= current_date - interval '3 years'
-                 AND c.amount_eur IS NOT NULL AND NOT c.is_framework GROUP BY 1, 2 ORDER BY v DESC""", key)
+                 AND c.amount_eur IS NOT NULL AND NOT c.is_framework GROUP BY 1, 2 ORDER BY v DESC, 2, 1""", key)
     total = sum(float(x["v"]) for x in b)
     return {"single": r["single"], "known": r["known"],
             "top_buyer": b[0]["name"] if b else None,
@@ -222,7 +222,7 @@ def person(pid):
         s.contracts, s.amount_eur
         FROM pub_tender.edge e LEFT JOIN pub_tender.company co ON co.key = 'eik:' || substr(e.company, 3)
         LEFT JOIN pub_tender.company_stats s ON s.key = co.key
-        WHERE e.holder = %s ORDER BY e.valid_from""", holder)
+        WHERE e.holder = %s ORDER BY e.valid_from, e.id""", holder)
     p["modes"] = person_modes(holder)
     # candidates for public figures (matched by name) are not in the serving layer at all: a namesake would be
     # accused. They come back when a match is confirmed through an identifier.
@@ -400,7 +400,7 @@ def connections(ids, active=False, skip_hubs=False, offset=0, limit=50, budget=1
     if steps:
         flat = [x for s in steps for x in s]
         for r in rows("""SELECT holder, company, role, share, valid_from, valid_to, uncertain_after FROM pub_tender.edge
-                         WHERE holder = ANY(%s) AND company = ANY(%s) ORDER BY valid_from""", flat, flat):
+                         WHERE holder = ANY(%s) AND company = ANY(%s) ORDER BY valid_from, id""", flat, flat):
             key = tuple(sorted((r["holder"], r["company"])))
             if key in steps:
                 roles.setdefault(key, []).append(r)
@@ -412,7 +412,7 @@ def top_buyers(nodes):
     return {r["node"]: r for r in rows("""SELECT DISTINCT ON (k.node) k.node, b.name, c.buyer_eik eik, round(sum(c.amount_eur)) eur
         FROM pub_tender.node_contract k JOIN pub_tender.contract c ON c.id = k.contract_id LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
         WHERE k.node = ANY(%s) AND NOT c.is_framework GROUP BY k.node, b.name, c.buyer_eik
-        ORDER BY k.node, sum(c.amount_eur) DESC NULLS LAST""", list(nodes))}
+        ORDER BY k.node, sum(c.amount_eur) DESC NULLS LAST, c.buyer_eik, b.name""", list(nodes))}
 
 
 def paid(col, v):
@@ -434,10 +434,10 @@ def buyer(eik):
         FROM pub_tender.contract c WHERE buyer_eik = %s AND {YEARS} GROUP BY 1 ORDER BY 1""", eik)
     b["suppliers_top"] = rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({SUM}) eur
         FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE c.buyer_eik = %s
-        GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", eik)
+        GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", eik)
     b["procedures"] = rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,
         round(100.0 * count(*) FILTER (WHERE offers_count = 1) / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
-        FROM pub_tender.contract c WHERE buyer_eik = %s GROUP BY 1 ORDER BY n DESC LIMIT 6""", eik)
+        FROM pub_tender.contract c WHERE buyer_eik = %s GROUP BY 1 ORDER BY n DESC, 1 LIMIT 6""", eik)
     b["paid"] = paid("buyer_eik", eik)
     b["offers"] = rows("""SELECT CASE WHEN offers_count IS NULL THEN 'unknown' WHEN offers_count >= 4 THEN '4+'
         ELSE offers_count::text END k, count(*) n FROM pub_tender.contract WHERE buyer_eik = %s GROUP BY 1""", eik)
@@ -477,7 +477,7 @@ def tender(unp, raw=True):
         round(c.amount_eur) eur, c.offers_count, c.value_flag, c.estimate_ratio, c.is_framework, c.annex_count, c.award_method,
         c.published_at
         FROM pub_tender.contract c LEFT JOIN pub_tender.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0
-        WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date""", unp)
+        WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date, c.id""", unp)
     t["stats"] = one(f"""SELECT count(*) n, round({SUM}) eur FROM pub_tender.contract c WHERE c.unp = %s""", unp)
     # lots closed without award (the award notice) and annexes whose contract could not be told apart
     t["awards"] = rows("""SELECT unp, tender_id, lot_no, notice_id, notice_type, published_at, source_day, offers_count, sme_offers_count,
@@ -609,9 +609,9 @@ def tender_lots(t):
     unp = t["unp"]
     built = has("pub_tender.offer")  # the first build after migration 0003 creates it
     offers = rows("""SELECT lot_no, round, bidder_name, bidder_eik, company_key, consortium, submitted_at, price_eur,
-        price_opened, won FROM pub_tender.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at""", unp) if built else []
+        price_opened, won FROM pub_tender.offer WHERE unp = %s ORDER BY lot_no, price_eur NULLS LAST, submitted_at, round, offer_id""", unp) if built else []
     # the lots and the contracts' lots as ЦАИС ЕОП numbers them, when the procedure page has been read
-    svc = rows("SELECT lot_no, title, estimated_eur, status FROM pub_tender.offer_lot WHERE unp = %s", unp) if built else []
+    svc = rows("SELECT lot_no, title, estimated_eur, status FROM pub_tender.offer_lot WHERE unp = %s ORDER BY lot_no, title", unp) if built else []
     clot = {r["contract_id"]: r["lot_no"] for r in rows("SELECT contract_id, lot_no FROM pub_tender.contract_lot WHERE unp = %s", unp)} if built else {}
     lots = {l["lot_no"]: dict(l, offers=[], contracts=[]) for l in (svc or t["lots"])}
     for o in offers:
@@ -638,18 +638,21 @@ def tender_lots(t):
 
 
 @lru_cache(maxsize=8)
-def _raw_rows(day, kind):
+def _raw_rows(day, kind, sha):
     from ingest import eop
-    return eop.read_rows(day, kind)
+    return eop.read_rows(day, kind, sha)
 
 
 def raw_records(entity, ref):
-    """Every published version of a record, oldest first, read back from the raw files."""
+    """Every published version of a record, oldest first, read back from the raw files: the file of each day that
+    the published build was made from (pub_tender.eop_file names it by its sha256)."""
     out = []
-    for r in rows("SELECT day, kind, idx FROM pub_tender.source_record WHERE entity = %s AND ref = %s ORDER BY day, idx",
-                  entity, ref):
+    for r in rows("""SELECT s.day, s.kind, s.idx, f.sha256 FROM pub_tender.source_record s
+                     LEFT JOIN pub_tender.eop_file f ON f.day::text = s.day AND f.kind = s.kind
+                     WHERE s.entity = %s AND s.ref = %s ORDER BY s.day, s.idx""", entity, ref):
+        sha = r.pop("sha256")
         try:
-            out.append({**r, "rec": _raw_rows(r["day"], r["kind"])[r["idx"]]})
+            out.append({**r, "rec": _raw_rows(r["day"], r["kind"], sha)[r["idx"]]})
         except (IndexError, OSError, ValueError):
             continue
     return out
@@ -704,7 +707,7 @@ def search(q, kind=None, limit=40, kinds=None):
                     FROM pub_tender.search_item WHERE kind = ANY(%s) AND words @@ to_tsquery('simple', %s)""")
                 args += [t, t, kinds, tq]
     sql = f"""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM ({' UNION ALL '.join(parts)}) x
-              GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s"""
+              GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC, 1, 2 LIMIT %s"""
     res = rows(sql, *args, limit)
     names = [k for k in kinds if k != "tender"]  # subjects are long: no fuzzy matching on them
     if not res and names and not re.fullmatch(r"[\d\s\-]+", q):
@@ -712,7 +715,7 @@ def search(q, kind=None, limit=40, kinds=None):
                                  "WHERE kind = ANY(%s) AND key %% upper(%s)"] * len(terms))
         fa = [a for t in terms for a in (t, names, t)]
         res = rows(f"""SELECT kind, ref, label, sub, max(sim) sim, max(weight) weight FROM ({fz}) x
-                       GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC LIMIT %s""", *fa, limit)
+                       GROUP BY 1, 2, 3, 4 ORDER BY max(sim) DESC, max(weight) DESC, 1, 2 LIMIT %s""", *fa, limit)
     return res
 
 

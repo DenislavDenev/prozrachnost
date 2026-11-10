@@ -571,9 +571,9 @@ def place(request: Request, aid: str):
     base = "FROM pub_tender.contract c JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik JOIN pub_tender.municipality m ON m.id = bp.municipality"
     stats = Q.one(f"SELECT count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct {base} WHERE {cond}", *a0)
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
-        WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
+        WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", *a0)
     suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
-        {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
+        {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", *a0)
     by_year = Q.rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} WHERE {cond} AND {Q.YEARS} GROUP BY 1 ORDER BY 1""", *a0)
     param = "municipality" if aid[0].isdigit() else "area"
@@ -590,19 +590,19 @@ def map_detail(request: Request, aid: str, by: str = "buyer"):
         where = where.replace("bp.basis = 'municipality'", "true")
         buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
             FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
-            WHERE {SUP_HERE} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
+            WHERE {SUP_HERE} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", len(aid), aid, *args)
         suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
             FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id {MEMBER_CODE}
-            WHERE left(mc.code, %s) = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
+            WHERE left(mc.code, %s) = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", len(aid), aid, *args)
         return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
     cond, a0 = area_cond(aid)
     base = "FROM pub_tender.contract c JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik JOIN pub_tender.municipality m ON m.id = bp.municipality"
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
-        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
+        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", *a0, *args)
     suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
         {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id
-        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
+        WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", *a0, *args)
     return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
 
 
@@ -640,7 +640,7 @@ def companies(request: Request):
 def flags_index(request: Request):
     """Every automatic tag: what it measures, how many companies have it, a link to them."""
     defs = Q.rows("""SELECT d.*, (SELECT count(*) FROM pub_tender.tag t WHERE t.code = d.code) n FROM pub_tender.tag_def d
-                     ORDER BY d.kind DESC, n DESC""")
+                     ORDER BY d.kind DESC, n DESC, d.code""")
     return page(request, "flags.html", defs=defs, nav="Фирми")
 
 
@@ -811,7 +811,7 @@ def flows_json(request: Request, year: int = 0, mode: str = "contracts"):
     base, where, args, val = flow_base(mode, year, filters)
     total = Q.one(f"SELECT round(sum({val})) v, count(*) n {base} WHERE {where}", *args)
     parts = Q.rows(f"""SELECT {dims[nxt]} k, round(sum({val})) v, count(*) n, count(*) OVER () parts {base}
-        WHERE {where} AND {dims[nxt]} IS NOT NULL GROUP BY 1 ORDER BY v DESC NULLS LAST LIMIT 500""", *args) if nxt else []
+        WHERE {where} AND {dims[nxt]} IS NOT NULL GROUP BY 1 ORDER BY v DESC NULLS LAST, 1 LIMIT 500""", *args) if nxt else []
     names = flow_names(mode, {nxt: [r["k"] for r in parts]}) if nxt else {}
     shown = sum(float(r["v"] or 0) for r in parts[:FLOW_TOP])
     path_names = flow_names(mode, {k: [v] for k, v in filters.items()})

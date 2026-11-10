@@ -1,7 +1,8 @@
 """Budget payments from СЕБРА: the quarterly lists of individual payments of 5 000 лв. and more that
 МЕУ publishes on data.egov.bg (dataset below, from 01.07.2022). CSV files are read through the portal
 API (getResourceData); periods published only as ZIP through the resource's download link. Each file
-is kept gzipped with its sha256 and loaded once; a file the portal marks as updated is loaded again.
+is kept gzipped in the register of raw files and loaded once, as one load of the shared module
+(pipeline.load); a file the portal marks as updated is loaded again.
 
 The lists carry the receiver's name and account, not its ЕИК: companies are matched to our companies
 by exact name in the build (db/derive/70_payments.sql). Natural persons arrive anonymised
@@ -9,7 +10,6 @@ by exact name in the build (db/derive/70_payments.sql). Natural persons arrive a
 """
 import csv
 import datetime as dt
-import gzip
 import hashlib
 import io
 import json
@@ -18,6 +18,7 @@ import urllib.request
 import zipfile
 
 from .config import DATA, USER_AGENT
+from . import db
 from .db import log_change
 
 API = "https://data.egov.bg/api/"
@@ -56,13 +57,20 @@ def read_rows(res):
     """(rows as lists with the header first, raw bytes) of one file."""
     if res["format"] == "csv":
         raw = _post("getResourceData", {"resource_uri": res["uri"]})
+    else:
+        req = urllib.request.Request(f"https://data.egov.bg/resource/download/zip/{res['uri']}", headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req, timeout=1800) as r:
+            raw = r.read()
+    return rows_of(res, raw), raw
+
+
+def rows_of(res, raw):
+    """The rows of one answer (the header first), from its bytes."""
+    if res["format"] == "csv":
         d = json.loads(raw)
         if not d.get("success") or not d.get("data"):
             raise ValueError(f"no data for {res['uri']}")
-        return d["data"], raw
-    req = urllib.request.Request(f"https://data.egov.bg/resource/download/zip/{res['uri']}", headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=1800) as r:
-        raw = r.read()
+        return d["data"]
     rows = []
     with zipfile.ZipFile(io.BytesIO(raw)) as z:
         for name in z.namelist():
@@ -77,7 +85,7 @@ def read_rows(res):
                     continue
             part = list(csv.reader(io.StringIO(s), delimiter=";" if s[:500].count(";") > s[:500].count(",") else ","))
             rows += part if not rows else part[1:]
-    return rows, raw
+    return rows
 
 
 def day(v):
@@ -115,50 +123,60 @@ def parse(rows):
     return out
 
 
+COLUMNS = ["settlement_date", "receiver_name", "is_person", "receiver_iban", "fin_code", "fin_name", "amount", "currency",
+           "reason", "reg_date", "reg_no", "pay_code", "organization", "primary_organization", "primary_org_code"]
+
+
+def land(conn, res, recs, raw, stats, same_date=False, at=None):
+    """One file through the shared module: the raw answer into the register of files, its rows as one load.
+    Returns the status of the load. An answer with fewer rows than we hold is held (pipeline.load)."""
+    sha = hashlib.sha256(raw).hexdigest()
+    file = db.keep_raw(conn, "sebra", res["uri"], raw, RAW, f"{res['uri']}.{res['format']}")
+    had = conn.execute("SELECT rows FROM tender_src.sebra_resource WHERE uri = %s AND sha256 IS NOT NULL", (res["uri"],)).fetchone()
+
+    def write(conn, load_id, rows):
+        conn.execute("""INSERT INTO tender_src.sebra_resource (uri, name, format, updated_at) VALUES (%s, %s, %s, %s)
+            ON CONFLICT (uri) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at""",
+                     (res["uri"], res["name"], res["format"], res["updated_at"]))
+        conn.execute("DELETE FROM tender_src.sebra_payment WHERE resource_uri = %s", (res["uri"],))
+        with conn.cursor().copy(f"COPY tender_src.sebra_payment (resource_uri, row_no, load_id, {', '.join(COLUMNS)}) FROM STDIN") as cp:
+            for i, r in enumerate(recs):
+                cp.write_row([res["uri"], i, load_id] + [r[c] for c in COLUMNS])
+        conn.execute("UPDATE tender_src.sebra_resource SET sha256 = %s, rows = %s, loaded_at = COALESCE(%s, now()), held_sha = NULL, load_id = %s WHERE uri = %s",
+                     (sha, len(recs), at, load_id, res["uri"]))
+
+    done = db.land(conn, "sebra", res["uri"], {str(i): r for i, r in enumerate(recs)}, write, file, now=at)
+    if done.status == "held":
+        stats["held"] += 1
+    elif done.status == "unchanged":   # other bytes, the same rows
+        conn.execute("UPDATE tender_src.sebra_resource SET sha256 = %s, updated_at = %s WHERE uri = %s", (sha, res["updated_at"], res["uri"]))
+        stats["verified"] += 1
+    else:
+        if had and done.status == "loaded" and at is None:   # at: an older answer taken by the step adopt, not a change
+            log_change(conn, "sebra", res["uri"], "rows", had[0], len(recs), "rewritten" if same_date else "new-record")
+        stats["files"] += 1
+        stats["rows"] += len(recs)
+        stats.setdefault("loaded", []).append(res["name"])
+    return done.status
+
+
 def load(conn, stats, verify=False):
     """Load every file that is new or changed since it was loaded. data.egov.bg dates a changed file;
     verify (weekly) downloads every file anyway and compares its sha256, for a file replaced without a new
-    date. A file with fewer rows than we hold is kept back until a second download agrees; an older copy
-    is kept next to the new one; every change goes to ops.change_log."""
+    date. A file with fewer rows than we hold is kept back until a second download a day or more later agrees;
+    every answer is kept in the register of raw files; every change goes to ops.change_log."""
     stats.update(files=0, rows=0, verified=0, held=0)
     for res in resources():
         # the date compared by Postgres, which parsed and stored the portal's text the same way
-        had = conn.execute("""SELECT updated_at IS NOT DISTINCT FROM %s::timestamptz, loaded_at, sha256, rows, held_sha
+        had = conn.execute("""SELECT updated_at IS NOT DISTINCT FROM %s::timestamptz, loaded_at, sha256
                               FROM tender_src.sebra_resource WHERE uri = %s""", (res["updated_at"], res["uri"])).fetchone()
         same_date = bool(had and had[1] and had[0])
         if same_date and not verify:
             continue
         rows, raw = read_rows(res)
-        recs = parse(rows)
-        sha = hashlib.sha256(raw).hexdigest()
-        if had and had[2] == sha:
-            stats["verified"] += 1
-            continue
-        if had and had[3] and len(recs) < had[3] and had[4] != sha:
-            log_change(conn, "sebra", res["uri"], "rows", had[3], len(recs), "held")
-            conn.execute("UPDATE tender_src.sebra_resource SET held_sha = %s WHERE uri = %s", (sha, res["uri"]))
-            stats["held"] += 1
-            continue
-        if had and had[2]:
-            log_change(conn, "sebra", res["uri"], "rows", had[3], len(recs),
-                       "confirmed" if had[4] == sha else "rewritten" if same_date else "new-record")
-        RAW.mkdir(parents=True, exist_ok=True)
-        path = RAW / f"{res['uri']}.{res['format']}.gz"
-        if had and had[2] and path.exists():
-            path.replace(path.with_name(f"{res['uri']}.{had[2][:12]}.{res['format']}.gz"))
-        path.write_bytes(gzip.compress(raw))
-        with conn.transaction():
-            conn.execute("""INSERT INTO tender_src.sebra_resource (uri, name, format, updated_at) VALUES (%s, %s, %s, %s)
-                ON CONFLICT (uri) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at""",
-                         (res["uri"], res["name"], res["format"], res["updated_at"]))
-            conn.execute("DELETE FROM tender_src.sebra_payment WHERE resource_uri = %s", (res["uri"],))
-            cols = ["settlement_date", "receiver_name", "is_person", "receiver_iban", "fin_code", "fin_name", "amount", "currency",
-                    "reason", "reg_date", "reg_no", "pay_code", "organization", "primary_organization", "primary_org_code"]
-            with conn.cursor().copy(f"COPY tender_src.sebra_payment (resource_uri, row_no, {', '.join(cols)}) FROM STDIN") as cp:
-                for i, r in enumerate(recs):
-                    cp.write_row([res["uri"], i] + [r[c] for c in cols])
-            conn.execute("UPDATE tender_src.sebra_resource SET sha256 = %s, rows = %s, loaded_at = now(), held_sha = NULL WHERE uri = %s",
-                         (sha, len(recs), res["uri"]))
-        stats["files"] += 1
-        stats["rows"] += len(recs)
-        stats.setdefault("loaded", []).append(res["name"])
+        try:
+            recs = parse(rows)
+        except ValueError as e:   # another shape: recorded, nothing replaced
+            db.reject(conn, "sebra", res["uri"], e, db.keep_raw(conn, "sebra", res["uri"], raw, RAW, f"{res['uri']}.{res['format']}"))
+            raise
+        land(conn, res, recs, raw, stats, same_date)
