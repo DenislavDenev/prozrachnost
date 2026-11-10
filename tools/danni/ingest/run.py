@@ -20,7 +20,7 @@ import pipeline
 from pipeline import ShapeError
 
 from . import ekatte
-from .config import ARCHIVE, DSN, RAW, ROOT, TENDER_DSN, TOOL
+from .config import ARCHIVE, DSN, RAW, ROOT, TENDER_DSN, TENDER_SCHEMA, TOOL
 
 EKATTE_TABLE = {'ek_reg1.json': 'ekatte_region', 'ek_reg2.json': 'ekatte_region', 'ek_obl.json': 'ekatte_oblast',
                 'ek_obst.json': 'ekatte_municipality', 'ek_atte.json': 'ekatte_settlement'}
@@ -128,13 +128,13 @@ def place(conn, r, archive=ARCHIVE, raw_dir=RAW):
     return result
 
 
-def tender_orgs(tender):
+def tender_orgs(tender, schema=TENDER_SCHEMA):
     """Every organisation Тендер holds under an ЕИК: the companies and the buyers. Persons are not read.
     Returns the rows with a valid ЕИК, and the counts the reconciliation needs."""
     rows, seen, invalid, unnamed = {}, 0, 0, 0
     for eik, name, legal_form, seat, registered_on, status, public in tender.execute(
-            '''SELECT eik, name, legal_form, seat, registered_on, tr_status, is_public_body
-               FROM live.company WHERE eik IS NOT NULL ORDER BY eik'''):
+            f'''SELECT eik, name, legal_form, seat, registered_on, tr_status, is_public_body
+                FROM {schema}.company WHERE eik IS NOT NULL ORDER BY eik'''):
         seen += 1
         if not eik_valid(eik):
             invalid += 1
@@ -145,7 +145,7 @@ def tender_orgs(tender):
                              registered_on=registered_on, register_status=status or None,
                              is_public_body=bool(public), is_buyer=False)
     buyers = buyers_valid = tender_says_valid = 0
-    for eik, name, says_valid in tender.execute('SELECT eik, name, eik_valid FROM live.buyer ORDER BY eik'):
+    for eik, name, says_valid in tender.execute(f'SELECT eik, name, eik_valid FROM {schema}.buyer ORDER BY eik'):
         buyers += 1
         tender_says_valid += bool(says_valid)
         if not eik_valid(eik):
@@ -160,14 +160,18 @@ def tender_orgs(tender):
                       tender_says_valid=tender_says_valid)
 
 
-def org(conn, r, tender_dsn=TENDER_DSN):
+def org(conn, r, tender_dsn=TENDER_DSN, schema=TENDER_SCHEMA):
+    """The organisations from the clean tables of Тендер (schema tender of this database; its own database before
+    its move) into the landing zone, then core.org."""
+    if not schema.isidentifier():
+        raise ValueError(f'not a schema name: {schema!r}')
     with psycopg.connect(tender_dsn, autocommit=True) as tender:
         tender.execute('SET default_transaction_read_only = on')
         with tender.transaction():   # one snapshot for both tables
             tender.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
-            rows, n = tender_orgs(tender)
-            municipal = tender.execute('SELECT eik FROM live.buyer WHERE name ILIKE %s', ('%община%',)).fetchall()
-    loaded = pipeline.load(conn, r, 'org-tender', 'live.company+live.buyer', rows, writer('org_tender', ORG_COLUMNS))
+            rows, n = tender_orgs(tender, schema)
+            municipal = tender.execute(f'SELECT eik FROM {schema}.buyer WHERE name ILIKE %s', ('%община%',)).fetchall()
+    loaded = pipeline.load(conn, r, 'org-tender', 'tender.company+tender.buyer', rows, writer('org_tender', ORG_COLUMNS))
     drop_previous(conn, 'org_tender', loaded)
     build(conn, 'org')
     in_core = conn.execute('SELECT count(*) FROM core.org WHERE gone_at IS NULL').fetchone()[0]

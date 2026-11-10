@@ -19,7 +19,7 @@ jobs:
           for f in tools/tender/app/feedback.py tools/patna-obstanovka/feedback.py tools/ikonomika/app/feedback.py tools/parlament/app/feedback.py tools/naselenie/app/feedback.py tools/obrazovanie/app/feedback.py tools/byudzhet/app/feedback.py tools/pazar/app/feedback.py tools/sobstvenost/app/feedback.py tools/kontrol/app/feedback.py tools/partii/app/feedback.py; do cmp hub/feedback.py "$f"; done
           for f in tools/tender/tests/test_feedback.py tools/patna-obstanovka/tests/test_feedback.py tools/ikonomika/tests/test_feedback.py tools/parlament/tests/test_feedback.py tools/naselenie/tests/test_feedback.py tools/obrazovanie/tests/test_feedback.py tools/byudzhet/tests/test_feedback.py tools/pazar/tests/test_feedback.py tools/sobstvenost/tests/test_feedback.py tools/kontrol/tests/test_feedback.py tools/partii/tests/test_feedback.py; do cmp hub/tests/test_feedback.py "$f"; done
           for t in subsidii zakoni sigurnost; do [ -f tools/$t/app/feedback.py ] && cmp hub/feedback.py tools/$t/app/feedback.py; [ -f tools/$t/tests/test_feedback.py ] && cmp hub/tests/test_feedback.py tools/$t/tests/test_feedback.py; done; true
-          for t in naselenie partii; do cmp tools/danni/pipeline.py tools/$t/ingest/pipeline.py; done   # the shared ingest module: the original is in tools/danni
+          for t in naselenie partii tender; do cmp tools/danni/pipeline.py tools/$t/ingest/pipeline.py; done   # the shared ingest module: the original is in tools/danni
           cmp tools/ikonomika/app/static/europe.json tools/tender/app/static/europe.json   # the outlines of Europe: Икономика builds, Тендер copies
 
   hub:
@@ -69,6 +69,7 @@ jobs:
           set -o pipefail
           python -m pytest -q -rs 2>&1 | tee "$RUNNER_TEMP/pytest.out"
           ! grep -q SKIPPED "$RUNNER_TEMP/pytest.out"
+      - run: python tests/mutations.py
 
   ikonomika:
     runs-on: ubuntu-latest

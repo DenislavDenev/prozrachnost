@@ -1,7 +1,7 @@
 -- Edges of the network of related persons and companies (methodology 1).
 -- Node ids: 'p:<person id>' (hash-identified person), 'l:<md5>' (person known only inside one
 -- partida), 'c:<ЕИК 9>' (a company with a partida), 'f:<md5>' (a foreign/unregistered entity by name).
-SET search_path = stage, public;
+SET search_path = tender_stage, public;
 
 CREATE TABLE edge AS
 SELECT
@@ -14,14 +14,16 @@ SELECT
     ELSE 'f:' || md5(r.holder_id)
   END AS holder,
   'c:' || r.eik AS company,
-  r.holder_kind, CASE WHEN r.holder_kind = 'person' THEN clean_person(r.holder_name) ELSE clean_name(r.holder_name) END AS holder_name, r.role,
+  r.holder_kind,
+  -- a person or an entity: typed as a name of a person, so it cannot reach the serving layer undecided
+  (CASE WHEN r.holder_kind = 'person' THEN clean_person(r.holder_name) ELSE clean_name(r.holder_name) END)::core.person_name AS holder_name, r.role,
   CASE WHEN r.role IN ('partner', 'sole_owner', 'trader') THEN 'ownership' ELSE 'management' END AS view,
   r.share,
   r.field_ident, r.entry_no, r.sub_uic, r.valid_from, r.valid_to, r.uncertain_after, r.observed_at,
   -- a sub-partida other than the main one is a branch: the role is in the branch, shown as such
   (r.sub_uic <> '' AND r.sub_uic IS NOT NULL AND r.role = 'branch_manager') AS in_branch
-FROM tr.role r
-LEFT JOIN tr.person p ON p.indent = r.holder_id
+FROM tender_src.tr_role r
+LEFT JOIN tender_src.tr_person p ON p.indent = r.holder_id
 WHERE r.role <> 'beneficial_owner'          -- collected, never shown (methodology 1)
   AND r.holder_id <> r.eik;                 -- a company listed in its own partida is not an edge
 CREATE INDEX ON edge (holder);
@@ -37,17 +39,17 @@ UPDATE edge e SET share_pct = CASE
             / (CASE WHEN e.share ILIKE '%EUR%' OR e.share ILIKE '%евро%' THEN d.capital_eur
                     ELSE d.capital_eur * 1.95583 END), 4)
   END
-FROM tr.deed d WHERE d.eik = substr(e.company, 3) AND e.share IS NOT NULL;
+FROM tender_src.tr_deed d WHERE d.eik = substr(e.company, 3) AND e.share IS NOT NULL;
 UPDATE edge SET share_pct = NULL WHERE share_pct > 100.0001 OR share_pct < 0;
 UPDATE edge SET share_pct = 100 WHERE role = 'sole_owner';
 
 -- node labels for the graph and profiles
 CREATE TABLE node AS
-SELECT DISTINCT ON (id) id, kind, label, ref FROM (
-  SELECT 'p:' || id AS id, 'person' AS kind, name AS label, id AS ref FROM person
+SELECT DISTINCT ON (id) id, kind, label::core.person_name AS label, ref FROM (
+  SELECT 'p:' || id AS id, 'person' AS kind, name::text AS label, id AS ref FROM person
   UNION ALL
   SELECT holder, CASE WHEN holder LIKE 'l:%' THEN 'local_person' ELSE 'foreign_entity' END,
-         holder_name, NULL FROM edge WHERE holder LIKE 'l:%' OR holder LIKE 'f:%'
+         holder_name::text, NULL FROM edge WHERE holder LIKE 'l:%' OR holder LIKE 'f:%'
   UNION ALL
   SELECT 'c:' || left(eik, 9), 'company', name, key FROM company WHERE eik ~ '^\d{9}(\d{4})?$'
   UNION ALL

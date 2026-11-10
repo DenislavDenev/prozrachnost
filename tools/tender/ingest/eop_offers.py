@@ -168,7 +168,7 @@ def participant(o):
 
 
 def parse(tender_id, part, lots=()):
-    """Offers of one answer of GetPublicTenderParticipation as eopsvc.offer rows (without fetched_at)."""
+    """Offers of one answer of GetPublicTenderParticipation as tender_src.eopsvc_offer rows (without fetched_at)."""
     if not isinstance(part, dict) or not ("Rounds" in part or "Lots" in part):
         raise ShapeError("no Rounds/Lots")
     numbered = {l.get("TenderName"): l.get("OrderNumber") for l in lots or ()}
@@ -343,34 +343,34 @@ def store(conn, tender_id, got, blob):
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{now:%Y%m%d%H%M}.json.gz").write_bytes(gzip.compress(blob))
     old = [dict(zip(("lot_no", "round", "offer_id", "bidder_name", "bidder_eik", "price", "price_opened"), r)) for r in conn.execute(
-        "SELECT lot_no, round, offer_id, bidder_name, bidder_eik, price, price_opened FROM eopsvc.offer WHERE tender_id = %s",
+        "SELECT lot_no, round, offer_id, bidder_name, bidder_eik, price, price_opened FROM tender_src.eopsvc_offer WHERE tender_id = %s",
         (tender_id,)).fetchall()]
-    held = conn.execute("SELECT held_sha FROM eopsvc.queue WHERE tender_id = %s", (tender_id,)).fetchone()
+    held = conn.execute("SELECT held_sha FROM tender_src.eopsvc_queue WHERE tender_id = %s", (tender_id,)).fetchone()
     mark = hashlib.sha256(json.dumps(offer_set(rows)).encode()).hexdigest()
     with conn.transaction():
         if old and len(rows) < len(old):
             if not held or held[0] != mark:
                 log_change(conn, "offers", tender_id, "offers", len(old), len(rows), "held")
-                conn.execute("""UPDATE eopsvc.queue SET status = 'pending', reason = 'confirm', next_at = now() + interval '1 day',
+                conn.execute("""UPDATE tender_src.eopsvc_queue SET status = 'pending', reason = 'confirm', next_at = now() + interval '1 day',
                     held_sha = %s, attempts = 0, last_error = NULL WHERE tender_id = %s""", (mark, tender_id))
                 return "held"
             log_change(conn, "offers", tender_id, "offers", len(old), len(rows), "confirmed")
         if old:
             for ref, field, o, n in offer_diff(old, rows):
                 log_change(conn, "offers", f"{tender_id}/{ref}", field, o, n, "rewritten")
-        conn.execute("DELETE FROM eopsvc.offer WHERE tender_id = %s", (tender_id,))
+        conn.execute("DELETE FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tender_id,))
         write_offers(conn, rows, now)
-        conn.execute("DELETE FROM eopsvc.contract_lot WHERE tender_id = %s", (tender_id,))
-        conn.execute("DELETE FROM eopsvc.lot WHERE tender_id = %s", (tender_id,))
+        conn.execute("DELETE FROM tender_src.eopsvc_contract_lot WHERE tender_id = %s", (tender_id,))
+        conn.execute("DELETE FROM tender_src.eopsvc_lot WHERE tender_id = %s", (tender_id,))
         for cid, lot in {c: l for l, c in got["contract_lots"]}.items():  # one lot per contract
-            conn.execute("INSERT INTO eopsvc.contract_lot VALUES (%s, %s, %s)", (tender_id, lot, cid))
+            conn.execute("INSERT INTO tender_src.eopsvc_contract_lot VALUES (%s, %s, %s)", (tender_id, lot, cid))
         for lot, title in dict(got["lots"]).items():
-            conn.execute("INSERT INTO eopsvc.lot VALUES (%s, %s, %s)", (tender_id, lot, title))
+            conn.execute("INSERT INTO tender_src.eopsvc_lot VALUES (%s, %s, %s)", (tender_id, lot, title))
         keep(conn, "announcement", tender_id, [{"id": a, "created_at": at, "title": t} for a, at, t in got.get("announcements", [])],
              ("created_at", "title"), now)
         det = got.get("details")
         if det:
-            conn.execute("""INSERT INTO eopsvc.detail VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tender_id) DO UPDATE SET
+            conn.execute("""INSERT INTO tender_src.eopsvc_detail VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tender_id) DO UPDATE SET
                 offers_from = EXCLUDED.offers_from, offers_until = EXCLUDED.offers_until, opening_at = EXCLUDED.opening_at,
                 prices_opening_at = EXCLUDED.prices_opening_at, parent_tender_id = EXCLUDED.parent_tender_id, linked = EXCLUDED.linked,
                 fetched_at = EXCLUDED.fetched_at""", (tender_id, *[det["detail"][k] for k in DETAIL_COLS],
@@ -378,7 +378,7 @@ def store(conn, tender_id, got, blob):
             keep(conn, "publication", tender_id, det["publications"], ("form_type", "ted_number", "sent_at", "published_at"), now)
             keep(conn, "appeal", tender_id, det["appeals"], APPEAL_COLS, now, key="register_id")
             keep(conn, "document", tender_id, det["documents"], ("name", "size", "created_at"), now)
-        conn.execute("UPDATE eopsvc.queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0, "
+        conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0, "
                      "held_sha = NULL WHERE tender_id = %s", (now, sha, tender_id))
     return "stored"
 
@@ -395,10 +395,10 @@ def _same(a, b):
 
 
 def keep(conn, table, tender_id, rows, cols, now, key="id"):
-    """Rows of eopsvc.<table> for one procedure, never deleted on one answer: new ones are added, changed fields
+    """Rows of tender_src.eopsvc_<table> for one procedure, never deleted on one answer: new ones are added, changed fields
     are updated and logged, rows the answer no longer lists get gone_at (logged once) and stay; a row that comes
     back loses its gone_at. The first read of a procedure logs nothing."""
-    held = {r[0]: r[1:] for r in conn.execute(f"SELECT {key}, {', '.join(cols)}, gone_at FROM eopsvc.{table} WHERE tender_id = %s",
+    held = {r[0]: r[1:] for r in conn.execute(f"SELECT {key}, {', '.join(cols)}, gone_at FROM tender_src.eopsvc_{table} WHERE tender_id = %s",
                                                  (tender_id,)).fetchall()}
     first = not held
     seen = set()
@@ -407,7 +407,7 @@ def keep(conn, table, tender_id, rows, cols, now, key="id"):
         seen.add(k)
         vals = [r[c] for c in cols]
         if k not in held:
-            conn.execute(f"INSERT INTO eopsvc.{table} (tender_id, {key}, {', '.join(cols)}) VALUES (%s, %s{', %s' * len(cols)})",
+            conn.execute(f"INSERT INTO tender_src.eopsvc_{table} (tender_id, {key}, {', '.join(cols)}) VALUES (%s, %s{', %s' * len(cols)})",
                          (tender_id, k, *vals))
             if not first:
                 log_change(conn, f"eop-{table}", f"{tender_id}/{k}", None, None, r.get("title") or r.get("name") or k, "new-record")
@@ -415,7 +415,7 @@ def keep(conn, table, tender_id, rows, cols, now, key="id"):
         old, gone = held[k][:-1], held[k][-1]
         diff = [(c, o, n) for c, o, n in zip(cols, old, vals) if not _same(o, n)]
         if diff or gone:
-            conn.execute(f"UPDATE eopsvc.{table} SET {', '.join(f'{c} = %s' for c in cols)}, gone_at = NULL WHERE tender_id = %s AND {key} = %s",
+            conn.execute(f"UPDATE tender_src.eopsvc_{table} SET {', '.join(f'{c} = %s' for c in cols)}, gone_at = NULL WHERE tender_id = %s AND {key} = %s",
                          (*vals, tender_id, k))
             for c, o, n in diff:
                 log_change(conn, f"eop-{table}", f"{tender_id}/{k}", c, o, n, "rewritten")
@@ -423,12 +423,12 @@ def keep(conn, table, tender_id, rows, cols, now, key="id"):
                 log_change(conn, f"eop-{table}", f"{tender_id}/{k}", "gone_at", gone, None, "back")
     for k, v in held.items():
         if k not in seen and v[-1] is None:
-            conn.execute(f"UPDATE eopsvc.{table} SET gone_at = %s WHERE tender_id = %s AND {key} = %s", (now, tender_id, k))
+            conn.execute(f"UPDATE tender_src.eopsvc_{table} SET gone_at = %s WHERE tender_id = %s AND {key} = %s", (now, tender_id, k))
             log_change(conn, f"eop-{table}", f"{tender_id}/{k}", None, k, None, "gone")
 
 
 def write_offers(conn, rows, now):
-    with conn.cursor().copy("COPY eopsvc.offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, submitter_name, submitter_eik, "
+    with conn.cursor().copy("COPY tender_src.eopsvc_offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, submitter_name, submitter_eik, "
                             "consortium, submitted_at, price, price_opened, fetched_at) FROM STDIN") as cp:
         for r in rows:
             cp.write_row([r["tender_id"], r["lot_no"], r["round"], r["offer_id"], r["bidder_name"], r["bidder_eik"], r.get("submitter_name"),
@@ -437,11 +437,11 @@ def write_offers(conn, rows, now):
 
 
 def reparse(conn, stats):
-    """Rebuild eopsvc.offer from the raw answers we hold, without asking ЦАИС ЕОП again, after a change of the
+    """Rebuild tender_src.eopsvc_offer from the raw answers we hold, without asking ЦАИС ЕОП again, after a change of the
     parsing rules (27.09.2026: participant instead of the submitting account). Only the answer whose sha256 is the
     one the queue stored is used; every changed name or ЕИК goes to ops.change_log as 'reparsed'."""
     stats.update(procedures=0, changed=0, missing_raw=0)
-    for tid, sha in conn.execute("SELECT tender_id, sha256 FROM eopsvc.queue WHERE status = 'done' AND sha256 IS NOT NULL").fetchall():
+    for tid, sha in conn.execute("SELECT tender_id, sha256 FROM tender_src.eopsvc_queue WHERE status = 'done' AND sha256 IS NOT NULL").fetchall():
         blob = None
         for f in sorted((RAW / str(tid)).glob("*.json.gz"), reverse=True):
             b = gzip.decompress(f.read_bytes())
@@ -454,7 +454,7 @@ def reparse(conn, stats):
         j = json.loads(blob)
         rows = parse(tid, j["participation"], j.get("lots") or []) if j.get("participation") else []
         old = {(r[0], r[1], r[2]): r[3:] for r in conn.execute(
-            "SELECT lot_no, round, offer_id, bidder_name, bidder_eik FROM eopsvc.offer WHERE tender_id = %s", (tid,)).fetchall()}
+            "SELECT lot_no, round, offer_id, bidder_name, bidder_eik FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tid,)).fetchall()}
         if set(old) != {(r["lot_no"], r["round"], r["offer_id"]) for r in rows}:
             raise RuntimeError(f"{tid}: the raw answer with the stored sha256 has other offers than the table")
         with conn.transaction():
@@ -464,8 +464,8 @@ def reparse(conn, stats):
                     if a != b:
                         log_change(conn, "offers", f"{tid}/{r['lot_no']}/{r['round']}/{r['offer_id']}", f, a, b, "reparsed")
                         stats["changed"] += 1
-            fetched = conn.execute("SELECT min(fetched_at) FROM eopsvc.offer WHERE tender_id = %s", (tid,)).fetchone()[0]
-            conn.execute("DELETE FROM eopsvc.offer WHERE tender_id = %s", (tid,))
+            fetched = conn.execute("SELECT min(fetched_at) FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tid,)).fetchone()[0]
+            conn.execute("DELETE FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tid,))
             write_offers(conn, rows, fetched)
         stats["procedures"] += 1
 
@@ -476,25 +476,25 @@ def enqueue(conn, periodic=False):
     procedures whose prices were still closed at the last read ('prices', deadline within a year) and
     procedures of the last 90 days not read for 30 days ('refresh'). A procedure known only from its contracts has
     no deadline and no notice date: it counts from the day of its contract record (before 27.09.2026 never queued)."""
-    new = conn.execute("""INSERT INTO eopsvc.queue (tender_id, reason)
+    new = conn.execute("""INSERT INTO tender_src.eopsvc_queue (tender_id, reason)
         SELECT t.tender_id::bigint, CASE WHEN coalesce(t.submission_deadline, t.published_at + interval '30 days', t.source_day + interval '30 days') > now() - interval '14 days'
                                          THEN 'new' ELSE 'backfill' END
-        FROM live.tender t
+        FROM tender.tender t
         WHERE t.tender_id ~ '^[0-9]+$' AND coalesce(t.submission_deadline, t.published_at + interval '30 days', t.source_day + interval '30 days') < now()
         ON CONFLICT DO NOTHING""").rowcount
-    upd = conn.execute("""UPDATE eopsvc.queue q SET status = 'pending', reason = 'update', next_at = now(), attempts = 0
-        FROM live.tender t
+    upd = conn.execute("""UPDATE tender_src.eopsvc_queue q SET status = 'pending', reason = 'update', next_at = now(), attempts = 0
+        FROM tender.tender t
         WHERE t.tender_id ~ '^[0-9]+$' AND q.tender_id = t.tender_id::bigint AND q.status = 'done'
-          AND greatest(t.source_day, (SELECT max(c.source_day) FROM live.contract c WHERE c.unp = t.unp)) >= q.fetched_at::date""").rowcount
+          AND greatest(t.source_day, (SELECT max(c.source_day) FROM tender.contract c WHERE c.unp = t.unp)) >= q.fetched_at::date""").rowcount
     out = {"new": new, "update": upd}
     if periodic:
-        out["prices"] = conn.execute("""UPDATE eopsvc.queue q SET status = 'pending', reason = 'prices', next_at = now(), attempts = 0
-            FROM live.tender t
+        out["prices"] = conn.execute("""UPDATE tender_src.eopsvc_queue q SET status = 'pending', reason = 'prices', next_at = now(), attempts = 0
+            FROM tender.tender t
             WHERE q.status = 'done' AND q.fetched_at < now() - interval '7 days' AND t.tender_id ~ '^[0-9]+$' AND q.tender_id = t.tender_id::bigint
               AND t.submission_deadline > now() - interval '1 year'
-              AND EXISTS (SELECT 1 FROM eopsvc.offer o WHERE o.tender_id = q.tender_id AND NOT o.price_opened)""").rowcount
-        out["refresh"] = conn.execute("""UPDATE eopsvc.queue q SET status = 'pending', reason = 'refresh', next_at = now(), attempts = 0
-            FROM live.tender t
+              AND EXISTS (SELECT 1 FROM tender_src.eopsvc_offer o WHERE o.tender_id = q.tender_id AND NOT o.price_opened)""").rowcount
+        out["refresh"] = conn.execute("""UPDATE tender_src.eopsvc_queue q SET status = 'pending', reason = 'refresh', next_at = now(), attempts = 0
+            FROM tender.tender t
             WHERE q.status = 'done' AND q.fetched_at < now() - interval '30 days' AND t.tender_id ~ '^[0-9]+$' AND q.tender_id = t.tender_id::bigint
               AND t.submission_deadline > now() - interval '90 days'""").rowcount
     return out
@@ -502,7 +502,7 @@ def enqueue(conn, periodic=False):
 
 def waiting(conn):
     """Procedures the D-1 chain waits for: opened by a visitor, changed, or just closed."""
-    return conn.execute("SELECT count(*) FROM eopsvc.queue WHERE status = 'pending' AND next_at <= now() AND reason = ANY(%s)",
+    return conn.execute("SELECT count(*) FROM tender_src.eopsvc_queue WHERE status = 'pending' AND next_at <= now() AND reason = ANY(%s)",
                         (list(FIRST),)).fetchone()[0]
 
 
@@ -511,9 +511,9 @@ def work(conn, budget_s, stats, first=False):
     deadline = time.monotonic() + budget_s
     stats.update(done=0, held=0, errors=0, offers=0)
     while time.monotonic() < deadline - 5:
-        row = conn.execute("""SELECT q.tender_id, EXISTS (SELECT 1 FROM live.tender t JOIN live.contract c ON c.unp = t.unp
+        row = conn.execute("""SELECT q.tender_id, EXISTS (SELECT 1 FROM tender.tender t JOIN tender.contract c ON c.unp = t.unp
                                    WHERE t.tender_id = q.tender_id::text)
-            FROM eopsvc.queue q WHERE q.status = 'pending' AND q.next_at <= now() """ + ("AND q.reason = ANY(%(first)s) " if first else "") + """
+            FROM tender_src.eopsvc_queue q WHERE q.status = 'pending' AND q.next_at <= now() """ + ("AND q.reason = ANY(%(first)s) " if first else "") + """
             ORDER BY """ + ORDER + """, q.tender_id DESC LIMIT 1""", {"first": list(FIRST)} if first else None).fetchone()
         if not row:
             break
@@ -528,12 +528,12 @@ def work(conn, budget_s, stats, first=False):
         except ShapeError:
             raise  # the service changed: stop, the check and the repair agent take over
         except Exception as e:  # network trouble: back off this one procedure
-            conn.execute("""UPDATE eopsvc.queue SET attempts = attempts + 1, last_error = %s,
+            conn.execute("""UPDATE tender_src.eopsvc_queue SET attempts = attempts + 1, last_error = %s,
                 status = CASE WHEN attempts + 1 >= %s THEN 'error' ELSE 'pending' END,
                 next_at = now() + make_interval(mins => 10 * power(2, attempts)::int) WHERE tender_id = %s""",
                          (f"{type(e).__name__}: {e}"[:500], MAX_ATTEMPTS, tid))
             stats["errors"] += 1
-    stats["pending"] = conn.execute("SELECT count(*) FROM eopsvc.queue WHERE status = 'pending'").fetchone()[0]
+    stats["pending"] = conn.execute("SELECT count(*) FROM tender_src.eopsvc_queue WHERE status = 'pending'").fetchone()[0]
 
 
 def check(conn):
@@ -560,25 +560,25 @@ def check(conn):
     # The two sources differ often by one offer (withdrawn, paper, counted by the buyer), so that is only
     # reported; the symptom of a broken reader is no offers at all where the contracts say there were some.
     # the offers counts come from the contracts and, for lots closed without award, from the award notices
-    award = "UNION ALL SELECT unp, offers_count FROM live.award" if _has(conn, "live.award") else ""
+    award = "UNION ALL SELECT unp, offers_count FROM tender.award" if _has(conn, "tender.award") else ""
     rows = conn.execute(f"""WITH c AS (
-          SELECT t.tender_id::bigint tid, sum(x.offers_count) n FROM (SELECT unp, offers_count FROM live.contract {award}) x
-          JOIN live.tender t ON t.unp = x.unp
+          SELECT t.tender_id::bigint tid, sum(x.offers_count) n FROM (SELECT unp, offers_count FROM tender.contract {award}) x
+          JOIN tender.tender t ON t.unp = x.unp
           WHERE x.offers_count > 0 AND t.tender_id ~ '^[0-9]+$' GROUP BY 1),
-        o AS (SELECT tender_id tid, count(*) n FROM eopsvc.offer GROUP BY 1)
-        SELECT c.tid, c.n, coalesce(o.n, 0) FROM c JOIN eopsvc.queue q ON q.tender_id = c.tid LEFT JOIN o ON o.tid = c.tid
+        o AS (SELECT tender_id tid, count(*) n FROM tender_src.eopsvc_offer GROUP BY 1)
+        SELECT c.tid, c.n, coalesce(o.n, 0) FROM c JOIN tender_src.eopsvc_queue q ON q.tender_id = c.tid LEFT JOIN o ON o.tid = c.tid
         WHERE q.status = 'done' AND q.fetched_at > now() - interval '7 days'""").fetchall()
     empty = [r for r in rows if r[2] == 0]
     rep["completeness"] = {"compared": len(rows), "equal": sum(r[1] == r[2] for r in rows), "none_read": len(empty),
                            "examples": [list(r) for r in empty[:10]]}
     if empty:
-        conn.execute("""UPDATE eopsvc.queue SET status = 'pending', reason = 'recheck', next_at = now() + interval '1 day'
+        conn.execute("""UPDATE tender_src.eopsvc_queue SET status = 'pending', reason = 'recheck', next_at = now() + interval '1 day'
             WHERE tender_id = ANY(%s) AND reason <> 'recheck'""", ([r[0] for r in empty],))
     if len(rows) >= 20 and len(empty) > len(rows) / 2:
         ok = False
     rep["mismatches"] = mismatches(conn)
     rep["ok"] = ok
-    conn.execute("INSERT INTO eopsvc.check_run (ok, report, mismatches) VALUES (%s, %s, %s)",
+    conn.execute("INSERT INTO tender_src.eopsvc_check_run (ok, report, mismatches) VALUES (%s, %s, %s)",
                  (ok, json.dumps(rep, default=str), json.dumps(rep["mismatches"], default=str)))
     return rep
 
@@ -592,17 +592,17 @@ def mismatches(conn, days=2):
     that the procedure page does not list (one of the two is incomplete), and more contracts on the page than
     in the open data (contracts we do not show). Each new case goes to ops.change_log once (source
     'completeness'); the report carries the counts and examples."""
-    if not (_has(conn, "live.notice") and _has(conn, "eopsvc.publication")):
-        return {"skipped": "no live.notice yet"}
-    notices = conn.execute("""SELECT q.tender_id, n.notice_id FROM eopsvc.queue q
-        JOIN live.tender t ON t.tender_id = q.tender_id::text JOIN live.notice n ON n.unp = t.unp
+    if not (_has(conn, "tender.notice") and _has(conn, "tender_src.eopsvc_publication")):
+        return {"skipped": "no tender.notice yet"}
+    notices = conn.execute("""SELECT q.tender_id, n.notice_id FROM tender_src.eopsvc_queue q
+        JOIN tender.tender t ON t.tender_id = q.tender_id::text JOIN tender.notice n ON n.unp = t.unp
         WHERE q.status = 'done' AND q.fetched_at > now() - make_interval(days => %s) AND n.notice_id ~ '^[0-9]+$'
-          AND EXISTS (SELECT 1 FROM eopsvc.detail d WHERE d.tender_id = q.tender_id)
-          AND NOT EXISTS (SELECT 1 FROM eopsvc.publication p WHERE p.tender_id = q.tender_id AND p.id = n.notice_id::bigint)""",
+          AND EXISTS (SELECT 1 FROM tender_src.eopsvc_detail d WHERE d.tender_id = q.tender_id)
+          AND NOT EXISTS (SELECT 1 FROM tender_src.eopsvc_publication p WHERE p.tender_id = q.tender_id AND p.id = n.notice_id::bigint)""",
                            (days,)).fetchall()
-    contracts = conn.execute("""SELECT q.tender_id, t.unp, (SELECT count(*) FROM eopsvc.contract_lot k WHERE k.tender_id = q.tender_id) eop,
-          (SELECT count(*) FROM live.contract c WHERE c.unp = t.unp) ours
-        FROM eopsvc.queue q JOIN live.tender t ON t.tender_id = q.tender_id::text
+    contracts = conn.execute("""SELECT q.tender_id, t.unp, (SELECT count(*) FROM tender_src.eopsvc_contract_lot k WHERE k.tender_id = q.tender_id) eop,
+          (SELECT count(*) FROM tender.contract c WHERE c.unp = t.unp) ours
+        FROM tender_src.eopsvc_queue q JOIN tender.tender t ON t.tender_id = q.tender_id::text
         WHERE q.status = 'done' AND q.fetched_at > now() - make_interval(days => %s)""", (days,)).fetchall()
     more = [r for r in contracts if r[2] > r[3]]
     for tid, nid in notices:

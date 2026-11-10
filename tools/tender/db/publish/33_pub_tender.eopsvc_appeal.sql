@@ -1,0 +1,1 @@
+SELECT tender_id, register_id, proceedings_number, kind, subjects, initiators, defendants, interim_measures, imposed_measures, imposed_penalties, status, filed_on, started_on, last_decision_on, closed_on, link, gone_at FROM tender_src.eopsvc_appeal

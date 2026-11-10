@@ -95,7 +95,7 @@ def amount(v):
 
 
 def parse(rows):
-    """Header + rows of one file -> sebra.payment rows (without resource_uri, row_no)."""
+    """Header + rows of one file -> tender_src.sebra_payment rows (without resource_uri, row_no)."""
     head = [str(h).replace("﻿", "").strip().strip('"').upper() for h in rows[0]]
     missing = set(COLS) - set(head)
     if missing:
@@ -124,7 +124,7 @@ def load(conn, stats, verify=False):
     for res in resources():
         # the date compared by Postgres, which parsed and stored the portal's text the same way
         had = conn.execute("""SELECT updated_at IS NOT DISTINCT FROM %s::timestamptz, loaded_at, sha256, rows, held_sha
-                              FROM sebra.resource WHERE uri = %s""", (res["updated_at"], res["uri"])).fetchone()
+                              FROM tender_src.sebra_resource WHERE uri = %s""", (res["updated_at"], res["uri"])).fetchone()
         same_date = bool(had and had[1] and had[0])
         if same_date and not verify:
             continue
@@ -136,7 +136,7 @@ def load(conn, stats, verify=False):
             continue
         if had and had[3] and len(recs) < had[3] and had[4] != sha:
             log_change(conn, "sebra", res["uri"], "rows", had[3], len(recs), "held")
-            conn.execute("UPDATE sebra.resource SET held_sha = %s WHERE uri = %s", (sha, res["uri"]))
+            conn.execute("UPDATE tender_src.sebra_resource SET held_sha = %s WHERE uri = %s", (sha, res["uri"]))
             stats["held"] += 1
             continue
         if had and had[2]:
@@ -148,16 +148,16 @@ def load(conn, stats, verify=False):
             path.replace(path.with_name(f"{res['uri']}.{had[2][:12]}.{res['format']}.gz"))
         path.write_bytes(gzip.compress(raw))
         with conn.transaction():
-            conn.execute("""INSERT INTO sebra.resource (uri, name, format, updated_at) VALUES (%s, %s, %s, %s)
+            conn.execute("""INSERT INTO tender_src.sebra_resource (uri, name, format, updated_at) VALUES (%s, %s, %s, %s)
                 ON CONFLICT (uri) DO UPDATE SET name = EXCLUDED.name, updated_at = EXCLUDED.updated_at""",
                          (res["uri"], res["name"], res["format"], res["updated_at"]))
-            conn.execute("DELETE FROM sebra.payment WHERE resource_uri = %s", (res["uri"],))
+            conn.execute("DELETE FROM tender_src.sebra_payment WHERE resource_uri = %s", (res["uri"],))
             cols = ["settlement_date", "receiver_name", "is_person", "receiver_iban", "fin_code", "fin_name", "amount", "currency",
                     "reason", "reg_date", "reg_no", "pay_code", "organization", "primary_organization", "primary_org_code"]
-            with conn.cursor().copy(f"COPY sebra.payment (resource_uri, row_no, {', '.join(cols)}) FROM STDIN") as cp:
+            with conn.cursor().copy(f"COPY tender_src.sebra_payment (resource_uri, row_no, {', '.join(cols)}) FROM STDIN") as cp:
                 for i, r in enumerate(recs):
                     cp.write_row([res["uri"], i] + [r[c] for c in cols])
-            conn.execute("UPDATE sebra.resource SET sha256 = %s, rows = %s, loaded_at = now(), held_sha = NULL WHERE uri = %s",
+            conn.execute("UPDATE tender_src.sebra_resource SET sha256 = %s, rows = %s, loaded_at = now(), held_sha = NULL WHERE uri = %s",
                          (sha, len(recs), res["uri"]))
         stats["files"] += 1
         stats["rows"] += len(recs)

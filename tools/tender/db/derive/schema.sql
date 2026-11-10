@@ -1,7 +1,6 @@
--- Schema `stage`: rebuilt from the raw sources on every build, then swapped in as `live`.
-DROP SCHEMA IF EXISTS stage CASCADE;
-CREATE SCHEMA stage;
-SET search_path = stage;
+-- The build schema tender_stage: rebuilt from the raw sources on every build, then moved into schema tender
+-- (ingest/build.py empties it first; the schema itself is fixed, the tool's role cannot make schemas).
+SET search_path = tender_stage, public;
 
 -- Names as the sources write them sometimes carry an identity number („…, ЕГН 1234567890“, „ЕИК …“)
 -- or the representative of a company holder („X ООД, представлявано от Y ЕГН …“). Shown names carry

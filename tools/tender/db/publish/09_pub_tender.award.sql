@@ -1,0 +1,1 @@
+SELECT row_number() OVER (ORDER BY t)::int, unp, tender_id, lot_no, notice_id, notice_type, published_at, source_day, offers_count, sme_offers_count, disqualified_offers_count, link_oj FROM tender.award t

@@ -154,11 +154,11 @@ def test_a_new_municipality_without_eik_stops_the_step(conn, archive, tmp_path):
 
 
 def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
-    conn.execute('CREATE SCHEMA live')
-    conn.execute('''CREATE TABLE live.company (key text, eik text, name text, legal_form text, seat text, registered_on date,
+    conn.execute('CREATE SCHEMA tender')
+    conn.execute('''CREATE TABLE tender.company (key text, eik text, name text, legal_form text, seat text, registered_on date,
         tr_status text, is_public_body boolean)''')
-    conn.execute('CREATE TABLE live.buyer (eik text, eik_valid boolean, name text)')
-    conn.execute('''INSERT INTO live.company VALUES
+    conn.execute('CREATE TABLE tender.buyer (eik text, eik_valid boolean, name text)')
+    conn.execute('''INSERT INTO tender.company VALUES
         ('eik:000024663', '000024663', 'Община Банско', NULL, 'гр. Банско', NULL, 'absent', true),
         ('eik:000093442', '000093442', ' Фирма ООД ', 'OOD', 'гр. Варна', '2008-06-27', 'ok', false),
         ('eik:000056814', '000056814', 'ЕТ Иван Иванов', 'ET', NULL, NULL, 'ok', false),
@@ -166,7 +166,7 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
         ('eik:000024664', '000024664', 'Грешна контролна цифра', 'OOD', NULL, NULL, 'ok', false),
         ('eik:000565537', '000565537', '  ', 'OOD', NULL, NULL, 'ok', false),
         ('name:x', NULL, 'Без ЕИК', NULL, NULL, NULL, NULL, false)''')
-    conn.execute('''INSERT INTO live.buyer VALUES ('000024663', true, 'Община Банско'), ('000852932', true, 'Община Добрич'),
+    conn.execute('''INSERT INTO tender.buyer VALUES ('000024663', true, 'Община Банско'), ('000852932', true, 'Община Добрич'),
         ('123', false, 'Счупен')''')
 
     def step():
@@ -183,10 +183,10 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
     assert checks == {'org_count_matches_tender': True, 'org_invalid_eik': False, 'org_buyer_valid_matches_tender': True}
     assert step()[0] == 'unchanged'
     # a renamed company is updated in place; one that left is held first, then kept with gone_at
-    conn.execute("UPDATE live.company SET name = 'Фирма АД' WHERE eik = '000093442'")
+    conn.execute("UPDATE tender.company SET name = 'Фирма АД' WHERE eik = '000093442'")
     assert step()[0] == 'loaded' and one(conn, "SELECT name FROM core.org WHERE eik = '000093442'") == 'Фирма АД'
     assert one(conn, 'SELECT count(*) FROM danni_src.org_tender') == 4   # landing policy latest: one version
-    conn.execute("DELETE FROM live.company WHERE eik = '000056814'")
+    conn.execute("DELETE FROM tender.company WHERE eik = '000056814'")
     assert step()[0] == 'held' and one(conn, "SELECT gone_at FROM core.org WHERE eik = '000056814'") is None
     conn.execute("UPDATE ops.hold SET first_at = first_at - interval '2 days'")
     assert step()[0] == 'confirmed'
@@ -197,7 +197,7 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
 
 
 def test_licence_list_is_the_only_switch(conn, monkeypatch, tmp_path):
-    assert run.licences(conn) == 8
+    assert run.licences(conn) == 12
     assert conn.execute('SELECT dataset, is_distributable FROM core.dataset WHERE is_displayable ORDER BY 1').fetchall() == [
         ('danni.catalog', True), ('danni.ekatte', False), ('danni.municipality', False)]   # the datasets of naselenie and partii are not registered here
     conn.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = '2026-01-01' WHERE dataset = 'danni.ekatte'")
@@ -350,5 +350,5 @@ def test_no_name_of_a_person_reaches_the_serving_layer_without_a_decision(conn, 
     # the review list sees a name on the ingest side too, by type or by the name of the column
     conn.execute('CREATE TABLE demo.raw (id int, donor core.person_name, signer_name text, donor_kind text, amount numeric)')
     assert sorted(x[0] for x in conn.execute("SELECT column_name FROM core.person_column_undecided WHERE schema_name = 'demo'")) == ['donor', 'signer_name']
-    assert run.persons(conn) == 4   # the reviewed list is applied again: what is not in it loses its decision
+    assert run.persons(conn) == 39   # the reviewed list is applied again: what is not in it loses its decision
     assert [x[0] for x in conn.execute("SELECT reason FROM core.serving_violation WHERE relation = 'pub_demo.t'")] == ['колона с име на човек без решение: mp']

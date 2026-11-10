@@ -1,0 +1,706 @@
+# The quality rules of Тендер. Each query returns one row: expected, actual. The step `publish` runs them after
+# the build has become the clean tables; the serving layer follows only when they hold.
+# The parsers keep their own checks of one file or one answer (ingest/normalize.py, eop_offers.check()).
+
+[[check]]
+name = "contract_suppliers_have_a_contract"
+title_bg = "Всеки ред с изпълнител е към договор, който е в таблицата"
+kind = "fk"
+sql = "SELECT 0, count(*) FROM tender.contract_supplier s WHERE NOT EXISTS (SELECT FROM tender.contract c WHERE c.id = s.contract_id)"
+
+[[check]]
+name = "contracts_did_not_drop"
+title_bg = "Договорите не са намалели с над 1% спрямо публикуваните (брой над прага)"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (SELECT count(*) FROM pub_tender.contract) - (SELECT count(*) FROM pub_tender.contract) / 100 - (SELECT count(*) FROM tender.contract))"
+
+[[check]]
+name = "payments_did_not_drop"
+title_bg = "Плащанията не са намалели с над 1% спрямо публикуваните (брой над прага)"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (SELECT count(*) FROM pub_tender.payment) - (SELECT count(*) FROM pub_tender.payment) / 100 - (SELECT count(*) FROM tender.payment))"
+
+[[check]]
+name = "amount_eur_only_with_a_value"
+title_bg = "Договор без стойност няма сума в евро (липсващото не е нула)"
+kind = "not_null"
+sql = "SELECT 0, count(*) FROM tender.contract WHERE value_current IS NULL AND value_initial IS NULL AND amount_eur IS NOT NULL"
+
+[[check]]
+name = "placed_buyers_have_a_municipality"
+title_bg = "Всеки възложител, поставен в община, сочи към община в общите измерения"
+kind = "fk"
+sql = "SELECT 0, count(*) FROM tender.buyer_place WHERE municipality IS NOT NULL AND municipality_code IS NULL"
+
+[[check]]
+name = "org_unmatched"
+title_bg = "Фирми с ЕИК, които още не са в общите организации (на 10 000 фирми с ЕИК)"
+kind = "unmatched"
+tolerance = 300
+gating = false
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE org_eik IS NULL) / NULLIF(count(*), 0)), 0) FROM tender.company WHERE eik ~ '^([0-9]{9}|[0-9]{13})$'"
+
+[[check]]
+name = "every_token_is_fresh"
+title_bg = "Знакът на лице в чистите таблици не е нито номерът му при нас, нито идентификаторът от регистъра"
+kind = "unique"
+sql = "SELECT 0, count(*) FROM tender.person_token t JOIN tender_src.tr_person p ON substr(t.shown, 3) IN (p.id, p.indent)"
+
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+# One that fails rolls the publication back: the pages keep the version they had.
+
+[[check]]
+name = "published_contract_rows"
+title_bg = "Публикуваните договори са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM tender.contract), (SELECT count(*) FROM pub_tender.contract)"
+
+[[check]]
+name = "published_contract_amount"
+title_bg = "Публикуваният сбор на договорите в евро е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(amount_eur), 0) FROM tender.contract), (SELECT COALESCE(sum(amount_eur), 0) FROM pub_tender.contract)"
+
+[[check]]
+name = "published_payment_rows"
+title_bg = "Публикуваните плащания са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM tender.payment), (SELECT count(*) FROM pub_tender.payment)"
+
+[[check]]
+name = "published_payment_amount"
+title_bg = "Публикуваният сбор на плащанията в евро е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(amount_eur), 0) FROM tender.payment), (SELECT COALESCE(sum(amount_eur), 0) FROM pub_tender.payment)"
+
+[[check]]
+name = "published_company_rows"
+title_bg = "Публикуваните фирми са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM tender.company), (SELECT count(*) FROM pub_tender.company)"
+
+[[check]]
+name = "shown_roles_only_with_public_money"
+title_bg = "Публикувана роля на лице в дружество без договор и без плащане от бюджета"
+kind = "publish"
+sql = "SELECT 0, count(*) FROM pub_tender.edge e WHERE e.holder_kind = 'person' AND NOT EXISTS (SELECT FROM tender.public_money m WHERE m.node = e.company)"
+
+[[check]]
+name = "shown_roles_complete"
+title_bg = "Публикуваните роли на лица са точно ролите в дружества с публични пари"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM tender.edge e JOIN tender.public_money m ON m.node = e.company WHERE e.holder_kind = 'person' AND e.holder IS NOT NULL), (SELECT count(*) FROM pub_tender.edge WHERE holder_kind = 'person')"
+
+[[check]]
+name = "shown_people_have_a_role"
+title_bg = "Публикувано лице или възел на лице без публикувана роля"
+kind = "publish"
+sql = "SELECT 0, (SELECT count(*) FROM pub_tender.person p WHERE NOT EXISTS (SELECT FROM pub_tender.edge e WHERE e.holder = 'p:' || p.id)) + (SELECT count(*) FROM pub_tender.node n WHERE n.kind IN ('person', 'local_person') AND NOT EXISTS (SELECT FROM pub_tender.edge e WHERE e.holder = n.id)) + (SELECT count(*) FROM pub_tender.search_item s WHERE s.kind = 'person' AND NOT EXISTS (SELECT FROM pub_tender.person p WHERE p.id = s.ref))"
+
+[[check]]
+name = "no_key_of_a_person_is_published"
+title_bg = "Публикуван знак на лице, който е номерът му при нас, идентификаторът от регистъра или хеш от името"
+kind = "publish"
+sql = "SELECT 0, (SELECT count(*) FROM pub_tender.person s JOIN tender_src.tr_person p ON s.id IN (p.id, p.indent)) + (SELECT count(*) FROM pub_tender.edge e JOIN tender.edge o ON o.holder = e.holder WHERE e.holder_kind = 'person')"
+
+# The move from the database of its own to the shared one: the step `parity` records these (ingest/move.py).
+
+[[check]]
+name = "parity_eop_day_rows"
+title_bg = "Сверка със старата база, eop_day: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eop_day_content"
+title_bg = "Сверка със старата база, eop_day: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eop_file_rows"
+title_bg = "Сверка със старата база, eop_file: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eop_file_content"
+title_bg = "Сверка със старата база, eop_file: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_fx_rate_rows"
+title_bg = "Сверка със старата база, fx_rate: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_fx_rate_content"
+title_bg = "Сверка със старата база, fx_rate: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_queue_rows"
+title_bg = "Сверка със старата база, tr_queue: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_queue_content"
+title_bg = "Сверка със старата база, tr_queue: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_deed_rows"
+title_bg = "Сверка със старата база, tr_deed: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_deed_content"
+title_bg = "Сверка със старата база, tr_deed: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_role_rows"
+title_bg = "Сверка със старата база, tr_role: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_role_content"
+title_bg = "Сверка със старата база, tr_role: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_person_rows"
+title_bg = "Сверка със старата база, tr_person: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_person_content"
+title_bg = "Сверка със старата база, tr_person: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_name_search_rows"
+title_bg = "Сверка със старата база, tr_name_search: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_name_search_content"
+title_bg = "Сверка със старата база, tr_name_search: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_change_day_rows"
+title_bg = "Сверка със старата база, tr_change_day: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tr_change_day_content"
+title_bg = "Сверка със старата база, tr_change_day: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_queue_rows"
+title_bg = "Сверка със старата база, eopsvc_queue: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_queue_content"
+title_bg = "Сверка със старата база, eopsvc_queue: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_offer_rows"
+title_bg = "Сверка със старата база, eopsvc_offer: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_offer_content"
+title_bg = "Сверка със старата база, eopsvc_offer: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_lot_rows"
+title_bg = "Сверка със старата база, eopsvc_lot: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_lot_content"
+title_bg = "Сверка със старата база, eopsvc_lot: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_contract_lot_rows"
+title_bg = "Сверка със старата база, eopsvc_contract_lot: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_contract_lot_content"
+title_bg = "Сверка със старата база, eopsvc_contract_lot: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_announcement_rows"
+title_bg = "Сверка със старата база, eopsvc_announcement: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_announcement_content"
+title_bg = "Сверка със старата база, eopsvc_announcement: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_detail_rows"
+title_bg = "Сверка със старата база, eopsvc_detail: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_detail_content"
+title_bg = "Сверка със старата база, eopsvc_detail: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_publication_rows"
+title_bg = "Сверка със старата база, eopsvc_publication: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_publication_content"
+title_bg = "Сверка със старата база, eopsvc_publication: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_appeal_rows"
+title_bg = "Сверка със старата база, eopsvc_appeal: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_appeal_content"
+title_bg = "Сверка със старата база, eopsvc_appeal: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_document_rows"
+title_bg = "Сверка със старата база, eopsvc_document: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_document_content"
+title_bg = "Сверка със старата база, eopsvc_document: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_check_run_rows"
+title_bg = "Сверка със старата база, eopsvc_check_run: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_eopsvc_check_run_content"
+title_bg = "Сверка със старата база, eopsvc_check_run: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_sebra_resource_rows"
+title_bg = "Сверка със старата база, sebra_resource: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_sebra_resource_content"
+title_bg = "Сверка със старата база, sebra_resource: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_sebra_payment_rows"
+title_bg = "Сверка със старата база, sebra_payment: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_sebra_payment_content"
+title_bg = "Сверка със старата база, sebra_payment: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_tag_rows"
+title_bg = "Сверка със старата база, ed_tag: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_tag_content"
+title_bg = "Сверка със старата база, ed_tag: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_tag_audit_rows"
+title_bg = "Сверка със старата база, ed_tag_audit: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_tag_audit_content"
+title_bg = "Сверка със старата база, ed_tag_audit: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_public_figure_rows"
+title_bg = "Сверка със старата база, ed_public_figure: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_public_figure_content"
+title_bg = "Сверка със старата база, ed_public_figure: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_article_rows"
+title_bg = "Сверка със старата база, ed_article: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_ed_article_content"
+title_bg = "Сверка със старата база, ed_article: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_rows"
+title_bg = "Сверка със старата база, buyer: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_content"
+title_bg = "Сверка със старата база, buyer: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tender_rows"
+title_bg = "Сверка със старата база, tender: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tender_content"
+title_bg = "Сверка със старата база, tender: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_lot_rows"
+title_bg = "Сверка със старата база, lot: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_lot_content"
+title_bg = "Сверка със старата база, lot: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_rows"
+title_bg = "Сверка със старата база, contract: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_content"
+title_bg = "Сверка със старата база, contract: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_supplier_rows"
+title_bg = "Сверка със старата база, contract_supplier: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_supplier_content"
+title_bg = "Сверка със старата база, contract_supplier: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_amendment_rows"
+title_bg = "Сверка със старата база, amendment: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_amendment_content"
+title_bg = "Сверка със старата база, amendment: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_subcontract_rows"
+title_bg = "Сверка със старата база, subcontract: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_subcontract_content"
+title_bg = "Сверка със старата база, subcontract: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_source_record_rows"
+title_bg = "Сверка със старата база, source_record: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_source_record_content"
+title_bg = "Сверка със старата база, source_record: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_award_rows"
+title_bg = "Сверка със старата база, award: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_award_content"
+title_bg = "Сверка със старата база, award: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_notice_rows"
+title_bg = "Сверка със старата база, notice: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_notice_content"
+title_bg = "Сверка със старата база, notice: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_annex_orphan_rows"
+title_bg = "Сверка със старата база, annex_orphan: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_annex_orphan_content"
+title_bg = "Сверка със старата база, annex_orphan: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_company_rows"
+title_bg = "Сверка със старата база, company: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_company_content"
+title_bg = "Сверка със старата база, company: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_company_stats_rows"
+title_bg = "Сверка със старата база, company_stats: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_company_stats_content"
+title_bg = "Сверка със старата база, company_stats: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_stats_rows"
+title_bg = "Сверка със старата база, buyer_stats: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_stats_content"
+title_bg = "Сверка със старата база, buyer_stats: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tender_stats_rows"
+title_bg = "Сверка със старата база, tender_stats: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tender_stats_content"
+title_bg = "Сверка със старата база, tender_stats: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_person_rows"
+title_bg = "Сверка със старата база, person: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_person_content"
+title_bg = "Сверка със старата база, person: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_edge_rows"
+title_bg = "Сверка със старата база, edge: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_edge_content"
+title_bg = "Сверка със старата база, edge: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_node_rows"
+title_bg = "Сверка със старата база, node: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_node_content"
+title_bg = "Сверка със старата база, node: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_node_contract_rows"
+title_bg = "Сверка със старата база, node_contract: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_node_contract_content"
+title_bg = "Сверка със старата база, node_contract: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_person_stats_rows"
+title_bg = "Сверка със старата база, person_stats: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_person_stats_content"
+title_bg = "Сверка със старата база, person_stats: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_network_component_rows"
+title_bg = "Сверка със старата база, network_component: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_network_component_content"
+title_bg = "Сверка със старата база, network_component: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_network_component_stats_rows"
+title_bg = "Сверка със старата база, network_component_stats: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_network_component_stats_content"
+title_bg = "Сверка със старата база, network_component_stats: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tag_def_rows"
+title_bg = "Сверка със старата база, tag_def: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tag_def_content"
+title_bg = "Сверка със старата база, tag_def: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_tag_rows"
+title_bg = "Сверка със старата база, tag: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_tag_content"
+title_bg = "Сверка със старата база, tag: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_search_item_rows"
+title_bg = "Сверка със старата база, search_item: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_search_item_content"
+title_bg = "Сверка със старата база, search_item: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_place_rows"
+title_bg = "Сверка със старата база, buyer_place: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_buyer_place_content"
+title_bg = "Сверка със старата база, buyer_place: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_form_type_rows"
+title_bg = "Сверка със старата база, form_type: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_form_type_content"
+title_bg = "Сверка със старата база, form_type: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_lot_rows"
+title_bg = "Сверка със старата база, contract_lot: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_lot_content"
+title_bg = "Сверка със старата база, contract_lot: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_offer_lot_rows"
+title_bg = "Сверка със старата база, offer_lot: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_offer_lot_content"
+title_bg = "Сверка със старата база, offer_lot: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_offer_rows"
+title_bg = "Сверка със старата база, offer: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_offer_content"
+title_bg = "Сверка със старата база, offer: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_payment_rows"
+title_bg = "Сверка със старата база, payment: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_payment_content"
+title_bg = "Сверка със старата база, payment: сбор по съдържанието на редовете"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_amount_eur_sum"
+title_bg = "Сверка със старата база, сбор на contract_amount_eur"
+kind = "parity"
+
+[[check]]
+name = "parity_contract_value_current_sum"
+title_bg = "Сверка със старата база, сбор на contract_value_current"
+kind = "parity"
+
+[[check]]
+name = "parity_payment_amount_eur_sum"
+title_bg = "Сверка със старата база, сбор на payment_amount_eur"
+kind = "parity"
+
+[[check]]
+name = "parity_payment_amount_sum"
+title_bg = "Сверка със старата база, сбор на payment_amount"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_rows"
+title_bg = "Сверка със старата база, municipality: брой редове"
+kind = "parity"
+
+[[check]]
+name = "parity_municipality_differ"
+title_bg = "Общини, които се различават между стария справочник и общите измерения"
+kind = "parity"
+
+[[check]]
+name = "parity_runs"
+title_bg = "Сверка със старата база: пренесени пускания"
+kind = "parity"
+
+[[check]]
+name = "parity_changes"
+title_bg = "Сверка със старата база: пренесени редове на дневника"
+kind = "parity"

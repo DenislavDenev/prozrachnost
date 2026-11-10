@@ -32,10 +32,10 @@ def union_find(pairs):
 
 def components(conn):
     today = dt.date.today()
-    edges = conn.execute("SELECT holder, company, view, valid_to FROM stage.edge").fetchall()
+    edges = conn.execute("SELECT holder, company, view, valid_to FROM tender_stage.edge").fetchall()
     stats = {}
     ids = {}
-    with conn.cursor().copy("COPY stage.network_component(view, mode, node, component) FROM STDIN") as cp:
+    with conn.cursor().copy("COPY tender_stage.network_component(view, mode, node, component) FROM STDIN") as cp:
         for view, kinds in VIEWS.items():
             for mode in ("current", "all_history"):
                 pairs = [(h, c) for h, c, v, to in edges
@@ -45,25 +45,25 @@ def components(conn):
                     cid = ids.setdefault(rep, len(ids) + 1)
                     cp.write_row([view, mode, node, cid])
                 stats[f"{view}/{mode}"] = len(set(comp.values()))
-    conn.execute("CREATE INDEX ON stage.network_component (node)")
+    conn.execute("CREATE INDEX ON tender_stage.network_component (node)")
     conn.execute("""
-        INSERT INTO stage.network_component_stats
+        INSERT INTO tender_stage.network_component_stats
         WITH nodes AS (
           SELECT view, mode, component, count(*) AS nodes,
                  count(*) FILTER (WHERE node LIKE 'p:%%' OR node LIKE 'l:%%') AS persons,
                  count(*) FILTER (WHERE node LIKE 'c:%%') AS companies
-          FROM stage.network_component GROUP BY 1, 2, 3),
+          FROM tender_stage.network_component GROUP BY 1, 2, 3),
         cc AS (
           SELECT DISTINCT nc.view, nc.mode, nc.component, k.contract_id
-          FROM stage.network_component nc JOIN stage.node_contract k ON k.node = nc.node),
+          FROM tender_stage.network_component nc JOIN tender_stage.node_contract k ON k.node = nc.node),
         money AS (
           SELECT cc.view, cc.mode, cc.component, count(*) AS contracts,
                  sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur
-          FROM cc JOIN stage.contract c ON c.id = cc.contract_id GROUP BY 1, 2, 3)
+          FROM cc JOIN tender_stage.contract c ON c.id = cc.contract_id GROUP BY 1, 2, 3)
         SELECT n.view, n.mode, n.component, n.nodes, n.persons, n.companies,
                coalesce(m.contracts, 0), m.amount_eur
         FROM nodes n LEFT JOIN money m USING (view, mode, component)""")
-    conn.execute("CREATE INDEX ON stage.network_component (view, mode, component)")
+    conn.execute("CREATE INDEX ON tender_stage.network_component (view, mode, component)")
     return stats
 
 

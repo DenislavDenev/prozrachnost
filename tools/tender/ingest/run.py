@@ -1,6 +1,12 @@
 """CLI for n8n and humans: python -m ingest.run --step <name> [--budget SECONDS]
 
+The data is in the shared database (schemas tender_src, tender, pub_tender); the runs, the change log and the
+rules are the shared module (ingest/pipeline.py). The pages read only pub_tender, which the step `publish` brings
+up to the clean tables when every rule holds.
+
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
+               serve (the rules and the serving layer again, without a build) (build) |
+               replay [--again], parity (the move from the old database, ingest/move.py) (build) |
                tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich) |
                eop-check (validity check of the offers reader; exit 1 = repair needed), eop-offers,
                eop-reparse (rebuild the offers from the raw answers after a parsing rule change) (offers) |
@@ -14,7 +20,7 @@ import datetime as dt
 import json
 import sys
 
-from . import build, daily, db, enrich, eop_offers, sebra, tr_worker
+from . import build, daily, db, enrich, eop_offers, move, sebra, tr_worker
 
 BUILD = {"eop": build.step_eop, "fx": build.step_fx, "normalize": build.step_normalize,
          "derive": build.step_derive, "publish": build.step_publish}
@@ -30,6 +36,7 @@ def main():
     ap.add_argument("--full", action="store_true", help="eop-audit: every day, not the last 90")
     ap.add_argument("--periodic", action="store_true", help="eop-enqueue: also the weekly re-reads")
     ap.add_argument("--verify", action="store_true", help="sebra: download every file and compare")
+    ap.add_argument("--again", action="store_true", help="replay: empty the landing zone and copy it again")
     a = ap.parse_args()
     out = {"step": a.step}
     try:
@@ -43,6 +50,23 @@ def main():
                 else:
                     BUILD[a.step](conn, stats)
                 out.update(stats)
+        elif a.step == "serve":
+            with db.job(a.step) as (conn, stats):
+                build.serve(conn, stats)
+                out.update(stats)
+        elif a.step == "replay":
+            with db.job(a.step) as (conn, stats):
+                move.replay(conn, db.RUNS[id(conn)], again=a.again)
+                out.update(stats)
+        elif a.step == "parity":
+            with db.job(a.step) as (conn, stats):
+                move.parity(conn, db.RUNS[id(conn)])
+                out.update({k: v for k, v in stats.items() if k != "detail"})
+                bad = conn.execute("""SELECT title_bg, expected, actual FROM ops.check_latest
+                    WHERE tool = 'tender' AND kind = 'parity' AND ok = false ORDER BY name""").fetchall()
+            if bad:
+                out["problems"] = [f"{title}: старо {e}, ново {n}" for title, e, n in bad]
+                raise RuntimeError(f"{len(bad)} сравнения със старата база не съвпадат")
         elif a.step == "build":
             daily.build_all(out)
         elif a.step == "daily":

@@ -47,6 +47,8 @@ CASES = [
      'tests/test_dimensions.py::test_eik_rule_is_the_same_in_python_and_sql'),
     ('ekatte-unknown-field', 'ingest/ekatte.py', 'or row.keys() - required - optional', '',
      'tests/test_dimensions.py::test_invalid_archive_is_refused'),
+    ('change-cause-list-open', 'db/migrations/0010_tender.sql', "ADD CONSTRAINT change_log_cause_ck CHECK (cause IN (", "ADD CONSTRAINT change_log_cause_ck CHECK (true OR cause IN (",
+     'tests/test_pipeline.py::test_the_change_log_takes_the_causes_of_tender_and_search_by_trigrams_is_there'),
     ('gone-not-deleted', 'db/build/place.sql', "UPDATE core.settlement c SET gone_at = now()", "DELETE FROM core.settlement c",
      'tests/test_dimensions.py::test_a_closed_settlement_is_held_then_kept_with_gone_at'),
 ]

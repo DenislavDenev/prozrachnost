@@ -1,4 +1,4 @@
-"""Тендер web app: server-rendered Jinja pages over schema `live`; JS only for charts and the network."""
+"""Тендер web app: server-rendered Jinja pages over the serving layer (pub_tender, pub); JS only for charts and the network."""
 import csv
 import io
 import json
@@ -12,11 +12,10 @@ from zoneinfo import ZoneInfo
 import markdown
 import markdown.extensions.toc
 import os
-import secrets
+from email.utils import format_datetime
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -30,6 +29,25 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 app.add_middleware(GZipMiddleware, minimum_size=1000)   # the outlines of the map are ~1.5 MB of paths
 T = Jinja2Templates(directory=HERE / "templates")
+
+
+@app.middleware("http")
+async def one_publication(request: Request, call_next):
+    """A request reads one snapshot of the serving layer (app/queries.py) and its answer says which publication
+    it is of. A cache in front of the site keeps an answer until this number moves; the number moves only when
+    the published content does."""
+    snap = Q.Snapshot()
+    token = Q.CURRENT.set(snap)
+    try:
+        response = await call_next(request)
+    finally:
+        Q.CURRENT.reset(token)
+        snap.close()
+    if snap.publication:
+        response.headers["X-Publication"] = str(snap.publication[0])
+        response.headers["ETag"] = f'W/"pub-{snap.publication[0]}"'
+        response.headers["Last-Modified"] = format_datetime(snap.publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    return response
 
 ROLE = {"manager": "управител", "sole_owner": "едноличен собственик", "partner": "съдружник",
         "representative": "представител", "board_of_directors": "член на СД", "management_board": "член на УС",
@@ -121,7 +139,7 @@ def fperiod(r):
 STATE = {"contracted": "с договор", "cancelled": "прекратена", "unawarded": "без възложен договор", "open": "в ход",
          "no_contract": "без публикуван договор"}
 T.env.globals.update(STATE=STATE)
-# the state of a run (ops.job_run.status), in the words every tool uses (AGENTS.md 7)
+# the state of a run (ops.run.status), in the words every tool uses (AGENTS.md 7)
 RUN = {"running": "работи", "ok": "наред", "failed": "неуспешно", "skipped": "пропуснато"}
 T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, date=fdate, tc=tc, role=lambda r: ROLE.get(r, r), run=lambda r: RUN.get(r, r),
                      form=lambda f: FORM.get(f or "", f or ""), flag=lambda f: FLAG.get(f, ""),
@@ -133,7 +151,8 @@ T.env.filters.update(period=fperiod, eurc=feurc, eur=feur, big=fbig, num=fnum, d
 ASSET_V = str(int(max(p.stat().st_mtime for p in (HERE / "static").glob("*.*"))))
 T.env.globals.update(fields=fields, ocds_fields=ocds_fields, v=ASSET_V, feedback_button=Markup(feedback.BUTTON),
                      support_link=Markup(feedback.support_link(os.getenv("HUB_URL", "http://192.168.1.68:8001"))))
-app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("TENDER_DATA", "/opt/tender/data"), "Тендер"))
+# the feedback spool is the only thing the web writes: its own folder when it has one (the web user cannot write the data folder)
+app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("TENDER_FEEDBACK") or os.getenv("TENDER_DATA", "/opt/tender/data"), "Тендер"))
 
 
 def page(request, name, **ctx):
@@ -145,7 +164,7 @@ def page(request, name, **ctx):
 
 @app.get("/healthz", response_class=PlainTextResponse)
 def healthz():
-    Q.one("SELECT 1 FROM live.contract LIMIT 1")
+    Q.one("SELECT 1 FROM pub_tender.contract LIMIT 1")
     return "ok"
 
 
@@ -298,7 +317,7 @@ def find_json(q: str = "", kinds: str = "", net: str = ""):
 
 
 @app.get("/lab/explore", response_class=HTMLResponse)
-def lab_explore(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
+def lab_explore(request: Request, node: str = "c:201090465"):
     """Prototype of the links explorer built from the research (steps, expand, hubs, hierarchy, connect)."""
     if not NODE_ID.fullmatch(node):
         raise HTTPException(400)
@@ -323,7 +342,7 @@ def lab_vazby(request: Request, node: str = "c:201090465"):
 
 
 @app.get("/lab/links", response_class=HTMLResponse)
-def lab_links(request: Request, node: str = "p:01M3D2GEZYEKNZ4B6HSXW20CPK"):
+def lab_links(request: Request, node: str = "c:201090465"):
     """Prototypes of the links section (four variants side by side); not linked from the menu."""
     if not re.fullmatch(r"[pcfl]:[\w:-]+", node):
         raise HTTPException(400)
@@ -439,7 +458,7 @@ SPLIT = """CROSS JOIN LATERAL (SELECT DISTINCT btrim(x) code FROM unnest(string_
 SUP_LEVEL = {"oblast": 5, "region": 4, "macro": 3, "country": 2}
 SUP_AREA = re.compile(r"[A-Z]{2}[0-9A-Z]{0,3}")
 # a contract with a supplier whose code begins with the area's code (two parameters: its length and the code)
-SUP_HERE = """c.id IN (SELECT c2.id FROM live.contract c2 CROSS JOIN LATERAL unnest(string_to_array(c2.supplier_nuts, ';')) x
+SUP_HERE = """c.id IN (SELECT c2.id FROM pub_tender.contract c2 CROSS JOIN LATERAL unnest(string_to_array(c2.supplier_nuts, ';')) x
                         WHERE left(btrim(x), %s) = %s)"""
 # the member's own code: by position, or the only code when the notice gives one for all
 MEMBER_CODE = """JOIN LATERAL (SELECT btrim(u.x) code FROM unnest(string_to_array(c.supplier_nuts, ';')) WITH ORDINALITY u(x, i)
@@ -481,7 +500,7 @@ def supplier_map(where, args, level, o):
     if o not in ("bg", "eu", "world") or level not in SUP_LEVEL or (o, level) == ("bg", "country") or (o == "world" and level != "country"):
         raise HTTPException(400)
     per_list = f"""SELECT c.supplier_nuts, count(*) n, {Q.SUM} eur, count(*) FILTER (WHERE c.offers_count = 1) one,
-                   count(*) FILTER (WHERE c.offers_count IS NOT NULL) known FROM live.contract c WHERE {where} GROUP BY 1"""
+                   count(*) FILTER (WHERE c.offers_count IS NOT NULL) known FROM pub_tender.contract c WHERE {where} GROUP BY 1"""
     split = SPLIT.replace("c.supplier_nuts", "l.supplier_nuts")
 
     def per(lvl):
@@ -515,10 +534,10 @@ def map_data(request: Request, level: str = "muni", by: str = "buyer", o: str = 
 
     def buyer_map():
         areas = Q.rows(f"""SELECT {g} id, count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct
-            FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality
+            FROM pub_tender.contract c JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik JOIN pub_tender.municipality m ON m.id = bp.municipality
             WHERE {where} GROUP BY 1""", *args)
         cover = Q.one(f"""SELECT round({Q.SUM}) eur, round(sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND bp.eik IS NOT NULL)) placed
-            FROM live.contract c LEFT JOIN live.buyer_place bp ON bp.eik = c.buyer_eik
+            FROM pub_tender.contract c LEFT JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik
             WHERE {where.replace("bp.basis = 'municipality'", "true")}""", *args)
         return {"areas": areas, "cover": cover}
     out = Q.cached("map:" + str(request.url.query), buyer_map, ttl=6 * 3600)   # the same until the next build is published
@@ -535,10 +554,10 @@ def place(request: Request, aid: str):
     """Profile of a municipality (by its ЕИК), an oblast, a planning region or a macro-region (NUTS code)."""
     cond, a0 = area_cond(aid)
     if aid[0].isdigit():
-        m = Q.one("SELECT name_bg name, oblast, nuts3, nuts2 FROM live.municipality WHERE id = %s", aid)
+        m = Q.one("SELECT name_bg name, oblast, nuts3, nuts2 FROM pub_tender.municipality WHERE id = %s", aid)
         kind, name = "Община", m and m["name"]
     elif len(aid) == 5:
-        m = Q.one("SELECT DISTINCT oblast name, nuts3, nuts2 FROM live.municipality WHERE nuts3 = %s", aid)
+        m = Q.one("SELECT DISTINCT oblast name, nuts3, nuts2 FROM pub_tender.municipality WHERE nuts3 = %s", aid)
         kind, name = "Област", m and m["name"]
     else:
         m, kind, name = {"nuts2": aid[:4] if len(aid) == 4 else None}, "Район за планиране" if len(aid) == 4 else "Макрорайон", NUTS_NAME.get(aid)
@@ -547,12 +566,12 @@ def place(request: Request, aid: str):
     up = [(f"/places/{m['nuts3']}", "област " + m["oblast"])] if aid[0].isdigit() else []
     if m.get("nuts2") and len(aid) > 4:
         up.append((f"/places/{m['nuts2']}", NUTS_NAME[m["nuts2"]]))
-    base = "FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality"
+    base = "FROM pub_tender.contract c JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik JOIN pub_tender.municipality m ON m.id = bp.municipality"
     stats = Q.one(f"SELECT count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct {base} WHERE {cond}", *a0)
-    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur {base} LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+    buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
         WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
     suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
-        {base} JOIN live.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
+        {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 8""", *a0)
     by_year = Q.rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} WHERE {cond} AND {Q.YEARS} GROUP BY 1 ORDER BY 1""", *a0)
     param = "municipality" if aid[0].isdigit() else "area"
@@ -568,19 +587,19 @@ def map_detail(request: Request, aid: str, by: str = "buyer"):
             raise HTTPException(400)
         where = where.replace("bp.basis = 'municipality'", "true")
         buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
-            FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+            FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
             WHERE {SUP_HERE} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
         suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
-            FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id {MEMBER_CODE}
+            FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id {MEMBER_CODE}
             WHERE left(mc.code, %s) = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", len(aid), aid, *args)
         return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
     cond, a0 = area_cond(aid)
-    base = "FROM live.contract c JOIN live.buyer_place bp ON bp.eik = c.buyer_eik JOIN live.municipality m ON m.id = bp.municipality"
+    base = "FROM pub_tender.contract c JOIN pub_tender.buyer_place bp ON bp.eik = c.buyer_eik JOIN pub_tender.municipality m ON m.id = bp.municipality"
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
-        {base} LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
+        {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
         WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
     suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
-        {base} JOIN live.contract_supplier s ON s.contract_id = c.id
+        {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id
         WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST LIMIT 12""", *a0, *args)
     return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
 
@@ -592,10 +611,10 @@ def buyers(request: Request):
     contains(L, "q", "b.name", "b.eik")
     if L.get("type"):
         L.add("b.type = %s", L.get("type"))
-    rows = L.fetch("""SELECT b.eik, b.name, b.type, s.tenders, s.contracts, s.amount_eur, s.suppliers FROM live.buyer b
-                      JOIN live.buyer_stats s USING (eik) WHERE {where}""")
+    rows = L.fetch("""SELECT b.eik, b.name, b.type, s.tenders, s.contracts, s.amount_eur, s.suppliers FROM pub_tender.buyer b
+                      JOIN pub_tender.buyer_stats s USING (eik) WHERE {where}""")
     types = Q.cached("buyer_types", lambda: [r["type"] for r in Q.rows(
-        "SELECT DISTINCT type FROM live.buyer WHERE type IS NOT NULL ORDER BY 1")])
+        "SELECT DISTINCT type FROM pub_tender.buyer WHERE type IS NOT NULL ORDER BY 1")])
     return page(request, "list_buyers.html", L=L, rows=rows, types=types, nav="Възложители")
 
 
@@ -607,18 +626,18 @@ def companies(request: Request):
     contains(L, "q", "c.name", "c.eik")
     contains(L, "seat", "c.seat")
     if L.get("tag"):
-        L.add("c.key IN (SELECT entity_id FROM live.tag WHERE entity_type = 'company' AND code = %s)", L.get("tag"))
+        L.add("c.key IN (SELECT entity_id FROM pub_tender.tag WHERE entity_type = 'company' AND code = %s)", L.get("tag"))
     rows = L.fetch("""SELECT c.key, c.eik, c.name, c.legal_form, c.seat, s.contracts, s.amount_eur, s.buyers, s.last_contract,
-                        (SELECT t.reason FROM live.tag t WHERE t.entity_type = 'company' AND t.entity_id = c.key AND t.code = %s) reason
-                      FROM live.company c JOIN live.company_stats s USING (key) WHERE {where}""".replace("%s", "'" + re.sub(r"[^a-z_]", "", L.get("tag")) + "'"))
-    tags = Q.cached("tag_defs", lambda: Q.rows("SELECT d.code, d.label, (SELECT count(*) FROM live.tag t WHERE t.code = d.code) n FROM live.tag_def d ORDER BY 1"))
+                        (SELECT t.reason FROM pub_tender.tag t WHERE t.entity_type = 'company' AND t.entity_id = c.key AND t.code = %s) reason
+                      FROM pub_tender.company c JOIN pub_tender.company_stats s USING (key) WHERE {where}""".replace("%s", "'" + re.sub(r"[^a-z_]", "", L.get("tag")) + "'"))
+    tags = Q.cached("tag_defs", lambda: Q.rows("SELECT d.code, d.label, (SELECT count(*) FROM pub_tender.tag t WHERE t.code = d.code) n FROM pub_tender.tag_def d ORDER BY 1"))
     return page(request, "list_companies.html", L=L, rows=rows, tags=tags, nav="Фирми")
 
 
 @app.get("/flags", response_class=HTMLResponse)
 def flags_index(request: Request):
     """Every automatic tag: what it measures, how many companies have it, a link to them."""
-    defs = Q.rows("""SELECT d.*, (SELECT count(*) FROM live.tag t WHERE t.code = d.code) n FROM live.tag_def d
+    defs = Q.rows("""SELECT d.*, (SELECT count(*) FROM pub_tender.tag t WHERE t.code = d.code) n FROM pub_tender.tag_def d
                      ORDER BY d.kind DESC, n DESC""")
     return page(request, "flags.html", defs=defs, nav="Фирми")
 
@@ -632,15 +651,15 @@ def persons(request: Request):
     if L.get("with") == "contracts":
         L.add("s.contracts > 0")
     rows = L.fetch("""SELECT p.id, p.name, s.companies, s.active, s.contracts, s.amount_eur, s.first_role
-                      FROM live.person p JOIN live.person_stats s USING (id) WHERE {where}""")
+                      FROM pub_tender.person p JOIN pub_tender.person_stats s USING (id) WHERE {where}""")
     return page(request, "list_persons.html", L=L, rows=rows, nav="Лица")
 
 
 def procedure_types():
-    return [r["p"] for r in Q.rows("SELECT DISTINCT procedure_type p FROM live.contract WHERE procedure_type IS NOT NULL ORDER BY 1")]
+    return [r["p"] for r in Q.rows("SELECT DISTINCT procedure_type p FROM pub_tender.contract WHERE procedure_type IS NOT NULL ORDER BY 1")]
 
 
-SECTOR_NAMES = """SELECT DISTINCT ON (left(cpv, 2)) left(cpv, 2) d, cpv_description name FROM live.contract
+SECTOR_NAMES = """SELECT DISTINCT ON (left(cpv, 2)) left(cpv, 2) d, cpv_description name FROM pub_tender.contract
                   WHERE cpv ~ '^[0-9]{2}000000' ORDER BY left(cpv, 2), cpv"""
 
 
@@ -672,24 +691,24 @@ def contracts(request: Request):
     if L.get("buyer"):
         L.add("c.buyer_eik = %s", L.get("buyer"))
     if L.get("company"):
-        L.add("c.id IN (SELECT contract_id FROM live.contract_supplier WHERE party_key = %s)", L.get("company"))
+        L.add("c.id IN (SELECT contract_id FROM pub_tender.contract_supplier WHERE party_key = %s)", L.get("company"))
     if L.get("municipality"):
-        L.add("c.buyer_eik IN (SELECT eik FROM live.buyer_place WHERE municipality = %s)", L.get("municipality"))
+        L.add("c.buyer_eik IN (SELECT eik FROM pub_tender.buyer_place WHERE municipality = %s)", L.get("municipality"))
     if SUP_AREA.fullmatch(L.get("supplier_area")):  # a place of the supplier's seat (the map by supplier)
         L.add(SUP_HERE, len(L.get("supplier_area")), L.get("supplier_area"))
     if AREA.fullmatch(L.get("area")):  # oblast / region / macro-region (NUTS code) of the buyer
-        L.add("""c.buyer_eik IN (SELECT bp.eik FROM live.buyer_place bp JOIN live.municipality m ON m.id = bp.municipality
+        L.add("""c.buyer_eik IN (SELECT bp.eik FROM pub_tender.buyer_place bp JOIN pub_tender.municipality m ON m.id = bp.municipality
                  WHERE %s IN (m.nuts3, m.nuts2, m.nuts1))""", L.get("area"))
     if L.get("person"):  # contracts of the companies where the person had a role on the contract date
-        L.add("""c.id IN (SELECT k.contract_id FROM live.edge e JOIN live.node_contract k ON k.node = e.company
-                 JOIN live.contract c2 ON c2.id = k.contract_id WHERE e.holder = 'p:' || %s
+        L.add("""c.id IN (SELECT k.contract_id FROM pub_tender.edge e JOIN pub_tender.node_contract k ON k.node = e.company
+                 JOIN pub_tender.contract c2 ON c2.id = k.contract_id WHERE e.holder = 'p:' || %s
                  AND c2.effective_date >= e.valid_from AND (e.valid_to IS NULL OR c2.effective_date < e.valid_to))""", L.get("person"))
     contract_filters(L)
     rows = L.fetch("""SELECT c.id, c.unp, c.effective_date, c.subject, c.buyer_eik, b.name buyer, c.supplier_display supplier,
                         s0.party_key supplier_key, round(c.amount_eur) eur, c.offers_count, c.value_flag, c.is_framework, c.estimate_ratio,
                         c.annex_count, c.awarded_to_group, c.procedure_type
-                      FROM live.contract c LEFT JOIN live.buyer b ON b.eik = c.buyer_eik
-                      LEFT JOIN live.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0 WHERE {where}""")
+                      FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
+                      LEFT JOIN pub_tender.contract_supplier s0 ON s0.contract_id = c.id AND s0.position = 0 WHERE {where}""")
     return page(request, "_contracts_table.html" if L.embed else "list_contracts.html", L=L, rows=rows, **choices(), nav="Договори")
 
 
@@ -712,7 +731,7 @@ def tenders(request: Request):
         L.add("t.state = %s", L.get("state"))
     rows = L.fetch(f"""SELECT t.unp, {day} AS day, t.subject, t.buyer_eik, b.name buyer, t.procedure_type, t.estimated_eur,
                          t.is_cancelled, t.state, s.contracts, s.amount_eur, s.single_bid
-                       FROM live.tender t LEFT JOIN live.tender_stats s USING (unp) LEFT JOIN live.buyer b ON b.eik = t.buyer_eik
+                       FROM pub_tender.tender t LEFT JOIN pub_tender.tender_stats s USING (unp) LEFT JOIN pub_tender.buyer b ON b.eik = t.buyer_eik
                        WHERE {{where}}""")
     return page(request, "_tenders_table.html" if L.embed else "list_tenders.html", L=L, rows=rows, **choices(), nav="Поръчки")
 
@@ -727,7 +746,7 @@ def procedures(request: Request):
     period(L, "c.effective_date")
     L.add("c.procedure_type IS NOT NULL")
     rows = L.fetch(f"""SELECT * FROM (SELECT c.procedure_type k, c.procedure_type name, count(*) n, round({Q.SUM}) eur,
-        {SINGLE} single_pct FROM live.contract c WHERE {{where}} GROUP BY 1) g""")
+        {SINGLE} single_pct FROM pub_tender.contract c WHERE {{where}} GROUP BY 1) g""")
     return page(request, "list_rollup.html", L=L, rows=rows, title="Процедури", kind="procedure", nav="")
 
 
@@ -737,7 +756,7 @@ def sectors(request: Request):
     period(L, "c.effective_date")
     L.add("c.cpv ~ '^[0-9]{2}'")
     rows = L.fetch(f"""SELECT g.k, coalesce(sn.name, 'CPV ' || g.k) name, g.n, g.eur, g.single_pct FROM (
-        SELECT left(c.cpv, 2) k, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct FROM live.contract c
+        SELECT left(c.cpv, 2) k, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct FROM pub_tender.contract c
         WHERE {{where}} GROUP BY 1) g LEFT JOIN ({SECTOR_NAMES}) sn ON sn.d = g.k""")
     return page(request, "list_rollup.html", L=L, rows=rows, title="Сектори", kind="sector", nav="")
 
@@ -757,14 +776,14 @@ def flow_base(mode, year, filters):
     if mode == "payments":
         where = ["p.settlement_date >= make_date(%s, 1, 1)", "p.settlement_date < make_date(%s + 1, 1, 1)", "p.amount_eur > 0"]
         args = [year, year]
-        base = "FROM live.payment p"
+        base = "FROM pub_tender.payment p"
         val = "p.amount_eur"
     else:
         # contracts once each (first supplier), no framework ceilings, no values the checks mark as errors
         where = ["c.effective_date >= make_date(%s, 1, 1)", "c.effective_date < make_date(%s + 1, 1, 1)", "NOT c.is_framework",
                  "c.value_flag = 'ok'", "c.amount_eur > 0"]
         args = [year, year]
-        base = "FROM live.contract c JOIN live.contract_supplier s ON s.contract_id = c.id AND s.position = 0"
+        base = "FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id AND s.position = 0"
         val = "c.amount_eur"
     for k, v in filters.items():
         where.append(f"{FLOW_DIMS[mode][k]} = %s")
@@ -819,17 +838,17 @@ def flow_names(mode, keys):
             sn = {r["d"]: r["name"] for r in Q.cached("sectors", lambda: Q.rows(SECTOR_NAMES))}
             out.update({f"sector|{k}": sn.get(k, "CPV " + k) for k in ks})
         elif dim == "buyer":
-            out.update({f"buyer|{r['eik']}": tc(r["name"]) for r in Q.rows("SELECT eik, name FROM live.buyer WHERE eik = ANY(%s)", ks)})
+            out.update({f"buyer|{r['eik']}": tc(r["name"]) for r in Q.rows("SELECT eik, name FROM pub_tender.buyer WHERE eik = ANY(%s)", ks)})
         elif dim == "supplier":
-            out.update({f"supplier|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM live.company WHERE key = ANY(%s)", ks)})
+            out.update({f"supplier|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM pub_tender.company WHERE key = ANY(%s)", ks)})
             out.update({f"supplier|{k}": tc(k[5:]) for k in ks if k.startswith("name:")})
         elif dim == "primary":
             out.update({f"primary|{r['k']}": r["n"] for r in Q.rows(
-                "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM live.payment WHERE primary_org_code = ANY(%s)", ks)})
+                "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM pub_tender.payment WHERE primary_org_code = ANY(%s)", ks)})
         elif dim == "org":
             out.update({f"org|{k}": k for k in ks})
         else:
-            out.update({f"receiver|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM live.company WHERE key = ANY(%s)", ks)})
+            out.update({f"receiver|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM pub_tender.company WHERE key = ANY(%s)", ks)})
             out.update({f"receiver|{k}": k[5:] for k in ks if k.startswith("name:")})
             out["receiver|persons"] = "Физически лица"
     return out
@@ -855,7 +874,7 @@ def payments(request: Request):
         L.add("p.company_key = %s", r)
     contains(L, "q", "p.receiver_name", "p.reason", "p.organization")
     rows = L.fetch("""SELECT p.settlement_date, p.receiver_name, p.is_person, p.company_key, p.amount_eur, p.reason, p.pay_code,
-                        p.organization, p.primary_organization, p.buyer_eik FROM live.payment p WHERE {where}""")
+                        p.organization, p.primary_organization, p.buyer_eik FROM pub_tender.payment p WHERE {where}""")
     return page(request, "_payments_table.html" if L.embed else "list_payments.html", L=L, rows=rows, nav="Потоци")
 
 
@@ -873,15 +892,14 @@ def legal(request: Request):
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
+    counters = Q.rows("SELECT name, value, at FROM pub_tender.source_stat")
+    stat, at = {r["name"]: r["value"] for r in counters}, {r["name"]: r["at"] for r in counters}
     s = {
-        "eop": Q.one("SELECT min(day) first, max(day) FILTER (WHERE published) last, count(*) FILTER (WHERE published) days FROM ops.eop_day"),
-        "tr": Q.one("""SELECT count(*) FILTER (WHERE status='done') done, count(*) FILTER (WHERE status='pending') pending,
-                        count(*) FILTER (WHERE status='failed') failed, max(done_at) last FROM tr.queue"""),
-        "deeds": Q.one("SELECT count(*) FILTER (WHERE status='ok') ok, count(*) FILTER (WHERE status='absent') absent FROM tr.deed"),
-        "names": Q.one("""SELECT count(*) FILTER (WHERE status='done') done, count(*) FILTER (WHERE status='ambiguous') ambiguous,
-                          (SELECT count(DISTINCT name_key) FROM tr.person) total FROM tr.name_search"""),
-        "runs": Q.rows("""SELECT DISTINCT ON (step) step, status, started_at, finished_at, error FROM ops.job_run
-                          ORDER BY step, started_at DESC"""),
+        "eop": Q.one("SELECT min(day) first, max(day) FILTER (WHERE published) last, count(*) FILTER (WHERE published) days FROM pub_tender.eop_day"),
+        "tr": {"done": stat.get("tr_done"), "pending": stat.get("tr_pending"), "failed": stat.get("tr_failed"), "last": at.get("tr_done")},
+        "deeds": {"ok": stat.get("deeds_ok"), "absent": stat.get("deeds_absent")},
+        "names": {"done": stat.get("names_done"), "ambiguous": stat.get("names_ambiguous"), "total": stat.get("names_total")},
+        "runs": Q.rows("SELECT step, status, started_at, finished_at, error FROM pub_tender.run_state ORDER BY step"),
     }
     return page(request, "sources.html", s=s, nav="")
 
@@ -901,42 +919,8 @@ def csv_response(rows, name):
                              headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-basic = HTTPBasic()
-
-
-def admin(creds: HTTPBasicCredentials = Depends(basic)):
-    """HTTP Basic for the review queue; disabled unless TENDER_ADMIN_PASSWORD is set (see deploy/README)."""
-    pw = os.environ.get("TENDER_ADMIN_PASSWORD")
-    if not pw or not (secrets.compare_digest(creds.username, "admin") and secrets.compare_digest(creds.password, pw)):
-        raise HTTPException(401, headers={"WWW-Authenticate": "Basic"})
-    return creds.username
-
-
-@app.get("/admin/review", response_class=HTMLResponse)
-def review(request: Request, who: str = Depends(admin)):
-    figures = Q.rows("""SELECT f.*, p.name person_name,
-        (SELECT count(DISTINCT e.company) FROM live.edge e WHERE e.holder = 'p:' || f.person_id) companies
-        FROM ed.public_figure f JOIN tr.person p ON p.id = f.person_id WHERE f.status = 'candidate'
-        ORDER BY f.label LIMIT 100""")
-    arts = Q.rows("""SELECT a.*, coalesce(p.name, c.name) entity_name FROM ed.article a
-        LEFT JOIN tr.person p ON a.entity_type = 'person' AND p.id = a.entity_id
-        LEFT JOIN live.company c ON a.entity_type = 'company' AND c.key = a.entity_id
-        WHERE a.status = 'candidate' ORDER BY a.published_at DESC NULLS LAST LIMIT 100""")
-    return page(request, "review.html", figures=figures, arts=arts, nav="")
-
-
-@app.post("/admin/review/{kind}", response_class=HTMLResponse)
-def review_decide(kind: str, key: str = Form(...), decision: str = Form(...), who: str = Depends(admin)):
-    if decision not in ("confirmed", "rejected") or kind not in ("figure", "article"):
-        raise HTTPException(400)
-    with Q.connect() as conn:
-        if kind == "figure":
-            pid, qid = key.split("|", 1)
-            conn.execute("UPDATE ed.public_figure SET status=%s, reviewed_by=%s, reviewed_at=now() WHERE person_id=%s AND wikidata_qid=%s",
-                         (decision, who, pid, qid))
-        else:
-            conn.execute("UPDATE ed.article SET status=%s, reviewed_by=%s, reviewed_at=now() WHERE id=%s", (decision, who, int(key)))
-    return HTMLResponse(f'<span class="mut">{"потвърдено" if decision == "confirmed" else "отхвърлено"}</span>')
+# The review of candidates (public figures, articles) wrote to the database from the site. The site now reads the
+# serving layer and nothing else, so the review is no longer a page; it comes back as a step on the ingest side.
 
 
 @app.exception_handler(404)

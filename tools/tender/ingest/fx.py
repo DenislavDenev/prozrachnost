@@ -10,7 +10,7 @@ ECB_HIST = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
 
 
 def refresh(conn):
-    """Replace ops.fx_rate with the ECB history. Returns the number of rows."""
+    """Replace tender_src.fx_rate with the ECB history. Returns the number of rows."""
     data = get(ECB_HIST)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         rows = list(csv.DictReader(io.TextIOWrapper(z.open(z.namelist()[0]), encoding="utf-8")))
@@ -25,8 +25,8 @@ def refresh(conn):
             if cur and cur != "Date" and v and v != "N/A":
                 out.append((d, cur, float(v)))
     with conn.transaction():
-        conn.execute("DELETE FROM ops.fx_rate")
-        with conn.cursor().copy("COPY ops.fx_rate(day, currency, per_eur) FROM STDIN") as cp:
+        conn.execute("DELETE FROM tender_src.fx_rate")
+        with conn.cursor().copy("COPY tender_src.fx_rate(day, currency, per_eur) FROM STDIN") as cp:
             for row in out:
                 cp.write_row(row)
     return len(out)
@@ -35,6 +35,6 @@ def refresh(conn):
 def load(conn):
     """{currency: [(date, units_per_eur)] ascending}"""
     rates = {}
-    for d, c, v in conn.execute("SELECT day, currency, per_eur FROM ops.fx_rate ORDER BY currency, day"):
+    for d, c, v in conn.execute("SELECT day, currency, per_eur FROM tender_src.fx_rate ORDER BY currency, day"):
         rates.setdefault(c, []).append((d, float(v)))
     return rates

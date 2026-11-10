@@ -1,0 +1,1 @@
+SELECT contract_id, published_at, source_day, last_value, current_value, difference, currency, reason, description, row_number() OVER (PARTITION BY contract_id ORDER BY t)::int FROM tender.amendment t
