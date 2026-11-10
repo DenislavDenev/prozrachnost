@@ -384,11 +384,13 @@ class Listing:
         self.where.append(cond)
         self.args.extend(args)
 
-    def fetch(self, base):
-        """`base` is a SELECT with a {where} placeholder; returns one page of rows and sets total."""
+    def fetch(self, base, tie="1"):
+        """`base` is a SELECT with a {where} placeholder; returns one page of rows and sets total.
+        `tie` orders the rows that are equal in the sorted column: a key of the row, where the first column is not
+        one (many payments share a day), so two pages of the list never show the same row."""
         sql = base.replace("{where}", " AND ".join(self.where) or "true")
         order = f"{self.cols[self.sort][0]} {self.dir.upper()} NULLS LAST"
-        rows = Q.rows(f"{sql} ORDER BY {order}, 1 LIMIT {self.PER} OFFSET %s", *self.args, self.offset)
+        rows = Q.rows(f"{sql} ORDER BY {order}, {tie} LIMIT {self.PER} OFFSET %s", *self.args, self.offset)
         self.total = Q.one(f"SELECT count(*) n FROM ({sql}) x", *self.args)["n"]
         return rows
 
@@ -844,7 +846,7 @@ def flow_names(mode, keys):
             out.update({f"supplier|{k}": tc(k[5:]) for k in ks if k.startswith("name:")})
         elif dim == "primary":
             out.update({f"primary|{r['k']}": r["n"] for r in Q.rows(
-                "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM pub_tender.payment WHERE primary_org_code = ANY(%s)", ks)})
+                "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM pub_tender.payment WHERE primary_org_code = ANY(%s) ORDER BY 1, 2", ks)})
         elif dim == "org":
             out.update({f"org|{k}": k for k in ks})
         else:
@@ -874,7 +876,8 @@ def payments(request: Request):
         L.add("p.company_key = %s", r)
     contains(L, "q", "p.receiver_name", "p.reason", "p.organization")
     rows = L.fetch("""SELECT p.settlement_date, p.receiver_name, p.is_person, p.company_key, p.amount_eur, p.reason, p.pay_code,
-                        p.organization, p.primary_organization, p.buyer_eik FROM pub_tender.payment p WHERE {where}""")
+                        p.organization, p.primary_organization, p.buyer_eik FROM pub_tender.payment p WHERE {where}""",
+                   tie="p.resource_uri, p.row_no")
     return page(request, "_payments_table.html" if L.embed else "list_payments.html", L=L, rows=rows, nav="Потоци")
 
 
