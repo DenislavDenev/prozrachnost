@@ -53,6 +53,13 @@ title_bg = "Слоят за показване не стига до нищо и�
 kind = "serving"
 sql = "SELECT 0, count(*) FROM core.serving_violation"
 
+[[check]]
+name = "person_columns_decided"
+title_bg = "Колони с име на човек или с вид на такова, за които няма решение"
+kind = "serving"
+gating = false
+sql = "SELECT 0, count(*) FROM core.person_column_undecided"
+
 # Judged inside the transaction of the publication, against the new content.
 [[check]]
 name = "published_places_match_core"

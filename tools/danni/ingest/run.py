@@ -206,6 +206,23 @@ def licences(conn):
     return len(listed)
 
 
+def persons(conn):
+    """db/persons.toml is the one reviewed list of the columns that hold names of people and the decision for each.
+    A column that left the list loses its decision, and a serving column without one stops every publication."""
+    listed = tomllib.loads((ROOT / 'db' / 'persons.toml').read_text(encoding='utf-8')).get('person', [])
+    keys = [x['column'] for x in listed]
+    with conn.transaction():
+        conn.execute("DELETE FROM core.person_column WHERE NOT (schema_name || '.' || table_name || '.' || column_name = ANY(%s))", (keys,))
+        for x in listed:
+            schema, table, column = x['column'].split('.')
+            conn.execute('''INSERT INTO core.person_column (schema_name, table_name, column_name, kind, shown_as, basis, decided_on)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (schema_name, table_name, column_name) DO UPDATE SET kind=EXCLUDED.kind, shown_as=EXCLUDED.shown_as,
+                  basis=EXCLUDED.basis, decided_on=EXCLUDED.decided_on''',
+                         (schema, table, column, x['kind'], x['shown_as'], x['basis'], x['decided_on']))
+    return len(listed)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument('--step', choices=['migrate', 'place', 'org', 'check', 'freshness'], required=True)
@@ -213,7 +230,7 @@ def main(argv=None):
     sha = pipeline.code_sha(ROOT)
     with pipeline.connect(DSN) as conn:
         if a.step == 'migrate':
-            result = {'migrations': pipeline.migrate(conn, TOOL, ROOT), 'licences': licences(conn)}
+            result = {'migrations': pipeline.migrate(conn, TOOL, ROOT), 'licences': licences(conn), 'persons': persons(conn)}
         elif a.step == 'freshness':
             result = {'problems': pipeline.freshness(conn, TOOL)}
         else:
@@ -224,6 +241,7 @@ def main(argv=None):
                     elif a.step == 'org':
                         org(conn, r)
                     licences(conn)   # a tool may have registered a dataset since the last run
+                    persons(conn)
                     problems = pipeline.run_checks(conn, r)
                     if not problems:   # nothing is published past a failed rule
                         problems = pipeline.publish(conn, r, ROOT).problems

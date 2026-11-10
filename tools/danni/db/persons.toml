@@ -1,0 +1,47 @@
+# Every column that holds, or by its name may hold, the name of a person, with the decision taken for it.
+# One reviewed list for all tools: a tool cannot decide this for itself. Applied by every step of danni into
+# core.person_column. A serving column with a name and no entry here stops every publication.
+#
+#   kind      public-office   a politician or an official, named by the source in that role
+#             public-money    a manager or an owner of an entity that receives public money
+#             registered      a private person in a public register by legal duty (a donor, a beneficiary)
+#             incidental      a contact person, a signatory: not kept at all
+#             not-a-person    the column looks like a name of a person and is not one
+#   shown_as  full | masked ("Иван ***") | aggregate (only in sums, no row) | absent
+#
+# `full` is allowed only for public-office, public-money and not-a-person.
+# Decisions of the owner of 10.11.2026:
+#   1. A politician is shown in full only where the source names them in that role, or through a link by an
+#      identifier. Never by a match of names: a namesake would be accused.
+#   2. Managers and owners of entities that receive public money are shown in full, in that role only.
+#   3. Donors: the small ones only as sums (by recipient and by settlement), the large ones as a masked row.
+#      The line between them is the threshold of the source itself for a declaration of origin of the funds.
+#   4. Each new case is decided here before its data is published.
+
+[[person]]
+column = "core.dataset.personal_data"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a field of the dataset register: whether the dataset holds personal data"
+
+[[person]]
+column = "pub.dataset.personal_data"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a field of the dataset register: whether the dataset holds personal data"
+
+[[person]]
+column = "partii_src.donation.donor_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "holds the name only when the donor is a legal entity (constraint donation_no_person_ck); names of donors who are persons are not kept"
+
+[[person]]
+column = "pub_partii.donation.donor_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "holds the name only when the donor is a legal entity (constraint donation_no_person_ck); names of donors who are persons are not kept"
