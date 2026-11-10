@@ -1,0 +1,91 @@
+# The datasets and sources of Тендер. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or handed out is decided only in tools/danni/db/licences.toml.
+# The sources have no stale_after: their freshness is the D-1 promise of ingest/daily.py (they are not yet loaded
+# through pipeline.load(), which is what the shared freshness reads).
+
+[[dataset]]
+dataset = "tender.eop"
+title_bg = "Обществени поръчки: отворените данни и страниците на поръчките в ЦАИС ЕОП"
+description_bg = "Поръчки, договори, анекси и обявления от дневните файлове на ЦАИС ЕОП от 2020 г., и офертите, съобщенията, жалбите и документите от страницата на всяка поръчка."
+source_org = "Агенция по обществени поръчки"
+source_url = "https://storage.eop.bg"
+channel = "file"
+licence = "CC BY 4.0 по описанието на набора; OCDS файловете декларират CC0; лицензът в data.egov.bg чака проверка"
+personal_data = "none"
+cadence = "всеки ден"
+tables = ["pub_tender.buyer", "pub_tender.tender", "pub_tender.lot", "pub_tender.contract", "pub_tender.contract_supplier", "pub_tender.amendment", "pub_tender.subcontract", "pub_tender.source_record", "pub_tender.award", "pub_tender.notice", "pub_tender.annex_orphan", "pub_tender.form_type", "pub_tender.contract_lot", "pub_tender.offer_lot", "pub_tender.offer", "pub_tender.eopsvc_announcement", "pub_tender.eopsvc_detail", "pub_tender.eopsvc_publication", "pub_tender.eopsvc_appeal", "pub_tender.eopsvc_document", "pub_tender.eopsvc_queue", "pub_tender.eop_day", "pub_tender.eop_file", "tender.buyer", "tender.tender", "tender.lot", "tender.contract", "tender.contract_supplier", "tender.amendment", "tender.subcontract", "tender.source_record", "tender.award", "tender.notice", "tender.annex_orphan", "tender.form_type", "tender.contract_lot", "tender.offer_lot", "tender.offer", "tender_src.eop_day", "tender_src.eop_file", "tender_src.eopsvc_queue", "tender_src.eopsvc_offer", "tender_src.eopsvc_lot", "tender_src.eopsvc_contract_lot", "tender_src.eopsvc_announcement", "tender_src.eopsvc_detail", "tender_src.eopsvc_publication", "tender_src.eopsvc_appeal", "tender_src.eopsvc_document", "tender_src.eopsvc_check_run"]
+
+[[dataset]]
+dataset = "tender.tr"
+title_bg = "Търговски регистър: партиди, роли и лица"
+description_bg = "Партидите на дружествата, срещнати в поръчките и плащанията, и на свързаните с тях: правна форма, седалище, капитал, роли с период. Показват се само ролите на лица в дружества с публични пари."
+source_org = "Агенция по вписванията"
+source_url = "https://portal.registryagency.bg"
+channel = "api"
+licence = "CC0 за Търговския регистър в data.egov.bg; партидите се четат през API, предоставено по споразумение"
+personal_data = "public-role"
+cadence = "всеки час по опашка"
+tables = ["pub_tender.edge", "pub_tender.node", "pub_tender.person", "pub_tender.person_stats", "pub_tender.tr_coverage", "pub_tender.source_stat", "tender.person", "tender.edge", "tender.node", "tender.person_stats", "tender.network_component", "tender.network_component_stats", "tender.public_money", "tender.person_token", "tender.shown_person_edge", "tender.shown_person", "tender.shown_person_stats", "tender.shown_person_node", "tender.shown_person_search", "tender_src.tr_queue", "tender_src.tr_deed", "tender_src.tr_role", "tender_src.tr_person", "tender_src.tr_name_search", "tender_src.tr_change_day"]
+
+[[dataset]]
+dataset = "tender.sebra"
+title_bg = "Плащания от бюджета (СЕБРА)"
+description_bg = "Плащанията на бюджетните организации през СЕБРА по периоди. За получател физическо лице източникът не дава име."
+source_org = "Министерство на финансите"
+source_url = "https://data.egov.bg"
+channel = "file"
+licence = "не е проверен за този набор"
+personal_data = "none"
+cadence = "всяка седмица"
+tables = ["pub_tender.payment", "tender.payment", "tender_src.sebra_resource", "tender_src.sebra_payment"]
+
+[[dataset]]
+dataset = "tender.derived"
+title_bg = "Тендер: изведени таблици"
+description_bg = "Фирмите, обобщенията, отбелязванията, търсенето и поставянето на възложителите в общини, изведени от останалите набори на Тендер; курсовете на ЕЦБ; редакторските бележки."
+source_org = "Прозрачност"
+channel = "derived"
+licence = "следва наборите, от които е изведено"
+personal_data = "none"
+cadence = "при всяко изграждане"
+tables = ["pub_tender.company", "pub_tender.company_stats", "pub_tender.buyer_stats", "pub_tender.tender_stats", "pub_tender.tag_def", "pub_tender.tag", "pub_tender.node_contract", "pub_tender.buyer_place", "pub_tender.search_item", "pub_tender.build_state", "pub_tender.run_state", "pub_tender.article", "pub_tender.editorial_tag", "tender.company", "tender.company_stats", "tender.buyer_stats", "tender.tender_stats", "tender.node_contract", "tender.tag_def", "tender.tag", "tender.search_item", "tender.buyer_place", "tender_src.fx_rate", "tender_src.build_state", "tender_src.ed_tag", "tender_src.ed_tag_audit", "tender_src.ed_public_figure", "tender_src.ed_article"]
+
+[[source]]
+source = "eop-file"
+title_bg = "ЦАИС ЕОП: дневните файлове с отворени данни"
+url = "https://storage.eop.bg"
+channel = "file"
+dataset = "tender.eop"
+cadence = "всеки ден"
+
+[[source]]
+source = "offers"
+title_bg = "ЦАИС ЕОП: страниците на поръчките (оферти, съобщения, жалби, документи)"
+url = "https://service.eop.bg"
+channel = "site-json"
+dataset = "tender.eop"
+cadence = "всеки ден по опашка"
+
+[[source]]
+source = "tr"
+title_bg = "Търговски регистър: партидите"
+url = "https://api-sigma-cr.registryagency.bg"
+channel = "api"
+dataset = "tender.tr"
+cadence = "всеки час по опашка"
+
+[[source]]
+source = "sebra"
+title_bg = "СЕБРА: файловете с плащания в data.egov.bg"
+url = "https://data.egov.bg"
+channel = "file"
+dataset = "tender.sebra"
+cadence = "всяка седмица"
+
+[[source]]
+source = "ecb"
+title_bg = "ЕЦБ: референтните курсове към еврото"
+url = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
+channel = "file"
+dataset = "tender.derived"
+cadence = "при всяко изграждане"

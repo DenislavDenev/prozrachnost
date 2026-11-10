@@ -45,3 +45,253 @@ kind = "not-a-person"
 shown_as = "full"
 decided_on = 2026-11-10
 basis = "holds the name only when the donor is a legal entity (constraint donation_no_person_ck); names of donors who are persons are not kept"
+
+# Тендер (the move into the shared database, 10.11.2026). The roles of people come from the Trade Register.
+# Decision 2: a manager or an owner is shown in full only in a role in an entity that received public money, which
+# is a contract or a payment from the budget (an offer that did not win is not). The landing zone and the clean
+# tables hold every role; the serving layer holds only those, and no key of a person.
+
+[[person]]
+column = "pub_tender.edge.holder"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the node of the holder in the network, not a name: an id by the ЕИК for a company, and for a person our own number on the ingest side and a random token of the build in the serving layer"
+
+[[person]]
+column = "pub_tender.edge.holder_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the holder of a role: a company, or a person in an entity that received public money: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "pub_tender.node.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the name of a node of the network: a company, or a shown person: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "pub_tender.payment.receiver_iban"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "an account number, kept by the source only for companies and institutions"
+
+[[person]]
+column = "pub_tender.payment.receiver_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the receiver of a payment in СЕБРА: for a person the source writes ФИЗИЧЕСКО ЛИЦЕ and gives no name"
+
+[[person]]
+column = "pub_tender.person.name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the people with a role in an entity that received public money: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "pub_tender.person.name_key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the same name in capitals, for the list of people: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "pub_tender.search_item.key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the same in capitals, what the search matches: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "pub_tender.search_item.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "what the search shows: buyers, companies, procedures and the shown people: full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.edge.holder"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the node of the holder in the network, not a name: an id by the ЕИК for a company, and for a person our own number on the ingest side and a random token of the build in the serving layer"
+
+[[person]]
+column = "tender.edge.holder_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.node.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.payment.receiver_iban"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "an account number, kept by the source only for companies and institutions"
+
+[[person]]
+column = "tender.payment.receiver_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the receiver of a payment in СЕБРА: for a person the source writes ФИЗИЧЕСКО ЛИЦЕ and gives no name"
+
+[[person]]
+column = "tender.person.name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.person.name_key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.search_item.key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.search_item.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person.name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person.name_key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person_edge.holder"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the node of the holder in the network, not a name: an id by the ЕИК for a company, and for a person our own number on the ingest side and a random token of the build in the serving layer"
+
+[[person]]
+column = "tender.shown_person_edge.holder_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person_node.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person_search.key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender.shown_person_search.label"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender_src.ed_public_figure.label"
+kind = "public-office"
+shown_as = "absent"
+decided_on = 2026-11-10
+basis = "candidates for public figures found by a match of names in Wikidata: not published at all until a match is confirmed through an identifier (decision 1)"
+
+[[person]]
+column = "tender_src.ed_public_figure.photo_author"
+kind = "incidental"
+shown_as = "absent"
+decided_on = 2026-11-10
+basis = "the credit of a photo in Wikimedia Commons of a candidate; the table is not published"
+
+[[person]]
+column = "tender_src.ed_tag.author"
+kind = "incidental"
+shown_as = "absent"
+decided_on = 2026-11-10
+basis = "the login of the editor who wrote an editorial note; never published"
+
+[[person]]
+column = "tender_src.ed_tag_audit.author"
+kind = "incidental"
+shown_as = "absent"
+decided_on = 2026-11-10
+basis = "the login of the editor who wrote an editorial note; never published"
+
+[[person]]
+column = "tender_src.sebra_payment.receiver_iban"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "an account number, kept by the source only for companies and institutions"
+
+[[person]]
+column = "tender_src.sebra_payment.receiver_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "the receiver of a payment in СЕБРА: for a person the source writes ФИЗИЧЕСКО ЛИЦЕ and gives no name"
+
+[[person]]
+column = "tender_src.tr_name_search.name_key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender_src.tr_person.name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender_src.tr_person.name_key"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+[[person]]
+column = "tender_src.tr_role.holder_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"

@@ -1,6 +1,6 @@
 -- Automatic tags (methodology 4). Every tag row carries the numbers behind it in `evidence` and a
 -- human-readable `reason`. A tag is an indicator, not an accusation.
-SET search_path = stage, public;
+SET search_path = tender_stage, public;
 
 CREATE TABLE tag_def (
   code text PRIMARY KEY, kind text NOT NULL, label text NOT NULL, formula text NOT NULL,
@@ -112,4 +112,4 @@ SELECT 'company', key, 'public_body', 'ЕИК е регистриран като
        jsonb_build_object('eik', eik)
 FROM company WHERE is_public_body;
 
--- editorial tags (ed.tag) are joined at read time so an edit shows without a rebuild
+-- editorial tags (tender_src.ed_tag) are joined at read time so an edit shows without a rebuild

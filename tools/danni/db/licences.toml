@@ -51,3 +51,27 @@ dataset = "partii.reports"
 checked_on = 2026-11-10
 display = true
 note = "public register of a state body (the National Audit Office), no licence stated: shown with a link to the source, not handed out; no names of donors are kept"
+
+[[licence]]
+dataset = "tender.eop"
+checked_on = 2026-11-10
+display = true
+note = "open data of the Public Procurement Agency (CC BY 4.0 by the description of the feed, CC0 in the OCDS files); the licence of the dataset in data.egov.bg is not read yet: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "tender.tr"
+checked_on = 2026-11-10
+display = true
+note = "the Trade Register is CC0 in data.egov.bg, but the partidas are read through an API given by agreement: shown with a link to the source, not handed out; names of people only in a role in an entity with public money"
+
+[[licence]]
+dataset = "tender.sebra"
+checked_on = 2026-11-10
+display = true
+note = "public information of a state body (the Ministry of Finance), licence of the dataset not checked: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "tender.derived"
+checked_on = 2026-11-10
+display = true
+note = "derived from the other datasets of Tender; follows them"

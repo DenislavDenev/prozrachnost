@@ -2,10 +2,11 @@
 -- Every word of the query is a prefix of some word of the name, in any order ("Иван Петров" finds
 -- "Иван Георгиев Петров"): tsvector 'simple' on the normalized key. Trigram similarity ranks the
 -- hits and catches typos when nothing matches. Latin queries are transliterated in the app.
-SET search_path = stage, public;
+SET search_path = tender_stage, public;
 
 CREATE TABLE search_item (
-  kind text NOT NULL, ref text NOT NULL, label text NOT NULL, sub text, key text NOT NULL,
+  -- label and key hold names of people beside those of companies and procedures: typed as such
+  kind text NOT NULL, ref text NOT NULL, label core.person_name NOT NULL, sub text, key core.person_name NOT NULL,
   weight numeric NOT NULL DEFAULT 0,
   words tsvector GENERATED ALWAYS AS (to_tsvector('simple', key)) STORED
 );

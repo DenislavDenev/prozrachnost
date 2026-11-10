@@ -1,7 +1,7 @@
 -- Companies and persons in stage. A company is a party key: 'eik:<ЕИК>' when the ЕИК is valid,
 -- else 'name:<normalized name>'. The Trade Register partida is keyed by the 9-digit ЕИК, so a
 -- 13-digit BULSTAT of a branch/unit joins its parent partida through left(eik, 9).
-SET search_path = stage, public;
+SET search_path = tender_stage, public;
 
 -- contracts that count in money sums: framework ceilings are shown but not summed (methodology 3)
 CREATE VIEW contract_summable AS
@@ -12,12 +12,12 @@ WITH parties AS (
   SELECT party_key, eik, name FROM contract_supplier
   UNION ALL SELECT party_key, eik, name FROM subcontract
   -- bidders and consortium members of the offers (ЦАИС ЕОП), also those that never won
-  UNION ALL SELECT 'eik:' || bidder_eik, bidder_eik, clean_name(bidder_name) FROM eopsvc.offer WHERE bidder_eik IS NOT NULL
-  UNION ALL SELECT 'eik:' || (m->>'eik'), m->>'eik', clean_name(m->>'name') FROM eopsvc.offer o, jsonb_array_elements(coalesce(o.consortium, '[]')) m
+  UNION ALL SELECT 'eik:' || bidder_eik, bidder_eik, clean_name(bidder_name) FROM tender_src.eopsvc_offer WHERE bidder_eik IS NOT NULL
+  UNION ALL SELECT 'eik:' || (m->>'eik'), m->>'eik', clean_name(m->>'name') FROM tender_src.eopsvc_offer o, jsonb_array_elements(coalesce(o.consortium, '[]')) m
             WHERE m->>'eik' ~ '^([0-9]{9}|[0-9]{13})$'
-  UNION ALL SELECT 'eik:' || eik, eik, clean_name(name) FROM tr.deed WHERE status = 'ok'
+  UNION ALL SELECT 'eik:' || eik, eik, clean_name(name) FROM tender_src.tr_deed WHERE status = 'ok'
   -- companies that hold roles but whose own partida is not read yet still get a page
-  UNION ALL SELECT 'eik:' || holder_id, holder_id, clean_name(holder_name) FROM tr.role
+  UNION ALL SELECT 'eik:' || holder_id, holder_id, clean_name(holder_name) FROM tender_src.tr_role
             WHERE holder_kind = 'entity' AND holder_id ~ '^\d{9}$'
 ), modal AS (
   SELECT DISTINCT ON (party_key) party_key, eik, name
@@ -35,7 +35,7 @@ SELECT k.party_key AS key,
          AS is_public_body
 FROM keys k
 LEFT JOIN modal m ON m.party_key = k.party_key
-LEFT JOIN tr.deed d ON d.eik = left(coalesce(m.eik, substr(k.party_key, 5)), 9) AND k.party_key LIKE 'eik:%';
+LEFT JOIN tender_src.tr_deed d ON d.eik = left(coalesce(m.eik, substr(k.party_key, 5)), 9) AND k.party_key LIKE 'eik:%';
 ALTER TABLE company ADD PRIMARY KEY (key);
 CREATE INDEX ON company (eik);
 CREATE INDEX ON company (left(eik, 9));
@@ -76,9 +76,9 @@ SELECT c.unp, count(*) AS contracts,
 FROM contract c WHERE c.unp IS NOT NULL GROUP BY c.unp;
 ALTER TABLE tender_stats ADD PRIMARY KEY (unp);
 
--- persons the register identifies by hash; public id is tr.person.id, the hash never leaves the db
+-- persons the register identifies by hash; public id is tender_src.tr_person.id, the hash never leaves the db
 CREATE TABLE person AS
-SELECT p.id, coalesce(clean_person(p.name), 'Лице без име в регистъра') AS name, p.name_key, p.indent_type FROM tr.person p;
+SELECT p.id, coalesce(clean_person(p.name), 'Лице без име в регистъра')::core.person_name AS name, p.name_key, p.indent_type FROM tender_src.tr_person p;
 ALTER TABLE person ADD PRIMARY KEY (id);
 CREATE INDEX ON person (name_key);
 

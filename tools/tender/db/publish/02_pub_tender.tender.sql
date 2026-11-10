@@ -1,0 +1,1 @@
+SELECT unp, tender_id, buyer_eik, subject, procedure_type, cpv, cpv_description, contract_type, estimated_value, currency, estimated_eur, is_eu_funded, european_program, lots_count, submission_deadline, published_at, notice_type, is_cancelled, execution_nuts, source_day, synthetic, state FROM tender.tender

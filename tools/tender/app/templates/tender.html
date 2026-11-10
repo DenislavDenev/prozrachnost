@@ -33,7 +33,7 @@
 </div>
 
 {% if not n_offers and t.tender_id %}<p class="sub">{% if read and read.status == 'done' %}Страницата на поръчката в ЦАИС ЕОП е прочетена {{ read.fetched_at | date }} и не показва оферти.
-  {% elif read and read.status == 'pending' %}Офертите от ЦАИС ЕОП още не са прочетени при нас: четем всички поръчки от 2020 г. насам. Тази поръчка е преместена първа на опашката; презареди страницата след минута.
+  {% elif read and read.status == 'pending' %}Офертите от ЦАИС ЕОП още не са прочетени при нас: четем всички поръчки от 2020 г. насам.
   {% else %}Офертите от ЦАИС ЕОП за тази поръчка още не са прочетени.{% endif %}
   Виж ги в <a class="l" href="https://app.eop.bg/today/{{ t.tender_id }}" target="_blank" rel="noopener">ЦАИС ЕОП</a>.</p>{% endif %}
 

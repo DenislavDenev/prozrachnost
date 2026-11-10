@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT))
 
 import pipeline  # noqa: E402
 
-SCHEMAS = ('api_v1', 'pub_demo', 'pub', 'danni_src', 'core', 'ops', 'live', 'demo', 'demo_src')
+SCHEMAS = ('api_v1', 'pub_demo', 'pub', 'danni_src', 'core', 'ops', 'live', 'tender', 'demo', 'demo_src')
 DATA = ('ops.check_result', 'ops.change_log', 'ops.hold', 'ops.load', 'ops.fetch', 'ops.raw_file', 'ops.run',
         'core.org', 'core.settlement', 'core.municipality', 'core.oblast', 'core.nuts', 'core.xwalk', 'core.fx_rate',
         'core.indicator', 'pub.publication', 'pub.indicator', 'pub.dataset', 'pub.settlement', 'pub.municipality',
@@ -28,7 +28,7 @@ def rebuild(conn):
 def reset(conn):
     """Back to the state right after the migrations, without running them again (they take seconds)."""
     pipeline.require_test_db(conn)
-    for schema in ('pub_demo', 'live', 'demo', 'demo_src'):
+    for schema in ('pub_demo', 'live', 'tender', 'demo', 'demo_src'):
         conn.execute(f'DROP SCHEMA IF EXISTS {schema} CASCADE')
     conn.execute('DROP TABLE IF EXISTS api_v1.leak')
     landing = [f'danni_src.{t}' for (t,) in conn.execute("SELECT tablename FROM pg_tables WHERE schemaname = 'danni_src'")]

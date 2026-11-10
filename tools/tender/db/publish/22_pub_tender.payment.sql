@@ -1,0 +1,1 @@
+SELECT resource_uri, row_no, settlement_date, receiver_name, is_person, receiver_iban, amount, currency, amount_eur, reason, reg_date, reg_no, pay_code, fin_code, fin_name, organization, primary_organization, primary_org_code, company_key, buyer_eik FROM tender.payment

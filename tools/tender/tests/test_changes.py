@@ -16,19 +16,9 @@ pytestmark = pytest.mark.skipif(not DSN, reason="TENDER_TEST_DSN not set")
 YESTERDAY = dt.date.today() - dt.timedelta(days=1)
 
 
-@pytest.fixture
-def conn():
-    from ingest import db
-    with db.connect(autocommit=True) as c:
-        c.execute("DROP SCHEMA IF EXISTS live, stage, previous, ops, tr, ed, eopsvc, sebra CASCADE; "
-                  "DROP TABLE IF EXISTS public.schema_migrations")
-        db.migrate(c)
-        yield c
-
-
 def log(conn, source=None):
-    return conn.execute("SELECT source, ref, field, old, new, cause FROM ops.change_log "
-                        + ("WHERE source = %s " if source else "") + "ORDER BY id", (source,) if source else None).fetchall()
+    return conn.execute("SELECT source, ref, field, old, new, cause FROM ops.change_log WHERE tool = 'tender' "
+                        + ("AND source = %s " if source else "") + "ORDER BY change_id", (source,) if source else None).fetchall()
 
 
 # ---------- offers ----------
@@ -42,15 +32,15 @@ def answer(*offers):
 def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch):
     from ingest import eop_offers as E
     monkeypatch.setattr(E, "RAW", tmp_path)
-    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason) VALUES (7, 'backfill')")
-    count = lambda: conn.execute("SELECT count(*) FROM eopsvc.offer WHERE tender_id = 7").fetchone()[0]
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason) VALUES (7, 'backfill')")
+    count = lambda: conn.execute("SELECT count(*) FROM tender_src.eopsvc_offer WHERE tender_id = 7").fetchone()[0]
     three = answer((1, 1, "А", 100), (1, 2, "Б", 110), (1, 3, "В", 120))
     assert E.store(conn, 7, three, b"a") == "stored" and count() == 3
     assert log(conn) == []                                            # a first read is not a change
     two = answer((1, 1, "А", 100), (1, 2, "Б", 110))
     assert E.store(conn, 7, two, b"b") == "held"
     assert count() == 3                                               # ours stays
-    q = conn.execute("SELECT status, reason, next_at > now() + interval '23 hours' FROM eopsvc.queue WHERE tender_id = 7").fetchone()
+    q = conn.execute("SELECT status, reason, next_at > now() + interval '23 hours' FROM tender_src.eopsvc_queue WHERE tender_id = 7").fetchone()
     assert q == ("pending", "confirm", True)
     assert log(conn)[-1][4:] == ("2", "held")
     other = answer((1, 1, "А", 100), (1, 3, "В", 120))                # a different smaller answer is held again
@@ -58,7 +48,7 @@ def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch)
     assert E.store(conn, 7, other, b"c") == "stored" and count() == 2  # the second read agrees
     causes = [r[5] for r in log(conn)]
     assert causes[-2:] == ["confirmed", "rewritten"] and log(conn)[-1][1] == "7/1/1/2"   # offer 2 gone
-    assert conn.execute("SELECT status, held_sha FROM eopsvc.queue WHERE tender_id = 7").fetchone() == ("done", None)
+    assert conn.execute("SELECT status, held_sha FROM tender_src.eopsvc_queue WHERE tender_id = 7").fetchone() == ("done", None)
     E.store(conn, 7, answer((1, 1, "А", 100), (1, 3, "В", 125)), b"d")   # a price moved
     assert log(conn)[-1] == ("offers", "7/1/1/3", "price", "120", "125", "rewritten")
     more = answer((1, 1, "А", 100), (1, 3, "В", 125), (1, 4, "Г", 90))  # more offers need no confirmation
@@ -67,9 +57,8 @@ def test_offers_are_kept_until_a_second_read_agrees(conn, tmp_path, monkeypatch)
 
 
 def live_tables(conn):
-    conn.execute("""CREATE SCHEMA live;
-        CREATE TABLE live.tender (unp text, tender_id text, submission_deadline timestamptz, published_at timestamptz, source_day date);
-        CREATE TABLE live.contract (id text, unp text, source_day date)""")
+    conn.execute("""CREATE TABLE tender.tender (unp text, tender_id text, submission_deadline timestamptz, published_at timestamptz, source_day date);
+        CREATE TABLE tender.contract (id text, unp text, source_day date)""")
 
 
 def test_offer_queue_reasons_and_order(conn, tmp_path, monkeypatch):
@@ -79,20 +68,20 @@ def test_offer_queue_reasons_and_order(conn, tmp_path, monkeypatch):
     for unp, tid, deadline in (("U1", "1", now - dt.timedelta(days=3)), ("U2", "2", now - dt.timedelta(days=100)),
                                ("U3", "3", now + dt.timedelta(days=5)), ("U4", "4", now - dt.timedelta(days=200)),
                                ("U5", "5", now - dt.timedelta(days=100)), ("U6", "6", now - dt.timedelta(days=30))):
-        conn.execute("INSERT INTO live.tender VALUES (%s, %s, %s, %s, %s)", (unp, tid, deadline, deadline - dt.timedelta(days=30), dt.date(2025, 1, 1)))
+        conn.execute("INSERT INTO tender.tender VALUES (%s, %s, %s, %s, %s)", (unp, tid, deadline, deadline - dt.timedelta(days=30), dt.date(2025, 1, 1)))
     assert E.enqueue(conn) == {"new": 5, "update": 0}
-    reasons = dict(conn.execute("SELECT tender_id, reason FROM eopsvc.queue").fetchall())
+    reasons = dict(conn.execute("SELECT tender_id, reason FROM tender_src.eopsvc_queue").fetchall())
     assert reasons == {1: "new", 2: "backfill", 4: "backfill", 5: "backfill", 6: "backfill"}   # 3: deadline ahead
     # 4 was read, then got a contract; 5 was read with closed prices; 6 was read 40 days ago
-    conn.execute("UPDATE eopsvc.queue SET status = 'done', fetched_at = now() - interval '10 days' WHERE tender_id IN (4, 5)")
-    conn.execute("UPDATE eopsvc.queue SET status = 'done', fetched_at = now() - interval '40 days' WHERE tender_id = 6")
-    conn.execute("INSERT INTO live.contract VALUES ('c', 'U4', current_date)")
-    conn.execute("INSERT INTO eopsvc.offer (tender_id, lot_no, round, offer_id, price_opened, fetched_at) VALUES (5, 0, 1, 1, false, now())")
+    conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'done', fetched_at = now() - interval '10 days' WHERE tender_id IN (4, 5)")
+    conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'done', fetched_at = now() - interval '40 days' WHERE tender_id = 6")
+    conn.execute("INSERT INTO tender.contract VALUES ('c', 'U4', current_date)")
+    conn.execute("INSERT INTO tender_src.eopsvc_offer (tender_id, lot_no, round, offer_id, price_opened, fetched_at) VALUES (5, 0, 1, 1, false, now())")
     assert E.enqueue(conn) == {"new": 0, "update": 1}
     assert E.enqueue(conn, periodic=True) == {"new": 0, "update": 0, "prices": 1, "refresh": 1}
-    reasons = dict(conn.execute("SELECT tender_id, reason FROM eopsvc.queue").fetchall())
+    reasons = dict(conn.execute("SELECT tender_id, reason FROM tender_src.eopsvc_queue").fetchall())
     assert (reasons[4], reasons[5], reasons[6]) == ("update", "prices", "refresh")
-    conn.execute("UPDATE eopsvc.queue SET reason = 'visit' WHERE tender_id = 2")
+    conn.execute("UPDATE tender_src.eopsvc_queue SET reason = 'visit' WHERE tender_id = 2")
     assert E.waiting(conn) == 3                                         # visit 2, update 4, new 1
     read = []
     monkeypatch.setattr(E, "RAW", tmp_path)
@@ -120,47 +109,47 @@ def test_a_partida_that_stops_answering_is_kept_until_confirmed(conn, tmp_path, 
     answers = []
     monkeypatch.setattr(R, "fetch_deed", lambda eik: answers.pop(0))
     eik = "121212121"
-    conn.execute("INSERT INTO tr.queue (eik, reason, priority) VALUES (%s, 'contract', 1)", (eik,))
+    conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority) VALUES (%s, 'contract', 1)", (eik,))
     answers.append(partida(eik))
     T.process(conn, 30, {})
-    roles = lambda: conn.execute("SELECT count(*) FROM tr.role WHERE eik = %s", (eik,)).fetchone()[0]
-    status = lambda: conn.execute("SELECT status FROM tr.deed WHERE eik = %s", (eik,)).fetchone()[0]
+    roles = lambda: conn.execute("SELECT count(*) FROM tender_src.tr_role WHERE eik = %s", (eik,)).fetchone()[0]
+    status = lambda: conn.execute("SELECT status FROM tender_src.tr_deed WHERE eik = %s", (eik,)).fetchone()[0]
     assert status() == "ok" and roles() == 1 and log(conn) == []
     # the change list names it; the register does not answer
-    conn.execute("UPDATE tr.queue SET status = 'pending', why = 'change' WHERE eik = %s", (eik,))
+    conn.execute("UPDATE tender_src.tr_queue SET status = 'pending', why = 'change' WHERE eik = %s", (eik,))
     answers.append(None)
     st = {}
     T.process(conn, 30, st)
     assert status() == "ok" and roles() == 1 and st["held"] == 1
-    assert conn.execute("SELECT held_sha, next_at > now() + interval '23 hours' FROM tr.queue WHERE eik = %s", (eik,)).fetchone() == ("absent", True)
+    assert conn.execute("SELECT held_sha, next_at > now() + interval '23 hours' FROM tender_src.tr_queue WHERE eik = %s", (eik,)).fetchone() == ("absent", True)
     assert log(conn)[-1][5] == "held"
-    conn.execute("UPDATE tr.queue SET next_at = now() WHERE eik = %s", (eik,))
+    conn.execute("UPDATE tender_src.tr_queue SET next_at = now() WHERE eik = %s", (eik,))
     answers.append(None)
     T.process(conn, 30, {})
     assert status() == "absent" and log(conn)[-1][5] == "confirmed"
     # it answers again, changed, found by the rotation: the change list missed it
-    conn.execute("UPDATE tr.queue SET status = 'pending', why = 'rotate', held_sha = NULL WHERE eik = %s", (eik,))
+    conn.execute("UPDATE tender_src.tr_queue SET status = 'pending', why = 'rotate', held_sha = NULL WHERE eik = %s", (eik,))
     answers.append(partida(eik))
     T.process(conn, 30, {})
-    conn.execute("UPDATE tr.queue SET status = 'pending', why = 'rotate' WHERE eik = %s", (eik,))
+    conn.execute("UPDATE tender_src.tr_queue SET status = 'pending', why = 'rotate' WHERE eik = %s", (eik,))
     answers.append(partida(eik, "МАРИЯ ПЕТРОВА"))
     st = {}
     T.process(conn, 30, st)
     assert st["rotate_missed"] == 1 and log(conn)[-1][5] == "rotate"
-    assert conn.execute("SELECT why, status FROM tr.queue WHERE eik = %s", (eik,)).fetchone() == (None, "done")
+    assert conn.execute("SELECT why, status FROM tender_src.tr_queue WHERE eik = %s", (eik,)).fetchone() == (None, "done")
 
 
 def test_rotation_queues_the_oldest_share_and_reads_it_last(conn):
     from ingest import tr_worker as T
     for i in range(120):
         eik = f"{100000000 + i}"
-        conn.execute("INSERT INTO tr.deed (eik, status, fetched_at) VALUES (%s, 'ok', now() - make_interval(days => %s))", (eik, i))
-        conn.execute("INSERT INTO tr.queue (eik, reason, priority, status) VALUES (%s, 'contract', 1, 'done')", (eik,))
+        conn.execute("INSERT INTO tender_src.tr_deed (eik, status, fetched_at) VALUES (%s, 'ok', now() - make_interval(days => %s))", (eik, i))
+        conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority, status) VALUES (%s, 'contract', 1, 'done')", (eik,))
     assert T.rotate(conn) == 2                                           # 120 / 60 days
-    assert {r[0] for r in conn.execute("SELECT eik FROM tr.queue WHERE why = 'rotate'")} == {"100000119", "100000118"}
+    assert {r[0] for r in conn.execute("SELECT eik FROM tender_src.tr_queue WHERE why = 'rotate'")} == {"100000119", "100000118"}
     assert T.waiting(conn) == 0                                          # the chain does not wait for the rotation
-    conn.execute("INSERT INTO tr.queue (eik, reason, priority) VALUES ('999999999', 'contract', 1)")
-    first = conn.execute("SELECT eik FROM tr.queue WHERE status = 'pending' ORDER BY why IS NOT DISTINCT FROM 'rotate', priority, enqueued_at LIMIT 1").fetchone()
+    conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority) VALUES ('999999999', 'contract', 1)")
+    first = conn.execute("SELECT eik FROM tender_src.tr_queue WHERE status = 'pending' ORDER BY why IS NOT DISTINCT FROM 'rotate', priority, enqueued_at LIMIT 1").fetchone()
     assert first == ("999999999",) and T.waiting(conn) == 1
 
 
@@ -181,7 +170,7 @@ def test_sebra_verify_hold_and_history(conn, tmp_path, monkeypatch):
     state = {"n": 3, "tag": ""}
     monkeypatch.setattr(S, "read_rows", lambda r: (rows(state["n"], state["tag"]), body["raw"]))
     monkeypatch.setattr(S, "parse", lambda recs: recs)
-    count = lambda: conn.execute("SELECT count(*) FROM sebra.payment").fetchone()[0]
+    count = lambda: conn.execute("SELECT count(*) FROM tender_src.sebra_payment").fetchone()[0]
     st = {}
     S.load(conn, st)
     assert count() == 3 and st["files"] == 1
@@ -206,19 +195,19 @@ def test_record_changes_between_builds(conn):
     from ingest import build, normalize as N
     cols = ", ".join(f"{f} text" for f in build.CONTRACT_FIELDS)
     tcols = ", ".join(f"{f} text" for f in build.TENDER_FIELDS)
-    for s in ("live", "stage"):
-        conn.execute(f"CREATE SCHEMA {s}; CREATE TABLE {s}.contract (id text, source_day date, annex_count int, {cols}); "
+    for s in ("tender", "tender_stage"):
+        conn.execute(f"CREATE TABLE {s}.contract (id text, source_day date, annex_count int, {cols}); "
                      f"CREATE TABLE {s}.tender (unp text, source_day date, {tcols})")
     d1, d2 = dt.date(2026, 9, 1), dt.date(2026, 9, 20)
-    conn.execute("""INSERT INTO live.contract (id, source_day, annex_count, value_current, supplier_display) VALUES
+    conn.execute("""INSERT INTO tender.contract (id, source_day, annex_count, value_current, supplier_display) VALUES
         ('c1', %(d1)s, 0, '100', 'А'), ('c2', %(d1)s, 0, '50', 'Б'), ('c4', %(d1)s, 0, '100', 'Г')""", {"d1": d1})
-    conn.execute("""INSERT INTO stage.contract (id, source_day, annex_count, value_current, supplier_display) VALUES
+    conn.execute("""INSERT INTO tender_stage.contract (id, source_day, annex_count, value_current, supplier_display) VALUES
         ('c1', %(d1)s, 0, '200', 'А'), ('c3', %(d1)s, 0, '1', 'В'), ('c4', %(d1)s, 1, '150', 'Г')""", {"d1": d1})
-    conn.execute("INSERT INTO live.tender (unp, source_day, submission_deadline) VALUES ('u1', %s, '2026-09-10'), ('u2', %s, '2026-09-10')", (d1, d1))
-    conn.execute("INSERT INTO stage.tender (unp, source_day, submission_deadline) VALUES ('u1', %s, '2026-09-12'), ('u2', %s, '2026-09-15')", (d1, d2))
-    conn.execute("INSERT INTO ops.published (id, rules) VALUES (1, 'older rules')")
+    conn.execute("INSERT INTO tender.tender (unp, source_day, submission_deadline) VALUES ('u1', %s, '2026-09-10'), ('u2', %s, '2026-09-10')", (d1, d1))
+    conn.execute("INSERT INTO tender_stage.tender (unp, source_day, submission_deadline) VALUES ('u1', %s, '2026-09-12'), ('u2', %s, '2026-09-15')", (d1, d2))
+    conn.execute("INSERT INTO tender_src.build_state (id, rules) VALUES (1, 'older rules')")
     assert "skipped" in build.record_changes(conn) and log(conn) == []    # our rules changed: not the source's change
-    conn.execute("UPDATE ops.published SET rules = %s", (N.RULES_VERSION,))
+    conn.execute("UPDATE tender_src.build_state SET rules = %s", (N.RULES_VERSION,))
     assert build.record_changes(conn) == {"contract": 2, "tender": 2, "removed": 1}
     got = {(r[1], r[2], r[5]) for r in log(conn)}
     assert got == {("contract/c1", "value_current", "rewritten"),          # same publication, other value
@@ -232,15 +221,15 @@ def test_record_changes_between_builds(conn):
 
 def test_freshness_names_each_late_source(conn):
     from ingest import daily
-    conn.execute("INSERT INTO ops.eop_day VALUES (%s, true, now())", (YESTERDAY,))
-    conn.execute("INSERT INTO ops.published (id, at) VALUES (1, now())")
+    conn.execute("INSERT INTO tender_src.eop_day VALUES (%s, true, now())", (YESTERDAY,))
+    conn.execute("INSERT INTO tender_src.build_state (id, at) VALUES (1, now())")
     assert daily.freshness(conn) == []
-    conn.execute("UPDATE ops.published SET at = now() - interval '30 hours'")
-    conn.execute("DELETE FROM ops.eop_day")
-    conn.execute("INSERT INTO ops.eop_day VALUES (%s, true, now())", (YESTERDAY - dt.timedelta(days=2),))
-    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason, next_at) VALUES (1, 'new', now() - interval '2 days'), (2, 'backfill', now() - interval '9 days')")
-    conn.execute("INSERT INTO tr.queue (eik, reason, priority, next_at) VALUES ('111111111', 'contract', 1, now() - interval '2 days')")
-    conn.execute("INSERT INTO ops.change_log (source, ref, cause) VALUES ('eop-file', '2021-02-22/contracts', 'rewritten'), ('offers', '1', 'held')")
+    conn.execute("UPDATE tender_src.build_state SET at = now() - interval '30 hours'")
+    conn.execute("DELETE FROM tender_src.eop_day")
+    conn.execute("INSERT INTO tender_src.eop_day VALUES (%s, true, now())", (YESTERDAY - dt.timedelta(days=2),))
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason, next_at) VALUES (1, 'new', now() - interval '2 days'), (2, 'backfill', now() - interval '9 days')")
+    conn.execute("INSERT INTO tender_src.tr_queue (eik, reason, priority, next_at) VALUES ('111111111', 'contract', 1, now() - interval '2 days')")
+    conn.execute("INSERT INTO ops.change_log (tool, source, ref, cause) VALUES ('tender', 'eop-file', '2021-02-22/contracts', 'rewritten'), ('tender', 'offers', '1', 'held')")
     bad = daily.freshness(conn)
     assert len(bad) == 5, bad                                            # ЕОП, site, offers (not the backfill), ТР, archive
     assert any("2021" not in b and "ЕОП" in b for b in bad) and any("rewritten" in b for b in bad)
@@ -264,13 +253,13 @@ def test_daily_waits_runs_once_and_does_not_loop_on_failure(conn, monkeypatch):
     assert out["offers_check"] and out["problems"] == [] and len(calls) == 2 and calls[1] == ("normalize", "derive", "publish")
     assert daily.run() == {"day": str(YESTERDAY), "skipped": "done"} and len(calls) == 2   # once a day
     # a late source: the chain finishes, the day counts as done, the problem is raised (the alert)
-    conn.execute("DELETE FROM ops.job_run")
+    conn.execute("DELETE FROM ops.run WHERE tool = 'tender'")
     monkeypatch.setattr(daily, "freshness", lambda c: ["ТР: 3 партиди чакат над ден"])
     with pytest.raises(daily.Problems):
         daily.run()
     assert daily.run()["skipped"] == "done"
     # a chain that breaks twice waits for the last call of the morning instead of rebuilding every 15 minutes
-    conn.execute("DELETE FROM ops.job_run")
+    conn.execute("DELETE FROM ops.run WHERE tool = 'tender'")
     monkeypatch.setattr(daily, "build_all", lambda out, steps=None: (_ for _ in ()).throw(RuntimeError("normalize broke")))
     for _ in range(2):
         with pytest.raises(RuntimeError, match="normalize broke"):
@@ -295,11 +284,11 @@ def details(pubs, appeals=(), docs=()):
 def test_notices_appeals_documents_and_messages_are_never_dropped_on_one_answer(conn, tmp_path, monkeypatch):
     from ingest import eop_offers as E
     monkeypatch.setattr(E, "RAW", tmp_path)
-    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason) VALUES (7, 'backfill')")
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason) VALUES (7, 'backfill')")
     got = lambda pubs, appeals, ann: dict(answer((1, 1, "А", 100)), details=details(pubs, appeals, [5]), announcements=ann)
     E.store(conn, 7, got([1, 2], [("ВХР-1", "в производство")], [(10, None, "Разяснение №1"), (11, None, "Решение за прекратяване")]), b"a")
     assert log(conn) == []                                                           # a first read is not a change
-    gone = lambda t: conn.execute(f"SELECT count(*) FILTER (WHERE gone_at IS NOT NULL), count(*) FROM eopsvc.{t} WHERE tender_id = 7").fetchone()
+    gone = lambda t: conn.execute(f"SELECT count(*) FILTER (WHERE gone_at IS NOT NULL), count(*) FROM tender_src.eopsvc_{t} WHERE tender_id = 7").fetchone()
     # the page stops listing a notice and a message, the appeal moves on
     E.store(conn, 7, got([1], [("ВХР-1", "приключено производство")], [(10, None, "Разяснение №1")]), b"b")
     assert gone("publication") == (1, 2) and gone("announcement") == (1, 2) and gone("appeal") == (0, 1)
@@ -321,7 +310,7 @@ def test_reparse_takes_the_participant_from_the_raw_answer_we_hold(conn, tmp_pat
     (tmp_path / "563386").mkdir()
     (tmp_path / "563386" / "202609271123.json.gz").write_bytes(gzip.compress(blob))
     (tmp_path / "563386" / "202609271200.json.gz").write_bytes(gzip.compress(b'{"participation": null}'))   # a later, held answer
-    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason, status, sha256) VALUES (563386, 'backfill', 'done', %s)",
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason, status, sha256) VALUES (563386, 'backfill', 'done', %s)",
                  (hashlib.sha256(blob).hexdigest(),))
     old = E.parse(563386, fx["participation"], fx["lots"])
     for r in old:   # as the reader before 27.09.2026 stored them: the submitting account as the participant
@@ -330,17 +319,16 @@ def test_reparse_takes_the_participant_from_the_raw_answer_we_hold(conn, tmp_pat
     E.write_offers(conn, old, dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc))
     E.reparse(conn, st := {})
     assert st == {"procedures": 1, "changed": 4, "missing_raw": 0}         # the ДЗЗД and the branch: name and ЕИК each
-    names = {r[0] for r in conn.execute("SELECT bidder_name FROM eopsvc.offer WHERE tender_id = 563386")}
+    names = {r[0] for r in conn.execute("SELECT bidder_name FROM tender_src.eopsvc_offer WHERE tender_id = 563386")}
     assert '"ЗА ЧИСТА ВАРНА" ДЗЗД' in names and not any("IVAN" in n for n in names)
     assert {r[5] for r in log(conn)} == {"reparsed"}
-    assert conn.execute("SELECT min(fetched_at) FROM eopsvc.offer").fetchone()[0] == dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc)
+    assert conn.execute("SELECT min(fetched_at) FROM tender_src.eopsvc_offer").fetchone()[0] == dt.datetime(2026, 9, 27, tzinfo=dt.timezone.utc)
 
 
 def build_small(conn, res):
     from ingest import build
     with conn.transaction():
-        conn.execute((build.DERIVE / "schema.sql").read_text(encoding="utf-8"))
-        conn.execute("SET search_path = public")
+        build.start_stage(conn)
         for t in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract", "source_record",
                   "award", "notice", "annex_orphan"):
             build._copy(conn, t, res[t])
@@ -363,17 +351,17 @@ def test_termination_form_names_and_bidders_without_eik_in_the_build(conn):
     res = N.normalize([("2026-05-01", "tenders", tenders), ("2026-07-02", "contracts", [won, no_award])], N.Fx({}))
     for tid, aid, title in ((1001, 1, "РЕШЕНИЕ ЗА ПРЕКРАТЯВАНЕ на процедурата"), (1002, 2, "Решение за прекратяване на обособена позиция № 2"),
                             (1003, 3, "Решение за прекратяване"), (1001, 4, "Решение за отмяна на решение за прекратяване")):
-        conn.execute("INSERT INTO eopsvc.announcement (tender_id, id, title) VALUES (%s, %s, %s)", (tid, aid, title))
-    conn.execute("""INSERT INTO eopsvc.publication (tender_id, id, form_type) VALUES (1001, 10010, 54), (1001, 900, 32), (1001, 901, 77)""")
-    conn.execute("""INSERT INTO eopsvc.offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, price_opened, fetched_at) VALUES
+        conn.execute("INSERT INTO tender_src.eopsvc_announcement (tender_id, id, title) VALUES (%s, %s, %s)", (tid, aid, title))
+    conn.execute("""INSERT INTO tender_src.eopsvc_publication (tender_id, id, form_type) VALUES (1001, 10010, 54), (1001, 900, 32), (1001, 901, 77)""")
+    conn.execute("""INSERT INTO tender_src.eopsvc_offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, price_opened, fetched_at) VALUES
         (1001, 0, 1, 1, 'Б ЕООД', NULL, false, now()), (1001, 0, 1, 2, 'Физическо лице', NULL, false, now())""")
     build_small(conn, res)
     q = lambda sql: conn.execute(sql).fetchall()
-    assert dict(q("SELECT unp, state FROM live.tender")) == {"W": "cancelled", "P": "unawarded", "K": "contracted"}  # a contract wins
-    assert dict(q("SELECT lot_no, status FROM live.lot WHERE unp = 'P'")) == {1: "unawarded", 2: "cancelled"}  # only the lot it names
-    assert dict(q("SELECT form_type, name FROM live.form_type")) == {54: "Обявление за поръчка – Общата директива, стандартен режим",
+    assert dict(q("SELECT unp, state FROM tender.tender")) == {"W": "cancelled", "P": "unawarded", "K": "contracted"}  # a contract wins
+    assert dict(q("SELECT lot_no, status FROM tender.lot WHERE unp = 'P'")) == {1: "unawarded", 2: "cancelled"}  # only the lot it names
+    assert dict(q("SELECT form_type, name FROM tender.form_type")) == {54: "Обявление за поръчка – Общата директива, стандартен режим",
                                                                      32: "Решение по чл. 22, ал. 1 от ЗОП"}  # 77 unnamed: shown as „Публикация“
-    assert dict(q("SELECT offer_id, company_key FROM live.offer")) == {1: "eik:831641791", 2: None}          # by the only company of the name
+    assert dict(q("SELECT offer_id, company_key FROM tender.offer")) == {1: "eik:831641791", 2: None}          # by the only company of the name
     # the pages render with all of it (a template error is a 500 for every procedure)
     for unp, word in (("W", "прекратена"), ("P", "3 оферти по обявлението"), ("K", "с договор")):
         assert word in page(f"/tenders/{unp}")
@@ -401,10 +389,10 @@ def test_completeness_names_what_one_source_has_and_the_other_not(conn):
          "noticeType": "Обявление", "buyerRegistryNumber": "000093442", "buyerName": "ОБЩИНА"}
     award = dict(t, noAwarding="Да", noticeId="10011")
     build_small(conn, N.normalize([("2026-05-01", "tenders", [t]), ("2026-08-01", "contracts", [award])], N.Fx({})))
-    conn.execute("INSERT INTO eopsvc.queue (tender_id, reason, status, fetched_at) VALUES (1001, 'backfill', 'done', now())")
-    conn.execute("INSERT INTO eopsvc.detail (tender_id, fetched_at) VALUES (1001, now())")
-    conn.execute("INSERT INTO eopsvc.publication (tender_id, id) VALUES (1001, 10010)")            # the award notice is missing on the page
-    conn.execute("INSERT INTO eopsvc.contract_lot VALUES (1001, 0, '77')")                          # a contract only on the page
+    conn.execute("INSERT INTO tender_src.eopsvc_queue (tender_id, reason, status, fetched_at) VALUES (1001, 'backfill', 'done', now())")
+    conn.execute("INSERT INTO tender_src.eopsvc_detail (tender_id, fetched_at) VALUES (1001, now())")
+    conn.execute("INSERT INTO tender_src.eopsvc_publication (tender_id, id) VALUES (1001, 10010)")            # the award notice is missing on the page
+    conn.execute("INSERT INTO tender_src.eopsvc_contract_lot VALUES (1001, 0, '77')")                          # a contract only on the page
     m = E.mismatches(conn)
     assert (m["notice_not_on_page"], m["contracts_only_on_page"]) == (1, 1) and m["notice_examples"] == [[1001, "10011"]]
     E.mismatches(conn)
@@ -414,20 +402,20 @@ def test_completeness_names_what_one_source_has_and_the_other_not(conn):
 def test_a_procedure_known_only_from_its_contracts_is_queued(conn):
     from ingest import eop_offers as E
     live_tables(conn)
-    conn.execute("INSERT INTO live.tender VALUES ('S', '777', NULL, NULL, '2024-03-01')")   # no deadline, no notice date
+    conn.execute("INSERT INTO tender.tender VALUES ('S', '777', NULL, NULL, '2024-03-01')")   # no deadline, no notice date
     assert E.enqueue(conn)["new"] == 1
-    assert conn.execute("SELECT reason FROM eopsvc.queue WHERE tender_id = 777").fetchone() == ("backfill",)
+    assert conn.execute("SELECT reason FROM tender_src.eopsvc_queue WHERE tender_id = 777").fetchone() == ("backfill",)
 
 
 def test_the_map_by_supplier_places_each_member_and_says_what_it_cannot(conn):
     # the seat codes of the award notice: one per member in their order; ZZZ is a country only; 00 is no country
     from starlette.requests import Request
     from app import main
-    conn.execute("""CREATE SCHEMA live;
-        CREATE TABLE live.contract (id text, buyer_eik text, amount_eur numeric, is_framework bool, offers_count int, supplier_nuts text);
-        CREATE TABLE live.contract_supplier (contract_id text, position int, party_key text, name text);
-        CREATE TABLE live.buyer (eik text, name text)""")
-    conn.execute("""INSERT INTO live.contract VALUES
+    conn.execute("""DROP TABLE pub_tender.contract CASCADE; DROP TABLE pub_tender.contract_supplier; DROP TABLE pub_tender.buyer;
+        CREATE TABLE pub_tender.contract (id text, buyer_eik text, amount_eur numeric, is_framework bool, offers_count int, supplier_nuts text);
+        CREATE TABLE pub_tender.contract_supplier (contract_id text, position int, party_key text, name text);
+        CREATE TABLE pub_tender.buyer (eik text, name text)""")
+    conn.execute("""INSERT INTO pub_tender.contract VALUES
         ('a', 'B1', 100, false, 1, 'CZ; BG411'),   -- a consortium: Czechia and Sofia
         ('b', 'B1', 50, false, 2, 'BG411'),
         ('c', 'B2', 30, false, 1, 'DE111'),
@@ -435,9 +423,9 @@ def test_the_map_by_supplier_places_each_member_and_says_what_it_cannot(conn):
         ('e', 'B2', 7, false, 1, '00'),             -- no country
         ('f', 'B2', 5, false, 1, 'US'),             -- abroad, off the map of Europe
         ('g', 'B2', 1000, true, 1, 'BG412')         -- a framework agreement: counted, not summed""")
-    conn.execute("""INSERT INTO live.contract_supplier VALUES ('a', 0, 'name:CZ', 'ES Group'), ('a', 1, 'eik:1', 'СОФИЯ ООД'),
+    conn.execute("""INSERT INTO pub_tender.contract_supplier VALUES ('a', 0, 'name:CZ', 'ES Group'), ('a', 1, 'eik:1', 'СОФИЯ ООД'),
         ('b', 0, 'eik:1', 'СОФИЯ ООД'), ('c', 0, 'name:DE', 'Stuttgart GmbH'), ('d', 0, 'name:AT', 'Netz')""")
-    conn.execute("INSERT INTO live.buyer VALUES ('B1', 'ОБЩИНА'), ('B2', 'МИНИСТЕРСТВО')")
+    conn.execute("INSERT INTO pub_tender.buyer VALUES ('B1', 'ОБЩИНА'), ('B2', 'МИНИСТЕРСТВО')")
     by = lambda out: {a["id"]: (a["n"], float(a["eur"] or 0)) for a in out["areas"]}
     eu = main.supplier_map("true", [], "country", "eu")
     assert by(eu) == {"BG": (3, 150.0), "CZ": (1, 100.0), "DE": (1, 30.0), "AT": (1, 20.0), "US": (1, 5.0)}

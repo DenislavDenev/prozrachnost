@@ -384,3 +384,12 @@ def test_postgres_17_facts_the_design_relies_on(conn):
         conn.execute("INSERT INTO demo.child VALUES ('2026-05-05', 1)")
     plan = '\n'.join(x[0] for x in conn.execute("EXPLAIN SELECT * FROM demo.day WHERE day = '2025-05-05'"))
     assert 'day_2026' not in plan   # pruned at plan time
+
+
+def test_the_change_log_takes_the_causes_of_tender_and_search_by_trigrams_is_there(conn):
+    """Migration 0010: what Тендер needs from the foundation."""
+    for cause in ('late', 'listing', 'back', 'reparsed', 'mismatch', 'read', 'change', 'rotate'):
+        conn.execute("INSERT INTO ops.change_log (tool, source, ref, cause) VALUES ('tender', 'tr', '1', %s)", (cause,))
+    with pytest.raises(psycopg.errors.CheckViolation):   # the list stays closed: a typo is not a cause
+        conn.execute("INSERT INTO ops.change_log (tool, source, ref, cause) VALUES ('tender', 'tr', '1', 'rotated')")
+    assert conn.execute("SELECT similarity('ОБЩИНА БАНСКО', 'ОБЩИНА БАНСКА') > 0.5").fetchone()[0]

@@ -156,7 +156,7 @@ def test_prefix_query_ignores_order_and_middle_name():
 
 
 class FakeConn:
-    """live.edge as a list of (holder, company) for the path search."""
+    """tender.edge as a list of (holder, company) for the path search."""
     def __init__(self, edges):
         self.edges = edges
 
@@ -479,8 +479,9 @@ def test_every_run_state_has_its_bulgarian_name():
 
     from app import main
     root = Path(__file__).parent.parent
-    sql = (root / "db/migrations/0001_init.sql").read_text(encoding="utf-8")
-    states = re.findall(r"'(\w+)'", re.search(r"status\s+text NOT NULL DEFAULT 'running' CHECK \(status IN \(([^)]*)\)", sql).group(1))
+    # the runs are in the shared ledger: its states are those of the foundation
+    sql = (root.parent / "danni/db/migrations/0001_ops.sql").read_text(encoding="utf-8")
+    states = re.findall(r"'(\w+)'", re.search(r"CONSTRAINT run_status_ck CHECK \(status IN \(([^)]*)\)", sql).group(1))
     assert set(states) == set(main.RUN) and "r.status | run" in (root / "app/templates/sources.html").read_text(encoding="utf-8")
 
 
@@ -501,6 +502,7 @@ def test_every_municipality_has_its_own_outline():
     import json
     from pathlib import Path
     root = Path(__file__).parent.parent
-    rows = list(csv.DictReader(open(root / "db/ref/municipality.csv", encoding="utf-8")))
+    # the municipalities are the shared dimension: the reference of tools/danni, not a copy in this tool
+    rows = list(csv.DictReader(open(root.parent / "danni/db/ref/municipality.csv", encoding="utf-8-sig")))
     shapes = json.loads((root / "app/static/bg-municipalities.json").read_text(encoding="utf-8"))["shapes"]
-    assert len(rows) == 265 and all(r["drawn_as"] == r["id"] for r in rows) and set(shapes) == {r["id"] for r in rows}
+    assert len(rows) == 265 and all(r["drawn_as_eik"] == r["eik"] for r in rows) and set(shapes) == {r["eik"] for r in rows}

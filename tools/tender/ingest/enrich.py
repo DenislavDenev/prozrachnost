@@ -51,12 +51,12 @@ def public_figure_candidates(conn, stats):
         if k:
             by_key.setdefault(k, []).append(p)
     n = 0
-    for pid, name in conn.execute("SELECT id, name FROM tr.person").fetchall():
+    for pid, name in conn.execute("SELECT id, name FROM tender_src.tr_person").fetchall():
         k = first_last(name)
         for p in by_key.get(k, []) if k else []:
             photo = urllib.parse.unquote(p["img"].rsplit("/", 1)[-1]) if p["img"] else None
             n += conn.execute(
-                "INSERT INTO ed.public_figure(person_id, wikidata_qid, label, description, photo_file) VALUES (%s,%s,%s,%s,%s) "
+                "INSERT INTO tender_src.ed_public_figure(person_id, wikidata_qid, label, description, photo_file) VALUES (%s,%s,%s,%s,%s) "
                 "ON CONFLICT (person_id, wikidata_qid) DO UPDATE SET label = EXCLUDED.label, description = EXCLUDED.description, "
                 "photo_file = EXCLUDED.photo_file", (pid, p["qid"], p["label"], p["desc"], photo)).rowcount
     stats["candidates"] = n
@@ -64,7 +64,7 @@ def public_figure_candidates(conn, stats):
 
 def commons_license(conn, stats):
     """Licence and author of confirmed photos (Wikimedia Commons imageinfo API)."""
-    rows = conn.execute("SELECT person_id, wikidata_qid, photo_file FROM ed.public_figure "
+    rows = conn.execute("SELECT person_id, wikidata_qid, photo_file FROM tender_src.ed_public_figure "
                         "WHERE status = 'confirmed' AND photo_file IS NOT NULL AND photo_license IS NULL").fetchall()
     for pid, qid, f in rows:
         q = {"action": "query", "titles": "File:" + f, "prop": "imageinfo", "iiprop": "extmetadata", "format": "json"}
@@ -72,7 +72,7 @@ def commons_license(conn, stats):
         meta = next(iter(data["query"]["pages"].values())).get("imageinfo", [{}])[0].get("extmetadata", {})
         lic = (meta.get("LicenseShortName") or {}).get("value")
         author = (meta.get("Artist") or {}).get("value")
-        conn.execute("UPDATE ed.public_figure SET photo_license = %s, photo_author = %s WHERE person_id = %s AND wikidata_qid = %s",
+        conn.execute("UPDATE tender_src.ed_public_figure SET photo_license = %s, photo_author = %s WHERE person_id = %s AND wikidata_qid = %s",
                      (lic, author, pid, qid))
     stats["licenses"] = len(rows)
 
@@ -93,11 +93,11 @@ def articles(conn, stats, budget_s=1800, companies=60):
     """Article candidates for confirmed public figures and the largest contractors (by value)."""
     deadline = time.monotonic() + budget_s
     targets = [("person", pid, f'"{label}"', "name")
-               for pid, label in conn.execute("SELECT person_id, label FROM ed.public_figure WHERE status = 'confirmed'")]
+               for pid, label in conn.execute("SELECT person_id, label FROM tender_src.ed_public_figure WHERE status = 'confirmed'")]
     targets += [("company", key, f'"{name}"', "name")
                 for key, name in conn.execute(
-                    """SELECT c.key, coalesce(d.name, c.name) FROM live.company c JOIN live.company_stats s USING (key)
-                       LEFT JOIN tr.deed d ON d.eik = left(c.eik, 9)
+                    """SELECT c.key, coalesce(d.name, c.name) FROM tender.company c JOIN tender.company_stats s USING (key)
+                       LEFT JOIN tender_src.tr_deed d ON d.eik = left(c.eik, 9)
                        WHERE length(coalesce(d.name, c.name)) >= 6 ORDER BY s.amount_eur DESC NULLS LAST LIMIT %s""", (companies,))]
     found = 0
     for kind, ref, query, basis in targets:
@@ -106,7 +106,7 @@ def articles(conn, stats, budget_s=1800, companies=60):
         for a in gdelt(query + " sourcelang:bulgarian"):
             seen = a.get("seendate")
             found += conn.execute(
-                "INSERT INTO ed.article(entity_type, entity_id, url, title, source, published_at, match_basis) "
+                "INSERT INTO tender_src.ed_article(entity_type, entity_id, url, title, source, published_at, match_basis) "
                 "VALUES (%s,%s,%s,%s,%s,to_timestamp(%s, 'YYYYMMDD\"T\"HH24MISS\"Z\"'),%s) ON CONFLICT DO NOTHING",
                 (kind, ref, a["url"], a.get("title") or a["url"], a.get("domain"), seen, basis)).rowcount
         time.sleep(GDELT_PAUSE)

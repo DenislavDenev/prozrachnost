@@ -1,14 +1,15 @@
+"""The connection, the lanes and the run ledger of Тендер in the shared database.
+
+The runs, the change log, the rules and the migrations are the shared module (ingest/pipeline.py, schema ops).
+What stays here is the lane: several steps of Тендер exclude each other (eop, fx, normalize, derive and publish
+are one lane, the register reads another), which the per-step lock of the shared module does not express.
+"""
 import contextlib
-import json
-import os
-import subprocess
-from pathlib import Path
 
 import psycopg
 
-from .config import DSN
-
-ROOT = Path(__file__).resolve().parent.parent
+from . import pipeline
+from .config import DSN, ROOT, TOOL
 
 
 def connect(**kw):
@@ -16,28 +17,14 @@ def connect(**kw):
 
 
 def code_sha():
-    try:
-        return subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True,
-                              text=True, check=True).stdout.strip()
-    except Exception:
-        return os.environ.get("TENDER_CODE_SHA")
+    return pipeline.code_sha(ROOT)
 
 
 def migrate(conn):
-    """Apply db/migrations/*.sql in order, each in its own transaction. Stops at the first failure."""
-    conn.execute("CREATE TABLE IF NOT EXISTS public.schema_migrations "
-                 "(name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())")
-    conn.commit()
-    done = {r[0] for r in conn.execute("SELECT name FROM public.schema_migrations")}
-    applied = []
-    for f in sorted((ROOT / "db" / "migrations").glob("*.sql")):
-        if f.name in done:
-            continue
-        with conn.transaction():
-            conn.execute(f.read_text(encoding="utf-8"))
-            conn.execute("INSERT INTO public.schema_migrations(name) VALUES (%s)", (f.name,))
-        applied.append(f.name)
-    return applied
+    """The migrations of db/migrations and the registers (datasets, sources, rules), through the shared module."""
+    conn.autocommit = True
+    pipeline.require_core(conn, "0010")
+    return pipeline.migrate(conn, TOOL, ROOT)
 
 
 # one step at a time per lane: 'build' (eop -> publish), 'tr' (register reads) and 'offers' (procedure pages) run independently
@@ -53,30 +40,33 @@ class Busy(RuntimeError):
 
 @contextlib.contextmanager
 def job(step, lane="build", inputs=None, rule_versions=None):
-    """Record a run in ops.job_run under the lane's advisory lock. Yields (conn, stats dict)."""
+    """One step under the lane's advisory lock, recorded in ops.run. Yields (conn, stats dict).
+    `conn.run` is the run of the shared module: log_change() and the rules need it."""
     lock = LOCKS[lane]
     conn = connect(autocommit=True)
     if not conn.execute("SELECT pg_try_advisory_lock(%s)", (lock,)).fetchone()[0]:
         conn.close()
         raise Busy(f"another '{lane}' step is running")
-    run_id = conn.execute(
-        "INSERT INTO ops.job_run(step, code_sha, inputs, rule_versions) VALUES (%s,%s,%s,%s) RETURNING id",
-        (step, code_sha(), json.dumps(inputs or {}), json.dumps(rule_versions or {}))).fetchone()[0]
-    stats = {}
     try:
-        yield conn, stats
-        conn.execute("UPDATE ops.job_run SET status='ok', finished_at=now(), stats=%s WHERE id=%s",
-                     (json.dumps(stats, default=str), run_id))
-    except BaseException as e:
-        conn.execute("UPDATE ops.job_run SET status='failed', finished_at=now(), stats=%s, error=%s "
-                     "WHERE id=%s", (json.dumps(stats, default=str), repr(e)[:4000], run_id))
-        raise
+        try:
+            with pipeline.run(conn, TOOL, step, params={**(inputs or {}), **({"rules": rule_versions} if rule_versions else {})},
+                              sha=code_sha()) as r:
+                RUNS[id(conn)] = r
+                yield conn, r.stats
+        except pipeline.Busy as e:   # the same step in another lane's hands
+            raise Busy(str(e)) from e
     finally:
+        RUNS.pop(id(conn), None)
         conn.execute("SELECT pg_advisory_unlock(%s)", (lock,))
         conn.close()
 
 
+RUNS = {}   # the run of each open job connection
+
+
 def log_change(conn, source, ref, field, old, new, cause):
-    """One line of ops.change_log (migration 0006): what a source changed after we first read it."""
-    conn.execute("INSERT INTO ops.change_log (source, ref, field, old, new, cause) VALUES (%s,%s,%s,%s,%s,%s)",
-                 (source, str(ref), field, None if old is None else str(old)[:2000], None if new is None else str(new)[:2000], cause))
+    """One line of ops.change_log: what a source changed after we first read it."""
+    r = RUNS.get(id(conn))
+    conn.execute("INSERT INTO ops.change_log (tool, source, ref, field, old, new, cause, run_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                 (TOOL, source, str(ref), field, None if old is None else str(old)[:2000], None if new is None else str(new)[:2000],
+                  cause, r.run_id if r else None))

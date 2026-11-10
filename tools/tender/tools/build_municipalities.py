@@ -8,10 +8,11 @@ EPSG:3035, drawn in the frame of Икономика's europe.json (FRAME below),
 Simplified to about 80 m. Licence (GISCO): use only for non-commercial purposes and with the credit
 "© EuroGeographics for the administrative boundaries" on the map; the page shows it in Bulgarian.
 
-Reads db/ref/municipality.csv (id = the municipality's ЕИК, name_bg, oblast, nuts3 …) and writes
+Reads the reference of the shared dimensions, tools/danni/db/ref/municipality.csv (eik = the municipality's ЕИК,
+name_bg), and the oblast of each municipality from the outlines file it replaces, and writes
   app/static/bg-municipalities.json  {frame, view: [x, y, w, h] of Bulgaria, shapes: {id: {n, d, o: nuts3}},
                                       oblasts: {nuts3: {n, d}}, regions: {nuts2: {d}}, macros: {nuts1: {d}}, names}
-  db/ref/municipality.csv            drawn_as = the id whose outline holds the municipality (now always its own)
+Тендер keeps no copy of the municipalities: in the database they are core.municipality.
 A municipality is matched by its name (case aside) within its oblast: the oblast of a LAU outline is the NUTS 3
 region that holds its inner point (two municipalities are called Бяла). Needs shapely (dev only).
 
@@ -65,8 +66,13 @@ def main():
                     out.append("M" + "L".join(f"{a:g},{b:g}" for a, b in pts) + "Z")
         return "".join(out)
 
-    path = ROOT / "db" / "ref" / "municipality.csv"
-    rows = list(csv.DictReader(open(path, encoding="utf-8")))
+    target = ROOT / "app" / "static" / "bg-municipalities.json"
+    old = json.loads(target.read_text(encoding="utf-8"))
+    path = ROOT.parent / "danni" / "db" / "ref" / "municipality.csv"
+    rows = [{"id": r["eik"], "name_bg": r["name_bg"], "nuts3": old["shapes"][r["eik"]]["o"]}
+            for r in csv.DictReader(open(path, encoding="utf-8-sig"))]
+    for r in rows:
+        r["oblast"] = old["oblasts"][r["nuts3"]]["n"]
     by_name = {(r["name_bg"].lower(), r["nuts3"]): r for r in rows}
     shapes, missing = {}, []
     for f in get(LAU):
@@ -81,18 +87,12 @@ def main():
             continue
         shapes[r["id"]] = {"n": r["name_bg"], "d": svg(g), "o": n3}
     assert not missing and len(shapes) == len(rows) == 265, (missing, len(shapes), len(rows))
-    for r in rows:
-        r["drawn_as"] = r["id"]   # every municipality has its own outline in LAU 2024, Сърница included
-    with open(path, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, list(rows[0]), lineterminator="\n")
-        w.writeheader()
-        w.writerows(rows)
     oblast = {r["nuts3"]: r["oblast"] for r in rows}
     out = {"frame": FRAME, "view": view, "shapes": shapes,
            "oblasts": {c: {"n": oblast[c], "d": svg(g)} for c, g in sorted(nuts[3].items())},
            "regions": {c: {"d": svg(g)} for c, g in sorted(nuts[2].items())},
            "macros": {c: {"d": svg(g)} for c, g in sorted(nuts[1].items())}, "names": NUTS_NAME}
-    (ROOT / "app" / "static" / "bg-municipalities.json").write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")),
+    target.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")),
                                                                     encoding="utf-8")
     print(len(shapes), "municipalities,", len(out["oblasts"]), "oblasts,", len(out["regions"]), "regions,", len(out["macros"]), "macro-regions")
 

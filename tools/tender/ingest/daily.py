@@ -29,7 +29,7 @@ def yesterday():
 
 
 def done(conn, day):
-    return conn.execute("""SELECT 1 FROM ops.job_run WHERE step = 'daily' AND status = 'ok' AND inputs->>'day' = %s""",
+    return conn.execute("""SELECT 1 FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'ok' AND params->>'day' = %s""",
                         (day,)).fetchone() is not None
 
 
@@ -60,34 +60,42 @@ def drain(step, lane, waiting, work, budget):
 def freshness(conn):
     """[problems]: each source where the D-1 promise says it should be. Empty = all good."""
     bad = []
-    last = conn.execute("SELECT max(day) FROM ops.eop_day WHERE published").fetchone()[0]
+    last = conn.execute("SELECT max(day) FROM tender_src.eop_day WHERE published").fetchone()[0]
     if not last or str(last) < yesterday():
         bad.append(f"ЕОП: последният ден при нас е {last}, очаква се {yesterday()}")
-    pub = conn.execute("SELECT at FROM ops.published WHERE id = 1").fetchone()
+    pub = conn.execute("SELECT at FROM tender_src.build_state WHERE id = 1").fetchone()
     if not pub or pub[0] < dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=26):
-        bad.append(f"сайтът не е обновяван от {pub[0] if pub else 'никога'}")
-    n = conn.execute("""SELECT count(*) FROM eopsvc.queue WHERE status = 'pending' AND reason = ANY(%s)
+        bad.append(f"чистите таблици не са изграждани от {pub[0] if pub else 'никога'}")
+    served = conn.execute("SELECT max(published_at) FROM pub.publication WHERE tool = 'tender'").fetchone()[0]
+    if pub and served and served < pub[0] - dt.timedelta(hours=26):   # built again and again, and the pages did not follow
+        bad.append(f"сайтът не е обновяван от {served}: публикуването не минава")
+    n = conn.execute("""SELECT count(*) FROM tender_src.eopsvc_queue WHERE status = 'pending' AND reason = ANY(%s)
                         AND next_at < now() - interval '1 day'""", (list(eop_offers.FIRST),)).fetchone()[0]
     if n:
         bad.append(f"оферти: {n} поръчки чакат над ден")
-    n = conn.execute(f"""SELECT count(*) FROM tr.queue WHERE status = 'pending' AND {tr_worker.FIRST}
+    n = conn.execute(f"""SELECT count(*) FROM tender_src.tr_queue WHERE status = 'pending' AND {tr_worker.FIRST}
                          AND next_at < now() - interval '1 day'""").fetchone()[0]
     if n:
         bad.append(f"ТР: {n} партиди чакат над ден")
-    n = conn.execute("SELECT count(*) FROM eopsvc.queue WHERE status = 'error'").fetchone()[0]
+    n = conn.execute("SELECT count(*) FROM tender_src.eopsvc_queue WHERE status = 'error'").fetchone()[0]
     if n:
         bad.append(f"оферти: {n} поръчки не се четат (грешка след 6 опита)")
     for source, cause, n in conn.execute("""SELECT source, cause, count(*) FROM ops.change_log
-            WHERE detected_at > now() - interval '1 day' AND (source = 'eop-file' AND cause IN ('rewritten', 'gone', 'invalid'))
+            WHERE tool = 'tender' AND detected_at > now() - interval '1 day'
+              AND (source = 'eop-file' AND cause IN ('rewritten', 'gone', 'invalid'))
             GROUP BY 1, 2""").fetchall():
         bad.append(f"{source}: {n} × {cause} (архивът на източника е променен, виж ops.change_log)")
+    # the rules of the last build (db/checks.toml): one that failed kept the serving layer on its older version
+    for title, expected, actual in conn.execute("""SELECT title_bg, expected, actual FROM ops.check_latest
+            WHERE tool = 'tender' AND gating AND ok = false AND kind <> 'parity' ORDER BY name""").fetchall():
+        bad.append(f"{title}: очаквано {expected}, получено {actual}")
     return bad
 
 
 def changes(conn):
     """What the sources changed in the last day, by source and cause (for the card)."""
     return {f"{s}/{c}": n for s, c, n in conn.execute("""SELECT source, cause, count(*) FROM ops.change_log
-        WHERE detected_at > now() - interval '1 day' GROUP BY 1, 2 ORDER BY 1, 2""").fetchall()}
+        WHERE tool = 'tender' AND detected_at > now() - interval '1 day' GROUP BY 1, 2 ORDER BY 1, 2""").fetchall()}
 
 
 def run(final=False):
@@ -99,8 +107,8 @@ def run(final=False):
     with db.connect(autocommit=True) as conn:
         if done(conn, day):
             return {"day": day, "skipped": "done"}
-        failed = conn.execute("""SELECT count(*) FROM ops.job_run WHERE step = 'daily' AND status = 'failed'
-                                 AND inputs->>'day' = %s""", (day,)).fetchone()[0]
+        failed = conn.execute("""SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'failed'
+                                 AND params->>'day' = %s""", (day,)).fetchone()[0]
     if failed >= 2 and not final:
         return {"day": day, "skipped": f"failed {failed} times, the {FINAL_UTC} UTC run tries again"}
     if eop.list_day(day) is None:
