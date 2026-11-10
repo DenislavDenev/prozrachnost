@@ -3,20 +3,21 @@ from fastapi.testclient import TestClient
 
 from app import main, queries
 from .test_sources import sample
-from .test_store import DETAILED, MONTHLY, monthly, put_raw
+from .test_store import DETAILED, MONTHLY, monthly, publish, put_raw
 
 
 @pytest.fixture
 def client(conn, dsn, monkeypatch):
     put_raw(conn, DETAILED, sample())
     put_raw(conn, MONTHLY, monthly())
+    assert publish(conn).problems == []
     monkeypatch.setattr(queries, 'DSN', dsn)
-    queries._cache.clear()
     return TestClient(main.app)
 
 
 def code_of(name):
-    return next(k for k, v in queries.reference()[0].items() if v['name_bg'] == name)
+    with queries.snapshot() as c:
+        return next(k for k, v in queries.reference(c)[0].items() if v['name_bg'] == name)
 
 
 def test_pages_and_shared_header(client):
@@ -26,7 +27,34 @@ def test_pages_and_shared_header(client):
         assert 'Обратна връзка' in r.text and 'Подкрепи проекта' in r.text
         assert '—' not in r.text
     assert client.get('/obshtini/000000000').status_code == 404
-    assert client.get('/healthz').json() == {'ok': True}
+    assert client.get('/healthz').json()['ok'] is True
+
+
+def test_every_answer_names_its_publication_and_changes_only_with_one(client, conn):
+    first = client.get('/api/karta.json')
+    version = int(first.headers['X-Publication'])
+    assert version == conn.execute("SELECT max(publication_id) FROM pub.publication").fetchone()[0]
+    assert first.headers['ETag'] == f'W/"pub-{version}"' and first.headers['Last-Modified'].endswith('GMT')
+    for url in ['/', '/karta', '/obshtini', '/export.csv', '/history.csv', '/api/series.json', '/sources', '/healthz']:
+        assert client.get(url).headers['X-Publication'] == str(version), url
+    assert 'X-Publication' not in client.get('/static/app.css').headers   # a static file is not of any publication
+    # new data is loaded and clean, but the pages do not move until it is published
+    conn.execute("UPDATE naselenie.population SET current = current + 1000 WHERE table_kind = 'monthly'")
+    again = client.get('/api/karta.json')
+    assert again.headers['X-Publication'] == str(version) and again.json() == first.json()
+    assert publish(conn).publication_id == version + 1
+    after = client.get('/api/karta.json')
+    assert after.headers['X-Publication'] == str(version + 1) and after.json()['bg'] == first.json()['bg'] + 265000
+
+
+def test_pages_read_only_the_serving_layer():
+    """The source of the queries names no schema but the serving ones: the web role has no right to any other."""
+    import re
+    from pathlib import Path
+    text = (Path(queries.__file__).parent / 'queries.py').read_text(encoding='utf-8')
+    schemas = set(re.findall(r'(?:FROM|JOIN)\s+\(?([a-z_0-9]+)\.', text))
+    assert schemas == {'pub', 'pub_naselenie'}
+    assert 'execute(' not in (Path(queries.__file__).parent / 'main.py').read_text(encoding='utf-8')   # every query is in queries.py
 
 
 def test_map_levels_reconcile_and_dates(client):
@@ -59,7 +87,7 @@ def test_csv_sources_and_no_data(client, conn):
     assert 'ЕЛЕНА,С.ВЪЛЧОВЦИ' in client.get('/unmatched.csv').text
     labels = {r['label'] for r in client.get('/sources.json').json()}
     assert labels == {'ГРАО', 'ЕКАТТЕ'}
-    conn.execute('TRUNCATE naselenie.population, naselenie.settlement_population, naselenie_src.grao_row, naselenie_src.grao_file')
+    conn.execute('TRUNCATE pub_naselenie.snapshot, pub_naselenie.population, pub_naselenie.settlement_population')   # an empty serving layer
     assert client.get('/').status_code == 200
     d = client.get('/api/karta.json').json()
     assert d['bg'] is None and len(d['items']) == 265 and all(r['v'] is None for r in d['items'])   # no data is not zero

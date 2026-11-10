@@ -247,22 +247,24 @@ sql = "SELECT 0, 0"
     assert one(demo, "SELECT is_distributable FROM core.dataset WHERE dataset='demo.list'") is False
     assert one(demo, "SELECT dataset FROM core.column_doc WHERE schema_name='demo_src' AND column_name='n'") == 'demo.list'
     # the api guard: a view over a dataset that may not be distributed is a violation, also through another view
-    demo.execute('CREATE VIEW core.demo_mid AS SELECT key, n FROM demo_src.item')
-    demo.execute('CREATE VIEW api_v1.demo AS SELECT * FROM core.demo_mid')
+    demo.execute('CREATE SCHEMA pub_demo; CREATE TABLE pub_demo.item (key text PRIMARY KEY, n integer)')
+    demo.execute("INSERT INTO core.dataset_table VALUES ('pub_demo', 'item', 'demo.list')")
+    demo.execute('CREATE VIEW pub_demo.mid AS SELECT key, n FROM pub_demo.item')
+    demo.execute('CREATE VIEW api_v1.demo AS SELECT * FROM pub_demo.mid')
     assert demo.execute('SELECT api_view, table_name, reason FROM core.api_licence_violation').fetchall() == [
         ('api_v1.demo', 'item', 'наборът няма право на разпространение')]
     with pipeline.run(demo, 'danni', 'check') as r:
         assert len(pipeline.run_checks(demo, r, kinds=['licence'])) == 1
-    demo.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = '2026-11-10' WHERE dataset='demo.list'")
+    demo.execute("UPDATE core.dataset SET is_displayable = true, is_distributable = true, licence_checked_on = '2026-11-10' WHERE dataset='demo.list'")
     assert one(demo, 'SELECT count(*) FROM core.api_licence_violation') == 0
     demo.execute("UPDATE core.dataset SET personal_data = 'names' WHERE dataset='demo.list'")
     assert one(demo, 'SELECT reason FROM core.api_licence_violation') == 'наборът съдържа имена на физически лица'
-    demo.execute("DELETE FROM core.dataset_table WHERE table_name = 'item'")
+    demo.execute("DELETE FROM core.dataset_table WHERE schema_name = 'pub_demo'")
     assert one(demo, 'SELECT reason FROM core.api_licence_violation') == 'таблицата не е записана към набор'
     demo.execute('DROP VIEW api_v1.demo; CREATE TABLE api_v1.leak (x int)')
     assert one(demo, 'SELECT reason FROM core.api_licence_violation') == 'в схемата за API-то има таблица, а не изглед'
     with pytest.raises(psycopg.errors.CheckViolation):   # distributable needs the date of the check
-        demo.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = NULL WHERE dataset = 'danni.ekatte'")
+        demo.execute("UPDATE core.dataset SET is_displayable = true, is_distributable = true, licence_checked_on = NULL WHERE dataset = 'danni.org'")
 
 
 def test_a_tool_role_cannot_open_a_dataset(conn):
@@ -271,6 +273,14 @@ def test_a_tool_role_cannot_open_a_dataset(conn):
     q = "SELECT has_column_privilege('pz_ingest', 'core.dataset', %s, 'UPDATE')"
     assert one(conn, q, 'title_bg') is True
     assert one(conn, q, 'is_distributable') is False and one(conn, q, 'licence_checked_on') is False
+    assert one(conn, q, 'is_displayable') is False
+    # the web roles read the serving layer and nothing else
+    for schema, may in (('pub', True), ('core', False), ('ops', False), ('danni_src', False)):
+        assert one(conn, "SELECT has_schema_privilege('pz_web', %s, 'USAGE')", schema) is may, schema
+    assert one(conn, "SELECT has_table_privilege('pz_web', 'pub.municipality', 'SELECT')") is True
+    assert one(conn, "SELECT has_table_privilege('pz_web', 'pub.municipality', 'INSERT')") is False
+    assert one(conn, "SELECT has_table_privilege('pz_ingest', 'pub.publication', 'INSERT')") is True
+    assert one(conn, "SELECT has_table_privilege('pz_ingest', 'pub.publication', 'UPDATE')") is False
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'ops.change_log', 'DELETE')") is False
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'core.org', 'INSERT')") is False
     assert one(conn, "SELECT has_table_privilege('pz_ingest', 'ops.load', 'INSERT')") is True
@@ -299,7 +309,8 @@ def test_a_tool_role_can_do_its_work_and_nothing_more(conn):
         for forbidden in ('DELETE FROM ops.change_log', 'TRUNCATE ops.load CASCADE', "UPDATE core.municipality SET name_bg = 'x'",
                           "INSERT INTO core.org (eik, name, source) VALUES ('000024663', 'x', 'tr')",
                           "UPDATE core.dataset SET is_distributable = true, licence_checked_on = now()",
-                          'CREATE TABLE core.mine (x int)', 'CREATE VIEW api_v1.mine AS SELECT 1 AS x', 'CREATE SCHEMA other'):
+                          'CREATE TABLE core.mine (x int)', 'CREATE VIEW api_v1.mine AS SELECT 1 AS x', 'CREATE SCHEMA other',
+                          "UPDATE pub.municipality SET name_bg = 'x'", 'DELETE FROM pub.publication', 'CREATE TABLE pub.mine (x int)'):
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute(forbidden)
     finally:

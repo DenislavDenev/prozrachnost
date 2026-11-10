@@ -46,3 +46,22 @@ tolerance = 150
 name = "org_buyer_valid_matches_tender"
 title_bg = "Възложителите с валиден ЕИК по нашата проверка са колкото по проверката на Тендер"
 kind = "reconcile"
+
+[[check]]
+name = "serving_isolated"
+title_bg = "Слоят за показване не стига до нищо извън себе си и държи само набори с право на показване"
+kind = "serving"
+sql = "SELECT 0, count(*) FROM core.serving_violation"
+
+# Judged inside the transaction of the publication, against the new content.
+[[check]]
+name = "published_places_match_core"
+title_bg = "Публикуваните общини и населени места са колкото в core"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM core.municipality) + (SELECT count(*) FROM core.settlement), (SELECT count(*) FROM pub.municipality) + (SELECT count(*) FROM pub.settlement)"
+
+[[check]]
+name = "published_no_names"
+title_bg = "В публикувания каталог няма набор с имена на физически лица, който се показва"
+kind = "publish"
+sql = "SELECT 0, count(*) FROM pub.dataset WHERE personal_data = 'names' AND (is_displayable OR is_distributable)"

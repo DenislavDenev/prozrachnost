@@ -225,3 +225,69 @@ def test_replay_from_raw_equals_the_old_database_and_parity_sees_a_difference(co
     conn.execute("UPDATE old_ops.raw_file SET sha = repeat('0', 64) WHERE url = %s", (MONTHLY,))
     with pytest.raises(pipeline.CorruptRaw), pipeline.run(conn, 'naselenie', 'replay') as r:
         run.replay(conn, r, old_dsn=dsn, old_ops='old_ops')
+
+
+def publish(conn):
+    with pipeline.run(conn, 'naselenie', 'check') as r:
+        return pipeline.publish(conn, r, run.ROOT)
+
+
+def test_serving_layer_follows_only_through_a_publication(conn):
+    put(conn, data(conn), now=T0)
+    assert one(conn, 'SELECT count(*) FROM pub_naselenie.population') == 0   # loaded and clean, but not published
+    first = publish(conn)
+    assert first.problems == [] and first.publication_id is not None
+    assert first.changes['pub_naselenie.population'] == {'added': 265, 'removed': 0}
+    assert first.changes['pub_naselenie.settlement_population'] == {'added': 5138, 'removed': 0}
+    assert conn.execute('''SELECT source_municipality, source_name, ekatte, current FROM pub_naselenie.settlement_population
+        WHERE row_no = 0''').fetchone() == ('БАНСКО', 'ГР.БАНСКО', '02676', 9190)
+    assert publish(conn) == pipeline.Published(None, {}, [])   # nothing new: the version stays
+    # a corrected number: exactly one row leaves the serving layer and one enters it, under a new version
+    fixed = copy.deepcopy(data(conn))
+    fixed['municipalities'][0]['current'] += 5
+    put(conn, fixed, now=T0 + dt.timedelta(days=1))
+    assert one(conn, "SELECT current FROM pub_naselenie.population WHERE municipality_code = 'BLG01'") == 12795
+    second = publish(conn)
+    assert second.publication_id == first.publication_id + 1
+    assert second.changes['pub_naselenie.population'] == {'added': 1, 'removed': 1}
+    assert 'pub_naselenie.settlement_population' not in second.changes   # an untouched table is not rewritten
+    assert one(conn, "SELECT current FROM pub_naselenie.population WHERE municipality_code = 'BLG01'") == 12800
+    assert one(conn, 'SELECT count(*) FROM pub_naselenie.population') == 265   # only what is current is published
+
+
+def test_a_publication_that_breaks_a_rule_changes_nothing(conn):
+    put(conn, data(conn), now=T0)
+    first = publish(conn)
+    conn.execute("UPDATE naselenie.population SET current = current + 1 WHERE municipality_code = 'BLG01'")
+    conn.execute("UPDATE ops.check_rule SET sql = 'SELECT 7393257, sum(current) FROM pub_naselenie.population' WHERE tool = 'naselenie' AND name = 'published_population_current'")
+    refused = publish(conn)
+    assert refused.publication_id is None and refused.changes == {}
+    assert refused.problems == ['Публикуваният сбор по настоящ адрес е сборът в чистата таблица: очаквано 7393257, получено 7393258']
+    assert one(conn, "SELECT current FROM pub_naselenie.population WHERE municipality_code = 'BLG01'") == 12795
+    assert one(conn, "SELECT max(publication_id) FROM pub.publication WHERE tool = 'naselenie'") == first.publication_id
+    assert conn.execute("SELECT ok FROM ops.check_latest WHERE tool = 'naselenie' AND name = 'published_population_current'").fetchone() == (False,)
+    # a row that points to a settlement the serving layer does not have: the publication is refused whole
+    conn.execute("UPDATE ops.check_rule SET is_active = false WHERE tool = 'naselenie' AND name = 'published_population_current'")
+    conn.execute("INSERT INTO core.settlement (ekatte, kind_prefix, name_bg, municipality_code) VALUES ('99999', 'с.', 'Непубликувано', 'BLG01')")
+    conn.execute("UPDATE naselenie.settlement_population SET ekatte = '99999' WHERE row_no = 0")
+    try:
+        broken = publish(conn)
+        assert broken.publication_id is None and 'публикуването е отказано' in broken.problems[0]
+        assert one(conn, 'SELECT ekatte FROM pub_naselenie.settlement_population WHERE row_no = 0') == '02676'
+        assert one(conn, "SELECT current FROM pub_naselenie.population WHERE municipality_code = 'BLG01'") == 12795
+    finally:
+        conn.execute("UPDATE naselenie.settlement_population SET ekatte = '02676' WHERE row_no = 0")
+        conn.execute("DELETE FROM core.settlement WHERE ekatte = '99999'")
+
+
+def test_serving_layer_stands_alone(conn):
+    """Nothing in the serving layer of this tool points outside the serving layer, and all of it may be shown."""
+    put(conn, data(conn))
+    assert publish(conn).problems == []
+    assert one(conn, 'SELECT count(*) FROM core.serving_violation') == 0
+    outside = conn.execute('''SELECT k.conrelid::regclass::text, k.confrelid::regclass::text FROM pg_constraint k
+        JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_class f ON f.oid = k.confrelid JOIN pg_namespace fn ON fn.oid = f.relnamespace
+        WHERE k.contype = 'f' AND n.nspname = 'pub_naselenie' AND fn.nspname NOT IN ('pub', 'pub_naselenie')''').fetchall()
+    assert outside == []
+    assert one(conn, "SELECT count(*) FROM pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE k.contype = 'f' AND n.nspname = 'pub_naselenie'") == 4

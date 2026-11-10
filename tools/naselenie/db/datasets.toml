@@ -10,7 +10,7 @@ source_url = "https://www.grao.bg/tables.html"
 channel = "file"
 licence = "не е посочен"
 cadence = "месечно по общини; тримесечно и годишно по населени места"
-tables = ["naselenie.population", "naselenie.settlement_population", "naselenie_src.grao_catalog", "naselenie_src.grao_file", "naselenie_src.grao_row"]
+tables = ["pub_naselenie.snapshot", "pub_naselenie.population", "pub_naselenie.settlement_population", "pub_naselenie.source_state", "naselenie.population", "naselenie.settlement_population", "naselenie_src.grao_catalog", "naselenie_src.grao_file", "naselenie_src.grao_row"]
 
 [[source]]
 source = "grao-catalog"

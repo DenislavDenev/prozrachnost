@@ -22,6 +22,11 @@ CASES = [
     ('parity-blind', 'ingest/run.py', "        if want != got:\n            row_diff += len(set(want) ^ set(got)) or 1",
      "        if False:\n            row_diff += 1",
      'tests/test_store.py::test_replay_from_raw_equals_the_old_database_and_parity_sees_a_difference'),
+    ('pages-read-the-clean-tables', 'app/queries.py', 'FROM pub_naselenie.population p\n        JOIN pub.municipality m USING (municipality_code)\n        WHERE p.as_of = %s AND p.table_kind = %s',
+     'FROM naselenie.population p\n        JOIN pub.municipality m USING (municipality_code)\n        WHERE p.as_of = %s AND p.table_kind = %s',
+     'tests/test_pages.py::test_pages_read_only_the_serving_layer'),
+    ('published-history', 'db/publish/02_pub_naselenie.population.sql', 'WHERE p.superseded_at IS NULL', '',
+     'tests/test_store.py::test_serving_layer_follows_only_through_a_publication'),
     ('no-data-as-zero', 'app/main.py', "bg=sum(row[column] for row in rows) if rows else None", "bg=sum(row[column] for row in rows)",
      'tests/test_pages.py::test_csv_sources_and_no_data'),
 ]

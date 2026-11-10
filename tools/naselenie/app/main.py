@@ -1,11 +1,13 @@
 import csv
+import datetime as dt
 import io
 import os
+from email.utils import format_datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from markupsafe import Markup
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -40,20 +42,39 @@ SINGLE = {'obshtini': 'Община', 'oblasti': 'Област', 'rayoni': 'Ра
 INDEX = 'https://www.grao.bg/tables.html'
 
 
-def render(request, name, **context):
+def snap(request: Request):
+    """The one snapshot of the serving layer a request reads, and the publication it shows.
+    Every query of the request goes through it, so the answer is of one version."""
+    with queries.snapshot() as c:
+        request.state.publication = queries.version(c)
+        yield c
+
+
+@app.middleware('http')
+async def publication_headers(request: Request, call_next):
+    """Every answer built from the data says which publication it is of. A cache in front of the site keeps an
+    answer until this number moves; the number moves only when the published content does."""
+    response = await call_next(request)
+    publication = getattr(request.state, 'publication', None)
+    if publication:
+        response.headers['X-Publication'] = str(publication[0])
+        response.headers['ETag'] = f'W/"pub-{publication[0]}"'
+        response.headers['Last-Modified'] = format_datetime(publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    return response
+
+
+def render(request, c, name, **context):
     hub = os.environ.get('HUB_URL', '/')
-    with queries.connect() as c:
-        fresh = queries.latest(c)
+    fresh = queries.latest(c)
     return templates.TemplateResponse(request=request, name=name, context=dict(
         v='1', hub_url=hub, feedback_button=Markup(feedback.BUTTON), support_link=Markup(feedback.support_link(hub)),
         fresh=fresh[0] if fresh else None, **context))
 
 
 @app.get('/healthz')
-def health():
-    with queries.connect() as c:
-        c.execute('SELECT 1 FROM naselenie.snapshot LIMIT 1')
-    return {'ok': True}
+def health(request: Request, c=Depends(snap)):
+    publication = request.state.publication
+    return {'ok': True, 'publication': publication[0] if publication else None}
 
 
 @app.get('/favicon.svg')
@@ -61,18 +82,17 @@ def favicon():
     return Response((ROOT / 'static/favicon.svg').read_text(), media_type='image/svg+xml')
 
 
-def mapdata(m='current', l='obshtini', y=None):
+def mapdata(c, m='current', l='obshtini', y=None):
     """The numbers of one published date at one level. The same function feeds the map, the tables and the CSV."""
     if m not in ('current', 'permanent') or l not in NUTS:
         raise HTTPException(400, 'Невалиден показател или ниво')
-    ref, regions = queries.reference()
-    with queries.connect() as c:
-        ss = queries.snapshots(c)
-        periods = sorted(ss, reverse=True)
-        y = y or (periods[0] if periods else None)
-        if y and y not in ss:
-            raise HTTPException(404, 'Няма данни за тази дата')
-        rows = queries.municipal(c, y, ss[y][0]) if y else []
+    ref, regions = queries.reference(c)
+    ss = queries.snapshots(c)
+    periods = sorted(ss, reverse=True)
+    y = y or (periods[0] if periods else None)
+    if y and y not in ss:
+        raise HTTPException(404, 'Няма данни за тази дата')
+    rows = queries.municipal(c, y, ss[y][0]) if y else []
     items = {}
     for r in ref.values():
         code = r['id'] if l == 'obshtini' else r['nuts' + str(NUTS[l])]
@@ -94,59 +114,61 @@ def mapdata(m='current', l='obshtini', y=None):
 
 
 @app.get('/', response_class=HTMLResponse)
-def home(request: Request):
-    return render(request, 'home.html', nav='Табло', d=mapdata())
+def home(request: Request, c=Depends(snap)):
+    return render(request, c, 'home.html', nav='Табло', d=mapdata(c))
 
 
 @app.get('/karta', response_class=HTMLResponse)
-def karta(request: Request, m: str = 'current', l: str = 'obshtini', y: str | None = None):
-    return render(request, 'karta.html', nav='Карта', d=mapdata(m, l, y), scopes={'bg': ['България']},
+def karta(request: Request, m: str = 'current', l: str = 'obshtini', y: str | None = None, c=Depends(snap)):
+    return render(request, c, 'karta.html', nav='Карта', d=mapdata(c, m, l, y), scopes={'bg': ['България']},
                   measures={'current': [0, 0, 'Настоящ адрес'], 'permanent': [0, 0, 'Постоянен адрес']})
 
 
 @app.get('/api/karta.json')
-def karta_json(m: str = 'current', l: str = 'obshtini', y: str | None = None):
-    return mapdata(m, l, y)
+def karta_json(m: str = 'current', l: str = 'obshtini', y: str | None = None, c=Depends(snap)):
+    return mapdata(c, m, l, y)
 
 
 @app.get('/obshtini', response_class=HTMLResponse)
-def list_municipalities(request: Request):
-    return render(request, 'list.html', nav='Общини', d=mapdata())
+def list_municipalities(request: Request, c=Depends(snap)):
+    return render(request, c, 'list.html', nav='Общини', d=mapdata(c))
 
 
-def known(code):
-    ref, _ = queries.reference()
+def known(c, code):
+    ref, _ = queries.reference(c)
     if code not in ref:
         raise HTTPException(404, 'Няма такава община')
     return ref[code]
 
 
 @app.get('/obshtini/{code}', response_class=HTMLResponse)
-def municipality(request: Request, code: str):
-    ref = known(code)
-    d = mapdata()
+def municipality(request: Request, code: str, c=Depends(snap)):
+    ref = known(c, code)
+    d = mapdata(c)
     item = next(r for r in d['items'] if r['code'] == code)
-    with queries.connect() as c:
-        s = queries.latest(c, 'detailed')
-        places = queries.places(c, s[0], code) if s else []
-        current = queries.detailed_current(c, s[0], code) if s else None
+    s = queries.latest(c, 'detailed')
+    places = queries.places(c, s[0], code) if s else []
+    current = queries.detailed_current(c, s[0], code) if s else None
     # the two tables of ГРАО for one date can differ; both are shown, neither is corrected with the other
     difference = current - item['v'] if current is not None and item['v'] is not None and s[0] == d['y'] else None
-    return render(request, 'municipality.html', nav='Общини', ref=ref, d=d, item=item, places=places,
+    return render(request, c, 'municipality.html', nav='Общини', ref=ref, d=d, item=item, places=places,
                   detail=dict(date=s[0], url=s[1]) if s else None, difference=difference)
 
 
-@app.get('/api/series.json')
-@app.get('/api/obshtini/{code}.json')
-def series(code: str | None = None):
+def series_data(c, code=None):
     if code:
-        known(code)
-    with queries.connect() as c:
-        rows = queries.series(c, code)
+        known(c, code)
+    rows = queries.series(c, code)
     result = [dict(name='Постоянен адрес', color='#121417', points=[[str(r[0]), r[3]] for r in rows]),
               dict(name='Настоящ адрес', color='#0b7a5e', points=[[str(r[0]), r[4]] for r in rows])]
     return {'unit': 'регистрирани лица', 'series': result,
             'sources': [{'date': str(r[0]), 'url': r[2], 'kind': queries.OLD_KIND[r[1]]} for r in rows]}
+
+
+@app.get('/api/series.json')
+@app.get('/api/obshtini/{code}.json')
+def series(code: str | None = None, c=Depends(snap)):
+    return series_data(c, code)
 
 
 def csv_response(rows):
@@ -157,60 +179,56 @@ def csv_response(rows):
 
 
 @app.get('/export.csv')
-def export(m: str = 'current', l: str = 'obshtini', y: str | None = None, code: str | None = None):
+def export(m: str = 'current', l: str = 'obshtini', y: str | None = None, code: str | None = None, c=Depends(snap)):
     if code:
-        known(code)
-        with queries.connect() as c:
-            s = queries.latest(c, 'detailed')
-            if not s:
-                return csv_response([['Няма данни']])
-            return csv_response([['Населено място / ред на ГРАО', 'ЕКАТТЕ', 'Постоянен адрес', 'Настоящ адрес', 'Дата', 'Източник']] + [
-                [r['name'], r['ekatte'] or '', r['permanent'], r['current'], s[0], s[1]] for r in queries.places(c, s[0], code)])
-    d = mapdata(m, l, y)
+        known(c, code)
+        s = queries.latest(c, 'detailed')
+        if not s:
+            return csv_response([['Няма данни']])
+        return csv_response([['Населено място / ред на ГРАО', 'ЕКАТТЕ', 'Постоянен адрес', 'Настоящ адрес', 'Дата', 'Източник']] + [
+            [r['name'], r['ekatte'] or '', r['permanent'], r['current'], s[0], s[1]] for r in queries.places(c, s[0], code)])
+    d = mapdata(c, m, l, y)
     return csv_response([[d['single'], d['title'], 'Дата', 'Източник']] + [[r['name'], r['v'], d['y'], d['url']] for r in d['items']])
 
 
 @app.get('/history.csv')
-def history_csv(code: str | None = None):
-    d = series(code)
+def history_csv(code: str | None = None, c=Depends(snap)):
+    d = series_data(c, code)
     return csv_response([['Дата', 'Постоянен адрес', 'Настоящ адрес', 'Източник']] + [
         [a[0], a[1], b[1], s['url']] for a, b, s in zip(d['series'][0]['points'], d['series'][1]['points'], d['sources'])])
 
 
-def source_rows():
-    with queries.connect() as c:
-        return [dict(url=u, last_read=t, last_ok=ok, status=s, error=e, rows=n) for u, t, ok, s, e, n in queries.source_state(c)]
+def source_rows(c):
+    return [dict(url=u, last_read=t, last_ok=ok, status=s, error=e, rows=n) for u, t, ok, s, e, n in queries.source_state(c)]
 
 
 @app.get('/sources', response_class=HTMLResponse)
-def source_page(request: Request):
-    with queries.connect() as c:
-        s = queries.latest(c, 'detailed')
-        unmatched = queries.places(c, s[0], unmatched=True) if s else []
-    return render(request, 'sources.html', nav='Източници', rows=source_rows(), unmatched=unmatched,
+def source_page(request: Request, c=Depends(snap)):
+    s = queries.latest(c, 'detailed')
+    unmatched = queries.places(c, s[0], unmatched=True) if s else []
+    return render(request, c, 'sources.html', nav='Източници', rows=source_rows(c), unmatched=unmatched,
                   detail=dict(date=s[0], url=s[1]) if s else None)
 
 
 @app.get('/how', response_class=HTMLResponse)
-def how(request: Request):
-    return render(request, 'how.html', nav='')
+def how(request: Request, c=Depends(snap)):
+    return render(request, c, 'how.html', nav='')
 
 
 @app.get('/sources.csv')
-def source_csv():
+def source_csv(c=Depends(snap)):
     return csv_response([['Източник', 'Последно четене', 'Статус', 'Проблем', 'Редове']] + [
-        [r['url'], r['last_read'], r['status'], r['error'], r['rows']] for r in source_rows()])
+        [r['url'], r['last_read'], r['status'], r['error'], r['rows']] for r in source_rows(c)])
 
 
 @app.get('/unmatched.csv')
-def unmatched_csv():
-    with queries.connect() as c:
-        s = queries.latest(c, 'detailed')
-        return csv_response([['Община', 'Ред на ГРАО']] + ([[r['municipality'], r['name']] for r in queries.places(c, s[0], unmatched=True)] if s else []))
+def unmatched_csv(c=Depends(snap)):
+    s = queries.latest(c, 'detailed')
+    return csv_response([['Община', 'Ред на ГРАО']] + ([[r['municipality'], r['name']] for r in queries.places(c, s[0], unmatched=True)] if s else []))
 
 
 @app.get('/sources.json')
-def source_json():
+def source_json(c=Depends(snap)):
     return [dict(source=r['url'], label='ГРАО' if 'grao.bg' in r['url'] else 'ЕКАТТЕ',
                  last_ok=r['last_ok'].isoformat() if r['last_ok'] else None, status=r['status'], rows=r['rows'], url=r['url'])
-            for r in source_rows()]
+            for r in source_rows(c)]

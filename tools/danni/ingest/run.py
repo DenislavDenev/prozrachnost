@@ -1,9 +1,12 @@
 """The steps of the shared foundation: python -m ingest.run --step <step>
 
-    migrate    the schemas ops, core, api_v1 and the registers; the licence list
+    migrate    the schemas ops, core, pub, api_v1 and the registers; the licence list
     place      EKATTE from the archive of Наблюдател and the municipality reference -> core.nuts, oblast, municipality, settlement
     org        the organisations with a valid ЕИК from Тендер -> core.org
     check      every quality rule of the foundation
+
+Every step but migrate and freshness ends with the rules and, when they hold, a publication of the shared part of
+the serving layer (pub.*): the places and the catalogue of the datasets.
     freshness  the list of problems, empty when all is well
 """
 import argparse
@@ -183,16 +186,23 @@ def org(conn, r, tender_dsn=TENDER_DSN):
 
 
 def licences(conn):
-    """db/licences.toml is the only thing that makes a dataset distributable. A dataset that left the list is closed."""
+    """db/licences.toml is the only thing that lets a dataset be shown or handed out. `display` puts it in the
+    serving layer (the pages); `distribute` also lets it into the API. A dataset that left the list is closed."""
     listed = tomllib.loads((ROOT / 'db' / 'licences.toml').read_text(encoding='utf-8')).get('licence', [])
+    show = [x['dataset'] for x in listed if x.get('display') or x.get('distribute')]
+    give = [x['dataset'] for x in listed if x.get('distribute')]
     with conn.transaction():
-        conn.execute('UPDATE core.dataset SET is_distributable = false WHERE is_distributable AND NOT (dataset = ANY(%s))',
-                     ([x['dataset'] for x in listed],))
+        conn.execute('UPDATE core.dataset SET is_distributable = false WHERE is_distributable AND NOT (dataset = ANY(%s))', (give,))
+        conn.execute('UPDATE core.dataset SET is_displayable = false WHERE is_displayable AND NOT (dataset = ANY(%s))', (show,))
         for x in listed:
-            done = conn.execute('''UPDATE core.dataset SET is_distributable = true, licence_checked_on = %s
-                WHERE dataset = %s AND personal_data <> 'names' RETURNING 1''', (x['checked_on'], x['dataset'])).fetchone()
+            if x['dataset'] in give:
+                done = conn.execute('''UPDATE core.dataset SET is_displayable = true, is_distributable = true, licence_checked_on = %s
+                    WHERE dataset = %s AND personal_data <> 'names' RETURNING 1''', (x['checked_on'], x['dataset'])).fetchone()
+            else:
+                done = conn.execute('''UPDATE core.dataset SET is_displayable = true, licence_checked_on = %s
+                    WHERE dataset = %s AND personal_data <> 'names' RETURNING 1''', (x['checked_on'], x['dataset'])).fetchone()
             if not done and conn.execute('SELECT 1 FROM core.dataset WHERE dataset = %s', (x['dataset'],)).fetchone():
-                raise RuntimeError(f"{x['dataset']} holds names of persons and cannot be distributed")
+                raise RuntimeError(f"{x['dataset']} holds names of persons: it can be neither shown nor distributed")
     return len(listed)
 
 
@@ -213,7 +223,10 @@ def main(argv=None):
                         place(conn, r)
                     elif a.step == 'org':
                         org(conn, r)
+                    licences(conn)   # a tool may have registered a dataset since the last run
                     problems = pipeline.run_checks(conn, r)
+                    if not problems:   # nothing is published past a failed rule
+                        problems = pipeline.publish(conn, r, ROOT).problems
                     result = {'step': a.step, 'stats': r.stats, 'problems': problems}
             except pipeline.Busy as e:
                 result = {'step': a.step, 'status': 'skipped', 'note': str(e)}

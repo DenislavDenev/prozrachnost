@@ -1,13 +1,29 @@
-# The only place that says a dataset may be distributed through the public API.
-# Each entry follows a source that the licence list of the project marks as allowed. Applied by
-# `python -m ingest.run --step migrate` of danni; a tool cannot set this for itself.
-#
-# [[licence]]
-# dataset = "byudzhet.kfp"
-# checked_on = 2026-10-02
-# note = "data.egov.bg, terms 1 (CC0)"
+# The only place that says a dataset may be shown or handed out. Two rights, the second stricter:
+#   display = true      the dataset may be in the serving layer: on our pages, with a link to its source
+#   distribute = true   it may also be handed out through the public API and as files (implies display)
+# Each entry follows the licence list of the project. Applied by every step of danni; a tool cannot set this.
+# A dataset that is not listed here is in neither the serving layer nor the API.
 
 [[licence]]
 dataset = "danni.catalog"
 checked_on = 2026-11-10
+distribute = true
 note = "our own description of the datasets, CC BY 4.0"
+
+[[licence]]
+dataset = "danni.ekatte"
+checked_on = 2026-10-02
+display = true
+note = "public information of a state body, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "danni.municipality"
+checked_on = 2026-10-02
+display = true
+note = "derived from EKATTE; follows it"
+
+[[licence]]
+dataset = "naselenie.grao"
+checked_on = 2026-10-02
+display = true
+note = "public information of a state body, no licence stated: shown with a link to the source, not handed out"

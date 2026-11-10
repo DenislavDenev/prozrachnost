@@ -7,6 +7,7 @@ the copies, so a tool still deploys from its own folder. It writes the shared le
     save_raw()       the answer of the source, stored once by sha256       ops.raw_file, ops.fetch
     load()           one resource into the landing zone, as one batch      ops.load, ops.hold, ops.change_log
     run_checks()     the quality rules, which are rows, not code           ops.check_rule, ops.check_result
+    publish()        the serving layer, one transaction with a version     pub.publication, pub.*, pub_<tool>.*
     freshness()      the list of problems, empty when all is well          ops.freshness
     migrate()        ordered SQL files, each applied once                  ops.schema_migration
 """
@@ -404,10 +405,12 @@ def record_check(conn, r, name, expected, actual, detail=None):
 
 
 def run_checks(conn, r, kinds=None):
-    """Run every active rule of the tool that has SQL. Returns the problems of the gating rules that failed."""
+    """Run every active rule of the tool that has SQL. Returns the problems of the gating rules that failed.
+    Rules of kind `publish` are left to publish(): they judge the new serving content inside its transaction."""
     problems = []
     rules = conn.execute('''SELECT name, title_bg, sql, tolerance, gating FROM ops.check_rule
-        WHERE tool = %s AND is_active AND sql IS NOT NULL AND (%s::text[] IS NULL OR kind = ANY(%s)) ORDER BY name''',
+        WHERE tool = %s AND is_active AND sql IS NOT NULL AND kind <> 'publish'
+          AND (%s::text[] IS NULL OR kind = ANY(%s)) ORDER BY name''',
                          (r.tool, kinds, kinds)).fetchall()
     for name, title, sql, tolerance, gating in rules:
         expected = actual = detail = None
@@ -423,6 +426,87 @@ def run_checks(conn, r, kinds=None):
         if not ok and gating:
             problems.append(f'{title}: очаквано {expected}, получено {actual}' + (f' ({detail})' if detail else ''))
     return problems
+
+
+# ---------------------------------------------------------------- publication
+
+@dataclasses.dataclass(frozen=True)
+class Published:
+    publication_id: int | None   # the new version; None when nothing changed or the publication was refused
+    changes: dict                # {table: {'added': n, 'removed': n}}
+    problems: list               # why it was refused; empty otherwise
+
+
+class _Refused(Exception):
+    pass
+
+
+def publish(conn, r, root):
+    """Bring the serving layer of a tool up to its clean tables, as one transaction with a version number.
+
+    <root>/db/publish/NN_<schema>.<table>.sql each hold one SELECT that yields the rows of a serving table
+    (schema pub or pub_<tool>) from the ingest side. The table is brought to exactly those rows: what is not
+    in the SELECT is removed, what is new is added, an unchanged row is not touched.
+
+    The transaction commits only when the serving layer breaks none of its guards (core.serving_violation) and
+    every rule of kind `publish` of the tool holds against the new content. Otherwise everything rolls back and
+    readers keep the version they had. Readers never see a mix: they see the old version or the new one.
+    A publication that changes nothing gets no number, so the version moves only when the content does.
+    """
+    files = sorted((Path(root) / 'db' / 'publish').glob('*.sql'))
+    rules = conn.execute('''SELECT name, title_bg, sql, tolerance FROM ops.check_rule
+        WHERE tool = %s AND is_active AND kind = 'publish' AND sql IS NOT NULL ORDER BY name''', (r.tool,)).fetchall()
+    changes, results, problems, publication_id = {}, [], [], None
+    try:
+        with conn.transaction():
+            # one publication at a time for the whole database: the numbers commit in their own order
+            conn.execute('SELECT pg_advisory_xact_lock(%s)', (_lock_key('pz-publish'),))
+            conn.execute('SET CONSTRAINTS ALL DEFERRED')
+            for f in files:
+                target = f.stem.split('_', 1)[1]
+                schema, table = target.split('.')
+                if schema != 'pub' and not schema.startswith('pub_'):
+                    raise RuntimeError(f'{f.name}: {schema} is not a serving schema')
+                key = [x[0] for x in conn.execute('''SELECT a.attname FROM pg_index i
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE i.indrelid = %s::regclass AND i.indisprimary''', (target,))]
+                if not key:
+                    raise RuntimeError(f'{target} has no primary key')
+                conn.execute(f'CREATE TEMP TABLE pz_publish (LIKE {target}) ON COMMIT DROP')
+                conn.execute(f'INSERT INTO pz_publish {f.read_text(encoding="utf-8")}')
+                removed = conn.execute(
+                    f'DELETE FROM {target} t USING (SELECT * FROM {target} EXCEPT SELECT * FROM pz_publish) d WHERE '
+                    + ' AND '.join(f't.{c} = d.{c}' for c in key)).rowcount
+                added = conn.execute(f'INSERT INTO {target} SELECT * FROM pz_publish EXCEPT SELECT * FROM {target}').rowcount
+                conn.execute('DROP TABLE pz_publish')
+                if removed or added:
+                    changes[target] = {'added': added, 'removed': removed}
+            conn.execute('SET CONSTRAINTS ALL IMMEDIATE')   # a broken link inside the layer fails here, not at commit
+            for relation, reason in conn.execute('SELECT relation, reason FROM core.serving_violation ORDER BY 1'):
+                problems.append(f'{relation}: {reason}')
+            for name, title, sql, tolerance in rules:
+                expected, actual = conn.execute(sql).fetchone()
+                ok = expected is not None and actual is not None and abs(actual - expected) <= tolerance
+                results.append((name, expected, actual, ok))
+                if not ok:
+                    problems.append(f'{title}: очаквано {expected}, получено {actual}')
+            if problems:
+                raise _Refused()
+            if changes:
+                publication_id = conn.execute('''INSERT INTO pub.publication (tool, code_sha, run_id, changes)
+                    VALUES (%s, (SELECT code_sha FROM ops.run WHERE run_id = %s), %s, %s) RETURNING publication_id''',
+                                              (r.tool, r.run_id, r.run_id, Jsonb(changes))).fetchone()[0]
+    except _Refused:
+        changes = {}
+    except psycopg.Error as e:   # a broken link, a duplicate key, a rule that cannot run: nothing is published
+        changes, problems = {}, [f'публикуването е отказано: {str(e).splitlines()[0]}']
+    for name, expected, actual, ok in results:   # written outside the transaction, so a refusal leaves its evidence
+        conn.execute('''INSERT INTO ops.check_result (run_id, tool, name, expected, actual, ok)
+            VALUES (%s,%s,%s,%s,%s,%s)''', (r.run_id, r.tool, name, expected, actual, ok))
+    r.stats['publication'] = publication_id
+    if problems:
+        r.stats['publication_refused'] = True
+    return Published(publication_id, changes, problems)
 
 
 # ---------------------------------------------------------------- freshness and the report
