@@ -5,7 +5,8 @@ app.eop.bg/today/{tenderId} shows every participant with ЕИК, time and price;
 service.eop.bg (GetPublicTenderParticipation, and GetPublishedLots to number the lots). This lane
 reads that answer once per procedure after its deadline, again when the procedure gets a new record
 (a contract, a change), weekly while prices are still closed and monthly for the last 90 days. At most
-two requests per second on one kept-alive connection; every raw answer is kept gzipped with its sha256.
+two requests per second on one kept-alive connection; every raw answer is kept gzipped in the register of raw
+files (ops.raw_file) and lands as one load of the shared module (pipeline.load).
 
 The participant of an offer is what the page shows (OfferName), not the account that submitted it
 (OrganizationName): for a consortium (ДЗЗД) or a foreign company's branch these differ, and the one who
@@ -26,7 +27,6 @@ must not come back empty where the contracts report offers. A failed canary or s
 reads stop and an alert goes to Discord (n8n); nothing is lost, the queue waits.
 """
 import datetime as dt
-import gzip
 import html
 import hashlib
 import http.client
@@ -35,6 +35,7 @@ import re
 import time
 
 from .config import DATA, USER_AGENT
+from . import db
 from .db import log_change
 from .normalize import clean_name, eik_valid, name_norm
 
@@ -218,11 +219,16 @@ def fetch(tender_id, contracts=True):
     cl = json.loads(call("GetPublishedContractListItems", tenderId=tender_id) or b"null") if contracts else None
     ann = json.loads(call("GetPublicTenderAnnouncementsByTenderId", tenderId=tender_id) or b"[]") or []
     det = sanitize_details(json.loads(call("GetPublishedTenderDetails", tenderId=tender_id, cultureId=CULTURE_BG) or b"null"))
-    blob = json.dumps({"participation": part, "lots": lots, "contracts": cl, "announcements": ann, "details": det},
-                      ensure_ascii=False).encode()
+    kept = {"participation": part, "lots": lots, "contracts": cl, "announcements": ann, "details": det}
+    return parsed(tender_id, kept), json.dumps(kept, ensure_ascii=False).encode()
+
+
+def parsed(tender_id, kept):
+    """The rows of one kept answer (the raw copy as fetch() wrote it; the older ones have no notices and details)."""
+    part, lots = kept.get("participation"), kept.get("lots") or []
     titles = [(l.get("OrderNumber") or 0, re.sub(r"^\s*\d+\s*\.\s*", "", l.get("TenderName") or "").strip() or None) for l in lots]
-    return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(cl), "lots": titles,
-            "announcements": parse_announcements(ann), "details": parse_details(det)}, blob
+    return {"offers": parse(tender_id, part, lots) if part else [], "contract_lots": parse_contracts(kept.get("contracts")), "lots": titles,
+            "announcements": parse_announcements(kept.get("announcements") or []), "details": parse_details(kept.get("details"))}
 
 
 # the buyer's contact person, the authors and storage names of documents: never kept, not even in the raw copy
@@ -333,53 +339,61 @@ def offer_diff(old, new):
     return out
 
 
+def rows_of(got):
+    """What one answer says, as pipeline.load compares two reads: one row per offer, so an answer with fewer offers
+    than we hold is held, and one row for everything else the page shows, so any other change is a new load."""
+    out = {f"offer/{r['lot_no']}/{r['round']}/{r['offer_id']}": r for r in got["offers"]}
+    out["page"] = {k: got.get(k) for k in ("contract_lots", "lots", "announcements", "details")}
+    return out
+
+
 def store(conn, tender_id, got, blob):
-    """Keep one answer. Returns 'stored', or 'held' when it has fewer offers than we hold and no earlier
-    read has confirmed it yet (it is read again in a day; ours stays until then)."""
+    """Keep one answer: the raw bytes in the register of files, the rows as one load of the shared module.
+    Returns 'stored', or 'held' when it has fewer offers than we hold and no earlier read has confirmed it yet
+    (it is read again in a day; ours stays until then)."""
     rows = got["offers"]
     now = dt.datetime.now(dt.timezone.utc)
     sha = hashlib.sha256(blob).hexdigest()
-    d = RAW / str(tender_id)
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{now:%Y%m%d%H%M}.json.gz").write_bytes(gzip.compress(blob))
-    old = [dict(zip(("lot_no", "round", "offer_id", "bidder_name", "bidder_eik", "price", "price_opened"), r)) for r in conn.execute(
-        "SELECT lot_no, round, offer_id, bidder_name, bidder_eik, price, price_opened FROM tender_src.eopsvc_offer WHERE tender_id = %s",
-        (tender_id,)).fetchall()]
-    held = conn.execute("SELECT held_sha FROM tender_src.eopsvc_queue WHERE tender_id = %s", (tender_id,)).fetchone()
-    mark = hashlib.sha256(json.dumps(offer_set(rows)).encode()).hexdigest()
-    with conn.transaction():
-        if old and len(rows) < len(old):
-            if not held or held[0] != mark:
-                log_change(conn, "offers", tender_id, "offers", len(old), len(rows), "held")
-                conn.execute("""UPDATE tender_src.eopsvc_queue SET status = 'pending', reason = 'confirm', next_at = now() + interval '1 day',
-                    held_sha = %s, attempts = 0, last_error = NULL WHERE tender_id = %s""", (mark, tender_id))
-                return "held"
-            log_change(conn, "offers", tender_id, "offers", len(old), len(rows), "confirmed")
-        if old:
-            for ref, field, o, n in offer_diff(old, rows):
-                log_change(conn, "offers", f"{tender_id}/{ref}", field, o, n, "rewritten")
+    file = db.keep_raw(conn, "offers", tender_id, blob, RAW / "store", f"{tender_id}.json", media_type="application/json")
+
+    def write(conn, load_id, _):
+        old = [dict(zip(("lot_no", "round", "offer_id", "bidder_name", "bidder_eik", "price", "price_opened"), r)) for r in conn.execute(
+            "SELECT lot_no, round, offer_id, bidder_name, bidder_eik, price, price_opened FROM tender_src.eopsvc_offer WHERE tender_id = %s",
+            (tender_id,)).fetchall()]
+        for ref, field, o, n in offer_diff(old, rows) if old else ():
+            log_change(conn, "offers", f"{tender_id}/{ref}", field, o, n, "rewritten")
         conn.execute("DELETE FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tender_id,))
-        write_offers(conn, rows, now)
+        write_offers(conn, rows, now, load_id)
         conn.execute("DELETE FROM tender_src.eopsvc_contract_lot WHERE tender_id = %s", (tender_id,))
         conn.execute("DELETE FROM tender_src.eopsvc_lot WHERE tender_id = %s", (tender_id,))
         for cid, lot in {c: l for l, c in got["contract_lots"]}.items():  # one lot per contract
-            conn.execute("INSERT INTO tender_src.eopsvc_contract_lot VALUES (%s, %s, %s)", (tender_id, lot, cid))
+            conn.execute("INSERT INTO tender_src.eopsvc_contract_lot (tender_id, lot_no, contract_id, load_id) VALUES (%s, %s, %s, %s)",
+                         (tender_id, lot, cid, load_id))
         for lot, title in dict(got["lots"]).items():
-            conn.execute("INSERT INTO tender_src.eopsvc_lot VALUES (%s, %s, %s)", (tender_id, lot, title))
+            conn.execute("INSERT INTO tender_src.eopsvc_lot (tender_id, lot_no, title, load_id) VALUES (%s, %s, %s, %s)",
+                         (tender_id, lot, title, load_id))
         keep(conn, "announcement", tender_id, [{"id": a, "created_at": at, "title": t} for a, at, t in got.get("announcements", [])],
-             ("created_at", "title"), now)
+             ("created_at", "title"), now, load_id)
         det = got.get("details")
         if det:
-            conn.execute("""INSERT INTO tender_src.eopsvc_detail VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT (tender_id) DO UPDATE SET
+            conn.execute("""INSERT INTO tender_src.eopsvc_detail (tender_id, offers_from, offers_until, opening_at, prices_opening_at,
+                    parent_tender_id, linked, fetched_at, load_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tender_id) DO UPDATE SET
                 offers_from = EXCLUDED.offers_from, offers_until = EXCLUDED.offers_until, opening_at = EXCLUDED.opening_at,
                 prices_opening_at = EXCLUDED.prices_opening_at, parent_tender_id = EXCLUDED.parent_tender_id, linked = EXCLUDED.linked,
-                fetched_at = EXCLUDED.fetched_at""", (tender_id, *[det["detail"][k] for k in DETAIL_COLS],
-                                                      json.dumps(det["detail"]["linked"], ensure_ascii=False) if det["detail"]["linked"] else None, now))
-            keep(conn, "publication", tender_id, det["publications"], ("form_type", "ted_number", "sent_at", "published_at"), now)
-            keep(conn, "appeal", tender_id, det["appeals"], APPEAL_COLS, now, key="register_id")
-            keep(conn, "document", tender_id, det["documents"], ("name", "size", "created_at"), now)
-        conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0, "
-                     "held_sha = NULL WHERE tender_id = %s", (now, sha, tender_id))
+                fetched_at = EXCLUDED.fetched_at, load_id = EXCLUDED.load_id""", (tender_id, *[det["detail"][k] for k in DETAIL_COLS],
+                                                      json.dumps(det["detail"]["linked"], ensure_ascii=False) if det["detail"]["linked"] else None, now, load_id))
+            keep(conn, "publication", tender_id, det["publications"], ("form_type", "ted_number", "sent_at", "published_at"), now, load_id)
+            keep(conn, "appeal", tender_id, det["appeals"], APPEAL_COLS, now, load_id, key="register_id")
+            keep(conn, "document", tender_id, det["documents"], ("name", "size", "created_at"), now, load_id)
+
+    done = db.land(conn, "offers", tender_id, rows_of(got), write, file)
+    if done.status == "held":
+        conn.execute("""UPDATE tender_src.eopsvc_queue SET status = 'pending', reason = 'confirm', next_at = now() + interval '1 day',
+            held_sha = 'rows', attempts = 0, last_error = NULL WHERE tender_id = %s""", (tender_id,))
+        return "held"
+    conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'done', fetched_at = %s, sha256 = %s, last_error = NULL, attempts = 0, "
+                 "held_sha = NULL WHERE tender_id = %s", (now, sha, tender_id))
     return "stored"
 
 
@@ -394,10 +408,10 @@ def _same(a, b):
     return a == b or (a in (None, [], "") and b in (None, [], ""))
 
 
-def keep(conn, table, tender_id, rows, cols, now, key="id"):
+def keep(conn, table, tender_id, rows, cols, now, load_id=None, key="id"):
     """Rows of tender_src.eopsvc_<table> for one procedure, never deleted on one answer: new ones are added, changed fields
     are updated and logged, rows the answer no longer lists get gone_at (logged once) and stay; a row that comes
-    back loses its gone_at. The first read of a procedure logs nothing."""
+    back loses its gone_at. The first read of a procedure logs nothing. A row carries the load that last wrote it."""
     held = {r[0]: r[1:] for r in conn.execute(f"SELECT {key}, {', '.join(cols)}, gone_at FROM tender_src.eopsvc_{table} WHERE tender_id = %s",
                                                  (tender_id,)).fetchall()}
     first = not held
@@ -407,16 +421,16 @@ def keep(conn, table, tender_id, rows, cols, now, key="id"):
         seen.add(k)
         vals = [r[c] for c in cols]
         if k not in held:
-            conn.execute(f"INSERT INTO tender_src.eopsvc_{table} (tender_id, {key}, {', '.join(cols)}) VALUES (%s, %s{', %s' * len(cols)})",
-                         (tender_id, k, *vals))
+            conn.execute(f"INSERT INTO tender_src.eopsvc_{table} (tender_id, {key}, {', '.join(cols)}, load_id) VALUES (%s, %s{', %s' * len(cols)}, %s)",
+                         (tender_id, k, *vals, load_id))
             if not first:
                 log_change(conn, f"eop-{table}", f"{tender_id}/{k}", None, None, r.get("title") or r.get("name") or k, "new-record")
             continue
         old, gone = held[k][:-1], held[k][-1]
         diff = [(c, o, n) for c, o, n in zip(cols, old, vals) if not _same(o, n)]
         if diff or gone:
-            conn.execute(f"UPDATE tender_src.eopsvc_{table} SET {', '.join(f'{c} = %s' for c in cols)}, gone_at = NULL WHERE tender_id = %s AND {key} = %s",
-                         (*vals, tender_id, k))
+            conn.execute(f"UPDATE tender_src.eopsvc_{table} SET {', '.join(f'{c} = %s' for c in cols)}, gone_at = NULL, load_id = %s WHERE tender_id = %s AND {key} = %s",
+                         (*vals, load_id, tender_id, k))
             for c, o, n in diff:
                 log_change(conn, f"eop-{table}", f"{tender_id}/{k}", c, o, n, "rewritten")
             if gone:
@@ -427,27 +441,24 @@ def keep(conn, table, tender_id, rows, cols, now, key="id"):
             log_change(conn, f"eop-{table}", f"{tender_id}/{k}", None, k, None, "gone")
 
 
-def write_offers(conn, rows, now):
+def write_offers(conn, rows, now, load_id=None):
     with conn.cursor().copy("COPY tender_src.eopsvc_offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, submitter_name, submitter_eik, "
-                            "consortium, submitted_at, price, price_opened, fetched_at) FROM STDIN") as cp:
+                            "consortium, submitted_at, price, price_opened, fetched_at, load_id) FROM STDIN") as cp:
         for r in rows:
             cp.write_row([r["tender_id"], r["lot_no"], r["round"], r["offer_id"], r["bidder_name"], r["bidder_eik"], r.get("submitter_name"),
                           r.get("submitter_eik"), json.dumps(r["consortium"], ensure_ascii=False) if r["consortium"] else None,
-                          r["submitted_at"], r["price"], r["price_opened"], now])
+                          r["submitted_at"], r["price"], r["price_opened"], now, load_id])
 
 
 def reparse(conn, stats):
     """Rebuild tender_src.eopsvc_offer from the raw answers we hold, without asking ЦАИС ЕОП again, after a change of the
-    parsing rules (27.09.2026: participant instead of the submitting account). Only the answer whose sha256 is the
-    one the queue stored is used; every changed name or ЕИК goes to ops.change_log as 'reparsed'."""
+    parsing rules (27.09.2026: participant instead of the submitting account). Only the answer behind the current
+    load is used (a held one is not ours yet); every changed name or ЕИК goes to ops.change_log as 'reparsed'."""
     stats.update(procedures=0, changed=0, missing_raw=0)
-    for tid, sha in conn.execute("SELECT tender_id, sha256 FROM tender_src.eopsvc_queue WHERE status = 'done' AND sha256 IS NOT NULL").fetchall():
-        blob = None
-        for f in sorted((RAW / str(tid)).glob("*.json.gz"), reverse=True):
-            b = gzip.decompress(f.read_bytes())
-            if hashlib.sha256(b).hexdigest() == sha:
-                blob = b
-                break
+    for tid, load_id in conn.execute("""SELECT q.tender_id, l.load_id FROM tender_src.eopsvc_queue q
+            LEFT JOIN ops.load l ON l.tool = 'tender' AND l.source = 'offers' AND l.ref = q.tender_id::text AND l.is_current
+            WHERE q.status = 'done' AND q.sha256 IS NOT NULL ORDER BY 1""").fetchall():
+        blob = db.raw_of(conn, "offers", tid) if load_id else None
         if blob is None:
             stats["missing_raw"] += 1
             continue
@@ -466,7 +477,7 @@ def reparse(conn, stats):
                         stats["changed"] += 1
             fetched = conn.execute("SELECT min(fetched_at) FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tid,)).fetchone()[0]
             conn.execute("DELETE FROM tender_src.eopsvc_offer WHERE tender_id = %s", (tid,))
-            write_offers(conn, rows, fetched)
+            write_offers(conn, rows, fetched, load_id)
         stats["procedures"] += 1
 
 

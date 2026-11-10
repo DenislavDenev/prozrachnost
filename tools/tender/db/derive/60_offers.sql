@@ -27,8 +27,8 @@ CREATE INDEX ON company (upper(name));
 
 CREATE TABLE offer AS
 SELECT t.unp, o.tender_id, o.lot_no, o.round, o.offer_id, o.bidder_name, o.bidder_eik, o.submitter_name, o.submitter_eik, o.consortium,
-       o.submitted_at, o.price, o.price_opened, t.currency,
-       CASE upper(coalesce(t.currency, 'BGN')) WHEN 'EUR' THEN o.price WHEN 'BGN' THEN round(o.price / 1.95583, 2) END AS price_eur,
+       o.submitted_at, o.price::numeric(20,2) AS price, o.price_opened, t.currency,
+       (CASE upper(coalesce(t.currency, 'BGN')) WHEN 'EUR' THEN o.price WHEN 'BGN' THEN round(o.price / 1.95583, 2) END)::numeric(20,2) AS price_eur,
        coalesce(co.key, byname.key) AS company_key,
        EXISTS (SELECT 1 FROM contract c JOIN contract_supplier s ON s.contract_id = c.id
                LEFT JOIN contract_lot k ON k.contract_id = c.id

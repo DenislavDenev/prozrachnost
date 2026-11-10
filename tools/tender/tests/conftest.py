@@ -79,3 +79,23 @@ def conn(test_database):
     with db.connect(autocommit=True) as c:
         empty(c)
         yield c
+
+
+def landed(c):
+    """Rows a test wrote into the landing zone by hand get what a reader would have given them: a load, and for a
+    file of the open data its place in the register of raw files."""
+    import tempfile
+    from ingest import db
+    tmp = Path(tempfile.mkdtemp())
+    for day, kind in c.execute("SELECT day, kind FROM tender_src.eop_file WHERE load_id IS NULL").fetchall():
+        file = db.keep_raw(c, "eop-file", f"{day}/{kind}", f"[] {day} {kind}".encode(), tmp, "file.json", compress=False)
+        db.land(c, "eop-file", f"{day}/{kind}", {"empty": True},
+                lambda conn, load_id, rows: conn.execute("UPDATE tender_src.eop_file SET load_id = %s, raw_file_id = %s WHERE day = %s AND kind = %s",
+                                                         (load_id, file.raw_file_id, day, kind)), file)
+    tables = [t for t, in c.execute("""SELECT table_name FROM information_schema.columns WHERE table_schema = 'tender_src'
+        AND column_name = 'load_id' AND table_name <> 'eop_file' ORDER BY 1""")]
+    if any(c.execute(f"SELECT EXISTS (SELECT FROM tender_src.{t} WHERE load_id IS NULL)").fetchone()[0] for t in tables):
+        def write(conn, load_id, rows):
+            for t in tables:
+                conn.execute(f"UPDATE tender_src.{t} SET load_id = %s WHERE load_id IS NULL", (load_id,))
+        db.land(c, "tr", f"test/{id(tmp)}", {"by hand": True}, write)

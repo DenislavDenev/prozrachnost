@@ -26,15 +26,15 @@ CREATE TABLE buyer (
 
 CREATE TABLE tender (
   unp text PRIMARY KEY, tender_id text, buyer_eik text, subject text, procedure_type text,
-  cpv text, cpv_description text, contract_type text, estimated_value numeric, currency text,
-  estimated_eur numeric, is_eu_funded boolean, european_program text, lots_count int, submission_deadline timestamp,
-  published_at timestamp, notice_type text, is_cancelled boolean, execution_nuts text,
+  cpv text, cpv_description text, contract_type text, estimated_value numeric(20,2), currency text,
+  estimated_eur numeric(20,2), is_eu_funded boolean, european_program text, lots_count int, submission_deadline timestamptz,
+  published_at timestamptz, notice_type text, is_cancelled boolean, execution_nuts text,
   source_day date, synthetic boolean NOT NULL,
   state text  -- contracted | cancelled | unawarded | open | no_contract (normalize.py)
 );
 
 CREATE TABLE lot (
-  unp text, lot_no int, title text, estimated_value numeric, currency text, cpv text, estimated_eur numeric,
+  unp text, lot_no int, title text, estimated_value numeric(20,2), currency text, cpv text, estimated_eur numeric(20,2),
   status text,  -- as tender.state, per lot
   PRIMARY KEY (unp, lot_no)
 );
@@ -43,12 +43,12 @@ CREATE TABLE contract (
   id text PRIMARY KEY, source text NOT NULL, source_day date NOT NULL, notice_id text,
   unp text, contract_number text, lot_no int, buyer_eik text, supplier_display text,
   awarded_to_group boolean, subject text, tender_name text, procedure_type text, cpv text,
-  cpv_description text, contract_type text, contract_date date, published_at timestamp,
+  cpv_description text, contract_type text, contract_date date, published_at timestamptz,
   effective_date date, date_basis text,
-  value_initial numeric, value_current numeric, value_current_currency text, currency text, fx_rate numeric,
-  value_initial_eur numeric, value_current_eur numeric, amount_eur numeric,
+  value_initial numeric(20,2), value_current numeric(20,2), value_current_currency text, currency text, fx_rate numeric,
+  value_initial_eur numeric(20,2), value_current_eur numeric(20,2), amount_eur numeric(20,2),
   value_flag text NOT NULL, date_flag text NOT NULL,
-  estimated_value numeric, estimate_currency text, estimated_eur numeric, estimate_ratio numeric,
+  estimated_value numeric(20,2), estimate_currency text, estimated_eur numeric(20,2), estimate_ratio numeric,
   offers_count int, sme_offers_count int, disqualified_offers_count int,
   is_eu_funded boolean, european_program text, is_framework boolean NOT NULL,
   framework_contract text, linked_tenders text, direct_award_justification text,
@@ -62,33 +62,33 @@ CREATE TABLE contract_supplier (
 );
 
 CREATE TABLE amendment (
-  contract_id text NOT NULL, published_at timestamp, source_day date, last_value numeric,
-  current_value numeric, difference numeric, currency text, reason text, description text
+  contract_id text NOT NULL, published_at timestamptz, source_day date, last_value numeric(20,2),
+  current_value numeric(20,2), difference numeric(20,2), currency text, reason text, description text
 );
 
 -- lots closed without award: the award notice (noAwarding = Да), with its offer counts (normalize.py _award_row)
 CREATE TABLE award (
-  unp text, tender_id text, lot_no int, notice_id text, notice_type text, published_at timestamp, source_day date,
+  unp text, tender_id text, lot_no int, notice_id text, notice_type text, published_at timestamptz, source_day date,
   offers_count int, sme_offers_count int, disqualified_offers_count int, link_oj text
 );
 CREATE INDEX ON award (unp);
 
 -- every notice of the flat files once, by its id (= TenderPublicationId of ЦАИС ЕОП)
 CREATE TABLE notice (
-  notice_id text PRIMARY KEY, unp text, kind text, notice_type text, published_at timestamp, source_day date
+  notice_id text PRIMARY KEY, unp text, kind text, notice_type text, published_at timestamptz, source_day date
 );
 CREATE INDEX ON notice (unp);
 
 -- annexes whose contract could not be told apart (normalize.py assign_annexes): kept and shown, never dropped
 CREATE TABLE annex_orphan (
-  unp text, contract_number text, lot_no int, published_at timestamp, source_day date, last_value numeric,
-  current_value numeric, currency text, reason text
+  unp text, contract_number text, lot_no int, published_at timestamptz, source_day date, last_value numeric(20,2),
+  current_value numeric(20,2), currency text, reason text
 );
 CREATE INDEX ON annex_orphan (unp);
 
 CREATE TABLE subcontract (
   contract_id text NOT NULL, party_key text NOT NULL, eik text, name text, percent numeric,
-  amount numeric
+  amount numeric(20,2)
 );
 
 -- raw record pointers: every published version of a tender, contract or OCDS release

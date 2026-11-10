@@ -10,6 +10,7 @@ out. An Erase entry removes the whole field.
 """
 import json
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
@@ -387,7 +388,17 @@ def changes(day, page=1, page_size=25):
     start = dt.datetime.combine(d, dt.time(0, 0), tz).isoformat()
     end = dt.datetime.combine(d, dt.time(23, 59, 59, 999000), tz).isoformat(timespec="milliseconds")
     q = {"dateFrom": start, "dateTo": end, "page": page, "pageSize": page_size}
-    raw = json.loads(get(f"{TR_PORTAL_ENTRIES}?{urllib.parse.urlencode(q)}", accept="application/json"))
+    url = f"{TR_PORTAL_ENTRIES}?{urllib.parse.urlencode(q)}"
+    for attempt in range(3):   # the portal at times answers 200 with a page that is not the list (08 and 09.11.2026)
+        try:
+            raw = json.loads(get(url, accept="application/json"))
+            if not isinstance(raw, list):
+                raise ValueError("not a list")
+            break
+        except ValueError:
+            if attempt == 2:
+                raise RuntimeError(f"порталът на ТР не върна списък с промени за {day}, страница {page}") from None
+            time.sleep(20)
     items = [{"uic": r["uic"], "date": r.get("date"), "name": r.get("companyFullName") or ""}
              for r in raw if UIC9.match(str(r.get("uic") or ""))]
     return {"items": items, "has_more": len(raw) == page_size}

@@ -56,7 +56,7 @@ WITH roles AS (
   WHERE e.holder LIKE 'p:%' AND c.effective_date >= e.valid_from
     AND (e.valid_to IS NULL OR c.effective_date < e.valid_to)
 ), money AS (
-  SELECT id, count(*) AS contracts, sum(amount_eur) FILTER (WHERE NOT is_framework) AS amount_eur
+  SELECT id, count(*) AS contracts, (sum(amount_eur) FILTER (WHERE NOT is_framework))::numeric(20,2) AS amount_eur
   FROM pc GROUP BY id
 )
 SELECT r.id, r.companies, r.active, r.first_role, coalesce(m.contracts, 0) AS contracts, m.amount_eur

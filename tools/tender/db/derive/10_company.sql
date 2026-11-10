@@ -28,7 +28,7 @@ WITH parties AS (
 SELECT k.party_key AS key,
        coalesce(m.eik, CASE WHEN k.party_key LIKE 'eik:%' THEN substr(k.party_key, 5) END) AS eik,
        coalesce(clean_name(d.name), m.name) AS name,
-       d.legal_form, d.seat, d.registered_on, d.deed_status, d.capital_eur,
+       d.legal_form, d.seat, d.registered_on, d.deed_status, d.capital_eur::numeric(20,2) AS capital_eur,
        d.status AS tr_status, d.fetched_at AS tr_fetched_at,
        EXISTS (SELECT 1 FROM buyer b WHERE b.eik = coalesce(m.eik, substr(k.party_key, 5))
                                          OR left(b.eik, 9) = left(coalesce(m.eik, substr(k.party_key, 5)), 9))
@@ -45,8 +45,8 @@ CREATE TABLE company_stats AS
 SELECT s.party_key AS key,
        count(DISTINCT c.id) AS contracts,
        count(DISTINCT c.id) FILTER (WHERE s.joint) AS joint_contracts,
-       sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur,
-       sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND NOT s.joint) AS amount_eur_sole,
+       (sum(c.amount_eur) FILTER (WHERE NOT c.is_framework))::numeric(20,2) AS amount_eur,
+       (sum(c.amount_eur) FILTER (WHERE NOT c.is_framework AND NOT s.joint))::numeric(20,2) AS amount_eur_sole,
        count(DISTINCT c.id) FILTER (WHERE c.amount_eur IS NULL) AS contracts_without_value,
        count(DISTINCT c.id) FILTER (WHERE c.is_framework) AS frameworks,
        count(DISTINCT c.buyer_eik) AS buyers,
@@ -57,7 +57,7 @@ ALTER TABLE company_stats ADD PRIMARY KEY (key);
 
 CREATE TABLE buyer_stats AS
 SELECT c.buyer_eik AS eik, count(*) AS contracts,
-       sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur,
+       (sum(c.amount_eur) FILTER (WHERE NOT c.is_framework))::numeric(20,2) AS amount_eur,
        count(*) FILTER (WHERE c.amount_eur IS NULL) AS contracts_without_value,
        count(DISTINCT s.party_key) AS suppliers,
        min(c.effective_date) AS first_contract, max(c.effective_date) AS last_contract,
@@ -70,7 +70,7 @@ ALTER TABLE buyer_stats ADD PRIMARY KEY (eik);
 -- per-procedure rollup; a procedure's date is its notice date, else its first contract
 CREATE TABLE tender_stats AS
 SELECT c.unp, count(*) AS contracts,
-       sum(c.amount_eur) FILTER (WHERE NOT c.is_framework) AS amount_eur,
+       (sum(c.amount_eur) FILTER (WHERE NOT c.is_framework))::numeric(20,2) AS amount_eur,
        min(c.effective_date) AS first_contract,
        count(*) FILTER (WHERE c.offers_count = 1) AS single_bid
 FROM contract c WHERE c.unp IS NOT NULL GROUP BY c.unp;

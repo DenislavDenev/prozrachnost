@@ -17,7 +17,7 @@ The waits have a budget: what is not read by then is read later and shows at the
 import datetime as dt
 import time
 
-from . import build, db, eop, eop_offers, tr_worker
+from . import build, db, eop, eop_offers, pipeline, tr_worker
 
 OFFERS_BUDGET = 20 * 60
 TR_BUDGET = 20 * 60
@@ -58,7 +58,8 @@ def drain(step, lane, waiting, work, budget):
 
 
 def freshness(conn):
-    """[problems]: each source where the D-1 promise says it should be. Empty = all good."""
+    """[problems]: each source where the D-1 promise says it should be, then the freshness of the shared module.
+    Empty = all good."""
     bad = []
     last = conn.execute("SELECT max(day) FROM tender_src.eop_day WHERE published").fetchone()[0]
     if not last or str(last) < yesterday():
@@ -85,11 +86,10 @@ def freshness(conn):
               AND (source = 'eop-file' AND cause IN ('rewritten', 'gone', 'invalid'))
             GROUP BY 1, 2""").fetchall():
         bad.append(f"{source}: {n} × {cause} (архивът на източника е променен, виж ops.change_log)")
-    # the rules of the last build (db/checks.toml): one that failed kept the serving layer on its older version
-    for title, expected, actual in conn.execute("""SELECT title_bg, expected, actual FROM ops.check_latest
-            WHERE tool = 'tender' AND gating AND ok = false AND kind <> 'parity' ORDER BY name""").fetchall():
-        bad.append(f"{title}: очаквано {expected}, получено {actual}")
-    return bad
+    # what the shared module watches for every tool: a source with no accepted read for longer than its stale_after
+    # (db/datasets.toml), an answer held past its time, a rule of the last build that failed (it kept the serving
+    # layer on its older version), a step whose last run failed
+    return bad + [p for p in pipeline.freshness(conn, db.TOOL) if p not in bad]
 
 
 def changes(conn):

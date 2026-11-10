@@ -81,7 +81,7 @@ WITH roles AS (
   WHERE e.holder LIKE 'p:%' AND c.effective_date >= e.valid_from
     AND (e.valid_to IS NULL OR c.effective_date < e.valid_to)
 ), money AS (
-  SELECT id, count(*) AS contracts, sum(amount_eur) FILTER (WHERE NOT is_framework) AS amount_eur
+  SELECT id, count(*) AS contracts, (sum(amount_eur) FILTER (WHERE NOT is_framework))::numeric(20,2) AS amount_eur
   FROM pc GROUP BY id
 )
 SELECT r.id, r.companies, r.active, r.first_role, coalesce(m.contracts, 0) AS contracts, m.amount_eur
@@ -95,6 +95,6 @@ CREATE TABLE network_component (
 );
 CREATE TABLE network_component_stats (
   view text NOT NULL, mode text NOT NULL, component bigint NOT NULL, nodes int NOT NULL,
-  persons int NOT NULL, companies int NOT NULL, contracts int NOT NULL, amount_eur numeric,
+  persons int NOT NULL, companies int NOT NULL, contracts int NOT NULL, amount_eur numeric(20,2),
   PRIMARY KEY (view, mode, component)
 );

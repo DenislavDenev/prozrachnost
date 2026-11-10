@@ -1,7 +1,8 @@
 # The datasets and sources of Тендер. pipeline.sync_registry() loads this at `migrate`.
 # Whether a dataset may be shown or handed out is decided only in tools/danni/db/licences.toml.
-# The sources have no stale_after: their freshness is the D-1 promise of ingest/daily.py (they are not yet loaded
-# through pipeline.load(), which is what the shared freshness reads).
+# Every source lands through pipeline.load(); stale_after is how long it may go without an accepted read before
+# the shared freshness names it, hold_alert_after how long an answer may be held. The D-1 promise of ingest/daily.py
+# (yesterday's day of ЦАИС ЕОП on the site this morning) is checked beside it.
 
 [[dataset]]
 dataset = "tender.eop"
@@ -57,6 +58,9 @@ url = "https://storage.eop.bg"
 channel = "file"
 dataset = "tender.eop"
 cadence = "всеки ден"
+stale_after = "2 days"
+hold_alert_after = "2 days"
+landing = "latest"
 
 [[source]]
 source = "offers"
@@ -65,6 +69,9 @@ url = "https://service.eop.bg"
 channel = "site-json"
 dataset = "tender.eop"
 cadence = "всеки ден по опашка"
+stale_after = "3 days"
+hold_alert_after = "2 days"
+landing = "latest"
 
 [[source]]
 source = "tr"
@@ -73,6 +80,9 @@ url = "https://api-sigma-cr.registryagency.bg"
 channel = "api"
 dataset = "tender.tr"
 cadence = "всеки час по опашка"
+stale_after = "1 day"
+hold_alert_after = "2 days"
+landing = "latest"
 
 [[source]]
 source = "sebra"
@@ -81,6 +91,9 @@ url = "https://data.egov.bg"
 channel = "file"
 dataset = "tender.sebra"
 cadence = "всяка седмица"
+stale_after = "9 days"
+hold_alert_after = "8 days"
+landing = "latest"
 
 [[source]]
 source = "ecb"
@@ -89,3 +102,6 @@ url = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
 channel = "file"
 dataset = "tender.derived"
 cadence = "при всяко изграждане"
+stale_after = "3 days"
+hold_alert_after = "3 days"
+landing = "latest"

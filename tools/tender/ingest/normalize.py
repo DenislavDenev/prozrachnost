@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import re
 import unicodedata
+import zoneinfo
 from collections import defaultdict
 
 from .config import BGN_PER_EUR
@@ -50,11 +51,25 @@ def day_of(v):
         return None
 
 
+SOFIA = zoneinfo.ZoneInfo("Europe/Sofia")
+_TS = re.compile(r"(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?$")
+
+
 def ts_of(v):
+    """A moment of the source, with its zone. The flat files write local time without a zone (a deadline is
+    23:59:59 in Sofia); OCDS writes an offset. Both become the same kind of value, shown in Sofia time, so a
+    day taken from it is the Bulgarian day."""
     if not v:
         return None
+    m = _TS.match(str(v).strip())
     try:
-        return dt.datetime.fromisoformat(str(v)[:19])
+        if not m:
+            return dt.datetime.fromisoformat(str(v)[:19]).replace(tzinfo=SOFIA)
+        t = dt.datetime.fromisoformat(m.group(1))
+        if not m.group(2):
+            return t.replace(tzinfo=SOFIA)
+        zone = dt.timezone.utc if m.group(2) == "Z" else dt.datetime.strptime(m.group(2).replace(":", ""), "%z").tzinfo
+        return t.replace(tzinfo=zone).astimezone(SOFIA)
     except ValueError:
         return None
 

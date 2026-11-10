@@ -4,15 +4,15 @@ State lives in tr.* so a run can stop anywhere and resume.
 
 A partida we hold is read again when the portal's change list names it (why='change') and in a slow
 rotation (why='rotate', every ROTATE_DAYS) that measures what the change list misses. A changed partida
-goes to ops.change_log; a partida that stops answering keeps its data until a second read a day later
-agrees."""
+goes to ops.change_log; a partida that stops answering, or answers with fewer rows than we hold, keeps its
+data until a second read a day later agrees. Every answer is kept in the register of raw files and lands as one
+load of the shared module (pipeline.load)."""
 import datetime as dt
-import gzip
 import hashlib
 import re
 import time
 
-from . import registry as R
+from . import db, registry as R
 from .config import RAW_TR
 from .db import log_change
 
@@ -62,14 +62,39 @@ def seed_from_contracts(conn):
     return n
 
 
-def enqueue_changes(conn, day, pass_no):
-    """Read the portal's change list for `day`; re-read partidas we already track."""
+# The public portal blocks an address for about 160 s after 5 requests in a row (measured by SIGMA, ADR-0036), so its
+# change list is read at one page per 30 s: 25 partidas a page, about 100 pages a day, close to an hour for a day.
+CHANGES_PAUSE = 30
+CHANGES_WINDOW = 14   # days back: the list of a day is read the day after and once more two weeks later
+
+
+def read_changes(conn, budget_s, stats, today=None):
+    """The portal's change list for every day of the window that is not read to its end: yesterday first, then the
+    second pass of the day two weeks back, then older days a run did not finish (the list is long, and until
+    10.11.2026 this step shared its lane with the hourly read and mostly did not get to run). A day is resumed at
+    the page it stopped on. Stops when the budget is spent; the next run goes on."""
+    today = today or dt.date.today()
+    deadline = time.monotonic() + budget_s
+    todo = [(today - dt.timedelta(days=1), 1), (today - dt.timedelta(days=CHANGES_WINDOW), 2)]
+    todo += [(today - dt.timedelta(days=lag), 1) for lag in range(2, CHANGES_WINDOW)]
+    for day, pass_no in todo:
+        if time.monotonic() >= deadline:
+            stats["left"] = stats.get("left", 0) + 1
+            continue
+        n = enqueue_changes(conn, day, pass_no, deadline)
+        if n is not None:
+            stats[f"pass{pass_no}_{day}"] = n
+
+
+def enqueue_changes(conn, day, pass_no, deadline=None):
+    """Read the portal's change list for `day`; re-read partidas we already track. Returns how many were queued,
+    or None when the day was read to its end before."""
     row = conn.execute("SELECT next_page, done FROM tender_src.tr_change_day WHERE day=%s AND pass=%s",
                        (day, pass_no)).fetchone()
     if row and row[1]:
-        return 0
+        return None
     page, touched = (row[0] if row else 1), 0
-    while True:
+    while deadline is None or time.monotonic() < deadline:
         res = R.changes(str(day), page)
         uics = [i["uic"] for i in res["items"]]
         if uics:
@@ -82,7 +107,8 @@ def enqueue_changes(conn, day, pass_no):
                      (day, pass_no, page, not res["has_more"]))
         if not res["has_more"]:
             return touched
-        time.sleep(30)  # the portal list is paced like SIGMA's (30 s per page)
+        time.sleep(CHANGES_PAUSE)
+    return touched
 
 
 def linked(conn, roles, persons):
@@ -95,51 +121,72 @@ def linked(conn, roles, persons):
         "OR EXISTS (SELECT 1 FROM tender_src.tr_deed WHERE status = 'ok' AND eik = ANY(%s))", (hashes, eiks)).fetchone()[0])
 
 
+def rows_of(facts, deed_status, roles):
+    """What one partida says, as pipeline.load compares two reads: the facts of the deed and every role."""
+    out = {"deed": {**facts, "deed_status": deed_status}}
+    for i, r in enumerate(roles):
+        out[f"role/{i}"] = r
+    return out
+
+
 def store(conn, eik, xml, require_link=False):
-    """Persist one successful read: raw XML, deed facts, roles (replaced), persons.
-    With require_link, an unlinked partida is recorded as 'unrelated' with no roles."""
+    """Persist one successful read: the raw XML in the register of files, then deed facts, roles (replaced) and
+    persons as one load of the shared module. With require_link, an unlinked partida is recorded as 'unrelated'
+    with no roles. Returns the roles, or None when the answer has fewer rows than we hold and is held."""
     now = dt.datetime.now(dt.timezone.utc)
     if xml is None:
         conn.execute("INSERT INTO tender_src.tr_deed(eik, status, fetched_at) VALUES (%s,'absent',%s) "
                      "ON CONFLICT (eik) DO UPDATE SET status='absent', fetched_at=EXCLUDED.fetched_at, "
                      "error=NULL", (eik, now))
+        db.forget(conn, "tr", eik)
         return []
-    path = RAW_TR / "deeds" / eik[:3] / f"{eik}.xml.gz"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(gzip.compress(xml))
-    deed = R.parse_deed(xml, eik)
-    facts = R.deed_facts(deed)
-    roles, persons = R.roles_from_deed(eik, deed)
+    file = db.keep_raw(conn, "tr", eik, xml, RAW_TR / "store", f"{eik}.xml", media_type="application/xml")
+    try:
+        deed = R.parse_deed(xml, eik)
+        facts = R.deed_facts(deed)
+        roles, persons = R.roles_from_deed(eik, deed)
+    except Exception as e:   # an answer we cannot read: recorded, what we hold stays
+        db.reject(conn, "tr", eik, e, file)
+        raise
     if require_link and not linked(conn, roles, persons):
         conn.execute("INSERT INTO tender_src.tr_deed(eik, status, fetched_at, name) VALUES (%s,'unrelated',%s,%s) "
                      "ON CONFLICT (eik) DO UPDATE SET status='unrelated', fetched_at=EXCLUDED.fetched_at, "
                      "name=EXCLUDED.name, error=NULL", (eik, now, facts["name"]))
         conn.execute("DELETE FROM tender_src.tr_role WHERE eik=%s", (eik,))
+        db.forget(conn, "tr", eik)
         return []
-    with conn.transaction():
+    sha = hashlib.sha256(xml).hexdigest()
+
+    def write(conn, load_id, rows):
         conn.execute(
             "INSERT INTO tender_src.tr_deed(eik, status, fetched_at, sha256, name, legal_form, deed_status, seat, "
-            "capital_eur, registered_on) VALUES (%s,'ok',%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (eik) DO UPDATE "
+            "capital_eur, registered_on, load_id) VALUES (%s,'ok',%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (eik) DO UPDATE "
             "SET status='ok', fetched_at=EXCLUDED.fetched_at, sha256=EXCLUDED.sha256, name=EXCLUDED.name, "
             "legal_form=EXCLUDED.legal_form, deed_status=EXCLUDED.deed_status, seat=EXCLUDED.seat, "
-            "capital_eur=EXCLUDED.capital_eur, registered_on=EXCLUDED.registered_on, error=NULL",
-            (eik, now, hashlib.sha256(xml).hexdigest(), facts["name"], facts["legal_form"], deed.status,
-             facts["seat"], facts["capital"], facts["registered_on"]))
+            "capital_eur=EXCLUDED.capital_eur, registered_on=EXCLUDED.registered_on, error=NULL, load_id=EXCLUDED.load_id",
+            (eik, now, sha, facts["name"], facts["legal_form"], deed.status,
+             facts["seat"], facts["capital"], facts["registered_on"], load_id))
         conn.execute("DELETE FROM tender_src.tr_role WHERE eik=%s", (eik,))
         with conn.cursor().copy(
                 "COPY tender_src.tr_role(eik, sub_uic, field_ident, role, holder_kind, holder_id, holder_name, "
-                "indent_type, share, country, entry_no, valid_from, valid_to, uncertain_after, observed_at) "
+                "indent_type, share, country, entry_no, valid_from, valid_to, uncertain_after, observed_at, load_id) "
                 "FROM STDIN") as cp:
             for r in roles:
                 cp.write_row([r["eik"], r["sub_uic"], r["field_ident"], r["role"], r["holder_kind"],
                               r["holder_id"], r["holder_name"], r["indent_type"], r["share"], r["country"],
-                              r["entry_no"], r["valid_from"], r["valid_to"], r["uncertain_after"], now])
+                              r["entry_no"], r["valid_from"], r["valid_to"], r["uncertain_after"], now, load_id])
         for p in persons:
             conn.execute(
-                "INSERT INTO tender_src.tr_person(id, indent, indent_type, name, name_key) VALUES (%s,%s,%s,%s,%s) "
-                "ON CONFLICT (indent) DO UPDATE SET name=EXCLUDED.name, name_key=EXCLUDED.name_key",
+                "INSERT INTO tender_src.tr_person(id, indent, indent_type, name, name_key, load_id) VALUES (%s,%s,%s,%s,%s,%s) "
+                "ON CONFLICT (indent) DO UPDATE SET name=EXCLUDED.name, name_key=EXCLUDED.name_key, load_id=EXCLUDED.load_id",
                 (_ulid(), p["indent"], p["indent_type"], p["name"],
-                 R.person_name_key(R.without_title(p["name"]))))
+                 R.person_name_key(R.without_title(p["name"])), load_id))
+
+    done = db.land(conn, "tr", eik, rows_of(facts, deed.status, roles), write, file)
+    if done.status == "held":
+        return None
+    if done.status == "unchanged":   # read again and the same: when we read it, and the bytes it came in
+        conn.execute("UPDATE tender_src.tr_deed SET fetched_at = %s, sha256 = %s, error = NULL WHERE eik = %s", (now, sha, eik))
     return roles
 
 
@@ -182,6 +229,11 @@ def process(conn, budget_s, stats, first=False):
                 if why == "rotate":  # the change list did not name it
                     stats["rotate_missed"] = stats.get("rotate_missed", 0) + 1
             roles = store(conn, eik, xml, require_link=reason == "name_search")
+            if roles is None:   # fewer rows than we hold: ours stay, the partida is read again in a day
+                conn.execute("UPDATE tender_src.tr_queue SET held_sha='rows', attempts=0, next_at=now() + interval '1 day' WHERE eik=%s", (eik,))
+                stats["held"] = stats.get("held", 0) + 1
+                time.sleep(PAUSE)
+                continue
         except Exception as e:  # noqa: BLE001 - recorded, retried with backoff
             attempts += 1
             status = "failed" if attempts >= MAX_ATTEMPTS else "pending"

@@ -6,7 +6,8 @@ up to the clean tables when every rule holds.
 
 Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (build) |
                serve (the rules and the serving layer again, without a build) (build) |
-               replay [--again], parity (the move from the old database, ingest/move.py) (build) |
+               adopt [--what eop,sebra,ecb,tr,offers] [--part i/n] (loads for what was read before 10.11.2026,
+               ingest/adopt.py) (build) |
                tr-seed, tr-read (reads, then name searches while idle), tr-changes, tr-names, tr-prune (tr) | enrich (enrich) |
                eop-check (validity check of the offers reader; exit 1 = repair needed), eop-offers,
                eop-reparse (rebuild the offers from the raw answers after a parsing rule change) (offers) |
@@ -16,11 +17,10 @@ Steps (lane):  migrate | eop, fx, normalize, derive, publish, build (all five) (
 Prints one JSON line with the stats; exit code 1 on failure.
 """
 import argparse
-import datetime as dt
 import json
 import sys
 
-from . import build, daily, db, enrich, eop_offers, move, sebra, tr_worker
+from . import adopt, build, daily, db, enrich, eop_offers, sebra, tr_worker
 
 BUILD = {"eop": build.step_eop, "fx": build.step_fx, "normalize": build.step_normalize,
          "derive": build.step_derive, "publish": build.step_publish}
@@ -36,7 +36,8 @@ def main():
     ap.add_argument("--full", action="store_true", help="eop-audit: every day, not the last 90")
     ap.add_argument("--periodic", action="store_true", help="eop-enqueue: also the weekly re-reads")
     ap.add_argument("--verify", action="store_true", help="sebra: download every file and compare")
-    ap.add_argument("--again", action="store_true", help="replay: empty the landing zone and copy it again")
+    ap.add_argument("--what", default="eop,sebra,ecb,tr,offers", help="adopt: which sources")
+    ap.add_argument("--part", help="adopt: i/n, share i of n of the partidas and the procedures")
     a = ap.parse_args()
     out = {"step": a.step}
     try:
@@ -54,19 +55,19 @@ def main():
             with db.job(a.step) as (conn, stats):
                 build.serve(conn, stats)
                 out.update(stats)
-        elif a.step == "replay":
-            with db.job(a.step) as (conn, stats):
-                move.replay(conn, db.RUNS[id(conn)], again=a.again)
-                out.update(stats)
-        elif a.step == "parity":
-            with db.job(a.step) as (conn, stats):
-                move.parity(conn, db.RUNS[id(conn)])
-                out.update({k: v for k, v in stats.items() if k != "detail"})
-                bad = conn.execute("""SELECT title_bg, expected, actual FROM ops.check_latest
-                    WHERE tool = 'tender' AND kind = 'parity' AND ok = false ORDER BY name""").fetchall()
-            if bad:
-                out["problems"] = [f"{title}: старо {e}, ново {n}" for title, e, n in bad]
-                raise RuntimeError(f"{len(bad)} сравнения със старата база не съвпадат")
+        elif a.step == "adopt":
+            what = a.what.split(",")
+            part = tuple(int(x) for x in a.part.split("/")) if a.part else None
+            # the files of the open data and the payments are read by the build, so they are adopted in its lane;
+            # the partidas and the procedures are taken one by one beside their readers, and several parts run at once
+            if set(what) & {"eop", "sebra", "ecb"}:
+                with db.job(a.step) as (conn, stats):
+                    adopt.run(conn, stats, what, part)
+                    out.update(stats)
+            else:
+                with db.connect(autocommit=True) as conn:
+                    adopt.run(conn, stats := {}, what, part)
+                    out.update(stats)
         elif a.step == "build":
             daily.build_all(out)
         elif a.step == "daily":
@@ -123,12 +124,9 @@ def main():
             with db.job(a.step, lane="tr") as (conn, stats):
                 stats.update(tr_worker.prune(conn))
                 out.update(stats)
-        elif a.step == "tr-changes":
-            with db.job(a.step, lane="tr") as (conn, stats):
-                today = dt.date.today()
-                for pass_no, lag in ((1, 1), (2, 14)):
-                    day = today - dt.timedelta(days=lag)
-                    stats[f"pass{pass_no}_{day}"] = tr_worker.enqueue_changes(conn, day, pass_no)
+        elif a.step == "tr-changes":   # own lane: it only marks partidas in the queue, beside the read that takes them
+            with db.job(a.step, lane="tr-changes") as (conn, stats):
+                tr_worker.read_changes(conn, a.budget, stats)
                 out.update(stats)
         elif a.step == "enrich":
             with db.job(a.step, lane="enrich") as (conn, stats):
