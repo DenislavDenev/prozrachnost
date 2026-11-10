@@ -43,12 +43,15 @@ BY_CONTENT = {
                           "(SELECT view, mode, node, min(node) OVER (PARTITION BY view, mode, component) AS named FROM {0}.network_component) x"),
     "network_component_stats": (["view", "mode", "nodes", "persons", "companies", "contracts", "amount_eur"],
                                 "(SELECT view, mode, nodes, persons, companies, contracts, amount_eur FROM {0}.network_component_stats) x"),
-    # The old build named a holder that the register writes in more than one way by whichever spelling it met first
-    # (found on 10.11.2026: 40 of 941 294 nodes differed between two builds of the same data, all of them people
-    # without an identifier with several spellings). The name of such a node is not compared; every other is.
+    # The old build named a node that more than one row can name by whichever it met first (found on 10.11.2026,
+    # between two builds of the same data: 40 of 941 294 nodes were people without an identifier whose name the
+    # register writes in several ways, and 3 were companies named by one of their units). The name and the key of
+    # such a node are not compared; every other node is compared whole.
     "node": (["id", "kind", "ref", "label"],
-             """(SELECT n.id, n.kind, n.ref, CASE WHEN (SELECT count(DISTINCT e.holder_name) FROM {0}.edge e WHERE e.holder = n.id) > 1
-                                                THEN NULL ELSE n.label END AS label FROM {0}.node n) x"""),
+             """(SELECT n.id, n.kind, CASE WHEN a.several THEN NULL ELSE n.ref END AS ref, CASE WHEN a.several THEN NULL ELSE n.label END AS label
+                 FROM {0}.node n CROSS JOIN LATERAL (SELECT
+                   (SELECT count(DISTINCT e.holder_name) FROM {0}.edge e WHERE e.holder = n.id) > 1
+                   OR (n.kind = 'company' AND (SELECT count(*) FROM {0}.company c WHERE left(c.eik, 9) = substr(n.id, 3)) > 1) AS several) a) x"""),
 }
 
 
