@@ -10,7 +10,7 @@ source_url = "https://www.nsi.bg/nrnm/ekatte"
 channel = "file"
 licence = "не е посочен (на сайта: Всички права запазени)"
 cadence = "при промяна; чете се всеки ден"
-tables = ["core.nuts", "core.oblast", "core.settlement", "danni_src.ekatte_region", "danni_src.ekatte_oblast", "danni_src.ekatte_municipality", "danni_src.ekatte_settlement"]
+tables = ["pub.nuts", "pub.oblast", "pub.settlement", "core.nuts", "core.oblast", "core.settlement", "danni_src.ekatte_region", "danni_src.ekatte_oblast", "danni_src.ekatte_municipality", "danni_src.ekatte_settlement"]
 
 [[dataset]]
 dataset = "danni.municipality"
@@ -19,7 +19,7 @@ description_bg = "Съответствие между кода на община
 source_org = "Прозрачност (от ЕКАТТЕ и справочника на Тендер)"
 channel = "derived"
 licence = "зависи от ЕКАТТЕ"
-tables = ["core.municipality", "danni_src.municipality_ref"]
+tables = ["pub.municipality", "core.municipality", "danni_src.municipality_ref"]
 
 [[dataset]]
 dataset = "danni.org"

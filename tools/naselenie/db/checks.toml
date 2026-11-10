@@ -52,6 +52,32 @@ kind = "drop"
 tolerance = 200
 sql = "SELECT 0, COALESCE(max(round(10000.0 * abs(t - prev) / prev)), 0) FROM (SELECT sum(current) t, lag(sum(current)) OVER (ORDER BY as_of) prev FROM naselenie.population WHERE table_kind = 'monthly' AND superseded_at IS NULL GROUP BY as_of) x WHERE prev > 0"
 
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+# One that fails rolls the publication back: the pages keep the version they had.
+[[check]]
+name = "published_population_rows"
+title_bg = "Публикуваните редове по общини са колкото действащите в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM naselenie.population WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_naselenie.population)"
+
+[[check]]
+name = "published_population_current"
+title_bg = "Публикуваният сбор по настоящ адрес е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(current), 0) FROM naselenie.population WHERE superseded_at IS NULL), (SELECT COALESCE(sum(current), 0) FROM pub_naselenie.population)"
+
+[[check]]
+name = "published_settlement_rows"
+title_bg = "Публикуваните редове по населени места са колкото действащите в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM naselenie.settlement_population WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_naselenie.settlement_population)"
+
+[[check]]
+name = "published_snapshot_complete"
+title_bg = "Всяка публикувана таблица има редове и всеки публикуван ред има таблица"
+kind = "publish"
+sql = "SELECT 0, (SELECT count(*) FROM pub_naselenie.snapshot s WHERE NOT EXISTS (SELECT FROM pub_naselenie.population p WHERE (p.as_of, p.table_kind) = (s.as_of, s.table_kind)))"
+
 # The move from the tool's own database to the shared one: the step `parity` records these.
 [[check]]
 name = "parity_files"

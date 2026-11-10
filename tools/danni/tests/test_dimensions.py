@@ -197,13 +197,101 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
 
 
 def test_licence_list_is_the_only_switch(conn, monkeypatch, tmp_path):
-    assert run.licences(conn) == 1
-    assert [x[0] for x in conn.execute('SELECT dataset FROM core.dataset WHERE is_distributable')] == ['danni.catalog']
+    assert run.licences(conn) == 4
+    assert conn.execute('SELECT dataset, is_distributable FROM core.dataset WHERE is_displayable ORDER BY 1').fetchall() == [
+        ('danni.catalog', True), ('danni.ekatte', False), ('danni.municipality', False)]   # naselenie.grao is not registered here
     conn.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = '2026-01-01' WHERE dataset = 'danni.ekatte'")
+    conn.execute("UPDATE core.dataset SET is_displayable = true WHERE dataset = 'danni.org'")
     run.licences(conn)   # not in the list: closed again
     assert one(conn, "SELECT is_distributable FROM core.dataset WHERE dataset = 'danni.ekatte'") is False
+    assert one(conn, "SELECT is_displayable FROM core.dataset WHERE dataset = 'danni.org'") is False
+    with pytest.raises(Exception):   # what is handed out is also shown
+        conn.execute("UPDATE core.dataset SET is_distributable = true, is_displayable = false, licence_checked_on = '2026-01-01' WHERE dataset = 'danni.ekatte'")
     (tmp_path / 'db').mkdir()
-    (tmp_path / 'db' / 'licences.toml').write_text('[[licence]]\ndataset = "danni.org"\nchecked_on = 2026-11-10\n', encoding='utf-8')
+    (tmp_path / 'db' / 'licences.toml').write_text('[[licence]]\ndataset = "danni.org"\nchecked_on = 2026-11-10\ndisplay = true\n', encoding='utf-8')
     monkeypatch.setattr(run, 'ROOT', tmp_path)
-    with pytest.raises(RuntimeError, match='names'):   # a dataset with names of persons cannot be opened
+    with pytest.raises(RuntimeError, match='names'):   # a dataset with names of persons cannot even be shown
         run.licences(conn)
+
+
+def publish(conn, step='check'):
+    with pipeline.run(conn, 'danni', step) as r:
+        return pipeline.publish(conn, r, ROOT)
+
+
+def test_places_are_published_whole_with_a_version_or_not_at_all(conn, archive, tmp_path):
+    assert publish(conn).publication_id == 1   # the catalogue of the datasets alone
+    step(conn, archive, tmp_path)
+    first = publish(conn)
+    assert first.problems == [] and first.publication_id == 2
+    assert first.changes['pub.settlement'] == {'added': 5256, 'removed': 0} and first.changes['pub.municipality']['added'] == 265
+    assert conn.execute('''SELECT s.name_bg, m.eik, o.label_bg, n.parent_code FROM pub.settlement s JOIN pub.municipality m USING (municipality_code)
+        JOIN pub.oblast o USING (oblast_code) JOIN pub.nuts n ON n.nuts_code = o.nuts3_code WHERE s.ekatte = '02676' ''').fetchone() == (
+        'Банско', '000024663', 'Благоевград', 'BG41')
+    again = publish(conn)
+    assert again == pipeline.Published(None, {}, [])   # nothing changed: no new version, the cache key stays
+    assert one(conn, 'SELECT max(publication_id) FROM pub.publication') == 2
+    # one renamed settlement: one row out, one row in, a new version
+    conn.execute("UPDATE core.settlement SET name_bg = 'Ново име' WHERE ekatte = '02676'")
+    third = publish(conn)
+    assert third.publication_id == 3 and third.changes == {'pub.settlement': {'added': 1, 'removed': 1}}
+    assert conn.execute('SELECT tool, changes FROM api_v1.publication ORDER BY publication_id DESC LIMIT 1').fetchone() == ('danni', third.changes)
+    # a rule of kind publish fails against the new content: the whole publication rolls back, the evidence stays
+    conn.execute("UPDATE core.settlement SET name_bg = 'Трето име' WHERE ekatte = '02676'")
+    conn.execute("UPDATE ops.check_rule SET sql = 'SELECT 1, count(*) FROM pub.settlement' WHERE name = 'published_places_match_core'")
+    refused = publish(conn)
+    assert refused.publication_id is None and refused.changes == {} and 'очаквано 1, получено 5256' in refused.problems[0]
+    assert one(conn, "SELECT name_bg FROM pub.settlement WHERE ekatte = '02676'") == 'Ново име'
+    assert one(conn, 'SELECT max(publication_id) FROM pub.publication') == 3
+    assert conn.execute("SELECT ok FROM ops.check_latest WHERE tool = 'danni' AND name = 'published_places_match_core'").fetchone() == (False,)
+    assert any('Публикуваните общини' in x for x in pipeline.freshness(conn, 'danni'))
+
+
+def test_a_reader_sees_the_old_version_or_the_new_one_never_a_mix(conn, dsn, archive, tmp_path):
+    import psycopg
+    step(conn, archive, tmp_path)
+    publish(conn)
+    with psycopg.connect(dsn) as reader:
+        reader.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+        reader.read_only = True
+        before = reader.execute('SELECT max(publication_id) FROM pub.publication').fetchone()[0]
+        conn.execute("UPDATE core.settlement SET name_bg = 'Ново име' WHERE ekatte = '02676'")
+        conn.execute("UPDATE core.oblast SET label_bg = 'Друго' WHERE oblast_code = 'BLG'")
+        after = publish(conn).publication_id
+        assert after == before + 1
+        # the reader started before the publication: every later statement of its request still reads that version
+        assert reader.execute("SELECT name_bg FROM pub.settlement WHERE ekatte = '02676'").fetchone()[0] == 'Банско'
+        assert reader.execute("SELECT label_bg FROM pub.oblast WHERE oblast_code = 'BLG'").fetchone()[0] == 'Благоевград'
+        assert reader.execute('SELECT max(publication_id) FROM pub.publication').fetchone()[0] == before
+    with psycopg.connect(dsn) as reader:
+        assert reader.execute("SELECT s.name_bg, (SELECT max(publication_id) FROM pub.publication) FROM pub.settlement s WHERE ekatte = '02676'").fetchone() == ('Ново име', after)
+
+
+def test_serving_layer_cannot_reach_outside_or_hold_what_may_not_be_shown(conn, archive, tmp_path):
+    step(conn, archive, tmp_path)
+    assert publish(conn).problems == []
+    assert one(conn, 'SELECT count(*) FROM core.serving_violation') == 0
+    conn.execute('CREATE SCHEMA pub_demo')
+    cases = [
+        ('CREATE TABLE pub_demo.loose (x int PRIMARY KEY)', 'pub_demo.loose', 'таблицата не е записана към набор'),
+        ("CREATE TABLE pub_demo.org (eik text PRIMARY KEY); INSERT INTO core.dataset_table VALUES ('pub_demo', 'org', 'danni.org')",
+         'pub_demo.org', 'наборът съдържа имена на физически лица'),
+        ("CREATE TABLE pub_demo.fk (m text PRIMARY KEY REFERENCES core.municipality); INSERT INTO core.dataset_table VALUES ('pub_demo', 'fk', 'danni.ekatte')",
+         'pub_demo.fk', 'външен ключ извън слоя за показване: core.municipality'),
+        ('CREATE VIEW pub_demo.peek AS SELECT ekatte FROM core.settlement', 'pub_demo.peek', 'изгледът чете извън слоя за показване: core.settlement'),
+        ('CREATE VIEW api_v1.peek AS SELECT load_id FROM ops.load', 'api_v1.peek', 'изгледът чете извън слоя за показване: ops.load'),
+    ]
+    for sql, relation, reason in cases:
+        conn.execute(sql)
+        assert conn.execute('SELECT relation, reason FROM core.serving_violation').fetchall() == [(relation, reason)], sql
+        conn.execute("UPDATE core.settlement SET name_en = name_en || 'x' WHERE ekatte = '02676'")
+        refused = publish(conn)   # nothing is published while the layer is broken, whoever broke it
+        assert refused.publication_id is None and refused.problems == [f'{relation}: {reason}']
+        conn.execute(f"DROP {'VIEW' if 'VIEW' in sql else 'TABLE'} {relation}; DELETE FROM core.dataset_table WHERE schema_name = 'pub_demo'")
+    # a view inside the layer over the layer is fine; a dataset that lost its right to be shown is not
+    conn.execute('CREATE VIEW pub_demo.ok AS SELECT ekatte FROM pub.settlement')
+    assert one(conn, 'SELECT count(*) FROM core.serving_violation') == 0
+    conn.execute("UPDATE core.dataset SET is_displayable = false WHERE dataset = 'danni.ekatte'")
+    assert sorted(x[0] for x in conn.execute('SELECT relation FROM core.serving_violation')) == ['pub.nuts', 'pub.oblast', 'pub.settlement']
+    with pipeline.run(conn, 'danni', 'check') as r:
+        assert len(pipeline.run_checks(conn, r, kinds=['serving'])) == 1

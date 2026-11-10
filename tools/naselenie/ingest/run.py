@@ -7,6 +7,9 @@
     parity     the old database of its own against the shared one, number by number
     check      every quality rule
     freshness  the list of problems, empty when all is well
+
+Ingest and serving are apart. The steps above fill naselenie_src and naselenie; the pages read pub_naselenie,
+which changes only by a publication at the end of a step whose rules all hold (db/publish/*.sql).
 """
 import argparse
 import datetime as dt
@@ -196,7 +199,10 @@ def main(argv=None):
                     elif a.step == 'parity':
                         parity(conn, r)
                     if a.step != 'parity':
-                        problems += pipeline.run_checks(conn, r)
+                        failed = pipeline.run_checks(conn, r)
+                        # The serving layer follows only when every rule holds. A table that one read refused
+                        # is not a reason to hold the rest: what is stored is still sound.
+                        problems += failed or pipeline.publish(conn, r, ROOT).problems
                     result = {'step': a.step, 'stats': r.stats, 'problems': problems}
             except pipeline.Busy as e:
                 result = {'step': a.step, 'status': 'skipped', 'note': str(e)}
