@@ -295,3 +295,60 @@ def test_serving_layer_cannot_reach_outside_or_hold_what_may_not_be_shown(conn, 
     assert sorted(x[0] for x in conn.execute('SELECT relation FROM core.serving_violation')) == ['pub.nuts', 'pub.oblast', 'pub.settlement']
     with pipeline.run(conn, 'danni', 'check') as r:
         assert len(pipeline.run_checks(conn, r, kinds=['serving'])) == 1
+
+
+def test_names_are_masked_to_the_first_name_and_the_type_refuses_anything_else(conn):
+    q = 'SELECT core.mask_name(%s)::text'
+    assert [one(conn, q, x) for x in ('Иван Петров Георгиев', '  Мария   Иванова ', 'Иван', '', None, 'Jean-Paul Belmondo')] == [
+        'Иван ***', 'Мария ***', '***', None, None, 'Jean-Paul ***']
+    conn.execute('CREATE SCHEMA pub_demo; CREATE TABLE pub_demo.donor (id int PRIMARY KEY, donor_name pub.masked_name)')
+    conn.execute("INSERT INTO pub_demo.donor VALUES (1, core.mask_name('Иван Петров')), (2, NULL)")
+    for full in ('Иван Петров', 'Иван П.', 'Иван *** Петров', '*** Петров'):
+        with pytest.raises(Exception):   # the column cannot hold a name that is not masked, whoever writes it
+            conn.execute('INSERT INTO pub_demo.donor VALUES (3, %s)', (full,))
+    assert one(conn, 'SELECT count(*) FROM pub_demo.donor') == 2
+
+
+def test_no_name_of_a_person_reaches_the_serving_layer_without_a_decision(conn, archive, tmp_path):
+    step(conn, archive, tmp_path)
+    assert publish(conn).problems == []
+    conn.execute("CREATE SCHEMA pub_demo; CREATE SCHEMA demo; INSERT INTO ops.source (tool, source, title_bg, channel) VALUES ('demo', 's', 'С', 'file')")
+
+    def table(columns):
+        conn.execute('DROP TABLE IF EXISTS pub_demo.t')
+        conn.execute(f'CREATE TABLE pub_demo.t (id int PRIMARY KEY, {columns})')
+        conn.execute("INSERT INTO core.dataset_table VALUES ('pub_demo', 't', 'danni.ekatte') ON CONFLICT DO NOTHING")
+        return [x[0] for x in conn.execute("SELECT reason FROM core.serving_violation WHERE relation = 'pub_demo.t'")]
+
+    def decide(column, kind, shown_as):
+        conn.execute("""INSERT INTO core.person_column VALUES ('pub_demo', 't', %s, %s, %s, 'test', '2026-11-10')
+            ON CONFLICT (schema_name, table_name, column_name) DO UPDATE SET kind = EXCLUDED.kind, shown_as = EXCLUDED.shown_as""",
+                     (column, kind, shown_as))
+        return [x[0] for x in conn.execute("SELECT reason FROM core.serving_violation WHERE relation = 'pub_demo.t'")]
+
+    # the full name, by its type: never, whatever the decision says
+    assert table('who core.person_name') == ['пълно име на човек в слоя за показване: who']
+    assert decide('who', 'public-office', 'full') == ['пълно име на човек в слоя за показване: who']
+    refused = publish(conn)
+    assert refused.publication_id is None and refused.problems == ['pub_demo.t: пълно име на човек в слоя за показване: who']
+    # a plain text column whose name says it is a person: stopped until someone decides
+    assert table('donor_name text') == ['колона с име на човек без решение: donor_name']
+    assert decide('donor_name', 'registered', 'masked') == ['колоната е решена като masked, а е обикновен текст: donor_name']
+    assert decide('donor_name', 'not-a-person', 'full') == []
+    # masked: the type and the decision must agree
+    assert table('donor_name pub.masked_name') == ['маскирано име, а решението за колоната е друго: donor_name']
+    assert decide('donor_name', 'registered', 'masked') == []
+    # a full name in a public role: only with that decision
+    assert table('mp pub.role_name') == ['колона с име на човек без решение: mp']
+    assert decide('mp', 'registered', 'masked') == ['пълно име, а решението за колоната не е публична роля: mp']
+    assert decide('mp', 'public-office', 'full') == []
+    assert decide('mp', 'public-money', 'full') == []
+    # the register itself refuses a full name for a private person, and keeping an incidental one
+    for kind, shown_as in (('registered', 'full'), ('incidental', 'full'), ('incidental', 'masked')):
+        with pytest.raises(Exception):
+            decide('mp', kind, shown_as)
+    # the review list sees a name on the ingest side too, by type or by the name of the column
+    conn.execute('CREATE TABLE demo.raw (id int, donor core.person_name, signer_name text, donor_kind text, amount numeric)')
+    assert sorted(x[0] for x in conn.execute("SELECT column_name FROM core.person_column_undecided WHERE schema_name = 'demo'")) == ['donor', 'signer_name']
+    assert run.persons(conn) == 4   # the reviewed list is applied again: what is not in it loses its decision
+    assert [x[0] for x in conn.execute("SELECT reason FROM core.serving_violation WHERE relation = 'pub_demo.t'")] == ['колона с име на човек без решение: mp']

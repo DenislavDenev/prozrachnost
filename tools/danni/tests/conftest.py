@@ -40,6 +40,7 @@ def reset(conn):
     pipeline.sync_registry(conn, 'danni', ROOT)
     from ingest import run
     run.licences(conn)
+    run.persons(conn)
 
 
 @pytest.fixture(scope='session')
