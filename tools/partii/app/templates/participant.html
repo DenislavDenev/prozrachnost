@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, th, src %}
+{% block title %}{{ p.name }}{% endblock %}
+{% block main %}
+{% set q = 'e=' ~ p.erik_id ~ '&p=' ~ key %}
+<h1>{{ p.name }}</h1>
+<p class="lede">{{ KIND[p.kind]|capitalize }} в <a class="l" href="/izbori/{{ p.erik_id }}">{{ p.title }}</a>, регистрация в {{ REG[p.reg_in] }}{% if p.municipality %} ({{ p.municipality }}{% if p.settlement %}, {{ p.settlement }}{% endif %}){% endif %}.
+  В регистъра има <b>{{ p.donations }} {{ p.donations|plural('дарение', 'дарения') }}</b> към този участник: <b>{{ p.donated_money|eur }}</b> парични и <b>{{ p.donated_in_kind|eur }}</b> непарични{% if p.candidate_rows %}; от кандидати и членове на комитета: <b>{{ p.candidate_money|eur }}</b> парични и <b>{{ p.candidate_in_kind|eur }}</b> непарични{% endif %}.
+  {% if p.report_expense is not none %}По отчета след изборите разходите са <b>{{ p.report_expense_eur|eur if p.report_expense_eur is not none else (p.report_expense|money(p.report_currency)) }}</b>.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary><p>Страницата събира каквото регистърът казва за този участник в този избор. Даренията са от хора и имената им не се показват ({{ help('donor', 'дарител') }}). Парите от дарители ({{ help('money', 'парични дарения') }}), безплатните стоки и услуги ({{ help('in_kind', 'непарични дарения') }}) и парите на самите кандидати ({{ help('candidate', 'средства на кандидати') }}) са три отделни числа.</p>
+<p>Отчетът след изборите ({{ help('report', 'отчет след изборите') }}) се попълва отделно от регистъра и може да показва други суми. Например участник може да има 300 € дарения в регистъра и 200 € в отчета: показваме и двете.</p></details>
+<div class="grid">
+  <section class="p s12"><h2>Дарения</h2><div class="sub">{{ donations|length }} реда{% if p.threshold_shown %} · праг за декларация {{ p.threshold_shown|eur }}{% endif %}{% if undated %} · {{ undated|eur }} са без дата{% endif %}</div>
+    {% if days > 1 %}<div class="chart" id="c-days" data-src="/api/dni.json?{{ q }}" data-digits="0" data-zero></div>{% endif %}
+    <input type="search" placeholder="Търси по дата или вид" aria-label="Търси в даренията" data-filter="t-don">
+    <div class="scroll tall"><table class="sortable" id="t-don"><thead><tr><th>Дата</th><th>Вид</th>{{ th('Парични, €', 'money', 'n') }}{{ th('Непарични, €', 'in_kind', 'n') }}{{ th('Декларация', 'threshold') }}</tr></thead><tbody>
+    {% for r in donations %}<tr{% if r.over_threshold and r.decl == 'none' %} class="flagged"{% endif %}><td data-v="{{ r.donation_day or '' }}" class="nowrap">{{ r.donation_day|date }}</td><td>{{ 'парично' if r.kind == 'money' else 'непарично' if r.kind == 'in_kind' else 'парично и непарично' }}</td>
+      <td class="n num" data-v="{{ r.money }}">{{ r.money|num }}</td><td class="n num" data-v="{{ r.in_kind }}">{{ r.in_kind|num }}</td><td>{% if not r.over_threshold %}под прага{% else %}{{ DECL[r.decl] }}{% endif %}</td></tr>
+    {% else %}<tr><td colspan="5">няма дарения в регистъра</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(p.erik_id, [('CSV', '/export-dareniya.csv?' ~ q), ('JSON', '/export-dareniya.json?' ~ q)]) }}</section>
+  {% if funds %}<section class="p s6"><h2>Средства на кандидати {{ help('candidate', 'средства на кандидати') }}</h2>
+    <table class="sortable"><thead><tr><th>Роля</th><th class="n">Редове</th><th class="n">Парични, €</th><th class="n">Непарични, €</th></tr></thead><tbody>
+    {% for r in funds %}<tr><td>{{ r.role or 'няма данни' }}</td><td class="n">{{ r.n }}</td><td class="n num" data-v="{{ r.money }}">{{ r.money|num }}</td><td class="n num" data-v="{{ r.in_kind }}">{{ r.in_kind|num }}</td></tr>{% endfor %}</tbody></table>
+    {{ src(p.erik_id, [('CSV', '/export-kandidati.csv?e=' ~ p.erik_id)]) }}</section>{% endif %}
+  {% if agencies %}<section class="p {{ 's6' if funds else 's12' }}"><h2>Обявени агенции {{ help('agency', 'обявени агенции') }}</h2>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Агенция</th><th>ЕИК</th><th>Вид</th></tr></thead><tbody>
+    {% for r in agencies %}<tr><td>{% if r.eik_valid %}<a class="l" href="/agencii/{{ r.agency_eik }}">{{ r.agency_name }}</a>{% else %}{{ r.agency_name }}{% endif %}</td><td>{{ r.agency_eik or 'няма данни' }}</td><td>{{ r.agency_kind or 'няма данни' }}</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(p.erik_id, [('CSV', '/export-agencii.csv?e=' ~ p.erik_id)]) }}</section>{% endif %}
+  <section class="p s12"><h2>Отчет след изборите {{ help('report', 'отчет след изборите') }}</h2>
+    {% if lines %}<div class="sub">както е в обобщената справка на Сметната палата; удебелените редове са обобщения, подредовете вече са включени в тях</div>
+    {% include "_lines.html" %}
+    {{ src(p.erik_id, [('CSV', '/export-otchet.csv?e=' ~ p.erik_id ~ '&l=' ~ report.layout ~ '&n=' ~ report.n), ('JSON', '/export-otchet.json?e=' ~ p.erik_id ~ '&l=' ~ report.layout ~ '&n=' ~ report.n)]) }}
+    {% else %}<p class="missing">В справката на Сметната палата няма отчет, който да сочи точно този участник. Виж <a class="l" href="/izbori/{{ p.erik_id }}#otcheti">отчетите за избора</a>.</p>{% endif %}</section>
+  {% if same %}<section class="p s12"><h2>Същото име в други избори {{ help('same_name', 'същото име в други избори') }}</h2><div class="sub">съвпадение по име, не доказана връзка</div>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Избор</th><th>Дата</th><th class="n">Дарения, брой</th><th class="n">Парични, €</th><th class="n">Непарични, €</th></tr></thead><tbody>
+    {% for r in same %}<tr><td><a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.title }}</a></td><td data-v="{{ r.election_day or '' }}" class="nowrap">{{ r.election_day|date }}</td><td class="n">{{ r.donations }}</td>
+      <td class="n num" data-v="{{ r.donated_money }}">{{ r.donated_money|num }}</td><td class="n num" data-v="{{ r.donated_in_kind }}">{{ r.donated_in_kind|num }}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+</div>
+<p class="mut">Регистрационен номер: {{ p.registry_number or 'няма данни' }} · номер в регистъра: {{ p.source_id }}{% if not p.listed %} · участникът е само получател на дарение; няма го в списъка на участниците, който регистърът дава за този избор{% endif %}</p>
+{% endblock %}

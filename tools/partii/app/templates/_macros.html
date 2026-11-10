@@ -1,0 +1,16 @@
+{% macro help(id, label) %}<button type="button" class="help-trigger" data-help="{{ id }}" aria-label="Какво е: {{ label }}">?</button>{% endmacro %}
+{% macro th(label, id=None, cls='') %}<th{% if cls %} class="{{ cls }}"{% endif %}>{{ label }}{% if id %} {{ help(id, label) }}{% endif %}</th>{% endmacro %}
+{% macro src(e, exports, what='ЕРИК, Сметна палата') %}<div class="src">{{ what }} · <a href="{{ ERIK }}/Reports{{ ('?electionId=' ~ e) if e else '' }}" rel="noopener">регистърът</a> · <a href="/sources">четене и сверка</a>{% for label, url in exports %} · <a href="{{ url }}">{{ label }}</a>{% endfor %}</div>{% endmacro %}
+{% macro amount(v) %}{% if v is none %}<span class="missing">няма данни</span>{% else %}{{ v|eur }}{% endif %}{% endmacro %}
+{% macro picker(action, el, elections, moments, d) %}
+<form class="ctl" method="get" action="{{ action }}" id="filters">
+  <label>Избор <select name="e" aria-label="Избор">
+    {% for x in elections %}<option value="{{ x.erik_id }}" {{ 'selected' if x.erik_id == el.erik_id }}>{{ x.election_day|date if x.election_day else 'без дата' }} · {{ x.title|truncate(70, True, '…') }}</option>{% endfor %}</select></label>
+  {% if moments|length > 1 %}<label>Състояние към <select name="d" aria-label="Състояние на регистъра към ден на четене">
+    <option value="">последното четене</option>
+    {% for m in moments|reverse %}{% set day = (m.applied_at|string)[:10] %}<option value="{{ day }}" {{ 'selected' if d == day }}>{{ day|date }} ({{ m.records_total }} дарения)</option>{% endfor %}</select></label>{% endif %}
+  <button>Покажи</button>
+</form>
+{% endmacro %}
+{% macro bars(rows, key='money') %}<div class="hb" style="margin-top:8px">{% for r in rows %}<div class="r bg"><span><a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.name }}</a></span>
+  <div class="tr"><i style="left:0;width:{{ r.w }}%"></i></div><span class="v">{{ r[key]|eur(0) }}</span></div>{% endfor %}</div>{% endmacro %}

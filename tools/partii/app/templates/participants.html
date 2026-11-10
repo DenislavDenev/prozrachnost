@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, th, src %}
+{% block title %}Участници{% endblock %}
+{% block main %}
+<h1>Участници в изборите</h1>
+<p class="lede">Партии, коалиции, инициативни комитети и местни коалиции, както са регистрирани за всеки избор. Показани са <b>{{ rows|length }}</b>{% if rows|length == 500 %} (първите 500; стесни търсенето или изтегли CSV){% endif %}.</p>
+<details class="explain"><summary>С прости думи</summary><p>Един ред е една регистрация за един избор. Една и съща партия има отделен ред за всеки избор, в който участва: регистърът не дава общ номер между изборите, затова не ги сливаме ({{ help('same_name', 'същото име в други избори') }}). Търсенето е по името на партията, коалицията или комитета. Например „ДПС“ ще покаже всички регистрации с това в името.</p></details>
+<form class="ctl" method="get" action="/uchastnici"><label>Име <input type="search" name="q" value="{{ q }}" placeholder="например ГЕРБ" aria-label="Търси участник по име"></label>
+  <label>Избор <select name="e" aria-label="Избор"><option value="">всички избори</option>{% for x in elections %}<option value="{{ x.erik_id }}" {{ 'selected' if x.erik_id == e }}>{{ x.election_day|date if x.election_day else 'без дата' }} · {{ x.title|truncate(60, True, '…') }}</option>{% endfor %}</select></label><button>Търси</button></form>
+{% set qs = 'q=' ~ (q|urlencode) ~ ('&e=' ~ e if e else '') %}
+<section class="p"><div class="scroll tall"><table class="sortable" id="t-part"><thead><tr><th>Участник</th><th>Вид</th><th>Избор</th><th>Къде</th>{{ th('Дарения, парични, €', 'money', 'n') }}{{ th('Непарични, €', 'in_kind', 'n') }}{{ th('От кандидати, €', 'candidate', 'n') }}<th class="n">Агенции</th>{{ th('Разходи по отчет, €', 'report', 'n') }}</tr></thead><tbody>
+  {% for r in rows %}<tr><td><a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.name }}</a></td><td>{{ KIND[r.kind] }}</td>
+    <td data-v="{{ r.election_day or '' }}"><a class="l" href="/izbori/{{ r.erik_id }}">{{ r.election_day|date if r.election_day else r.title|truncate(30, True, '…') }}</a></td>
+    <td>{{ REG[r.reg_in] }}{% if r.municipality %}, {{ r.municipality }}{% endif %}{% if r.settlement %}, {{ r.settlement }}{% endif %}</td>
+    <td class="n num" data-v="{{ r.donated_money }}">{{ r.donated_money|num }}</td><td class="n num" data-v="{{ r.donated_in_kind }}">{{ r.donated_in_kind|num }}</td><td class="n num" data-v="{{ r.candidate_money }}">{{ r.candidate_money|num }}</td>
+    <td class="n">{{ r.agencies }}</td><td class="n num" data-v="{{ r.report_expense_eur if r.report_expense_eur is not none else '' }}">{{ r.report_expense_eur|num }}</td></tr>
+  {% else %}<tr><td colspan="9">няма участник с това име</td></tr>{% endfor %}</tbody></table></div>
+  {{ src(e, [('CSV', '/export-uchastnici.csv?' ~ qs), ('JSON', '/export-uchastnici.json?' ~ qs)]) }}</section>
+{% endblock %}

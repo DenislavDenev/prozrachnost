@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Източници и свежест{% endblock %}
+{% block main %}
+{% set TBL = {'donors': 'Дарители', 'candidates': 'Средства на кандидати', 'agencies': 'Агенции', 'results': 'Проверка на доходите', 'participants': 'Списъци на участници', 'report': 'Справки от отчетите', 'page_participants': 'Страница „Участници“', 'page_donation': 'Страница „Дарители“'} %}
+{% set ST = {'loaded': 'наред', 'confirmed': 'наред, потвърден при второ четене', 'unchanged': 'наред, без промяна', 'held': 'задържан до второ четене', 'rejected': 'невалиден отговор'} %}
+{% set SRC = {'home': 'Списък на изборите', 'page-participants': 'Страница „Участници“', 'page-donation': 'Страница „Дарители“', 'participants': 'Списъци на участници', 'donors': 'Дарители', 'candidates': 'Средства на кандидати', 'agencies': 'Агенции', 'results': 'Проверка на доходите', 'report': 'Справки от отчетите'} %}
+<h1>Източници и свежест</h1>
+<p class="lede">Откъде идват числата, докога са четени и какво не е наред.</p>
+{% if problems %}<section class="p warning"><h2>{{ problems|length }} {{ 'проблем' if problems|length == 1 else 'проблема' }}</h2><details><summary>Виж</summary>{% for p in problems %}<p>{{ p }}</p>{% endfor %}</details></section>{% else %}<section class="p"><h2>Свежест: наред</h2><p>Няма открити проблеми при последната проверка.</p></section>{% endif %}
+<section class="p"><h2>ЕРИК, Сметна палата</h2>
+  <p>Единният публичен регистър по Изборния кодекс: <a class="l" href="{{ ERIK }}" rel="noopener">erik.bulnao.government.bg</a>. Регистърът няма API и не публикува файлове с даренията; таблиците му се зареждат от адреси на самия сайт. Архивът на Прозрачност ги чете веднъж на ден (шестте най-нови избора всеки ден, всички в неделя) и този инструмент строи само от архива. <b>Няма посочен лиценз</b>: показваме данните с източника, но не ги раздаваме като набор и не са в общия API.</p>
+  <p>Регистърът пази един избор до следващия от същия вид. Изчезнал избор остава тук с бележка. Имената на дарителите не се записват в базата.</p>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Таблица</th><th class="n">Избори</th><th class="n">Редове по брояча на източника</th><th class="n">Парични, €</th><th class="n">Непарични, €</th><th>Най-старо четене</th><th>Последен нов отговор</th></tr></thead><tbody>
+  {% for r in s.tables %}<tr><td>{{ TBL.get(r.tbl, r.tbl) }}</td><td class="n">{{ r.elections }}</td><td class="n">{{ r.records if r.records is not none else '' }}</td><td class="n num">{{ r.money|num if r.money is not none else '' }}</td><td class="n num">{{ r.in_kind|num if r.in_kind is not none else '' }}</td>
+    <td class="nowrap">{{ r.oldest|date }}</td><td class="nowrap">{{ r.newest|date }}</td></tr>{% endfor %}</tbody></table></div>
+  <p class="mut">Сверка при всяко четене: броят редове срещу брояча на източника (recordsTotal), паричните срещу TotalDonationPrice и непаричните срещу TotalDonationValue, поотделно. Отговор, който не минава, не се публикува. Сумата „Парични“ в таблицата събира различни избори и е само за ориентир.</p></section>
+<section class="p"><h2>Избори и сверка на даренията</h2><div class="sub">за всеки избор: какво дава източникът в последния приет отговор; числата на страниците са същите</div>
+  <div class="scroll tall"><table class="sortable"><thead><tr><th>Избор</th><th>Дата</th><th class="n">Редове</th><th class="n">Парични, €</th><th class="n">Непарични, €</th><th>Последен нов отговор</th><th class="n">Приети четения</th><th>Валута на отчетите</th></tr></thead><tbody>
+  {% for e in s.elections %}<tr><td><a class="l" href="/izbori/{{ e.erik_id }}">{{ e.title }}</a>{% if e.gone_at %} <span class="badge warn">липсва при източника от {{ e.gone_at|date }}</span>{% endif %}</td><td data-v="{{ e.election_day or '' }}" class="nowrap">{{ e.election_day|date }}</td>
+    <td class="n">{{ e.records_total if e.records_total is not none else 'не е четен' }}</td><td class="n num">{{ e.total_money|num }}</td><td class="n num">{{ e.total_in_kind|num }}</td><td class="nowrap">{{ e.read_at|date }}</td><td class="n">{{ e.reads }}</td>
+    <td title="{{ e.report_currency_evidence or '' }}">{{ {'BGN': 'лева', 'EUR': 'евро'}.get(e.report_currency, 'не е установена') }}</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Отговори на източника</h2>
+  <div class="scroll"><table><thead><tr><th>Състояние</th><th class="n">Отговори</th><th>От</th><th>До</th></tr></thead><tbody>
+  {% for r in s.statuses %}<tr><td>{{ ST.get(r.status, r.status) }}</td><td class="n">{{ r.n }}</td><td>{{ r.first|date }}</td><td>{{ r.last|date }}</td></tr>{% endfor %}</tbody></table></div>
+  {% if s.held %}<details><summary>{{ s.held|length }} задържани или невалидни отговора</summary>{% for h in s.held %}<p>{{ SRC.get(h.source, h.source) }}, избор {{ h.ref }}, {{ h.loaded_at|date }}: {{ ST.get(h.status, h.status) }}. {{ h.reason or '' }}</p>{% endfor %}</details>{% endif %}
+  <p class="mut">По-малък отговор от показвания се задържа до второ четене със същото съдържание. Между 24.10 и 07.11.2026 архивът не е чел регистъра: за тези дни няма дневни състояния.</p></section>
+<section class="p"><h2>Несвързани редове</h2><p>Ред, който назовава участника си само с текст, се свързва с участник, когато точно един участник от избора носи този текст. Останалите се показват с текста си и не се губят.</p>
+  <div class="scroll"><table><thead><tr><th>Вид</th><th class="n">Различни текстове</th><th class="n">Редове</th></tr></thead><tbody>
+  {% for r in s.unmatched %}<tr><td>{{ {'agency': 'агенция без валиден ЕИК', 'participant:candidates': 'средства на кандидати без участник', 'participant:agencies': 'агенция без участник', 'participant:report': 'отчет без участник'}.get(r.kind, r.kind) }}</td><td class="n">{{ r.keys }}</td><td class="n">{{ r.rows }}</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Проверки при последното изграждане</h2><div class="scroll"><table><thead><tr><th>Правило</th><th>Резултат</th><th>Състояние</th></tr></thead><tbody>
+  {% for c in s.checks %}<tr><td>{{ c.title_bg }}</td><td>{{ c.detail or '' }}</td><td>{{ 'не е пускано' if c.ok is none else 'наред' if c.ok else 'неуспешно' }}</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="p"><h2>Набори</h2>{% for d in s.datasets %}<h3>{{ d.title_bg }} <span class="badge">{{ d.id }}</span></h3><p>{{ d.description_bg }}</p><p class="mut">Канал: {{ {'site-json': 'JSON на сайта', 'file': 'файл на сайта'}.get(d.channel, d.channel) }}. Лиценз: {{ d.licence }}; {{ 'раздава се' if d.distributed else 'не се раздава и не е в общия API' }}. Четене: {{ d.cadence }}.</p>{% endfor %}</section>
+<section class="p"><h2>Последно изпълнение на всяка стъпка</h2><div class="scroll"><table><thead><tr><th>Стъпка</th><th>Начало (UTC)</th><th>Състояние</th></tr></thead><tbody>
+  {% for r in s.jobs %}<tr><td>{{ r.step }}</td><td>{{ r.started_at|string|truncate(16, True, '') }}</td><td>{{ 'наред' if r.is_ok else 'неуспешно' }}</td></tr>{% endfor %}</tbody></table></div>
+  <p><a class="l" href="/sources.json">sources.json</a></p></section>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, th, src, amount, bars %}
+{% block title %}{{ el.title }}{% endblock %}
+{% block main %}
+{% set q = 'e=' ~ el.erik_id ~ ('&d=' ~ d if d else '') %}
+<h1>{{ el.title }}</h1>
+<p class="lede">{{ ELECTION[el.kind]|capitalize }} избори{% if el.election_day %} на {{ el.election_day|date }}{% endif %}. {% if el.donations is none %}Регистърът на дарителите още не е прочетен.{% else %}В регистъра има <b>{{ el.donations|num(0) }} {{ el.donations|plural('дарение', 'дарения') }}</b>: <b>{{ el.money|eur }}</b> парични и <b>{{ el.in_kind|eur }}</b> непарични.{% endif %}
+  {% if el.candidate_rows %}Кандидатите и членовете на инициативни комитети са дали <b>{{ el.candidate_money|eur }}</b> парични и <b>{{ el.candidate_in_kind|eur }}</b> непарични.{% endif %}
+  {% if el.gone_at %}<span class="warn">Изборът вече не е в регистъра от {{ el.gone_at|date }}; показваме последното прочетено.</span>{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Тук е всичко, което регистърът казва за този избор: кой участник колко дарения е получил, всяко дарение поотделно (без името на дарителя, {{ help('donor', 'дарител') }}), парите на кандидатите, обявените агенции и отчетите след изборите.</p>
+  <p>{% if el.threshold_shown %}За дарение от {{ el.threshold_shown|eur }} нагоре дарителят подава декларация за произхода на парите ({{ help('threshold', 'праг за декларация') }}). {% endif %}„Над прага без декларация“ ({{ help('no_decl', 'над прага без декларация') }}) показва колко такива дарения нямат декларация в регистъра в деня на четене. Това не е обвинение: декларацията може да е подадена по-късно.</p>
+</details>
+{% if moments|length > 1 %}<form class="ctl" method="get" action="/izbori/{{ el.erik_id }}"><label><span>Състояние към {{ help('as_of', 'състояние към дата') }}</span> <select name="d" aria-label="Състояние на регистъра към ден на четене"><option value="">последното четене</option>
+  {% for m in moments|reverse %}{% set day = (m.applied_at|string)[:10] %}<option value="{{ day }}" {{ 'selected' if d == day }}>{{ day|date }} ({{ m.records_total }} дарения)</option>{% endfor %}</select></label><button>Покажи</button></form>{% endif %}
+<nav class="tabs" aria-label="Раздели"><a href="#poluchateli">Получатели</a><a href="#dareniya">Дарения</a><a href="#kandidati">Кандидати</a><a href="#agencii">Агенции</a><a href="#otcheti">Отчети</a>{% if cmp is not none %}<a href="#sravnenie">Сравнение</a>{% endif %}</nav>
+<div class="grid">
+  <section class="p s12" id="poluchateli"><h2>Получатели на дарения</h2><div class="sub">€ · парични и непарични отделно{% if d %} · към {{ d|date }}{% endif %}</div>
+    {% if top %}{{ bars(top) }}{% endif %}
+    <input type="search" placeholder="Търси участник" aria-label="Търси участник" data-filter="t-rec">
+    <div class="scroll"><table class="sortable" id="t-rec"><thead><tr><th>Участник</th><th>Вид</th><th class="n">Дарения, брой</th>{{ th('Парични, €', 'money', 'n') }}{{ th('Непарични, €', 'in_kind', 'n') }}{{ th('Над прага без декларация', 'no_decl', 'n') }}<th>Първо</th><th>Последно</th></tr></thead><tbody>
+    {% for r in rec %}<tr><td><a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.name }}</a></td><td>{{ KIND[r.kind] }}</td><td class="n">{{ r.donations }}</td>
+      <td class="n num" data-v="{{ r.money }}">{{ r.money|num }}</td><td class="n num" data-v="{{ r.in_kind }}">{{ r.in_kind|num }}</td><td class="n" data-v="{{ r.over_none }}">{{ r.over_none }} от {{ r.over_threshold }}</td>
+      <td data-v="{{ r.first_day or '' }}" class="nowrap">{{ r.first_day|date }}</td><td data-v="{{ r.last_day or '' }}" class="nowrap">{{ r.last_day|date }}</td></tr>
+    {% else %}<tr><td colspan="8">няма дарения в регистъра</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-poluchateli.csv?' ~ q), ('JSON', '/export-poluchateli.json?' ~ q)]) }}</section>
+
+  <section class="p s12" id="dareniya"><h2>Дарения {{ help('donor', 'дарител') }}</h2><div class="sub">{{ donations|length }} реда · всеки ред е едно дарение от физическо лице; името не се показва</div>
+    {% if donations|length > 1 %}<div class="chart" id="c-days" data-src="/api/dni.json?{{ q }}" data-digits="0" data-zero></div>{% endif %}
+    <input type="search" placeholder="Търси по участник, дата или вид" aria-label="Търси в даренията" data-filter="t-don">
+    <div class="scroll tall"><table class="sortable" id="t-don"><thead><tr><th>Дата</th><th>Получател</th><th>Вид</th>{{ th('Парични, €', 'money', 'n') }}{{ th('Непарични, €', 'in_kind', 'n') }}{{ th('Декларация', 'threshold') }}</tr></thead><tbody>
+    {% for r in donations %}<tr{% if r.over_threshold and r.decl == 'none' %} class="flagged"{% endif %}><td data-v="{{ r.donation_day or '' }}" class="nowrap">{{ r.donation_day|date }}</td>
+      <td><a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.recipient }}</a></td><td>{{ 'парично' if r.kind == 'money' else 'непарично' if r.kind == 'in_kind' else 'парично и непарично' }}</td>
+      <td class="n num" data-v="{{ r.money }}">{{ r.money|num }}</td><td class="n num" data-v="{{ r.in_kind }}">{{ r.in_kind|num }}</td>
+      <td>{% if not r.over_threshold %}под прага{% else %}{{ DECL[r.decl] }}{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6">няма дарения в регистъра</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-dareniya.csv?' ~ q), ('JSON', '/export-dareniya.json?' ~ q)]) }}</section>
+
+  <section class="p s12" id="kandidati"><h2>Средства на кандидати и членове на инициативни комитети {{ help('candidate', 'средства на кандидати') }}</h2>
+    <div class="sub">по участник и роля; не са част от даренията{% if el.candidate_rows is not none %} · {{ el.candidate_rows }} реда в регистъра{% endif %}</div>
+    <input type="search" placeholder="Търси участник" aria-label="Търси участник" data-filter="t-fund">
+    <div class="scroll"><table class="sortable" id="t-fund"><thead><tr><th>Участник</th><th>Роля</th><th class="n">Редове</th><th class="n">Парични, €</th><th class="n">Непарични, €</th>{{ th('Над прага без декларация', 'no_decl', 'n') }}</tr></thead><tbody>
+    {% for r in funds %}<tr><td>{% if r.source_id is not none %}<a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.participant_label }}</a>{% else %}{{ r.participant_label }}{% endif %}</td>
+      <td>{{ r.role or 'няма данни' }}</td><td class="n">{{ r.n }}</td><td class="n num" data-v="{{ r.money }}">{{ r.money|num }}</td><td class="n num" data-v="{{ r.in_kind }}">{{ r.in_kind|num }}</td><td class="n">{{ r.over_none }}</td></tr>
+    {% else %}<tr><td colspan="6">{{ 'таблицата не е прочетена' if el.candidate_rows is none else 'няма такива средства в регистъра' }}</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-kandidati.csv?' ~ q), ('JSON', '/export-kandidati.json?' ~ q)]) }}</section>
+
+  <section class="p s12" id="agencii"><h2>Обявени агенции {{ help('agency', 'обявени агенции') }}</h2><div class="sub">рекламни, социологически и PR агенции, както ги е обявил участникът; без суми</div>
+    <input type="search" placeholder="Търси агенция или участник" aria-label="Търси агенция или участник" data-filter="t-ag">
+    <div class="scroll tall"><table class="sortable" id="t-ag"><thead><tr><th>Участник</th><th>Агенция</th><th>ЕИК</th><th>Вид</th><th>Описание</th></tr></thead><tbody>
+    {% for r in agencies %}<tr><td>{% if r.source_id is not none %}<a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.participant_label }}</a>{% else %}{{ r.participant_label }}{% endif %}</td>
+      <td>{% if r.eik_valid %}<a class="l" href="/agencii/{{ r.agency_eik }}">{{ r.agency_name }}</a>{% else %}{{ r.agency_name }}{% endif %}</td>
+      <td>{{ r.agency_eik or 'няма данни' }}{% if r.agency_eik and not r.eik_valid %} <span class="badge warn">грешна контролна цифра</span>{% endif %}</td><td>{{ r.agency_kind or 'няма данни' }}</td><td>{{ r.descr or '' }}</td></tr>
+    {% else %}<tr><td colspan="5">{{ 'таблицата не е прочетена' if el.agency_rows is none else 'няма обявени агенции' }}</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-agencii.csv?' ~ q), ('JSON', '/export-agencii.json?' ~ q)]) }}</section>
+
+  <section class="p s12" id="otcheti"><h2>Отчети след изборите {{ help('report', 'отчет след изборите') }}</h2>
+    <div class="sub">общо набрани средства и разходи, както са подадени{% if el.report_currency == 'BGN' %} в лева; до тях са в евро по 1,95583 {{ help('report_currency', 'валута на отчета') }}{% elif el.report_currency == 'EUR' %} в евро{% else %}; валутата не е установена и сумите са само в оригинал{% endif %}</div>
+    <input type="search" placeholder="Търси участник" aria-label="Търси участник" data-filter="t-rep">
+    <div class="scroll tall"><table class="sortable" id="t-rep"><thead><tr><th>Участник</th><th>Вид</th><th class="n">Набрани средства{{ ', лв.' if el.report_currency == 'BGN' }}</th><th class="n">Разходи{{ ', лв.' if el.report_currency == 'BGN' }}</th><th class="n">Набрани средства, €</th><th class="n">Разходи, €</th><th>Отчет</th></tr></thead><tbody>
+    {% for r in reports %}<tr><td>{% if r.source_id is not none %}<a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.participant_label }}</a>{% else %}{{ r.participant_label }}{% endif %}</td><td>{{ KIND[r.layout] }}</td>
+      {% if r.filled == 0 %}<td colspan="4"><span class="missing">няма подадено {{ help('empty', 'няма подадено') }}</span></td>{% else %}
+      <td class="n num" data-v="{{ r.income if r.income is not none else '' }}">{{ r.income|num }}</td><td class="n num" data-v="{{ r.expense if r.expense is not none else '' }}">{{ r.expense|num }}</td>
+      <td class="n num" data-v="{{ r.income_eur if r.income_eur is not none else '' }}">{{ r.income_eur|num }}</td><td class="n num" data-v="{{ r.expense_eur if r.expense_eur is not none else '' }}">{{ r.expense_eur|num }}</td>{% endif %}
+      <td><a class="l" href="/izbori/{{ el.erik_id }}/otchet/{{ r.layout }}/{{ r.n }}{{ '?d=' ~ d if d else '' }}">всички редове</a></td></tr>
+    {% else %}<tr><td colspan="7">няма отчети в справката на Сметната палата</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-otcheti.csv?' ~ q), ('JSON', '/export-otcheti.json?' ~ q)]) }}
+    {% if check and check.checked %}<p class="mut">Проверка на доходите {{ help('income_check', 'проверка на доходите') }}: Сметната палата е проверила {{ check.checked }} {{ check.checked|plural('лице', 'лица') }} за общо {{ check.total|eur }}; при {{ check.compliant }} има съответствие с доходите, при {{ check.checked - check.compliant }} наличните данни не покриват сумата.</p>{% endif %}</section>
+
+  {% if cmp is not none %}<section class="p s12" id="sravnenie"><h2>Сравнение на два дни {{ help('as_of', 'състояние към дата') }}</h2><div class="sub">какво е показвал регистърът в два дни на четене; същият избор, същите колони, евро</div>
+    <form class="ctl" method="get" action="/izbori/{{ el.erik_id }}#sravnenie">
+      <label>Ден А <select name="a" aria-label="Ден А">{% for x in days %}<option value="{{ x }}" {{ 'selected' if x == a }}>{{ x|date }}</option>{% endfor %}</select></label>
+      <label>Ден Б <select name="b" aria-label="Ден Б">{% for x in days %}<option value="{{ x }}" {{ 'selected' if x == b }}>{{ x|date }}</option>{% endfor %}</select></label><button>Сравни</button></form>
+    <div class="scroll"><table class="sortable" id="t-cmp"><thead><tr><th>Участник</th><th class="n">Парични към {{ a|date }}, €</th><th class="n">Парични към {{ b|date }}, €</th><th class="n">Разлика, €</th><th class="n">Дарения А</th><th class="n">Дарения Б</th></tr></thead><tbody>
+    {% for r in cmp %}<tr><td><a class="l" href="/uchastnici/{{ r.key }}">{{ r.name }}</a></td><td class="n num" data-v="{{ r.money_a if r.money_a is not none else '' }}">{{ r.money_a|num if r.money_a is not none else 'няма дарения' }}</td>
+      <td class="n num" data-v="{{ r.money_b if r.money_b is not none else '' }}">{{ r.money_b|num if r.money_b is not none else 'няма дарения' }}</td><td class="n num" data-v="{{ r.money_diff }}">{{ r.money_diff|num }}</td>
+      <td class="n">{{ r.donations_a if r.donations_a is not none else 0 }}</td><td class="n">{{ r.donations_b if r.donations_b is not none else 0 }}</td></tr>{% endfor %}</tbody></table></div>
+    {{ src(el.erik_id, [('CSV', '/export-sravnenie.csv?e=' ~ el.erik_id ~ '&a=' ~ a ~ '&b=' ~ b), ('JSON', '/export-sravnenie.json?e=' ~ el.erik_id ~ '&a=' ~ a ~ '&b=' ~ b)]) }}</section>{% endif %}
+</div>
+<p class="mut">Участници по страницата на регистъра: в ЦИК {{ el.listed_cik if el.listed_cik is not none else 'няма данни' }}, в РИК {{ el.listed_rik if el.listed_rik is not none else 'няма данни' }}, в ОИК {{ el.listed_oik if el.listed_oik is not none else 'няма данни' }}. <a class="l" href="/uchastnici?e={{ el.erik_id }}">Списък на участниците</a></p>
+{% endblock %}

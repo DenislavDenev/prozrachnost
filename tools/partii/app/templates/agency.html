@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, src %}
+{% block title %}{{ a.name }}{% endblock %}
+{% block main %}
+<h1>{{ a.name }}</h1>
+<p class="lede">ЕИК <b>{{ a.eik }}</b>. Обявена от <b>{{ a.participants }}</b> {{ a.participants|plural('участник', 'участници') }} в <b>{{ a.elections }}</b> {{ a.elections|plural('избор', 'избора') }} {{ help('agency', 'обявени агенции') }}. <a class="l" href="{{ TENDER }}/companies/{{ a.eik }}" rel="noopener">Потърси фирмата в Тендер ↗</a> (има страница там само ако е печелила обществени поръчки).</p>
+<details class="explain"><summary>С прости думи</summary><p>Това са изборите и участниците, които са обявили тази агенция. Регистърът не казва колко ѝ е платено. Сумите за реклама, медии и социология са в отчета на всеки участник след изборите, без разбивка по агенции.</p></details>
+<section class="p"><div class="scroll"><table class="sortable"><thead><tr><th>Избор</th><th>Дата</th><th>Участник</th><th>Вид</th><th>Описание</th></tr></thead><tbody>
+  {% for r in rows %}<tr><td><a class="l" href="/izbori/{{ r.erik_id }}">{{ r.title }}</a></td><td data-v="{{ r.election_day or '' }}" class="nowrap">{{ r.election_day|date }}</td>
+    <td>{% if r.source_id is not none %}<a class="l" href="/uchastnici/{{ r.erik_id }}-{{ r.reg_in }}-{{ r.source_id }}">{{ r.participant_label }}</a>{% else %}{{ r.participant_label }}{% endif %}</td><td>{{ r.agency_kind or 'няма данни' }}</td><td>{{ r.descr or '' }}</td></tr>{% endfor %}</tbody></table></div>
+  {{ src(None, [('CSV', '/export-agencii.csv?eik=' ~ a.eik), ('JSON', '/export-agencii.json?eik=' ~ a.eik)]) }}</section>
+{% endblock %}
