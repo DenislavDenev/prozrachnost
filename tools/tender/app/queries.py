@@ -155,7 +155,7 @@ def company(key):
     c["tags"] = rows("""SELECT t.code, d.label, d.kind, t.reason FROM pub_tender.tag t JOIN pub_tender.tag_def d USING (code)
         WHERE t.entity_type = 'company' AND t.entity_id = %s
         UNION ALL SELECT e.code, e.code, 'editorial', e.note FROM pub_tender.editorial_tag e
-        WHERE e.entity_type = 'company' AND e.entity_id = %s AND e.removed_at IS NULL""", k, k)
+        WHERE e.entity_type = 'company' AND e.entity_id = %s AND e.removed_at IS NULL ORDER BY 3, 1""", k, k)
     c["indicators"] = indicators(k)
     c["paid"] = paid("company_key", k)
     c["coverage"] = one("SELECT status, done_at, fetched_at FROM pub_tender.tr_coverage WHERE eik = %s", c["eik"][:9]) if c.get("eik") else None
@@ -452,8 +452,10 @@ def contract(cid):
         return None
     c["suppliers"] = rows("""SELECT s.*, co.name co_name FROM pub_tender.contract_supplier s LEFT JOIN pub_tender.company co ON co.key = s.party_key
                              WHERE s.contract_id = %s ORDER BY position""", cid)
-    c["amendments"] = rows("SELECT * FROM pub_tender.amendment WHERE contract_id = %s ORDER BY published_at", cid)
-    c["subcontracts"] = rows("SELECT * FROM pub_tender.subcontract WHERE contract_id = %s", cid)
+    # the columns the source gives, named: the serving tables also carry a row number (their key), which is not data
+    c["amendments"] = rows("""SELECT contract_id, published_at, source_day, last_value, current_value, difference, currency, reason, description
+                              FROM pub_tender.amendment WHERE contract_id = %s ORDER BY published_at, n""", cid)
+    c["subcontracts"] = rows("SELECT contract_id, party_key, eik, name, percent, amount FROM pub_tender.subcontract WHERE contract_id = %s ORDER BY n", cid)
     c["source"] = one("SELECT day, kind, key, sha256 FROM pub_tender.eop_file WHERE day = %s AND kind = %s",
                       c["source_day"], "contracts" if c["source"] == "eop" else "ocds")
     c["records"] = raw_records("contract", cid)
@@ -478,8 +480,11 @@ def tender(unp, raw=True):
         WHERE c.unp = %s ORDER BY c.lot_no NULLS FIRST, c.effective_date""", unp)
     t["stats"] = one(f"""SELECT count(*) n, round({SUM}) eur FROM pub_tender.contract c WHERE c.unp = %s""", unp)
     # lots closed without award (the award notice) and annexes whose contract could not be told apart
-    t["awards"] = rows("SELECT * FROM pub_tender.award WHERE unp = %s ORDER BY published_at, lot_no", unp) if has("pub_tender.award") else []
-    t["orphans"] = rows("SELECT * FROM pub_tender.annex_orphan WHERE unp = %s ORDER BY published_at", unp) if has("pub_tender.annex_orphan") else []
+    t["awards"] = rows("""SELECT unp, tender_id, lot_no, notice_id, notice_type, published_at, source_day, offers_count, sme_offers_count,
+                                 disqualified_offers_count, link_oj
+                          FROM pub_tender.award WHERE unp = %s ORDER BY published_at, lot_no, row_id""", unp) if has("pub_tender.award") else []
+    t["orphans"] = rows("""SELECT unp, contract_number, lot_no, published_at, source_day, last_value, current_value, currency, reason
+                           FROM pub_tender.annex_orphan WHERE unp = %s ORDER BY published_at, row_id""", unp) if has("pub_tender.annex_orphan") else []
     t["eop"] = eop_extras(t)
     if raw:
         t["records"] = raw_records("tender", unp)

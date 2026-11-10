@@ -152,6 +152,14 @@ def test_every_answer_says_its_publication_and_the_number_moves_only_with_the_co
     status, headers, html = get("/contracts")
     assert status == 200 and headers["x-publication"] == str(first) and headers["etag"] == f'W/"pub-{first}"' and "last-modified" in headers
     assert "А ООД" in html
+    # a page shows what the source gives: the row numbers that key some serving tables are not data
+    conn.execute("""INSERT INTO pub_tender.amendment (contract_id, published_at, current_value, currency, n)
+        SELECT id, '2025-03-01', 5, 'EUR', 1 FROM pub_tender.contract ORDER BY id LIMIT 1""")
+    cid = conn.execute("SELECT contract_id FROM pub_tender.amendment").fetchone()[0]
+    import json
+    answer = json.loads(get(f"/contracts/{cid}.json")[2])
+    assert len(answer["amendments"]) == 1 and "n" not in answer["amendments"][0] and "row_id" not in json.dumps(answer)
+    conn.execute("DELETE FROM pub_tender.amendment")
     status, headers, _ = get("/healthz")
     assert status == 200 and headers["x-publication"] == str(first)
     # the rules and the serving layer again, nothing new to say: no new number
