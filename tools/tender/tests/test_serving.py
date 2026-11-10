@@ -249,6 +249,9 @@ def test_replay_copies_the_old_database_and_parity_sees_a_difference(conn, test_
     # every rule the step records is in db/checks.toml, and the other way round
     listed = {r[0] for r in conn.execute("SELECT name FROM ops.check_rule WHERE tool = 'tender' AND kind = 'parity'")}
     assert listed == set(move.parity_rules())
+    # the number of a network component is arbitrary: the same components under other numbers are the same
+    conn.execute("UPDATE live.network_component SET component = component + 1000; UPDATE live.network_component_stats SET component = component + 1000")
+    assert step("parity", lambda r: move.parity(conn, r, old_dsn=test_database, old_ops="old_ops"))["differ"] == []
     # one cent in one contract of the old database, one letter in one role: parity names exactly those tables
     conn.execute("UPDATE live.contract SET amount_eur = amount_eur + 0.01 WHERE id = (SELECT min(id) FROM live.contract)")
     conn.execute("UPDATE tr.role SET holder_name = holder_name || 'А' WHERE holder_id = %s AND eik = %s", (P1, A))

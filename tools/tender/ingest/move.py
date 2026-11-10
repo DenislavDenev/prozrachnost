@@ -35,6 +35,15 @@ BUILT = ["buyer", "tender", "lot", "contract", "contract_supplier", "amendment",
 # what is compared beside rows and content: the money, where a table has it
 MONEY = [("contract", "amount_eur"), ("contract", "value_current"), ("payment", "amount_eur"), ("payment", "amount")]
 NOT_COMPARED = {"build_state"}   # one row with the time of the last build: each database has its own
+# The number of a network component is the order in which the build met it, so two builds of the same data may
+# number the same components differently. They are compared by what is in them: a component is named by its
+# smallest node, and its statistics are compared without the number.
+BY_CONTENT = {
+    "network_component": (["view", "mode", "node", "named"],
+                          "(SELECT view, mode, node, min(node) OVER (PARTITION BY view, mode, component) AS named FROM {}.network_component) x"),
+    "network_component_stats": (["view", "mode", "nodes", "persons", "companies", "contracts", "amount_eur"],
+                                "(SELECT view, mode, nodes, persons, companies, contracts, amount_eur FROM {}.network_component_stats) x"),
+}
 
 
 def _columns(conn, schema, table):
@@ -103,9 +112,13 @@ def replay(conn, r, old_dsn=OLD_DSN, again=False, old_ops="ops"):
 def _measure(conn, schema, table, cols):
     """(rows, a sum over the content of every row) of a table: the same rows give the same two numbers whatever
     their order. Every column is read as text, so the two sides need not agree on a type's name."""
+    relation = sql.SQL("{}.{}").format(sql.Identifier(schema), sql.Identifier(table))
+    if table in BY_CONTENT:
+        cols, text = BY_CONTENT[table]
+        relation = sql.SQL(text).format(sql.Identifier(schema))
     row = sql.SQL("ROW({})::text").format(sql.SQL(", ").join(sql.SQL("{}::text").format(sql.Identifier(c)) for c in cols))
-    return conn.execute(sql.SQL("SELECT count(*), COALESCE(sum(('x' || substr(md5({}), 1, 15))::bit(60)::bigint), 0) FROM {}.{}").format(
-        row, sql.Identifier(schema), sql.Identifier(table))).fetchone()
+    return conn.execute(sql.SQL("SELECT count(*), COALESCE(sum(('x' || substr(md5({}), 1, 15))::bit(60)::bigint), 0) FROM {}").format(
+        row, relation)).fetchone()
 
 
 def parity(conn, r, old_dsn=OLD_DSN, old_ops="ops"):
