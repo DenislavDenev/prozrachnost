@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 A, B, D = "202210490", "831641791", "130873641"      # A and B win contracts, D has neither a contract nor a payment
+E, UNIT = "000024663", "0000246630010"                 # a company without a partida read, and a unit of it
 P1, P2, P3 = "1" * 64, "2" * 64, "3" * 64            # the register's identifiers of three people
 
 
@@ -47,7 +48,9 @@ def fill(conn):
 
 def build(conn, rows=None):
     from ingest import build as B_, normalize as N
-    rows = rows or [contract(1, A, "А ООД", "01.06.2022", 1000), contract(2, B, "Б ЕООД", "01.01.2024", 700)]
+    # E and a unit of E (a 13-digit number) win contracts too: they share the node of E, and E names that node
+    rows = rows or [contract(1, A, "А ООД", "01.06.2022", 1000), contract(2, B, "Б ЕООД", "01.01.2024", 700),
+                    contract(3, E, "Я ООД", "01.02.2024", 60), contract(4, UNIT, "A КЛОН", "01.02.2024", 50)]
     res = N.normalize([("2025-01-01", "contracts", rows)], N.Fx({}))
     with conn.transaction():
         B_.start_stage(conn)
@@ -91,6 +94,8 @@ def test_people_are_shown_only_in_entities_with_public_money_and_under_a_token_o
     assert one(conn, "SELECT count(*) FROM tender.edge WHERE holder_kind = 'person'") == 6
     # a holder written in two ways is one node, named the same in every build (the first spelling by the alphabet)
     assert conn.execute("SELECT label::text FROM tender.node WHERE kind = 'local_person'").fetchall() == [("JOHN SMITH",)]
+    # the node of E is E, though its unit comes first by the alphabet
+    assert conn.execute("SELECT ref, label::text FROM tender.node WHERE id = %s", ("c:" + E,)).fetchall() == [("eik:" + E, "Я ООД")]
     assert one(conn, "SELECT count(*) FROM tender.person") == 3
     # the pages: the two people with a role in a company with a contract, and only those roles
     shown = conn.execute("SELECT name::text, id FROM pub_tender.person ORDER BY 1").fetchall()
@@ -166,7 +171,7 @@ def test_a_failed_rule_keeps_the_pages_on_the_version_they_had(conn):
     conn.execute("DELETE FROM tender.contract_supplier; DELETE FROM tender.contract")      # a build that lost every contract
     with pytest.raises(RuntimeError, match="Договорите не са намалели"):
         B_.serve(conn, {})
-    assert one(conn, "SELECT count(*) FROM pub_tender.contract") == 2 and one(conn, "SELECT max(publication_id) FROM pub.publication") == first
+    assert one(conn, "SELECT count(*) FROM pub_tender.contract") == 4 and one(conn, "SELECT max(publication_id) FROM pub.publication") == first
     assert one(conn, "SELECT ok FROM ops.check_latest WHERE tool = 'tender' AND name = 'contracts_did_not_drop'") is False
     from ingest import daily
     assert any("Договорите не са намалели" in p for p in daily.freshness(conn))            # and the freshness check says so
@@ -241,6 +246,7 @@ def test_replay_copies_the_old_database_and_parity_sees_a_difference(conn, test_
     assert stats["tr_role"] == len(ROLES) and stats["changes"] == 2
     # the old build named a holder with two spellings by either of them: that is not a difference of the move
     conn.execute("UPDATE live.node SET label = 'JOHN SMYTH' WHERE kind = 'local_person'")
+    conn.execute("UPDATE live.node SET label = 'A КЛОН', ref = %s WHERE id = %s", ("eik:" + UNIT, "c:" + E))   # and a company by its unit
     # the D-1 chain finds the day the old database had done; a run it left as running is not left so
     assert one(conn, "SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'ok' AND params->>'day' = '2026-11-09'") == 1
     assert one(conn, "SELECT status FROM ops.run WHERE tool = 'tender' AND step = 'tr-read'") == "failed"

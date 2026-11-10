@@ -54,8 +54,10 @@ SELECT DISTINCT ON (id) id, kind, label::core.person_name AS label, ref FROM (
   SELECT 'c:' || left(eik, 9), 'company', name, key FROM company WHERE eik ~ '^\d{9}(\d{4})?$'
   UNION ALL
   SELECT company, 'company', NULL, 'eik:' || substr(company, 3) FROM edge
--- a holder the register writes in more than one way gets the same spelling in every build: the first by the alphabet
-) x ORDER BY id, label IS NULL, kind, label;
+-- More than one row can name a node, and every build must choose the same one. A company and its units (13-digit
+-- numbers) share the node of the company: the company itself names it. A holder the register writes in more than
+-- one way gets the first spelling by the alphabet.
+) x ORDER BY id, label IS NULL, kind, (ref IS DISTINCT FROM 'eik:' || substr(id, 3)), label, ref;
 ALTER TABLE node ADD PRIMARY KEY (id);
 
 -- the contracts a company node won (supplier or joint member), for network sums
