@@ -31,6 +31,8 @@ CASES = [
     ('published-past-a-failed-rule', 'ingest/build.py', "    problems = pipeline.run_checks(conn, r, kinds=RULE_KINDS)\n    if not problems:",
      "    problems = pipeline.run_checks(conn, r, kinds=RULE_KINDS)\n    if True:",
      'tests/test_serving.py::test_a_failed_rule_keeps_the_pages_on_the_version_they_had'),
+    ('published-tables-left-without-statistics', 'ingest/build.py', '            conn.execute(f"ANALYZE {table}")', '            pass',
+     'tests/test_serving.py::test_every_answer_says_its_publication_and_the_number_moves_only_with_the_content'),
     ('served-without-a-publication', 'app/main.py', '        response.headers["X-Publication"] = str(snap.publication[0])', '        pass',
      'tests/test_serving.py::test_every_answer_says_its_publication_and_the_number_moves_only_with_the_content'),
     ('parity-blind-to-the-content', 'ingest/move.py', 'pipeline.record_check(conn, r, f"parity_{table}_content", was[1], now[1])',

@@ -146,6 +146,9 @@ def test_every_answer_says_its_publication_and_the_number_moves_only_with_the_co
     fill(conn)
     first = build(conn)["publication"]
     assert first and one(conn, "SELECT max(publication_id) FROM pub.publication") == first
+    # the planner knows the published tables at once (-1 is a table never analysed)
+    assert conn.execute("""SELECT relname, reltuples::int FROM pg_class WHERE oid IN ('pub_tender.contract'::regclass,
+        'pub_tender.edge'::regclass) ORDER BY 1""").fetchall() == [("contract", 4), ("edge", 3)]
     status, headers, html = get("/contracts")
     assert status == 200 and headers["x-publication"] == str(first) and headers["etag"] == f'W/"pub-{first}"' and "last-modified" in headers
     assert "А ООД" in html
