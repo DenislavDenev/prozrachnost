@@ -117,6 +117,22 @@ def test_build_merges_the_lists_and_publishes_only_public_text(conn):
     assert count(conn, "SELECT count(*) FROM core.person_column_undecided WHERE schema_name LIKE '%%kontrol%%'") == 0
 
 
+def test_fewer_records_than_published_is_a_warning_more_is_not(conn):
+    def drop():
+        pipeline.run_checks(conn, r, ['drop'])
+        return conn.execute("SELECT actual, ok FROM ops.check_latest WHERE tool = 'kontrol' AND name = 'records_not_fewer'").fetchone()
+    with pipeline.run(conn, 'kontrol', 'refresh') as r:
+        rs = nao()
+        store.load(conn, r, 'nao', rs[:2], manifest(rs[:2]))
+        assert run.finish(conn, r) == []
+        store.load(conn, r, 'nao', rs, manifest(rs))
+        store.build(conn, r)
+        assert drop() == (0, True)          # one more record than published
+        conn.execute('DELETE FROM kontrol.audit_report WHERE record_id = %s', (rs[0]['id'],))
+        conn.execute('DELETE FROM kontrol.audit_report WHERE record_id = %s', (rs[1]['id'],))
+        assert drop() == (1, False)         # one record left in the clean tables, two published
+
+
 def test_a_text_unmasked_in_the_serving_layer_stops_the_publication(conn, tmp_path):
     """A publication whose SELECT forgets the mask is refused inside its transaction: nothing changes."""
     import shutil
