@@ -429,3 +429,5 @@ def test_replay_builds_from_the_raw_files_and_parity_finds_no_difference(conn, r
     move.parity(conn, run, old_dsn=dsn, old_ops="old_ops")
     got = conn.execute("""SELECT actual, detail FROM ops.check_latest WHERE tool = 'ikonomika' AND name = 'parity_cells_differ'""").fetchone()
     assert got[0] == 1 and "gdp_a 2024" in got[1]
+    # the proof of the move is kept, but it is not a daily alarm of the freshness check
+    assert not any("Сверка със старата база" in p for p in pipeline.freshness(conn, "ikonomika"))
