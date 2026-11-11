@@ -89,3 +89,12 @@ def test_state_unknown_and_duplicate_categories_stop_parse():
  with pytest.raises(ShapeError):parse.parse(json.dumps(d),'state','2026-08-31')
  d['data'][3][0]=original;d['data'].insert(4,d['data'][3])
  with pytest.raises(ShapeError):parse.parse(json.dumps(d),'state','2026-08-31')
+
+
+def test_parity_counts_a_negative_zero_as_zero():
+ from ingest.run import _norm
+ old=dict(kind='reserve',rows=[dict(line='a',value=dict(original='-0.0',unit='млн. BGN',eur='-0E+4'))])
+ new=dict(kind='reserve',rows=[dict(line='a',value=dict(original='0.0',unit='млн. BGN',eur='0E+4'))])
+ assert _norm(old)==_norm(new)
+ new['rows'][0]['value']['original']='0.1'
+ assert _norm(old)!=_norm(new)

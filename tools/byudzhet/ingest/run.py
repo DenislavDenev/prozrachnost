@@ -159,8 +159,11 @@ def replay(conn, r, old_dsn=OLD_DSN, old=('src', 'ops')):
 
 def _norm(doc):
     """The rows of a report document in a comparable shape: what the pages show, original and euro."""
+    def z(x):   # PostgreSQL has no negative zero: the source's "-0.0" is 0.0 in the shared database
+        return x[1:] if x and x.startswith('-') and Decimal(x) == 0 else x
+
     def m(v):
-        return (v['original'], v['unit'], v['eur']) if v else None
+        return (z(v['original']), v['unit'], z(v['eur'])) if v else None
     k = doc['kind']
     if k == 'state':
         return [(x['line'], m(x['law']), m(x['actual']), x['pct']) for x in doc['rows']]
