@@ -117,3 +117,33 @@ dataset = "obrazovanie.context"
 checked_on = 2026-11-11
 display = true
 note = "open data of the Ministry of Education in data.egov.bg, CC0 (terms 1) by the licence list of the project; the terms of this dataset are not read again today: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "ikonomika.series"
+checked_on = 2026-11-11
+display = true
+note = "the numbers of Eurostat (CC BY 4.0), the ECB (free reuse with the source named), the Ministry of Finance (CC0 in data.egov.bg) and the BNB (licence page not read): shown with a link to the source of each indicator, not handed out until each licence is read again for the public API"
+
+[[licence]]
+dataset = "ikonomika.eurostat"
+checked_on = 2026-11-11
+display = true
+note = "Eurostat, CC BY 4.0 by its reuse policy; to be read again before the public API"
+
+[[licence]]
+dataset = "ikonomika.ecb"
+checked_on = 2026-11-11
+display = true
+note = "ECB Data Portal, free reuse with the source named; to be read again before the public API"
+
+[[licence]]
+dataset = "ikonomika.mf"
+checked_on = 2026-11-11
+display = true
+note = "data.egov.bg, Ministry of Finance, CC0 (terms 1, LICENCES.md 02.10.2026); kept to display like the rest of the tool"
+
+[[licence]]
+dataset = "ikonomika.bnb"
+checked_on = 2026-11-11
+display = true
+note = "BNB exchange rates: the copyright page could not be read by a script; shown with a link to the source, not handed out"

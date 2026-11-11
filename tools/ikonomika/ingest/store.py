@@ -1,116 +1,163 @@
-"""Raw answers and the rule that nothing we hold is lost on one answer (STANDARD 1А.4-5).
+"""Raw answers, loads and the clean tables, through the shared module (ingest/pipeline.py).
 
-apply() compares a parsed answer with what live.series holds for the same scope:
-  - more or changed rows are written at once, each difference is a line in ops.change_log
-    (a first read is not a change and is not logged);
-  - an answer without a row we hold is `held`: nothing is written until a read at least a day later
-    gives the same answer (same sha256), then it is `confirmed` and the rows are `removed`;
+apply() loads one parsed answer of one resource (an indicator, a BNB window) into the landing zone
+ikonomika_src as one batch (pipeline.load):
+  - more or changed rows replace the current version at once, each difference is a line in ops.change_log
+    (the first version of a resource is one line, not one per row);
+  - an answer without a row we hold is `held`: nothing changes until a read at least a day later gives the same
+    answer, then it is `confirmed`;
   - the same answer again changes nothing and logs nothing.
-Everything of one answer is written in one transaction.
+The landing zone keeps only the current version of each resource (policy `latest`): the rows of the replaced one
+leave, its ledger line and raw file stay.
+
+build() brings the clean tables ikonomika.series and ikonomika.observation up to the current loads
+(db/build/observation.sql) and hands the BNB rates to the foundation (core.take_fx_rates()).
 """
-import datetime as dt
-import hashlib
+import csv
+import io
 import json
 from decimal import Decimal
 
-from . import db
-from .config import RAW
+from . import pipeline
+from .config import RAW, ROOT, TOOL
 from .jsonstat import ShapeError
 
-CONFIRM_AFTER = dt.timedelta(days=1)
+STATUS = {"loaded": "stored", "confirmed": "stored", "unchanged": "unchanged", "held": "held"}
 
 
 def dkey(dims):
     return json.dumps(dims, sort_keys=True, ensure_ascii=False)
 
 
-def save_raw(conn, source, ref, name, raw):
-    """Keep the answer under raw/<source>/<date>/, unless it is the same as the last one of this ref."""
-    sha = hashlib.sha256(raw).hexdigest()
-    last = conn.execute("SELECT sha256 FROM ops.raw_file WHERE source = %s AND ref = %s ORDER BY id DESC LIMIT 1",
-                        (source, ref)).fetchone()
-    if not last or last[0] != sha:
-        path = RAW / source / str(dt.date.today()) / f"{sha[:12]}-{name}"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(raw)
-        conn.execute("INSERT INTO ops.raw_file (source, ref, path, sha256, bytes) VALUES (%s,%s,%s,%s,%s)",
-                     (source, ref, str(path), sha, len(raw)))
-    return sha
+def save_raw(conn, r, source, ref, name, raw, fetched_at=None):
+    """The answer under its sha256 in RAW, registered once; every read is a line in ops.fetch."""
+    return pipeline.save_raw(conn, r, source, ref, raw, RAW, name=name, fetched_at=fetched_at)
 
 
-def state(conn, source, ref, **kw):
-    """Upsert ops.source_state; `now` in a value means the current time."""
+def state(conn, source, ref, at=None, **kw):
+    """Upsert ikonomika.source_state; `now` in a value means the time of the read (`at`, else now())."""
     cols = ["last_read", *kw]
-    vals = ["now()", *("now()" if v == "now" else "%s" for v in kw.values())]
-    conn.execute(f"""INSERT INTO ops.source_state (source, ref, {', '.join(cols)}) VALUES (%s, %s, {', '.join(vals)})
+    vals = ["COALESCE(%s::timestamptz, now())", *("COALESCE(%s::timestamptz, now())" if v == "now" else "%s" for v in kw.values())]
+    args = [at, *(at if v == "now" else v for v in kw.values())]
+    conn.execute(f"""INSERT INTO ikonomika.source_state (source, ref, {', '.join(cols)}) VALUES (%s, %s, {', '.join(vals)})
                      ON CONFLICT (source, ref) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in cols)}""",
-                 (source, ref, *(v for v in kw.values() if v != "now")))
+                 (source, ref, *args))
 
 
-def current(conn, indicator, where="", args=()):
-    return {(dkey(d), g, t): (v, f) for d, g, t, v, f in conn.execute(
-        f"SELECT dims, geo, time, value, flag FROM live.series WHERE indicator = %s {where}", (indicator, *args))}
-
-
-def apply(conn, source, indicator, ref, sha, rows, labels=None, where="", args=()):
-    """Write one parsed answer (rows of (dims, geo, time, value, flag)) for `indicator`, compared with what
-    live.series holds under `where`. -> 'stored' | 'unchanged' | 'held'."""
-    new = {}
+def keyed(rows, labels=None):
+    """{key: row} for pipeline.load: one cell per (dims, geo, period), and the names of the categories."""
+    out = {}
     for dims, geo, time, value, flag in rows:
-        k = (dkey(dims), geo, str(time))
-        if k in new:
+        k = f"{dkey(dims)}/{geo}/{time}"
+        if k in out:
             raise ShapeError(f"the answer has {k} twice")
-        new[k] = (None if value is None else Decimal(str(value)), flag)
+        out[k] = {"dims": dims, "geo": geo, "period": str(time),
+                  "value": None if value is None else Decimal(str(value)), "flag": flag}
+    for dim, codes in (labels or {}).items():
+        for code, label in codes.items():
+            out[f"label/{dim}/{code}"] = {"dim": dim, "code": code, "label": label}
+    return out
+
+
+def writer(indicator):
+    def write(conn, load_id, rows):
+        with conn.cursor().copy("COPY ikonomika_src.observation (load_id, indicator, dims, geo, period, value, flag) FROM STDIN") as cp:
+            for x in rows.values():
+                if "period" in x:
+                    cp.write_row((load_id, indicator, dkey(x["dims"]), x["geo"], x["period"], x["value"], x["flag"]))
+        with conn.cursor().copy("COPY ikonomika_src.label (load_id, indicator, dim, code, label) FROM STDIN") as cp:
+            for x in rows.values():
+                if "label" in x:
+                    cp.write_row((load_id, indicator, x["dim"], x["code"], x["label"]))
+    return write
+
+
+def current(conn, load_id):
+    """The rows of a load, keyed as keyed() keys them."""
+    out = {}
+    for dims, geo, period, value, flag in conn.execute(
+            "SELECT dims, geo, period, value, flag FROM ikonomika_src.observation WHERE load_id = %s", (load_id,)):
+        out[f"{dkey(dims)}/{geo}/{period}"] = {"dims": dims, "geo": geo, "period": period, "value": value, "flag": flag}
+    for dim, code, label in conn.execute("SELECT dim, code, label FROM ikonomika_src.label WHERE load_id = %s", (load_id,)):
+        out[f"label/{dim}/{code}"] = {"dim": dim, "code": code, "label": label}
+    return out
+
+
+def accept_all(old, rows):
+    """hold_when of the replay: the old database has already decided which answers it accepted."""
+    return 0
+
+
+def apply(conn, r, source, indicator, ref, file, rows, labels=None, now=None, replay=False):
+    """Load one parsed answer (rows of (dims, geo, time, value, flag)) of the resource `ref` of `indicator`.
+    -> 'stored' | 'unchanged' | 'held'."""
+    new = keyed(rows, labels)
+    before = conn.execute("""SELECT l.load_id, (SELECT max(period) FROM ikonomika_src.observation o WHERE o.load_id = l.load_id)
+        FROM ops.load l WHERE l.tool = %s AND l.source = %s AND l.ref = %s AND l.is_current""", (TOOL, source, ref)).fetchone()
+    if not any("period" in x for x in new.values()):
+        # an answer without a number (a window of the archive before a currency existed): nothing to hold or replace
+        if before and before[1] is not None:
+            raise ShapeError("Празен отговор")
+        state(conn, source, ref, at=now, status="ok", error=None, last_ok="now", rows=0)
+        return "unchanged"
+    done = pipeline.load(conn, r, source, ref, new, writer(indicator), raw_file_id=file.raw_file_id if file else None,
+                         current=current, now=now, hold_when=accept_all if replay else None)
+    n = sum("period" in x for x in new.values())
+    if done.status == "held":
+        reason = conn.execute("SELECT reason FROM ops.hold WHERE tool = %s AND source = %s AND ref = %s",
+                              (TOOL, source, ref)).fetchone()
+        state(conn, source, ref, at=now, status="held", error=reason[0] if reason else None)
+        return "held"
+    if done.previous:   # landing policy `latest`
+        conn.execute("DELETE FROM ikonomika_src.observation WHERE load_id = %s", (done.previous,))
+        conn.execute("DELETE FROM ikonomika_src.label WHERE load_id = %s", (done.previous,))
+    newest = max(x["period"] for x in new.values() if "period" in x)
+    changed = done.status != "unchanged"
+    newer = changed and (before is None or before[1] is None or newest > before[1])
+    state(conn, source, ref, at=now, status="ok", error=None, last_ok="now", rows=n,
+          **({"last_change": "now"} if changed else {}), **({"last_new_period": "now"} if newer else {}))
+    return STATUS[done.status]
+
+
+def reject(conn, r, source, ref, cause, reason, file=None, now=None):
+    """An answer that could not be read or is not valid: recorded, nothing replaced."""
+    if cause == "invalid":
+        pipeline.reject(conn, r, source, ref, reason, file.raw_file_id if file else None, now=now)
+    elif cause == "gone":
+        pipeline.log_change(conn, r, source, ref, "answer", None, str(reason)[:2000], "gone", now)
+    state(conn, source, ref, at=now, status=cause, error=str(reason)[:2000])
+
+
+def load_ref(conn, r):
+    """db/ref/labels.csv, the Bulgarian names of the categories and the currencies, as a source of its own."""
+    path = ROOT / "db" / "ref" / "labels.csv"
+    raw = path.read_bytes()
+    rows = {f"{x['dim']}/{x['code']}": dict(x) for x in csv.DictReader(io.StringIO(raw.decode("utf-8")))}
+    file = save_raw(conn, r, "ref", "db/ref/labels.csv", "labels.csv", raw)
+
+    def write(conn, load_id, rows):
+        with conn.cursor().copy("COPY ikonomika_src.ref_label (load_id, dim, code, label) FROM STDIN") as cp:
+            for x in rows.values():
+                cp.write_row((load_id, x["dim"], x["code"], x["label"]))
+
+    def read(conn, load_id):
+        return {f"{d}/{c}": {"dim": d, "code": c, "label": lab} for d, c, lab in conn.execute(
+            "SELECT dim, code, label FROM ikonomika_src.ref_label WHERE load_id = %s", (load_id,))}
+    # our own file: what is in it is what we decided, a shorter one is not held
+    done = pipeline.load(conn, r, "ref", "db/ref/labels.csv", rows, write, raw_file_id=file.raw_file_id, current=read,
+                         hold_when=accept_all)
+    if done.previous:
+        conn.execute("DELETE FROM ikonomika_src.ref_label WHERE load_id = %s", (done.previous,))
+    return done.status
+
+
+BUILD_LOCK = 7_250_010
+
+
+def build(conn, r):
+    """The clean tables from the current loads, in one transaction; then the BNB rates into core.fx_rate."""
     with conn.transaction():
-        cur = current(conn, indicator, where, args)
-        removed = cur.keys() - new.keys()
-        held = conn.execute("SELECT sha256, first_at <= now() - %s FROM ops.held WHERE source = %s AND ref = %s",
-                            (CONFIRM_AFTER, source, ref)).fetchone()
-        if removed:
-            if not held or held[0] != sha:
-                conn.execute("""INSERT INTO ops.held (source, ref, sha256, rows) VALUES (%s,%s,%s,%s)
-                                ON CONFLICT (source, ref) DO UPDATE SET sha256 = EXCLUDED.sha256, rows = EXCLUDED.rows, first_at = now()""",
-                             (source, ref, sha, len(new)))
-                db.log_change(conn, source, ref, "rows", len(cur), len(new), "held")
-                state(conn, source, ref, status="held", error=f"{len(removed)} реда ги няма в новия отговор")
-                return "held"
-            if not held[1]:
-                return "held"
-            db.log_change(conn, source, ref, "rows", len(cur), len(new), "confirmed")
-        if held:
-            conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (source, ref))
-        put = [k for k in new if cur.get(k) != new[k]]
-        if cur:
-            for k in put:
-                name = f"{indicator}/{k[0]}/{k[1]}/{k[2]}"
-                if k not in cur:
-                    db.log_change(conn, source, name, None, None, new[k][0], "new-record")
-                else:
-                    for i, field in enumerate(("value", "flag")):
-                        if cur[k][i] != new[k][i]:
-                            db.log_change(conn, source, name, field, cur[k][i], new[k][i], "rewritten")
-            for k in removed:
-                db.log_change(conn, source, f"{indicator}/{k[0]}/{k[1]}/{k[2]}", None, cur[k][0], None, "removed")
-        if put:
-            conn.execute("CREATE TEMP TABLE IF NOT EXISTS tmp_series (LIKE live.series) ON COMMIT DROP")
-            with conn.cursor().copy("COPY tmp_series (indicator, dims, geo, time, value, flag) FROM STDIN") as cp:
-                for k in put:
-                    cp.write_row((indicator, *k, *new[k]))
-            conn.execute("""INSERT INTO live.series SELECT * FROM tmp_series
-                            ON CONFLICT (indicator, dims, geo, time) DO UPDATE SET value = EXCLUDED.value, flag = EXCLUDED.flag""")
-        if removed:
-            conn.execute("CREATE TEMP TABLE IF NOT EXISTS tmp_gone (dims jsonb, geo text, time text) ON COMMIT DROP")
-            with conn.cursor().copy("COPY tmp_gone (dims, geo, time) FROM STDIN") as cp:
-                for k in removed:
-                    cp.write_row(k)
-            conn.execute("""DELETE FROM live.series s USING tmp_gone g
-                            WHERE s.indicator = %s AND s.dims = g.dims AND s.geo = g.geo AND s.time = g.time""", (indicator,))
-        for dim, codes in (labels or {}).items():
-            conn.cursor().executemany("""INSERT INTO live.dim_label VALUES (%s,%s,%s,%s)
-                                         ON CONFLICT (indicator, dim, code) DO UPDATE SET label = EXCLUDED.label""",
-                                      [(indicator, dim, c, lab) for c, lab in codes.items()])
-        newer = cur and max(t for _, _, t in new) > max(t for _, _, t in cur) if new else False
-        state(conn, source, ref, status="ok", error=None, last_ok="now", rows=len(new),
-              **({"last_change": "now"} if put or removed else {}),
-              **({"last_new_period": "now"} if newer or (not cur and new) else {}))
-        return "stored" if put or removed else "unchanged"
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (BUILD_LOCK,))
+        conn.execute((ROOT / "db" / "build" / "observation.sql").read_text(encoding="utf-8"))
+        r.stats["facts"] = conn.execute("SELECT count(*) FROM ikonomika.observation WHERE superseded_at IS NULL").fetchone()[0]
+    r.stats["fx_changed"] = conn.execute("SELECT core.take_fx_rates()").fetchone()[0]

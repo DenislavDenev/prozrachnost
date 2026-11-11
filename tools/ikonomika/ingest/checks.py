@@ -113,12 +113,12 @@ def eurostat(parsed):
 
 
 def freshness(conn, indicators):
-    """[problems] now: an indicator not read in `read_days` (2 unless it says so), not ok, held over a day, or
+    """[problems] now: an indicator not read in `read_days` (2 unless it says so), not ok, or
     without a new period for longer than its stale_days; the exchange rates older than 5 days or their last read
     not ok. An indicator's state is under its source (`source`, Eurostat when not given)."""
     bad = []
     st = {(r[0], r[1]): r[2:] for r in conn.execute(
-        """SELECT source, ref, status, error, last_ok, last_new_period FROM ops.source_state""")}
+        """SELECT source, ref, status, error, last_ok, last_new_period FROM ikonomika.source_state""")}
     for ind in indicators:
         s = st.get((ind.get("source", "eurostat"), ind["id"]))
         if not s:
@@ -135,12 +135,12 @@ def freshness(conn, indicators):
         if late:
             bad.append(f"Икономика: {ind['id']} не е четен успешно от {last_ok:%d.%m.%Y}" if last_ok else
                        f"Икономика: {ind['id']} не е четен успешно")
-    for source, ref, since in conn.execute("SELECT source, ref, first_at FROM ops.held WHERE first_at < now() - interval '1 day'"):
-        bad.append(f"Икономика: {source} {ref} е задържан от {since:%d.%m.%Y}")
-    last_fx = conn.execute("SELECT max(time) FROM live.series WHERE indicator = 'fx_eur'").fetchone()[0]
+    # a hold past its time is a problem of pipeline.freshness() (ops.source.hold_alert_after)
+    last_fx = conn.execute("""SELECT max(o.period) FROM ikonomika.observation o JOIN ikonomika.series s USING (series_id)
+        WHERE s.indicator_code = 'ikonomika.fx_eur' AND o.superseded_at IS NULL""").fetchone()[0]
     if not last_fx or last_fx < str(conn.execute("SELECT (now() - interval '5 days')::date").fetchone()[0]):
         bad.append(f"Икономика: курсовете на БНБ са към {last_fx or 'никога'}")
-    fx = conn.execute("SELECT status, error FROM ops.source_state WHERE source = 'bnb' AND ref = 'fx'").fetchone()
+    fx = conn.execute("SELECT status, error FROM ikonomika.source_state WHERE source = 'bnb' AND ref = 'fx'").fetchone()
     if fx and fx[0] != "ok":
         bad.append(f"Икономика: курсовете на БНБ {fx[0]}: {fx[1]}")
     return bad

@@ -5,7 +5,7 @@ Bulgaria's rates (MIR) are in euro from 2026-01 and in leva before it, from 2007
 loans and deposits (BSI) start in 2022-01; the euro area (`U2`, stored as `EA`) has its rates from 2003, drawn beside
 Bulgaria's.
 
-Two indicators in live.series, with the series in `dims`: `rates` (% a year, new business) and `bank` (stocks,
+Two indicators, with the series in `dims`: `rates` (% a year, new business) and `bank` (stocks,
 million €). Checks: every series is monthly without a gap, and overnight deposits never exceed all deposits.
 """
 import csv
@@ -57,8 +57,12 @@ BG_BEFORE = {"housing": "M.BG.B.A2C.A.R.A.2250.BGN.N", "consumer": "M.BG.B.A2B.A
 BG_PARTS = {"housing": "M.BG.B.A2C.F+I+O+P.R+B.A.2250.BGN.N", "consumer": "M.BG.B.A2B.F+I+J.R+B.A.2250.BGN.N",
             "dep_hh": "M.BG.B.L22.F+G+H.R+B.A.2250.BGN.N", "dep_nfc": "M.BG.B.L22.F+G+H.R+B.A.2240.BGN.N"}
 PARTS_TOLERANCE = 0.02   # points between the weighted average and the published total, where both exist
-FLAGS = {"A": None, "P": "p", "E": "e", "F": "f"}                      # OBS_STATUS -> the flags of live.series
+FLAGS = {"A": None, "P": "p", "E": "e", "F": "f"}                      # OBS_STATUS -> the flags we keep
 HEAD = {"KEY", "TIME_PERIOD", "OBS_VALUE", "OBS_STATUS"}
+
+
+def labels(ind):
+    return {"series": {code: name for i, _, _, code, name in SERIES if i == ind}}
 
 
 def url(flow, key):
@@ -143,10 +147,9 @@ def check(rows):
     return bad
 
 
-def load(conn, stats, get=None):
-    """Every series, then per indicator: checked, then written under the hold rule. A series that cannot be read
-    or parsed leaves its indicator as it was (a partial answer would look like removed rows)."""
-    get = get or http.get
+def read(get):
+    """Every series through `get` -> (rows, raws, failed, problems) by indicator. The raw answers of an indicator are
+    in the order they were asked for; ingest/move.py replays a stored answer through this same function."""
     rows, raws, failed, problems = {}, {}, set(), []
     for ind, flow, key, code, _ in SERIES:
         for ecb_geo, geo in PLACES[ind].items():
@@ -182,6 +185,14 @@ def load(conn, stats, get=None):
                 except (http.Gone, ShapeError) as e:
                     failed.add(ind)
                     problems.append(f"Икономика: ЕЦБ {flow}.{k}: {e}")
+    return rows, raws, failed, problems
+
+
+def load(conn, r, get=None):
+    """Every series, then per indicator: checked, then written under the hold rule. A series that cannot be read
+    or parsed leaves its indicator as it was (a partial answer would look like removed rows)."""
+    stats = r.stats
+    rows, raws, failed, problems = read(get or http.get)
     out = {}
     for ind in dict.fromkeys(i for i, *_ in SERIES):
         bad = [] if ind in failed else check(rows.get(ind, []))
@@ -190,8 +201,7 @@ def load(conn, stats, get=None):
             store.state(conn, SOURCE, ind, status="invalid", error=("; ".join(bad[:5]) or "серия не се прочете")[:2000])
             out[ind] = "invalid"
             continue
-        sha = store.save_raw(conn, SOURCE, ind, f"{ind}.csv", b"\n".join(raws[ind]))
-        labels = {"series": {code: name for i, _, _, code, name in SERIES if i == ind}}
-        out[ind] = store.apply(conn, SOURCE, ind, ind, sha, rows[ind], labels)
+        file = store.save_raw(conn, r, SOURCE, ind, f"{ind}.csv", b"\n".join(raws[ind]))
+        out[ind] = store.apply(conn, r, SOURCE, ind, ind, file, rows[ind], labels(ind))
     stats["indicators"], stats["problems"] = out, problems
     return stats

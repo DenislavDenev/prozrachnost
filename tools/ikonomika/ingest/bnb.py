@@ -4,8 +4,10 @@ Two layouts of the same archive (a query is at most 3 months and may not cross 3
   - until 31.12.2025: leva for `units` units of the currency, and the currency for 1 lev
     ("Период, Код, за,в BGN, за 1 BGN"; before 05.07.1999 these are old leva, 1000 old = 1 new);
   - from 01.01.2026: the ECB reference rates, currency for 1 euro and euro for 1 unit.
-Stored as two indicators in live.series: `fx_bgn` (leva for `units` units) and `fx_eur` (currency for
-1 euro). The second number of each pair is only used to check the first.
+Stored as two indicators: `fx_bgn` (leva for `units` units) and `fx_eur` (currency for 1 euro). The second number
+of each pair is only used to check the first. A resource is one quarter of 6 currencies (`<first day>/<codes>`); the
+daily read takes the whole quarters that hold the last 31 days, so a read is always the whole resource and the hold
+rule compares like with like. ikonomika.fx_rate turns both into euro for core.fx_rate.
 """
 import datetime as dt
 import html
@@ -149,44 +151,55 @@ SEARCH_URL = f"{BNB}?search=true"
 SOURCE = "bnb"
 
 
-def load(conn, stats, backfill=False, get=None, today=None):
-    """Read the archive by quarter and 6 currencies at a time: the last 31 days every day, or everything
-    from 1991 (`backfill`, which skips the quarters already read). Every row of the day's CSV must be the
+def quarter_start(day):
+    return dt.date(day.year, 3 * ((day.month - 1) // 3) + 1, 1)
+
+
+def window_rows(raw, ref, chunk, a, b):
+    """-> (indicator, rows of the window) of an archive answer; ShapeError for a row outside what was asked."""
+    rows = parse(raw)
+    ind = "fx_eur" if a > LAST_BGN_DAY else "fx_bgn"
+    for r_ind, dims, d, _v in rows:
+        if r_ind != ind or dims["code"] not in chunk or not a <= d <= b:
+            raise ShapeError(f"{r_ind} {dims} {d} is outside the query {ref} to {b}")
+    return ind, rows
+
+
+def load(conn, r, backfill=False, get=None, today=None):
+    """Read the archive by quarter and 6 currencies at a time: the quarters of the last 31 days every day, or
+    everything from 1991 (`backfill`, which skips the quarters already read). Every row of the day's CSV must be the
     same in the archive (the reconciliation). -> stats with problems."""
     from . import http, store  # noqa: PLC0415 - keeps parse() importable without a database driver
     get = get or http.get
+    stats = r.stats
     today = today or dt.date.today()
     problems, counts = [], {}
     codes = currencies(get(SEARCH_URL))
     raw = get(TODAY_URL)
-    store.save_raw(conn, SOURCE, "today", "today.csv", raw)
+    store.save_raw(conn, r, SOURCE, "today", "today.csv", raw)
     latest = parse(raw)
     eur_codes = sorted({d["code"] for _, d, _, _ in latest})
-    done = {r[0] for r in conn.execute(
-        "SELECT ref FROM ops.source_state WHERE source = %s AND status = 'ok'", (SOURCE,))} if backfill else set()
+    done = {x[0] for x in conn.execute(
+        "SELECT ref FROM ikonomika.source_state WHERE source = %s AND status = 'ok'", (SOURCE,))} if backfill else set()
     arch = {}
-    for a, b in windows(FIRST_DAY if backfill else today - dt.timedelta(days=31), today):
+    for a, b in windows(FIRST_DAY if backfill else quarter_start(today - dt.timedelta(days=31)), today):
         use = eur_codes if a > LAST_BGN_DAY else codes
         for i in range(0, len(use), CHUNK):
             chunk = use[i:i + CHUNK]
             ref = f"{a}/{'-'.join(chunk)}"
             if ref in done and b < today - dt.timedelta(days=31):
                 continue
+            file = None
             try:
                 raw = get(url(a, b, chunk))
-                sha = store.save_raw(conn, SOURCE, ref, f"{a}-{chunk[0]}.csv", raw)
-                rows = parse(raw)
-                ind = "fx_eur" if a > LAST_BGN_DAY else "fx_bgn"
-                for r_ind, dims, d, _v in rows:
-                    if r_ind != ind or dims["code"] not in chunk or not a <= d <= b:
-                        raise ShapeError(f"{r_ind} {dims} {d} is outside the query {ref} to {b}")
-                    arch[(dims["code"], d)] = _v
-                res = store.apply(conn, SOURCE, ind, ref, sha, [(dims, "BG", str(d), v, None) for _, dims, d, v in rows],
-                                  where="AND time BETWEEN %s AND %s AND dims->>'code' = ANY(%s)", args=(str(a), str(b), chunk))
+                file = store.save_raw(conn, r, SOURCE, ref, f"{a}-{chunk[0]}.csv", raw)
+                ind, rows = window_rows(raw, ref, chunk, a, b)
+                for _, dims, d, v in rows:
+                    arch[(dims["code"], d)] = v
+                res = store.apply(conn, r, SOURCE, ind, ref, file, [(dims, "BG", str(d), v, None) for _, dims, d, v in rows])
                 counts[res] = counts.get(res, 0) + 1
             except (ShapeError, http.Gone) as e:
-                cause = "invalid" if isinstance(e, ShapeError) else "gone"
-                store.state(conn, SOURCE, ref, status=cause, error=str(e)[:2000])
+                store.reject(conn, r, SOURCE, ref, "invalid" if isinstance(e, ShapeError) else "gone", e, file)
                 problems.append(f"Икономика: БНБ {ref}: {e}")
     # the day's CSV and the archive are the same numbers
     for _, d, dd, v in latest:

@@ -30,34 +30,38 @@ def pinned(ind):
     return {k for k, _ in parse_qsl(ind["filters"])}
 
 
-def load(conn, stats, only=None, get=None):
+def check(parsed, refs):
+    """{ref: problem} of the cross checks (checks.eurostat) for the answers `refs` of `parsed`."""
+    return {k: v for k, v in checks.eurostat(parsed).items() if k in refs}
+
+
+def load(conn, r, only=None, get=None):
     get = get or http.get
+    stats = r.stats
     inds = [i for i in indicators() if not only or i["id"] in only]
     got, bad = {}, {}
     for ind in inds:
         ref = ind["id"]
+        file = None
         try:
             raw = get(url(ind))
-            sha = store.save_raw(conn, SOURCE, ref, f"{ind['dataset']}.json", raw)
-            got[ref] = (sha, jsonstat.parse(raw, pinned(ind)))
+            file = store.save_raw(conn, r, SOURCE, ref, f"{ind['dataset']}.json", raw)
+            got[ref] = (file, jsonstat.parse(raw, pinned(ind)))
         except http.Gone as e:
-            bad[ref] = ("gone", str(e))
+            bad[ref] = ("gone", str(e), file)
         except jsonstat.ShapeError as e:
-            bad[ref] = ("invalid", str(e))
+            bad[ref] = ("invalid", str(e), file)
         except Exception as e:  # noqa: BLE001 - one indicator's network trouble does not stop the others
-            bad[ref] = ("error", repr(e))
-    for ref, problem in checks.eurostat({k: v[1] for k, v in got.items()}).items():
-        bad[ref] = ("invalid", problem)
-        got.pop(ref, None)
+            bad[ref] = ("error", repr(e), file)
+    for ref, problem in check({k: v[1] for k, v in got.items()}, got).items():
+        bad[ref] = ("invalid", problem, got.pop(ref)[0])
     out = {}
-    for ref, (sha, parsed) in got.items():
-        out[ref] = store.apply(conn, SOURCE, ref, ref, sha, parsed["rows"], parsed["labels"])
+    for ref, (file, parsed) in got.items():
+        out[ref] = store.apply(conn, r, SOURCE, ref, ref, file, parsed["rows"], parsed["labels"])
         store.state(conn, SOURCE, ref, updated=parsed["updated"], label=parsed["label"])
-    for ref, (cause, msg) in bad.items():
-        conn.execute("""INSERT INTO ops.change_log (source, ref, field, new, cause)
-                        SELECT %s, %s, 'answer', %s, %s""", (SOURCE, ref, msg[:2000], cause))
-        store.state(conn, SOURCE, ref, status=cause, error=msg[:2000])
+    for ref, (cause, msg, file) in bad.items():
+        store.reject(conn, r, SOURCE, ref, cause, msg, file)
         out[ref] = cause
     stats["indicators"] = out
-    stats["problems"] = [f"Икономика: {ref} {cause}: {msg}" for ref, (cause, msg) in bad.items()]
+    stats["problems"] = [f"Икономика: {ref} {cause}: {msg}" for ref, (cause, msg, _) in bad.items()]
     return stats

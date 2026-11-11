@@ -1,0 +1,69 @@
+# The quality rules of Икономика. Each query returns one row: expected, actual. They run after every step that
+# writes. The reconciliations with the source inside one answer (the regions add up to the country, the parts to the
+# whole, the rates follow from the index, the BNB rate agrees with its inverse, an ECB series has no gap, the
+# forecast's GDP adds up) are in the parsers and ingest/checks.py: an answer that fails them is not loaded.
+
+[[check]]
+name = "clean_matches_landing"
+title_bg = "Действащите числа в чистите таблици са колкото клетките в действащите отговори"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM (SELECT DISTINCT o.indicator, o.dims, o.geo, o.period FROM ikonomika_src.observation o JOIN ops.load l ON l.load_id = o.load_id AND l.is_current) t), (SELECT count(*) FROM ikonomika.observation WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "clean_values_match_landing"
+title_bg = "Всяко действащо число е числото от най-новия действащ отговор (разлики)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM (SELECT DISTINCT ON (s.series_id, o.period) s.series_id, o.period, o.value, o.flag FROM ikonomika_src.observation o JOIN ops.load l ON l.load_id = o.load_id AND l.is_current JOIN ikonomika.series s ON s.indicator_code = 'ikonomika.' || o.indicator AND s.geo = o.geo AND s.dims = o.dims ORDER BY s.series_id, o.period, l.loaded_at DESC, l.load_id DESC) b JOIN ikonomika.observation c ON c.series_id = b.series_id AND c.period = b.period AND c.superseded_at IS NULL WHERE c.value IS DISTINCT FROM b.value OR c.flag IS DISTINCT FROM b.flag"
+
+[[check]]
+name = "bulgarian_places_in_core"
+title_bg = "Серии с място в България без код в core.nuts (извънрегионалните BGZ, BGZZ, BGZZZ на Eurostat нямат)"
+kind = "unmatched"
+tolerance = 0
+sql = "SELECT 0, count(*) FROM ikonomika.series WHERE geo ~ '^BG' AND geo !~ '^BGZ' AND nuts_code IS NULL"
+
+[[check]]
+name = "fx_rates_in_core"
+title_bg = "Курсовете на БНБ в core.fx_rate са колкото в Икономика"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM ikonomika.fx_rate), (SELECT count(*) FROM core.fx_rate WHERE source IN ('bnb', 'bnb-bgn'))"
+
+[[check]]
+name = "fx_rate_matches_source"
+title_bg = "Курсът на всяка валута за ден в core.fx_rate е курсът на БНБ (разлики)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM ikonomika.fx_rate x LEFT JOIN core.fx_rate f USING (currency_code, day) WHERE f.per_eur IS DISTINCT FROM x.per_eur OR f.source IS DISTINCT FROM x.source"
+
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+[[check]]
+name = "published_series_rows"
+title_bg = "Публикуваните числа са колкото действащите в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM ikonomika.observation WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_ikonomika.series)"
+
+# The move from the database of its own (11.11.2026): the step `parity` writes these results.
+[[check]]
+name = "parity_rows"
+title_bg = "Сверка със старата база: брой числа"
+kind = "parity"
+
+[[check]]
+name = "parity_values"
+title_bg = "Сверка със старата база: сбор на стойностите"
+kind = "parity"
+tolerance = 0
+
+[[check]]
+name = "parity_cells_differ"
+title_bg = "Сверка със старата база: показател и период с различен брой, сбор или флагове"
+kind = "parity"
+
+[[check]]
+name = "parity_labels"
+title_bg = "Сверка със старата база: имена на категориите"
+kind = "parity"
+
+[[check]]
+name = "parity_state"
+title_bg = "Сверка със старата база: състояние на четенията (последно успешно, нов период, обновено при източника)"
+kind = "parity"

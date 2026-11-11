@@ -160,37 +160,48 @@ def growth_check(vintage, items):
     return bad
 
 
-def load(conn, stats, call=None, pause=PAUSE):
-    call = call or post
+def read(call, pause=PAUSE):
+    """Every forecast through `call` -> (rows, raws, {vintage: short name}, problems, unknown item names). The raw
+    answers are in the order of the forecasts; ingest/move.py replays a stored answer through this same function."""
     lst = json.loads(call("listResources", {"criteria": {"dataset_uri": DATASET}, "records_per_page": 100, "page_number": 1}))
     res = lst.get("resources") or []
     if not lst.get("success") or not res or len(res) != int(lst.get("total_records") or 0):
         raise ShapeError(f"the list of forecasts: {str(lst)[:200]}")
     rows, raws, vintages, problems, unknown = [], [], {}, [], set()
-    for r in sorted(res, key=lambda r: r["created_at"]):
+    for x in sorted(res, key=lambda x: x["created_at"]):
         time.sleep(pause)
-        raw = call("getResourceData", {"resource_uri": r["uri"]})
-        vintage = r["created_at"][:10]
+        raw = call("getResourceData", {"resource_uri": x["uri"]})
+        vintage = x["created_at"][:10]
         try:
             items, first_forecast, new_names = parse(raw)
         except ShapeError as e:
-            problems.append(f"Икономика: прогноза на МФ {vintage} ({r['name'][:60]}): {e}")
+            problems.append(f"Икономика: прогноза на МФ {vintage} ({x['name'][:60]}): {e}")
             continue
         raws.append(raw)
-        vintages[vintage] = short_name(r["name"], vintage)
+        vintages[vintage] = short_name(x["name"], vintage)
         unknown.update(new_names)
         problems += [f"Икономика: прогноза на МФ: {b}" for b in growth_check(vintage, items)]
         for code, by_year in items.items():
             for y, v in by_year.items():
                 rows.append(({"vintage": vintage, "item": code}, "BG", str(y), v, "f" if y >= first_forecast else None))
+    return rows, raws, vintages, problems, unknown
+
+
+def labels(rows, vintages):
+    return {"vintage": vintages, "item": {c: NAMES[c] for c in {d["item"] for d, *_ in rows}}}
+
+
+def load(conn, r, call=None, pause=PAUSE):
+    stats = r.stats
+    rows, raws, vintages, problems, unknown = read(call or post, pause)
     stats["forecasts"], stats["unknown_items"] = len(vintages), sorted(unknown)
     if problems:
         store.state(conn, SOURCE, "mf_forecast", status="invalid", error="; ".join(problems)[:2000])
         stats["indicators"], stats["problems"] = {"mf_forecast": "invalid"}, problems
         return stats
-    sha = store.save_raw(conn, SOURCE, "mf_forecast", "forecasts.json", b"\n".join(raws))
-    labels = {"vintage": vintages, "item": {c: NAMES[c] for c in {d["item"] for d, *_ in rows}}}
-    stats["indicators"] = {"mf_forecast": store.apply(conn, SOURCE, "mf_forecast", "mf_forecast", sha, rows, labels)}
+    file = store.save_raw(conn, r, SOURCE, "mf_forecast", "forecasts.json", b"\n".join(raws))
+    stats["indicators"] = {"mf_forecast": store.apply(conn, r, SOURCE, "mf_forecast", "mf_forecast", file, rows,
+                                                      labels(rows, vintages))}
     stats["problems"] = []
     return stats
 

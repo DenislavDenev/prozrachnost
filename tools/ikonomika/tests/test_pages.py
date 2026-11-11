@@ -12,6 +12,7 @@ import pytest
 DSN = os.environ.get("IKONOMIKA_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="IKONOMIKA_TEST_DSN not set")
 FX = Path(__file__).parent / "fixtures"
+ROOT = Path(__file__).parent.parent
 
 PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta?l=makrorayoni", "/karta?o=eu",
          "/karta?o=eu&l=oblasti", "/karta?m=EMP", "/karta?m=COE&o=eu", "/es", "/es?p=dalg", "/es?p=bezrabotica", "/es?p=lihva",
@@ -19,48 +20,61 @@ PAGES = ["/", "/inflaciya", "/karta", "/karta?m=THS", "/karta?l=rayoni", "/karta
 
 
 def wipe():
-    from ingest import db
-    with db.connect(autocommit=True) as c:
-        c.execute("DROP SCHEMA IF EXISTS live, ops CASCADE; DROP TABLE IF EXISTS public.schema_migrations")
-        db.migrate(c)
+    from ingest import pipeline
+
+    from tests.conftest import reset
+    with pipeline.connect(DSN) as c:
+        reset(c)
 
 
 def load():
-    """Real answers into the database: GDP, the regions, the HICP of 2024-2026, the BNB day and a quarter."""
-    from ingest import bnb, db, jsonstat, store
-    with db.connect(autocommit=True) as c:
+    """Real answers into the database: GDP, the regions, the HICP of 2024-2026, the BNB day and a quarter; then the
+    clean tables and one publication, which is all the pages read."""
+    from ingest import bnb, ecb, jsonstat, mf, pipeline, store
+    wipe()
+    with pipeline.connect(DSN) as c, pipeline.run(c, "ikonomika", "test") as r:
         def put(ind, name, pinned, unit=None):
             p = jsonstat.parse((FX / name).read_bytes(), pinned)
-            rows = [r for r in p["rows"] if unit is None or r[0].get("unit") == unit]
-            store.apply(c, "eurostat", ind, ind, name, rows, p["labels"])
+            rows = [x for x in p["rows"] if unit is None or x[0].get("unit") == unit]
+            store.apply(c, r, "eurostat", ind, ind, None, rows, p["labels"])
             store.state(c, "eurostat", ind, updated=p["updated"], label=p["label"])
         put("gdp_a", "eurostat/gdp_bg_since2023.json", {"unit", "na_item"})
         # the regions: M€ of Bulgaria and € per person of some of Europe, in one answer as the import has it
         mio, eu = (jsonstat.parse((FX / n).read_bytes(), {"unit"}) for n in ("eurostat/gdp_nuts_mio.json", "eurostat/gdp_nuts_europe.json"))
-        store.apply(c, "eurostat", "gdp_nuts", "gdp_nuts", "nuts", mio["rows"] + eu["rows"], {**mio["labels"], **eu["labels"]})
+        store.apply(c, r, "eurostat", "gdp_nuts", "gdp_nuts", None, mio["rows"] + eu["rows"], {**mio["labels"], **eu["labels"]})
         store.state(c, "eurostat", "gdp_nuts", updated=mio["updated"], label=mio["label"])
         for ind, unit in (("hicp_i15", "I15"), ("hicp_rch_m", "RCH_M"), ("hicp_rch_a", "RCH_A")):
             put(ind, "eurostat/hicp_rates_2024.json", {"unit", "coicop18"}, unit)
         for ind, name, pinned in (("gdp_full", "eurostat/nama_10_gdp-2.json", {"unit"}), ("bop", "eurostat/bop_c6_q-2.json", set()),
                                   ("trade_a", "eurostat/ext_lt_intratrd-2.json", set()), ("hicp_w", "eurostat/prc_hicp_iw-2.json", set())):
             put(ind, name, pinned)
-        from ingest import ecb, mf
         for key, code in (("MIR.M.BG.B.A2C.AM.R.A.2250.EUR.N", "housing"), ("MIR.M.U2.B.A2C.AM.R.A.2250.EUR.N", "housing")):
             geo = "BG" if ".BG." in key else "EA"
             rows = [({"series": code}, geo, t, v, f) for t, v, f in ecb.parse((FX / "ecb" / f"{key}.csv").read_bytes(), key)]
-            store.apply(c, "ecb", "rates", f"rates-{geo}", key, rows, where="AND geo = %s", args=(geo,))
+            store.apply(c, r, "ecb", "rates", f"rates-{geo}", None, rows)
         items, first, _ = mf.parse((FX / "mf/2026-04-03.json").read_bytes())
-        store.apply(c, "mf", "mf_forecast", "mf_forecast", "mf", [({"vintage": "2026-04-03", "item": k}, "BG", str(y), v, "f" if y >= first else None)
-                                                                    for k, ys in items.items() for y, v in ys.items()],
+        store.apply(c, r, "mf", "mf_forecast", "mf_forecast", None,
+                    [({"vintage": "2026-04-03", "item": k}, "BG", str(y), v, "f" if y >= first else None)
+                     for k, ys in items.items() for y, v in ys.items()],
                     {"vintage": {"2026-04-03": mf.short_name("Пролетна макроикономическа прогноза 2026 г.", "2026-04-03")}})
         for name in ("bnb/today.csv", "bnb/q2025-4.csv"):
             rows = bnb.parse((FX / name).read_bytes())
-            for ind in {r[0] for r in rows}:
-                store.apply(c, "bnb", ind, name, name, [(d, "BG", str(t), v, None) for i, d, t, v in rows if i == ind])
+            for ind in {x[0] for x in rows}:
+                store.apply(c, r, "bnb", ind, f"{name}/{ind}", None, [(d, "BG", str(t), v, None) for i, d, t, v in rows if i == ind])
+        store.load_ref(c, r)
+        store.build(c, r)
+        assert pipeline.publish(c, r, ROOT).problems == []
+
+
+def change(sql):
+    """A change of the serving layer, as a publication would make it."""
+    from ingest import pipeline
+    with pipeline.connect(DSN) as c:
+        c.execute(sql)
 
 
 @pytest.fixture(scope="module")
-def client(tmp_path_factory):
+def client(tmp_path_factory, dsn):
     from fastapi.testclient import TestClient
     from ingest import store
     store.RAW = tmp_path_factory.mktemp("raw")
@@ -140,13 +154,12 @@ def test_pages_on_real_answers(client):
     assert by["BG411"]["name"] == "София (столица) [BG]" and "BY" not in by
     moved = client.get("/oblasti?m=THS", follow_redirects=False)                # the old address still leads there
     assert moved.status_code == 301 and moved.headers["location"] == "/karta?m=THS"
-    from ingest import db
-    with db.connect(autocommit=True) as c:                    # a region without a value is None ("няма данни"), not 0
-        c.execute("DELETE FROM live.series WHERE indicator = 'gdp_nuts' AND geo = 'BG311' AND time = '2024'")
+    # a region without a value is None ("няма данни"), not 0
+    change("DELETE FROM pub_ikonomika.series WHERE indicator = 'gdp_nuts' AND geo = 'BG311' AND time = '2024'")
     it = next(it for it in api("m=MIO_EUR&y=2024")["items"] if it["code"] == "BG311")
     assert it["v"] is None and it["change"] is None and "rank" not in it
-    with db.connect(autocommit=True) as c:                    # and on a page: a missing monthly rate is "няма данни"
-        c.execute("DELETE FROM live.series WHERE indicator = 'hicp_rch_m' AND dims->>'coicop18' = 'CP01' AND time = '2026-08'")
+    # and on a page: a missing monthly rate is "няма данни"
+    change("DELETE FROM pub_ikonomika.series WHERE indicator = 'hicp_rch_m' AND dims->>'coicop18' = 'CP01' AND time = '2026-08'")
     infl = client.get("/inflaciya").text
     row = infl[infl.index("Хранителни продукти и безалкохолни напитки <span"):]
     assert "няма данни" in row[:row.index("</tr>")]
@@ -197,3 +210,17 @@ def test_api_and_csv(client):
     assert lines[0] == "indicator,unit,geo,time,value,flag" and len(lines) == 926 + 13   # + the € per person of some of Europe
     assert client.get("/api/nope.json").status_code == 404 and client.get("/csv/nope.csv").status_code == 404
     assert client.get("/no-such-page").status_code == 404
+
+
+def test_every_answer_says_its_publication_and_the_pages_read_only_the_serving_layer(client):
+    load()
+    from ingest import pipeline
+    with pipeline.connect(DSN) as c:
+        pub, at = c.execute("SELECT publication_id, published_at FROM pub.publication ORDER BY 1 DESC LIMIT 1").fetchone()
+    for path in ("/", "/pari", "/api/gdp_a.json", "/csv/gdp_a.csv", "/sources", "/healthz"):
+        r = client.get(path)
+        assert r.headers["X-Publication"] == str(pub) and r.headers["ETag"] == f'W/"pub-{pub}"', path
+    assert "X-Publication" not in client.get("/static/karta.js").headers      # not built from the data
+    src = (ROOT / "app" / "main.py").read_text(encoding="utf-8")
+    schemas = set(re.findall(r"\b(?:FROM|JOIN)\s+([a-z_]+)\.", src))
+    assert schemas == {"pub", "pub_ikonomika"}, schemas

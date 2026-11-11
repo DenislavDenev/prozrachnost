@@ -317,11 +317,19 @@ def test_a_forecast_that_does_not_say_its_forecast_years_is_refused():
         mf.parse(b'{"success": false, "errors": "limit"}')
 
 
-def test_every_step_that_writes_has_its_own_lock():
-    """A step without a lock fails before it reads anything (KeyError at db.job, seen 28.09.2026)."""
-    from ingest import db, run
-    writers = [s for s in run.STEPS if s not in ("migrate", "freshness")]
-    assert set(writers) <= db.LOCKS.keys() and len(set(db.LOCKS.values())) == len(db.LOCKS)
+def test_every_indicator_is_in_the_register_with_a_known_unit_and_kind():
+    """core.indicator is the key of every series: an indicator without its entry in db/datasets.toml would stop the
+    build at the foreign key, after the source was read."""
+    import tomllib
+    from ingest import ecb, eurostat
+    reg = tomllib.loads((Path(__file__).parent.parent / "db" / "datasets.toml").read_text(encoding="utf-8"))
+    ids = [i["id"] for i in eurostat.indicators() + ecb.INDICATORS + mf.INDICATORS] + ["fx_bgn", "fx_eur"]
+    codes = [i["indicator_code"] for i in reg["indicator"]]
+    assert sorted(codes) == sorted(f"ikonomika.{i}" for i in ids) and len(set(codes)) == len(codes)
+    units = {u["unit_code"] for u in reg["unit"]} | {"person", "count", "EUR", "BGN", "share", "index"}
+    datasets = {d["dataset"] for d in reg["dataset"]}
+    assert all(i["unit_code"] in units and i["dataset"] in datasets for i in reg["indicator"])
+    assert all(i["kind"] in ("flow", "stock", "rate", "index", "count") for i in reg["indicator"])
 
 
 def test_forecasts_get_short_names():
