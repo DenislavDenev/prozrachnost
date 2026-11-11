@@ -11,15 +11,24 @@ MUTATIONS=[
  ('ingest/parse.py',"kind='Решение', published_on=date(pub.get_text()), outcome_text=None","kind='Решение', published_on=date(decision[1]), outcome_text=None",'tests/test_sources.py','act date becomes publication'),
  ('ingest/parse.py','if len(rows) != actual_last - first + 1 or (last > total and not padded_final) or first < 1 or len({r[\'id\'] for r in rows}) != len(rows):','if False:','tests/test_sources.py','CPC count protection'),
  ('ingest/parse.py','eik=None, unp=None',"eik='123456789', unp=None",'tests/test_sources.py','unverified EIK assignment'),
- ('ingest/store.py','return any(key not in b or loss(row, b[key]) for key,row in a.items())','return False','tests/test_sources.py','hold bypass'),
- ('ingest/store.py','now - held[1] >= dt.timedelta(days=1)','now - held[1] >= dt.timedelta(seconds=0)','tests/test_sources.py','confirmation before one day'),
+ ('ingest/store.py','return sum(1 for key, row in a.items() if key not in b or loss(row, b[key]))','return 0','tests/test_sources.py','hold bypass'),
+ ('ingest/store.py',"return lost([v for k, v in old.items() if k != '#read'], [v for k, v in new.items() if k != '#read'])",'return lost(list(old.values()), list(new.values()))','tests/test_sources.py','the description of a read held as a record'),
+ ('ingest/store.py','    if set(row) != want:','    if False:','tests/test_sources.py','unknown field accepted'),
+ ('ingest/store.py',"out[f] = v.isoformat() if isinstance(v, dt.date) else v",'out[f] = v','tests/test_sources.py','record not rebuilt exactly from its columns'),
+ ('ingest/privacy.py',r"SOLE_TRADER = re.compile(r'\bЕТ\s')","SOLE_TRADER = re.compile(r'^$')",'tests/test_pages.py','sole trader published'),
  ('ingest/parse.py','return [out[key] for key in sorted(out)]','return rows','tests/test_sources.py','category duplicate counts twice'),
  ('ingest/pdf.py','if number != len(rows) + 1:','if False:','tests/test_pdf.py','inspection sequence gap'),
 ]
 if os.environ.get('KONTROL_TEST_DSN'):
     MUTATIONS += [
      ('ingest/store.py',"if manifest.get('source_count') is not None and manifest['source_count'] != len(rows):",'if False:','tests/test_store.py','source reconciliation bypass'),
-     ('ingest/store.py',"if not manifest.get('complete') or manifest.get('occurrence_count') != len(rows):",'if False:','tests/test_store.py','partial publication'),
+     ('ingest/store.py',"if not manifest.get('complete') or manifest.get('occurrence_count') != len(rows):",'if False:','tests/test_store.py','partial read stored'),
+     ('ingest/store.py',"x = dict(x, eik=x['eik'] if x.get('eik') in known else None)",'x = dict(x)','tests/test_store.py','invented organisation key'),
+     ('ingest/store.py',"[(*(x.get(FIELD.get(c, c)) for c in cols), private_fields(x)) for x in by.get(kind, [])]","[(*(x.get(FIELD.get(c, c)) for c in cols), []) for x in by.get(kind, [])]",'tests/test_store.py','private text reaches the serving layer'),
+     ('db/publish/02_pub_kontrol.adfi_report.sql',"CASE WHEN 'auditee' = ANY(private_fields)","CASE WHEN false",'tests/test_store.py','publication without the mask'),
+     ('ingest/store.py',"merged = canonical([row for _, row in rows])","merged = [row for _, row in rows]",'tests/test_store.py','lists not merged into one record'),
+     ('ingest/move.py',"return all(json.dumps(a.get(k)","return True or all(json.dumps(a.get(k)",'tests/test_store.py','parity blind to a changed field'),
+     ('ingest/move.py',"files = [(u, p, s) for src, u, p, s, t in raw if src == source and t <= at]","files = [(u, p, s) for src, u, p, s, t in raw if src == source]",'tests/test_store.py','a later document replayed as part of the read'),
     ]
 
 def main():

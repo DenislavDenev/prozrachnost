@@ -295,3 +295,71 @@ kind = "public-money"
 shown_as = "full"
 decided_on = 2026-11-10
 basis = "full name only in a role in an entity that received public money (a contract or a payment from the budget); every other person of the Trade Register is not published"
+
+# Одити и контрол (the move into the shared database, 11.11.2026). The audited and inspected body is an organisation as
+# the register of АДФИ or its list writes it. A sole trader (ЕТ, the name of a person) and a text with a personal number,
+# an e-mail or a phone are replaced in the serving layer (kontrol.*.private_fields). No names of auditors, signatories,
+# commission members or parties of КЗК are kept: the excerpts and the outcome keep only the subject, the period and the label.
+
+[[person]]
+column = "kontrol_src.adfi_report.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol_src.inspection.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol_src.audit_report.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol_src.adfi_list.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol_src.decision.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol.adfi_report.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "kontrol.inspection.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "pub_kontrol.adfi_report.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+[[person]]
+column = "pub_kontrol.inspection.auditee"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-11
+basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"

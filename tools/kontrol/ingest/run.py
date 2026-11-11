@@ -1,12 +1,28 @@
+"""The steps of Одити и контрол: python -m ingest.run --step <step>
+
+    migrate    the tables and the registers (the foundation of danni must be there)
+    nao        the five lists of the National Audit Office; adfi: the two registers of АДФИ; cpc: the decisions of КЗК
+    refresh    all eight lists
+    documents  the documents of the records (--source cpc for КЗК); --limit and --max-seconds bound the work
+    build      the clean tables again from the current reads
+    check      every quality rule, then the publication
+    replay     the reads and documents of the old database, from its raw files and through the same parser (the move)
+    parity     the old database of its own against the shared one
+    freshness  the list of problems, empty when all is well
+    summary    the weekly report
+
+Ingest and serving are apart. The steps fill kontrol_src and kontrol; the pages read pub_kontrol, which changes only by
+a publication at the end of a step whose rules all hold. A read of a list is complete or it is not stored.
+"""
 import argparse
 import json
 import sys
-from pathlib import Path
-from psycopg.types.json import Jsonb
-from . import db, store, sources
-from .checks import freshness
-from .config import SOURCES
+
+from . import pipeline, sources, store
+from .config import DSN, ROOT, SOURCES, TOOL
 from .http import Client
+from .parse import ShapeError
+
 
 def collect(source, client, save, progress):
     if source.startswith('nao') or source.startswith('recommendations'):
@@ -15,96 +31,119 @@ def collect(source, client, save, progress):
         return sources.adfi(client, source, save, progress)
     return sources.cpc(client, save, progress)
 
-def main():
+
+def selected(step, source=None):
+    if source:
+        return [source]
+    return [s for s in SOURCES if step == 'refresh' or step == 'nao' and s.startswith(('nao', 'recommendations'))
+            or step == 'adfi' and s.startswith('adfi') or step == 'cpc' and s == 'cpc']
+
+
+def read(conn, r, client, names):
+    """Each list in full; a list that fails is recorded and the others go on."""
+    problems = []
+
+    def progress(source, year, page, count):
+        print(json.dumps(dict(source=source, year=year, pages=page, rows=count, status='наваксване, още не е публикувано'),
+                         ensure_ascii=False), flush=True)
+    def save(src, url, data):
+        pipeline.save_raw(conn, r, src, url, data, store.RAW, name=url.rsplit('/', 1)[-1][-60:])
+    for source in names:
+        try:
+            rows, manifest = collect(source, client, save, progress)
+            if store.load(conn, r, source, rows, manifest).status == 'held':
+                problems.append(source + ': задържан до второ четене')
+        except Exception as e:
+            pipeline.reject(conn, r, source, SOURCES[source][1], e)
+            problems.append(source + ': ' + str(e))
+            print(json.dumps(dict(source=source, error=str(e)), ensure_ascii=False), flush=True)
+    return problems
+
+
+def finish(conn, r):
+    """The clean tables, the rules, and the publication when every gating rule holds."""
+    same, n = store.build(conn, r)
+    pipeline.record_check(conn, r, 'landing_keeps_the_record', n, same)
+    failed = pipeline.run_checks(conn, r)
+    return failed or pipeline.publish(conn, r, ROOT).problems
+
+
+def source_problems(conn):
+    """A list whose last read failed or is held, in the words of the sources page."""
+    return [f'{label}: {status}' + (f': {error}' if error else '') for label, status, error in conn.execute(
+        "SELECT label, status, error FROM kontrol.source_state WHERE status NOT IN ('наред') ORDER BY source")]
+
+
+def freshness(conn):
+    return pipeline.freshness(conn, TOOL) + [p for p in source_problems(conn) if 'Няма доказан' not in p]
+
+
+def summary(conn):
+    from .documents import pending
+    counts = {SOURCES[s][0]: n for s, n in conn.execute('''SELECT r.source, r.unique_count FROM kontrol_src.read r
+        JOIN ops.load l USING (load_id) WHERE l.tool = %s AND l.is_current ORDER BY r.source''', (TOOL,))}
+    counts['Документи: чакащи архивиране'] = pending(conn)
+    return dict(tool='Одити и контрол', counts=counts,
+                last_ok={s: str(t) if t else None for s, t in conn.execute(
+                    "SELECT source, last_ok_at FROM ops.freshness WHERE tool = %s AND source <> 'document' ORDER BY source", (TOOL,))},
+                changes=conn.execute("SELECT count(*) FROM ops.change_log WHERE tool = %s AND detected_at >= now() - interval '7 days'",
+                                     (TOOL,)).fetchone()[0],
+                held=conn.execute('SELECT count(*) FROM ops.hold WHERE tool = %s', (TOOL,)).fetchone()[0],
+                problems=freshness(conn))
+
+
+def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument('--step', required=True, choices=['migrate', 'refresh', 'nao', 'adfi', 'cpc', 'freshness', 'documents', 'summary'])
+    p.add_argument('--step', required=True, choices=['migrate', 'refresh', 'nao', 'adfi', 'cpc', 'documents', 'build', 'check',
+                                                     'replay', 'parity', 'freshness', 'summary'])
     p.add_argument('--source', choices=list(SOURCES))
-    p.add_argument('--export', type=Path, help='Private offline raw archive plus verified parsed bundle; does not publish')
-    p.add_argument('--bundle', type=Path, help='Publish a complete previously archived bundle with its manifest')
     p.add_argument('--limit', type=int, help='Explicit document work budget; pending work is reported as incomplete')
-    p.add_argument('--max-seconds',type=int,help='Document runtime checkpoint; pending work remains visible')
-    args = p.parse_args()
-    if args.max_seconds is not None and (args.max_seconds<=0 or args.step!='documents' ):p.error('--max-seconds requires documents and a positive budget')
-    if args.export:
-        args.export.mkdir(parents=True, exist_ok=True)
-        c = None
-    else:
-        c = db.connect(autocommit=True)
-    client = Client()
-    report = dict(stored=0, unchanged=0, held=0, problems=[])
-    lock = 8007000
-    locked = c is not None and args.step not in ('freshness','summary')
-    if locked and not c.execute('SELECT pg_try_advisory_lock(%s)', (lock,)).fetchone()[0]:
-        print(json.dumps(dict(problems=['Друг импорт на Контрол вече работи']))); return 1
-    try:
-        if args.step == 'migrate':
-            db.migrate(c)
-        elif args.step == 'freshness':
-            report['problems'] = freshness(c)
-        elif args.step == 'summary':
-            report=dict(tool='Одити и контрол', counts={}, last_ok={}, changes=0, held=0, problems=freshness(c))
-            for source,payload in c.execute('SELECT source,payload FROM live.snapshot ORDER BY source'):
-                report['counts'][SOURCES[source][0]]=len(payload['rows'])
-            report['last_ok']={s:str(read) if read else None for s,read in c.execute("SELECT source,read_at FROM src.resource WHERE status='наред'")}
-            report['changes']=c.execute("SELECT count(*) FROM ops.change_log WHERE detected_at>=now()-interval '7 days'").fetchone()[0]
-            report['held']=c.execute('SELECT count(*) FROM ops.held').fetchone()[0]
-            eligible={r['id'] for x in c.execute('SELECT payload FROM live.snapshot') for r in x[0]['rows'] if r.get('kind')!='Приключила финансова инспекция'}
-            archived={r[0] for r in c.execute('SELECT ref FROM live.document')}
-            report['counts']['Документи: чакащи архивиране']=len(eligible-archived)
-        elif args.step == 'documents':
-            from .documents import refresh
-            report=refresh(c,client,args.source,args.limit,args.max_seconds)
-        else:
-            selected = [args.source] if args.source else [s for s in SOURCES if args.step == 'refresh' or args.step == 'nao' and (s.startswith('nao') or s.startswith('recommendations')) or args.step == 'adfi' and s.startswith('adfi') or args.step == 'cpc' and s == 'cpc']
-            def progress(source, year, page, count):
-                print(json.dumps(dict(source=source, year=year, pages=page, rows=count, status='наваксване, още не е публикувано'), ensure_ascii=False), flush=True)
-            for source in selected:
-                job = c.execute("INSERT INTO ops.job_run(step,status) VALUES (%s,'работи') RETURNING id", (source,)).fetchone()[0] if c else None
-                try:
-                    if args.bundle:
-                        d = json.loads((args.bundle / (source + '.json')).read_text(encoding='utf-8'))
-                        rows, manifest = d['rows'], d['manifest']
-                        manifest['answer_sha256'] = store.digest(store.encode([(r['url'],r['sha256']) for r in d['raw']]))
-                        # Bundle is private and source originals are required, not a public sample.
-                        for raw in d['raw']:
-                            data = (args.bundle / raw['path']).read_bytes()
-                            if store.digest(data) != raw['sha256']:
-                                raise ValueError('Повреден оригинален архив')
-                            store.archive(c, source, raw['url'], data)
-                    else:
-                        archived = []
-                        def save(src, url, data):
-                            sha = store.archive(c, src, url, data, args.export)
-                            archived.append(dict(url=url, sha256=sha, path='raw/' + src + '/' + sha + '.bin'))
-                            if args.export:
-                                with (args.export / 'archive-index.jsonl').open('a', encoding='utf-8') as f:
-                                    f.write(json.dumps(dict(source=src, **archived[-1])) + '\n')
-                        rows, manifest = collect(source, client, save, progress)
-                        manifest['answer_sha256'] = store.digest(store.encode([(r['url'],r['sha256']) for r in archived]))
-                        if args.export:
-                            (args.export / (source + '.json')).write_bytes(store.encode(dict(rows=rows, manifest=manifest, raw=archived)))
-                    if c:
-                        state = store.publish(c, source, rows, manifest)
-                        report[state] += 1
-                        if state == 'held':
-                            report['problems'].append(source + ': задържан до второ четене')
-                    else:
-                        report['stored'] += 1
-                    if c:
-                        c.execute("UPDATE ops.job_run SET finished_at=now(),status='наред',report=%s WHERE id=%s", (Jsonb(manifest), job))
-                except Exception as e:
-                    report['problems'].append(source + ': ' + str(e))
-                    print(json.dumps(dict(source=source, error=str(e)), ensure_ascii=False), flush=True)
-                    if c:
-                        store.failure(c, source, e)
-                        c.execute("UPDATE ops.job_run SET finished_at=now(),status='неуспешно',report=%s WHERE id=%s", (Jsonb({'problems': [str(e)]}), job))
-    finally:
-        client.close()
-        if c:
-            if locked:c.execute('SELECT pg_advisory_unlock(%s)', (lock,))
-            c.close()
-    print(json.dumps(report, ensure_ascii=False), flush=True)
-    return 1 if report['problems'] else 0
+    p.add_argument('--max-seconds', type=int, help='Document runtime checkpoint; pending work remains visible')
+    a = p.parse_args(argv)
+    if a.max_seconds is not None and (a.max_seconds <= 0 or a.step != 'documents'):
+        p.error('--max-seconds requires documents and a positive budget')
+    with pipeline.connect(DSN) as conn:
+        if a.step == 'migrate':
+            pipeline.require_core(conn, '0007')
+            return pipeline.report({'migrations': pipeline.migrate(conn, TOOL, ROOT)})
+        if a.step == 'freshness':
+            return pipeline.report({'step': 'freshness', 'problems': freshness(conn)})
+        if a.step == 'summary':
+            return pipeline.report(summary(conn))
+        client = None
+        try:
+            with pipeline.run(conn, TOOL, a.step, params={'source': a.source, 'limit': a.limit, 'max_seconds': a.max_seconds},
+                              sha=pipeline.code_sha(ROOT)) as r:
+                problems, extra = [], {}
+                if a.step in ('refresh', 'nao', 'adfi', 'cpc'):
+                    client = Client()
+                    problems = read(conn, r, client, selected(a.step, a.source))
+                elif a.step == 'documents':
+                    from .documents import refresh
+                    client = Client()
+                    extra = refresh(conn, r, client, a.source, a.limit, a.max_seconds)
+                    problems = extra.pop('problems')
+                elif a.step == 'replay':
+                    from .move import replay
+                    problems = replay(conn, r)
+                if a.step == 'parity':
+                    from .move import parity
+                    parity(conn, r)
+                else:
+                    problems += finish(conn, r)
+                result = {'step': a.step, 'stats': r.stats, **extra, 'problems': problems}
+        except pipeline.Busy as e:
+            result = {'step': a.step, 'status': 'skipped', 'note': str(e)}
+        except (ShapeError, pipeline.CorruptRaw) as e:
+            result = {'step': a.step, 'problems': [str(e)]}
+        finally:
+            if client:
+                client.close()
+        if a.step == 'parity' and 'stats' in result:
+            result['problems'] = [f'{title}: старо {e}, ново {n}' for title, e, n in conn.execute('''SELECT title_bg, expected, actual
+                FROM ops.check_latest WHERE tool = %s AND kind = 'parity' AND ok = false ORDER BY name''', (TOOL,))]
+    return pipeline.report(result)
+
 
 if __name__ == '__main__':
     sys.exit(main())

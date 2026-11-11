@@ -10,6 +10,10 @@ F=Path(__file__).parent/'fixtures'
 
 @pytest.fixture
 def client(monkeypatch):
+    # the pages without a database: the snapshot and the publication are stood in for, the rows come from the parser
+    import contextlib
+    monkeypatch.setattr(Q,'snapshot',contextlib.nullcontext)
+    monkeypatch.setattr(Q,'load',lambda c:(None,{}))
     rs=parse.nao((F/'nao.html').read_bytes(),'nao','https://www.bulnao.government.bg/','2026')
     rs+=parse.adfi((F/'adfi.html').read_bytes(),'https://www.adfi.minfin.bg/bg/34')
     rec=parse.nao((F/'recommendations.html').read_bytes(),'recommendations','https://www.bulnao.government.bg/','2026')
@@ -72,6 +76,9 @@ def test_public_privacy_without_losing_source_identity():
     r=public_row(dict(id='source:1',title='ЕТ Иван, личен контакт test@example.test',auditee='object',eik='1234567890'))
     assert r['id']=='source:1' and r['eik'] is None
     assert 'test@example.test' not in r['title'] and 'Иван' not in r['title']
+    from ingest.privacy import private_fields
+    assert private_fields(dict(auditee='ЕТ Иван Петров - гр. Русе', title='ЕТЕРНА ЕООД')) == ['auditee']
+    assert private_fields(dict(excerpt='ЕГН 7501010000', outcome_text='тел. +359 888 000 000')) == ['excerpt', 'outcome_text']
 
 
 def test_quarter_filter_matches_csv(monkeypatch,client):
@@ -84,26 +91,23 @@ def test_quarter_filter_matches_csv(monkeypatch,client):
     assert [r['id'] for r in rows]==['test-a']
 
 
-def test_shared_cache_build_and_version_invalidation(monkeypatch):
+def test_rows_are_built_once_per_publication(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     import time
-    signature=['first']; builds=[]
-    class Connection:
-        def __enter__(self):return self
-        def __exit__(self,*a):pass
-        def execute(self,sql):self.sql=sql;return self
-        def __iter__(self):return iter([('nao',signature[0])])
-        def fetchone(self):return (0,None)
-    monkeypatch.setattr(Q.db,'connect',Connection)
-    monkeypatch.setattr(Q,'_cache_key',None);monkeypatch.setattr(Q,'_cache_rows',None)
-    def load():
-        builds.append(signature[0]);time.sleep(.02);return [{'id':signature[0]}]
-    monkeypatch.setattr(Q,'_loadrows',load)
+    publication=[1]; builds=[]
+    monkeypatch.setattr(Q,'version',lambda c:(publication[0],None))
+    def build(c):
+        builds.append(publication[0]);time.sleep(.02);return [{'id':str(publication[0])}]
+    monkeypatch.setattr(Q,'build_rows',build)
+    for name in ('_resources','_dicts'):
+        monkeypatch.setattr(Q,name,lambda *a:[])
+    Q._cache.clear()
     with ThreadPoolExecutor(max_workers=2) as pool:
-        result=list(pool.map(lambda _:Q.allrows(),range(2)))
-    assert builds==['first'] and result[0] is result[1]
-    signature[0]='changed'
-    assert Q.allrows()==[{'id':'changed'}] and builds==['first','changed']
+        result=list(pool.map(lambda _:Q.load(None)[1]['rows'],range(2)))
+    assert builds==[1] and result[0] is result[1]
+    publication[0]=2
+    assert Q.load(None)[1]['rows']==[{'id':'2'}] and builds==[1,2]
+    Q._cache.clear()
 
 
 def test_inspection_versions_use_parent_document(monkeypatch,client):
@@ -111,13 +115,8 @@ def test_inspection_versions_use_parent_document(monkeypatch,client):
     r.update(id='list:inspection:99',document_id='list',kind='Приключила финансова инспекция')
     monkeypatch.setattr(Q,'allrows',lambda:[r])
     looked=[]
-    class Connection:
-        def __enter__(self):return self
-        def __exit__(self,*a):pass
-        def execute(self,sql,params):
-            looked.append(params[0])
-            return [('a'*64,r['url'],'2026-10-02')] if 'document_version' in sql else []
-    monkeypatch.setattr(main.db,'connect',Connection)
+    monkeypatch.setattr(Q,'versions',lambda ref:looked.append(ref) or [])
+    monkeypatch.setattr(Q,'document_versions',lambda ref:looked.append(ref) or [dict(sha256='a'*64,url=r['url'],fetched_at='2026-10-02')])
     response=client.get('/oditi/list:inspection:99')
     assert response.status_code==200 and looked==['list:inspection:99','list']
     assert 'не е отделен документ' in response.text and 'Няма приключено архивиране' not in response.text
