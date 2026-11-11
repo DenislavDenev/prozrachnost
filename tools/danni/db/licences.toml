@@ -81,3 +81,39 @@ dataset = "tender.derived"
 checked_on = 2026-11-10
 display = true
 note = "derived from the other datasets of Tender; follows them"
+
+[[licence]]
+dataset = "obrazovanie.nvo7"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"
+
+[[licence]]
+dataset = "obrazovanie.register"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"
+
+[[licence]]
+dataset = "obrazovanie.dzi"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"
+
+[[licence]]
+dataset = "obrazovanie.nvo"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"
+
+[[licence]]
+dataset = "obrazovanie.status"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"
+
+[[licence]]
+dataset = "obrazovanie.context"
+checked_on = 2026-11-11
+distribute = true
+note = "open data of the Ministry of Education in data.egov.bg under terms 1 (CC0), by the licence list of the project (LICENCES.md)"

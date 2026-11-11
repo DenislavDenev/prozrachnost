@@ -1,0 +1,131 @@
+# The datasets and sources of Образование. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be distributed is decided only in tools/danni/db/licences.toml.
+
+[[dataset]]
+dataset = "obrazovanie.nvo7"
+title_bg = "НВО VII клас по училища"
+description_bg = "Явили се и среден резултат в точки по БЕЛ и математика за всяко училище, сверени по код по НЕИСПУО с регистъра на същата година."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/b56288b6-25aa-4049-9aa6-de2cd4cdabf8"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно"
+tables = ["pub_obrazovanie.nvo7_publication", "pub_obrazovanie.school", "pub_obrazovanie.exam_result", "obrazovanie.nvo7_publication", "obrazovanie.school", "obrazovanie.exam_result", "obrazovanie_src.nvo7", "obrazovanie_src.nvo7_row"]
+
+[[dataset]]
+dataset = "obrazovanie.register"
+title_bg = "Регистър на училищата и детските градини"
+description_bg = "Код по НЕИСПУО, име, област, община и населено място на всяко училище и детска градина."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/81b81e76-e6aa-4895-b0b0-e0a9af53742f"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно"
+tables = ["obrazovanie_src.register", "obrazovanie_src.register_row"]
+
+[[dataset]]
+dataset = "obrazovanie.dzi"
+title_bg = "ДЗИ (матури) по училища"
+description_bg = "Явили се и средна оценка по предмет за всяко училище, по година, сесия и вид изпит."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/066b4b04-d81d-444e-a61c-8ca0516079e4"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно, две сесии"
+tables = ["pub_obrazovanie.dzi_publication", "pub_obrazovanie.dzi_result", "obrazovanie.dzi_publication", "obrazovanie.dzi_result", "obrazovanie_src.dzi", "obrazovanie_src.dzi_row"]
+
+[[dataset]]
+dataset = "obrazovanie.nvo"
+title_bg = "НВО IV и X клас по училища"
+description_bg = "Явили се и среден резултат в точки по предмет за всяко училище."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/5613e75f-2b1b-4244-9f54-b27580a91dfb"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно"
+tables = ["pub_obrazovanie.nvo_publication", "pub_obrazovanie.nvo_result", "obrazovanie.nvo_publication", "obrazovanie.nvo_result", "obrazovanie_src.nvo", "obrazovanie_src.nvo_row"]
+
+[[dataset]]
+dataset = "obrazovanie.status"
+title_bg = "Защитени и средищни училища"
+description_bg = "Официалните списъци на МОН по учебна година, с код по НЕИСПУО."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/7b3c3cbb-e855-4fe7-93f6-fd68016570f8"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно"
+tables = ["pub_obrazovanie.status_publication", "pub_obrazovanie.status_row", "obrazovanie.status_publication", "obrazovanie.status_row", "obrazovanie_src.status", "obrazovanie_src.status_row"]
+
+[[dataset]]
+dataset = "obrazovanie.context"
+title_bg = "Ученици, групи и паралелки по вид училище"
+description_bg = "Националните бройки на МОН: ученици по класове, деца в предучилищни групи, групи и паралелки, по вид училище."
+source_org = "Министерство на образованието и науката"
+source_url = "https://data.egov.bg/data/view/8c03a6fb-598f-44ea-81e5-9765d6e573df"
+channel = "api"
+licence = "CC0 (условия 1 на data.egov.bg)"
+cadence = "годишно"
+tables = ["pub_obrazovanie.context_publication", "pub_obrazovanie.context_kind", "pub_obrazovanie.context_grade", "obrazovanie.context_publication", "obrazovanie.context_kind", "obrazovanie.context_grade", "obrazovanie_src.context", "obrazovanie_src.context_row", "obrazovanie_src.context_grade"]
+
+# The sources. A source is stale after 8 days without a good read, as before the move: the steps run every Monday
+# from September to May and every day from June to August.
+[[source]]
+source = "catalog"
+title_bg = "Каталозите на МОН в data.egov.bg"
+url = "https://data.egov.bg/api/listResources"
+channel = "api"
+cadence = "с всяка стъпка"
+
+[[source]]
+source = "register"
+title_bg = "Регистърът на училищата с кодове по НЕИСПУО"
+url = "https://data.egov.bg/data/view/81b81e76-e6aa-4895-b0b0-e0a9af53742f"
+channel = "api"
+dataset = "obrazovanie.register"
+cadence = "с всяка стъпка на НВО и ДЗИ"
+stale_after = "8 days"
+
+[[source]]
+source = "nvo7"
+title_bg = "НВО VII клас"
+url = "https://data.egov.bg/data/view/b56288b6-25aa-4049-9aa6-de2cd4cdabf8"
+channel = "api"
+dataset = "obrazovanie.nvo7"
+cadence = "в понеделник от септември до май, всеки ден от юни до август"
+stale_after = "8 days"
+
+[[source]]
+source = "dzi"
+title_bg = "ДЗИ"
+url = "https://data.egov.bg/data/view/066b4b04-d81d-444e-a61c-8ca0516079e4"
+channel = "api"
+dataset = "obrazovanie.dzi"
+cadence = "в понеделник от септември до май, всеки ден от юни до август"
+stale_after = "8 days"
+
+[[source]]
+source = "nvo"
+title_bg = "НВО IV и X клас"
+url = "https://data.egov.bg/data/view/5613e75f-2b1b-4244-9f54-b27580a91dfb"
+channel = "api"
+dataset = "obrazovanie.nvo"
+cadence = "в понеделник от септември до май, всеки ден от юни до август"
+stale_after = "8 days"
+
+[[source]]
+source = "status"
+title_bg = "Списъците на защитените и средищните училища"
+url = "https://data.egov.bg/data/view/7b3c3cbb-e855-4fe7-93f6-fd68016570f8"
+channel = "api"
+dataset = "obrazovanie.status"
+cadence = "в понеделник от септември до май, всеки ден от юни до август"
+stale_after = "8 days"
+
+[[source]]
+source = "context"
+title_bg = "Националните бройки по вид училище"
+url = "https://data.egov.bg/data/view/8c03a6fb-598f-44ea-81e5-9765d6e573df"
+channel = "api"
+dataset = "obrazovanie.context"
+cadence = "в понеделник от септември до май, всеки ден от юни до август"
+stale_after = "8 days"

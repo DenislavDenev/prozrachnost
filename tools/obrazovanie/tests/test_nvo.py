@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ingest import db
+from ingest import store
 from ingest.nvo import LAYOUTS, nvo_catalog, parse_nvo
 from ingest.parse import ShapeError
 from ingest.sources import Resource
@@ -72,6 +72,6 @@ def test_duplicate_code_and_mismatch_threshold_hold():
     with pytest.raises(ShapeError, match="duplicate"):
         parse_nvo(json.dumps(raw, ensure_ascii=False).encode(), uri)
     table = parse_nvo((FIX / "nvo10-ce0ed1d8.json").read_bytes(), uri)
-    resource = Resource(uri, table.year, "НВО X", "2026-07-07")
     with pytest.raises(ShapeError, match="unmatched"):
-        db.publish_nvo(None, resource, "sha", table, schools={})
+        store.check_unmatched(table.codes, set(), table.rows, "NVO ")
+    store.check_unmatched(table.codes, set(table.codes), table.rows, "NVO ")

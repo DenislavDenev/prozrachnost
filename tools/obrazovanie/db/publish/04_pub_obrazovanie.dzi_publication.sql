@@ -1,0 +1,1 @@
+SELECT resource, school_year, session, kind, updated_on, register_resource, verification, source_rows, school_count, aggregate_count, result_count, matched_count, unmatched, missing_grade, suppressed_takers, source_placeholder FROM obrazovanie.dzi_publication

@@ -1,0 +1,263 @@
+# The quality rules of Образование. Each query returns one row: expected, actual. They run after every step.
+# The checks of one file (two subjects per school, the count of the DZI rows, at most 2% of codes missing from the
+# register) are done before the load and refuse the file; the rules here check what is stored.
+
+[[check]]
+name = "nvo7_clean_matches_landing"
+title_bg = "Резултатите от НВО VII в чистата таблица са колкото в действащите прочити"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM obrazovanie_src.nvo7_row r JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM obrazovanie.exam_result)"
+
+[[check]]
+name = "nvo7_two_subjects"
+title_bg = "Всяко училище в НВО VII има точно два предмета"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM obrazovanie.school s WHERE (SELECT count(*) FROM obrazovanie.exam_result e WHERE (e.school_year, e.neispuo) = (s.school_year, s.neispuo)) <> 2"
+
+[[check]]
+name = "dzi_clean_matches_landing"
+title_bg = "Резултатите от ДЗИ в чистата таблица са колкото в действащите прочити"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM obrazovanie_src.dzi_row r JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM obrazovanie.dzi_result)"
+
+[[check]]
+name = "nvo_clean_matches_landing"
+title_bg = "Резултатите от НВО IV и X в чистата таблица са колкото в действащите прочити"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM obrazovanie_src.nvo_row r JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM obrazovanie.nvo_result)"
+
+[[check]]
+name = "status_clean_matches_landing"
+title_bg = "Редовете на списъците в чистата таблица са колкото в действащите прочити"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM obrazovanie_src.status_row r JOIN ops.load l USING (load_id) WHERE l.is_current), (SELECT count(*) FROM obrazovanie.status_row)"
+
+[[check]]
+name = "context_students_sum"
+title_bg = "Учениците от I до XII клас в справката са сборът на класовете"
+kind = "reconcile"
+sql = "SELECT (SELECT COALESCE(sum(grade_1_12_students), 0) FROM obrazovanie.context_publication), (SELECT COALESCE(sum(students), 0) FROM obrazovanie.context_grade WHERE grade BETWEEN 1 AND 12)"
+
+[[check]]
+name = "municipality_unmatched"
+title_bg = "Училища без община в последната година на НВО VII (на 10 000)"
+kind = "unmatched"
+tolerance = 50
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE municipality_code IS NULL) / NULLIF(count(*), 0)), 0) FROM obrazovanie.school WHERE school_year = (SELECT max(school_year) FROM obrazovanie.nvo7_publication)"
+
+[[check]]
+name = "ekatte_unmatched"
+title_bg = "Училища без еднозначен ЕКАТТЕ в последната година на НВО VII (на 10 000)"
+kind = "unmatched"
+tolerance = 300
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE ekatte IS NULL) / NULLIF(count(*), 0)), 0) FROM obrazovanie.school WHERE school_year = (SELECT max(school_year) FROM obrazovanie.nvo7_publication)"
+
+[[check]]
+name = "nvo_municipality_unmatched"
+title_bg = "Редове на НВО IV и X без община в последната година (на 10 000)"
+kind = "unmatched"
+tolerance = 150
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE r.municipality_code IS NULL) / NULLIF(count(*), 0)), 0) FROM obrazovanie.nvo_result r JOIN obrazovanie.nvo_publication p USING (resource) WHERE p.school_year = (SELECT max(school_year) FROM obrazovanie.nvo_publication)"
+
+[[check]]
+name = "last_read_rejected"
+title_bg = "Ресурси, чието последно четене е отказано"
+kind = "drop"
+sql = "SELECT 0, count(*) FROM (SELECT DISTINCT ON (source, ref) status FROM ops.load WHERE tool = 'obrazovanie' ORDER BY source, ref, loaded_at DESC, load_id DESC) x WHERE status = 'rejected'"
+
+[[check]]
+name = "nvo7_year_expected"
+title_bg = "Години, с които НВО VII изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.nvo7_publication"
+
+[[check]]
+name = "dzi_year_expected"
+title_bg = "Години, с които ДЗИ изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.dzi_publication"
+
+[[check]]
+name = "nvo4_year_expected"
+title_bg = "Години, с които НВО IV изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.nvo_publication WHERE exam = 'nvo4'"
+
+[[check]]
+name = "nvo10_year_expected"
+title_bg = "Години, с които НВО X изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.nvo_publication WHERE exam = 'nvo10'"
+
+[[check]]
+name = "protected_year_expected"
+title_bg = "Години, с които списъкът на защитените училища изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.status_publication WHERE kind = 'protected'"
+
+[[check]]
+name = "central_year_expected"
+title_bg = "Години, с които списъкът на средищните училища изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.status_publication WHERE kind = 'central'"
+
+[[check]]
+name = "context_year_expected"
+title_bg = "Години, с които националните бройки изостава от очакваната учебна година"
+kind = "drop"
+sql = "SELECT 0, GREATEST(0, (extract(year FROM current_date)::int - CASE WHEN extract(month FROM current_date) >= 9 THEN 1 ELSE 2 END) - COALESCE(max(left(school_year, 4)::int), 0)) FROM obrazovanie.context_publication"
+
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+# One that fails rolls the publication back: the pages keep the version they had.
+[[check]]
+name = "published_exam_result"
+title_bg = "Публикуваните резултати от НВО VII са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.exam_result), (SELECT count(*) FROM pub_obrazovanie.exam_result)"
+
+[[check]]
+name = "published_school"
+title_bg = "Публикуваните училища в НВО VII са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.school), (SELECT count(*) FROM pub_obrazovanie.school)"
+
+[[check]]
+name = "published_dzi_result"
+title_bg = "Публикуваните резултати от ДЗИ са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.dzi_result), (SELECT count(*) FROM pub_obrazovanie.dzi_result)"
+
+[[check]]
+name = "published_nvo_result"
+title_bg = "Публикуваните резултати от НВО IV и X са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.nvo_result), (SELECT count(*) FROM pub_obrazovanie.nvo_result)"
+
+[[check]]
+name = "published_status_row"
+title_bg = "Публикуваните редове на списъците са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.status_row), (SELECT count(*) FROM pub_obrazovanie.status_row)"
+
+[[check]]
+name = "published_context_grade"
+title_bg = "Публикуваните бройки по класове са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM obrazovanie.context_grade), (SELECT count(*) FROM pub_obrazovanie.context_grade)"
+
+[[check]]
+name = "published_scores"
+title_bg = "Публикуваният сбор на точките от НВО VII е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(score), 0) FROM obrazovanie.exam_result), (SELECT COALESCE(sum(score), 0) FROM pub_obrazovanie.exam_result)"
+
+# The move from the tool's own database to the shared one: the step `parity` records these.
+[[check]]
+name = "parity_nvo7_publication_rows"
+title_bg = "Брой години на НВО VII: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_school_rows"
+title_bg = "Брой училища в НВО VII: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_exam_result_rows"
+title_bg = "Брой резултати от НВО VII: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_dzi_publication_rows"
+title_bg = "Брой ресурси на ДЗИ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_dzi_result_rows"
+title_bg = "Брой резултати от ДЗИ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_nvo_publication_rows"
+title_bg = "Брой години на НВО IV и X: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_nvo_result_rows"
+title_bg = "Брой резултати от НВО IV и X: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_status_publication_rows"
+title_bg = "Брой официални списъци: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_status_row_rows"
+title_bg = "Брой редове на списъците: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_publication_rows"
+title_bg = "Брой национални справки: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_kind_rows"
+title_bg = "Брой видове училища в справката: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_grade_rows"
+title_bg = "Брой бройки по класове: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_exam_result_sum1"
+title_bg = "Сбор на явили се на НВО VII: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_exam_result_sum2"
+title_bg = "Сбор на точки на НВО VII: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_dzi_result_sum1"
+title_bg = "Сбор на явили се на ДЗИ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_dzi_result_sum2"
+title_bg = "Сбор на оценки на ДЗИ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_nvo_result_sum1"
+title_bg = "Сбор на явили се на НВО IV и X: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_nvo_result_sum2"
+title_bg = "Сбор на точки на НВО IV и X: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_grade_sum1"
+title_bg = "Сбор на ученици по класове: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_kind_sum1"
+title_bg = "Сбор на училища по вид: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_context_kind_sum2"
+title_bg = "Сбор на отчетени ученици по вид: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_rows_differ"
+title_bg = "Редове, които се различават между старата и общата база"
+kind = "parity"

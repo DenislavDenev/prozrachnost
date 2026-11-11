@@ -1,14 +1,12 @@
-"""Map the latest school results to the reviewed GISCO municipality reference."""
+"""Map the latest school results to the municipalities of the shared serving layer."""
 
-import csv
 from collections import defaultdict
 from decimal import Decimal
-from functools import lru_cache
-from pathlib import Path
 from urllib.parse import urlencode
 
+from .queries import connect
 
-REFERENCE = Path(__file__).resolve().parents[1] / "db/ref/municipality.csv"
+
 OBLAST_ALIASES = {"софия-област": "софия област", "софия-град": "софия (столица)"}
 
 
@@ -17,10 +15,15 @@ def key(oblast, municipality):
     return OBLAST_ALIASES.get(oblast, oblast), municipality.strip().casefold()
 
 
-@lru_cache(maxsize=1)
 def reference():
-    with REFERENCE.open(encoding="utf-8", newline="") as stream:
-        rows = list(csv.DictReader(stream))
+    """The 265 municipalities of the shared serving layer (pub.municipality), by the names MON writes: the ЕИК of the
+    municipality (the code of its contour), its name, the oblast and the codes of the oblast, region and macro-region."""
+    with connect() as conn:
+        rows = [dict(id=r[0], name_bg=r[1], oblast=r[2], nuts3=r[3], nuts2=r[4], nuts1=r[5]) for r in conn.execute(
+            """SELECT m.eik, m.name_bg, o.label_bg, o.nuts3_code, n3.parent_code, n2.parent_code
+               FROM pub.municipality m JOIN pub.oblast o USING (oblast_code)
+               JOIN pub.nuts n3 ON n3.nuts_code = o.nuts3_code JOIN pub.nuts n2 ON n2.nuts_code = n3.parent_code
+               WHERE NOT m.is_gone ORDER BY m.municipality_code""")]
     if len(rows) != 265 or len({r["id"] for r in rows}) != 265:
         raise ValueError("Municipality reference is incomplete")
     index = {}

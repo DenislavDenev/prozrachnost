@@ -61,7 +61,7 @@ def test_pages_render_with_real_sample(monkeypatch):
     assert client.get("/uchilishta/000000").status_code == 404
 
 
-def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypatch):
+def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypatch, serving):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     data = sample_snapshot()
     samples = [(school["oblast"], school["municipality"], school["subjects"]["БЕЛ"]["score"],
@@ -91,7 +91,7 @@ def test_municipality_map_uses_weighted_scores_and_keeps_text_fallback(monkeypat
     assert data["exam_resource"] in csv_response.text
 
 
-def test_suppressed_dzi_takers_do_not_get_a_geographic_mean():
+def test_suppressed_dzi_takers_do_not_get_a_geographic_mean(serving):
     rows = [("Благоевград", "Банско", Decimal("4.5"), 10, True),
             ("Благоевград", "Банско", Decimal("5.0"), None, True)]
     places, _ = main.education_map.aggregate(rows, "obshtini", "dzi", "2025/2026", "БЕЛ-З")
@@ -99,7 +99,7 @@ def test_suppressed_dzi_takers_do_not_get_a_geographic_mean():
     assert bansko["score"] is None and bansko["takers"] is None
 
 
-def test_map_selection_reads_each_published_exam_without_mixing_scales(monkeypatch):
+def test_map_selection_reads_each_published_exam_without_mixing_scales(monkeypatch, serving):
     year = "2025/2026"
     monkeypatch.setattr(main, "source_history", lambda: [dict(year=year, exam_resource="seven",
         exam_updated="2026-07-07")])
@@ -110,9 +110,9 @@ def test_map_selection_reads_each_published_exam_without_mixing_scales(monkeypat
 
     class Connection:
         def execute(self, query, params):
-            if "live.school s" in query:
+            if "pub_obrazovanie.school s" in query:
                 return [("Благоевград", "Банско", Decimal("55"), 20, True, "БЕЛ")]
-            if "live.dzi_result" in query:
+            if "pub_obrazovanie.dzi_result" in query:
                 return [("Благоевград", "Банско", Decimal("4.5"), 20, True, "БЕЛ(ООП) З")]
             return [("Благоевград", "Банско", Decimal("70"), 20, True, "БЕЛ")]
 
@@ -129,14 +129,14 @@ def test_map_selection_reads_each_published_exam_without_mixing_scales(monkeypat
         assert mapped["scale"] == ("оценка от 2 до 6" if exam == "dzi" else "точки от 0 до 100")
 
 
-def test_municipality_reference_has_exact_capital_and_region_aliases():
+def test_municipality_reference_has_exact_capital_and_region_aliases(serving):
     ref = main.municipalities.reference()
     assert len(ref) == 265
     assert ref[main.municipalities.key("СОФИЯ-ГРАД", "СТОЛИЧНА")]["name_bg"] == "Столична"
     assert ref[main.municipalities.key("СОФИЯ-ОБЛАСТ", "АНТОН")]["name_bg"] == "Антон"
 
 
-def test_all_territorial_contours_match_the_reference():
+def test_all_territorial_contours_match_the_reference(serving):
     root = Path(main.__file__).parent / "static"
     detail = json.loads((root / "bg-municipalities.json").read_text(encoding="utf-8"))
     levels = json.loads((root / "bg-geography.json").read_text(encoding="utf-8"))
