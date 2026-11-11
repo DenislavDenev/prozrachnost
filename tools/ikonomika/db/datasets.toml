@@ -1,0 +1,564 @@
+# The datasets, sources and indicators of Икономика. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# Every indicator id of db/ref/indicators.csv, ingest/ecb.py, ingest/mf.py and the two of the BNB has an entry here
+# (tests/test_registry.py).
+
+[[dataset]]
+dataset = "ikonomika.series"
+title_bg = "Показателите на Икономика"
+description_bg = "Числата на всички показатели: Eurostat, ЕЦБ, прогнозите на МФ и валутните курсове на БНБ, по серия и период. Източникът на всеки показател е в core.indicator."
+source_org = "Eurostat, ЕЦБ, Министерство на финансите, БНБ"
+channel = "api"
+licence = "по източника на показателя"
+cadence = "всеки ден"
+tables = ["pub_ikonomika.series", "pub_ikonomika.dim_label", "pub_ikonomika.source_state", "pub_ikonomika.hold", "pub_ikonomika.change_count", "ikonomika.series", "ikonomika.observation", "ikonomika.dim_label", "ikonomika.source_state", "ikonomika_src.observation", "ikonomika_src.label", "ikonomika_src.ref_label"]
+
+[[dataset]]
+dataset = "ikonomika.eurostat"
+title_bg = "Eurostat: инфлация, БВП, заетост, финанси, външен сектор"
+description_bg = "43 показателя от Statistics API на Eurostat (JSON-stat 2.0), всеки по реда си в db/ref/indicators.csv."
+source_org = "Eurostat"
+source_url = "https://ec.europa.eu/eurostat/web/main/data/web-services"
+channel = "api"
+licence = "CC BY 4.0"
+licence_url = "https://ec.europa.eu/eurostat/about-us/policies/copyright"
+cadence = "всеки ден"
+
+[[dataset]]
+dataset = "ikonomika.ecb"
+title_bg = "ЕЦБ: лихви на банките, кредити и депозити"
+description_bg = "Лихвите по нови кредити и депозити (MIR) и салдата на кредитите и депозитите (BSI) за България и еврозоната."
+source_org = "Европейска централна банка"
+source_url = "https://data.ecb.europa.eu/"
+channel = "api"
+licence = "свободно повторно използване с посочване на източника"
+licence_url = "https://www.ecb.europa.eu/home/disclaimer/html/index.en.html"
+cadence = "всеки ден"
+
+[[dataset]]
+dataset = "ikonomika.mf"
+title_bg = "Макроикономическите прогнози на Министерството на финансите"
+description_bg = "Всички прогнози от 11.2020 насам, по една таблица на прогноза."
+source_org = "Министерство на финансите"
+source_url = "https://data.egov.bg/data/view/335961f9-5027-4e5d-bbda-667464a72b37"
+channel = "api"
+licence = "CC0"
+cadence = "при нова прогноза"
+
+[[dataset]]
+dataset = "ikonomika.bnb"
+title_bg = "Валутните курсове на БНБ"
+description_bg = "До 31.12.2025 в лева за посочения брой единици валута (от 1991); от 01.01.2026 референтните курсове на ЕЦБ към еврото, както ги публикува БНБ."
+source_org = "Българска народна банка"
+source_url = "https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm"
+channel = "file"
+licence = "не е прочетен"
+cadence = "работни дни"
+
+[[unit]]
+unit_code = "percent"
+name_bg = "процент"
+
+[[unit]]
+unit_code = "million-EUR"
+name_bg = "милиона евро"
+
+[[unit]]
+unit_code = "thousand-person"
+name_bg = "хиляди души"
+
+[[unit]]
+unit_code = "per-mille"
+name_bg = "на хиляда"
+
+[[unit]]
+unit_code = "currency-per-EUR"
+name_bg = "единици валута за 1 евро"
+
+[[unit]]
+unit_code = "BGN-per-units"
+name_bg = "лева за посочения брой единици валута"
+
+[[unit]]
+unit_code = "by-row"
+name_bg = "по реда: единицата е в измеренията на източника (unit, currency, indic)"
+
+# every source keeps only its latest accepted answer in the landing zone: a source is read whole every day
+[[source]]
+source = "eurostat"
+title_bg = "Eurostat, Statistics API"
+url = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+channel = "api"
+dataset = "ikonomika.eurostat"
+cadence = "всеки ден 10:30 UTC"
+stale_after = "3 days"
+landing = "latest"
+
+[[source]]
+source = "ecb"
+title_bg = "ЕЦБ, Data Portal API"
+url = "https://data-api.ecb.europa.eu/service/data"
+channel = "api"
+dataset = "ikonomika.ecb"
+cadence = "всеки ден"
+stale_after = "3 days"
+landing = "latest"
+
+[[source]]
+source = "mf"
+title_bg = "Прогнозите на МФ в data.egov.bg"
+url = "https://data.egov.bg/api"
+channel = "api"
+dataset = "ikonomika.mf"
+cadence = "всеки ден"
+stale_after = "9 days"
+landing = "latest"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "bnb"
+title_bg = "Валутните курсове на БНБ"
+url = "https://www.bnb.bg/Statistics/StExternalSector/StExchangeRates/StERForeignCurrencies/index.htm"
+channel = "file"
+dataset = "ikonomika.bnb"
+cadence = "работни дни 16:30 UTC"
+stale_after = "5 days"
+landing = "latest"
+hold_alert_after = "4 days"
+
+[[source]]
+source = "ref"
+title_bg = "Българските имена на категориите (db/ref/labels.csv)"
+channel = "file"
+dataset = "ikonomika.series"
+landing = "latest"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_i15"
+dataset = "ikonomika.eurostat"
+title_bg = "ХИПЦ, индекс по всички групи"
+unit_code = "index"
+kind = "index"
+definition_bg = "Мярка: индекс, 2015 = 100."
+official_code = "prc_hicp_minr"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_rch_m"
+dataset = "ikonomika.eurostat"
+title_bg = "ХИПЦ, месечна промяна по всички групи"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % спрямо предходния месец."
+official_code = "prc_hicp_minr"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_rch_a"
+dataset = "ikonomika.eurostat"
+title_bg = "ХИПЦ, годишна промяна по всички групи"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % спрямо същия месец на предходната година."
+official_code = "prc_hicp_minr"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_eu"
+dataset = "ikonomika.eurostat"
+title_bg = "ХИПЦ в ЕС, годишна промяна"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % спрямо същия месец на предходната година."
+official_code = "prc_hicp_minr"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_a"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП и основните му компоненти, годишно"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по мерна единица."
+official_code = "nama_10_gdp"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_a_eu"
+dataset = "ikonomika.eurostat"
+title_bg = "Реален ръст на БВП в ЕС, годишно"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % спрямо предходната година."
+official_code = "nama_10_gdp"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_q"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП, тримесечно (сезонно изгладено)"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по мерна единица."
+official_code = "namq_10_gdp"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_pc"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП на човек"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Мярка: € на човек по текущи цени."
+official_code = "nama_10_pc"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_pps"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП на човек по паритет на покупателната способност"
+unit_code = "index"
+kind = "index"
+definition_bg = "Мярка: ЕС = 100."
+official_code = "tec00114"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_nuts"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП по области"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по мерна единица."
+official_code = "nama_10r_3gdp"
+
+[[indicator]]
+indicator_code = "ikonomika.pop_nuts"
+dataset = "ikonomika.eurostat"
+title_bg = "Средногодишно население по области (за БВП на човек)"
+unit_code = "thousand-person"
+kind = "stock"
+definition_bg = "Мярка: хил. души."
+official_code = "nama_10r_3popgdp"
+
+[[indicator]]
+indicator_code = "ikonomika.unemp"
+dataset = "ikonomika.eurostat"
+title_bg = "Безработица, месечно (сезонно изгладена)"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % от работната сила."
+official_code = "une_rt_m"
+
+[[indicator]]
+indicator_code = "ikonomika.min_wage"
+dataset = "ikonomika.eurostat"
+title_bg = "Минимална месечна заплата"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Мярка: € на месец."
+official_code = "earn_mw_cur"
+
+[[indicator]]
+indicator_code = "ikonomika.salary"
+dataset = "ikonomika.eurostat"
+title_bg = "Средна годишна заплата на пълно работно време"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Мярка: € на година."
+official_code = "nama_10_fte"
+
+[[indicator]]
+indicator_code = "ikonomika.lci"
+dataset = "ikonomika.eurostat"
+title_bg = "Ръст на заплатите (индекс на разходите за труд, заплати)"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % спрямо същото тримесечие на предходната година."
+official_code = "lc_lci_r2_q"
+
+[[indicator]]
+indicator_code = "ikonomika.debt"
+dataset = "ikonomika.eurostat"
+title_bg = "Държавен дълг и дефицит (сектор „Държавно управление“)"
+unit_code = "by-row"
+kind = "stock"
+definition_bg = "Мярка: по мерна единица."
+official_code = "gov_10dd_edpt1"
+
+[[indicator]]
+indicator_code = "ikonomika.hpi"
+dataset = "ikonomika.eurostat"
+title_bg = "Цени на жилищата"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: по мерна единица."
+official_code = "prc_hpi_q"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_w"
+dataset = "ikonomika.eurostat"
+title_bg = "Тегла на групите в ХИПЦ"
+unit_code = "per-mille"
+kind = "rate"
+definition_bg = "Мярка: на 1000 от потребителските разходи."
+official_code = "prc_hicp_iw"
+
+[[indicator]]
+indicator_code = "ikonomika.hicp_avg"
+dataset = "ikonomika.eurostat"
+title_bg = "ХИПЦ, средногодишна инфлация"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % (средно за годината спрямо предходната)."
+official_code = "prc_hicp_ainr"
+
+[[indicator]]
+indicator_code = "ikonomika.ppi"
+dataset = "ikonomika.eurostat"
+title_bg = "Цени на производител в промишлеността (вътрешен пазар)"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: по мерна единица."
+official_code = "sts_inppd_m"
+
+[[indicator]]
+indicator_code = "ikonomika.elec"
+dataset = "ikonomika.eurostat"
+title_bg = "Цена на тока за домакинствата (2 500-4 999 kWh годишно)"
+unit_code = "by-row"
+kind = "rate"
+definition_bg = "Мярка: за 1 kWh."
+official_code = "nrg_pc_204"
+
+[[indicator]]
+indicator_code = "ikonomika.gdp_full"
+dataset = "ikonomika.eurostat"
+title_bg = "БВП по компоненти, годишно"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по мерна единица."
+official_code = "nama_10_gdp"
+
+[[indicator]]
+indicator_code = "ikonomika.gva"
+dataset = "ikonomika.eurostat"
+title_bg = "Брутна добавена стойност по отрасли, годишно"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по мерна единица."
+official_code = "nama_10_a10"
+
+[[indicator]]
+indicator_code = "ikonomika.ind_prod"
+dataset = "ikonomika.eurostat"
+title_bg = "Промишлено производство, месечно"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: по мерна единица."
+official_code = "sts_inpr_m"
+
+[[indicator]]
+indicator_code = "ikonomika.retail"
+dataset = "ikonomika.eurostat"
+title_bg = "Търговия на дребно (обем на продажбите), месечно"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: по мерна единица."
+official_code = "sts_trtu_m"
+
+[[indicator]]
+indicator_code = "ikonomika.constr"
+dataset = "ikonomika.eurostat"
+title_bg = "Строителство, месечно"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: по мерна единица."
+official_code = "sts_copr_m"
+
+[[indicator]]
+indicator_code = "ikonomika.sentiment"
+dataset = "ikonomika.eurostat"
+title_bg = "Бизнес и потребителско доверие, месечно"
+unit_code = "by-row"
+kind = "index"
+definition_bg = "Мярка: салдо на отговорите, а общият индикатор: дългосрочно средно = 100."
+official_code = "ei_bssi_m_r2"
+
+[[indicator]]
+indicator_code = "ikonomika.tourism"
+dataset = "ikonomika.eurostat"
+title_bg = "Нощувки в местата за настаняване, месечно"
+unit_code = "by-row"
+kind = "count"
+definition_bg = "Мярка: по мерна единица."
+official_code = "tour_occ_nim"
+
+[[indicator]]
+indicator_code = "ikonomika.emp_ind"
+dataset = "ikonomika.eurostat"
+title_bg = "Заети по отрасли, тримесечно (сезонно изгладено)"
+unit_code = "by-row"
+kind = "stock"
+definition_bg = "Мярка: по мерна единица."
+official_code = "namq_10_a10_e"
+
+[[indicator]]
+indicator_code = "ikonomika.unemp_bg"
+dataset = "ikonomika.eurostat"
+title_bg = "Безработица по пол и възраст, месечно (сезонно изгладена)"
+unit_code = "by-row"
+kind = "rate"
+definition_bg = "Мярка: по мерна единица."
+official_code = "une_rt_m"
+
+[[indicator]]
+indicator_code = "ikonomika.unemp_a"
+dataset = "ikonomika.eurostat"
+title_bg = "Безработица, средногодишно"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % от работната сила."
+official_code = "une_rt_a"
+
+[[indicator]]
+indicator_code = "ikonomika.emp_reg"
+dataset = "ikonomika.eurostat"
+title_bg = "Заетост на хората от 20 до 64 години по райони"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % от населението на тази възраст."
+official_code = "lfst_r_lfe2emprt"
+
+[[indicator]]
+indicator_code = "ikonomika.unemp_reg"
+dataset = "ikonomika.eurostat"
+title_bg = "Безработица по райони"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % от работната сила."
+official_code = "lfst_r_lfu3rt"
+
+[[indicator]]
+indicator_code = "ikonomika.coe_reg"
+dataset = "ikonomika.eurostat"
+title_bg = "Компенсации на наетите по райони"
+unit_code = "million-EUR"
+kind = "flow"
+definition_bg = "Мярка: млн. €."
+official_code = "nama_10r_2coe"
+
+[[indicator]]
+indicator_code = "ikonomika.sal_reg"
+dataset = "ikonomika.eurostat"
+title_bg = "Наети по райони (за компенсацията на един нает)"
+unit_code = "thousand-person"
+kind = "stock"
+definition_bg = "Мярка: хил. души."
+official_code = "nama_10r_2emhrw"
+
+[[indicator]]
+indicator_code = "ikonomika.poverty"
+dataset = "ikonomika.eurostat"
+title_bg = "Под прага на бедност (60% от медианния доход)"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % от населението."
+official_code = "ilc_li02"
+
+[[indicator]]
+indicator_code = "ikonomika.govt"
+dataset = "ikonomika.eurostat"
+title_bg = "Дълг и дефицит по подсектори на държавното управление"
+unit_code = "by-row"
+kind = "stock"
+definition_bg = "Мярка: по мерна единица."
+official_code = "gov_10dd_edpt1"
+
+[[indicator]]
+indicator_code = "ikonomika.ltrate"
+dataset = "ikonomika.eurostat"
+title_bg = "Дългосрочна лихва по държавния дълг (критерий за еврото)"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % годишно."
+official_code = "irt_lt_mcby_m"
+
+[[indicator]]
+indicator_code = "ikonomika.mm_rate"
+dataset = "ikonomika.eurostat"
+title_bg = "Лихви на междубанковия пазар"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % годишно."
+official_code = "irt_st_m"
+
+[[indicator]]
+indicator_code = "ikonomika.trade_m"
+dataset = "ikonomika.eurostat"
+title_bg = "Износ и внос на стоки по икономически категории, месечно"
+unit_code = "by-row"
+kind = "flow"
+definition_bg = "Мярка: по показател."
+official_code = "ext_st_27_2020msbec"
+
+[[indicator]]
+indicator_code = "ikonomika.trade_a"
+dataset = "ikonomika.eurostat"
+title_bg = "Износ и внос на стоки по стокови групи, годишно"
+unit_code = "million-EUR"
+kind = "flow"
+definition_bg = "Мярка: млн. €."
+official_code = "ext_lt_intratrd"
+
+[[indicator]]
+indicator_code = "ikonomika.bop"
+dataset = "ikonomika.eurostat"
+title_bg = "Платежен баланс, тримесечно"
+unit_code = "million-EUR"
+kind = "flow"
+definition_bg = "Мярка: млн. €."
+official_code = "bop_c6_q"
+
+[[indicator]]
+indicator_code = "ikonomika.fdi"
+dataset = "ikonomika.eurostat"
+title_bg = "Преки инвестиции, натрупани (позиции), по отрасли"
+unit_code = "million-EUR"
+kind = "stock"
+definition_bg = "Мярка: млн. €."
+official_code = "bop_fdi6_pos"
+
+[[indicator]]
+indicator_code = "ikonomika.rates"
+dataset = "ikonomika.ecb"
+title_bg = "Лихви на банките по нови кредити и депозити"
+unit_code = "percent"
+kind = "rate"
+definition_bg = "Мярка: % годишно."
+official_code = "MIR"
+
+[[indicator]]
+indicator_code = "ikonomika.bank"
+dataset = "ikonomika.ecb"
+title_bg = "Кредити и депозити в банките (салда)"
+unit_code = "million-EUR"
+kind = "stock"
+definition_bg = "Мярка: млн. €."
+official_code = "BSI"
+
+[[indicator]]
+indicator_code = "ikonomika.mf_forecast"
+dataset = "ikonomika.mf"
+title_bg = "Макроикономическите прогнози на Министерството на финансите"
+unit_code = "by-row"
+kind = "rate"
+definition_bg = "Мярка: по показател."
+official_code = "335961f9-5027-4e5d-bbda-667464a72b37"
+
+[[indicator]]
+indicator_code = "ikonomika.fx_bgn"
+dataset = "ikonomika.bnb"
+title_bg = "Валутни курсове на БНБ в левове (1991-2025)"
+unit_code = "BGN-per-units"
+kind = "rate"
+definition_bg = "Мярка: лева за посочения брой единици валута."
+
+[[indicator]]
+indicator_code = "ikonomika.fx_eur"
+dataset = "ikonomika.bnb"
+title_bg = "Референтни курсове на ЕЦБ към еврото, публикувани от БНБ (от 2026)"
+unit_code = "currency-per-EUR"
+kind = "rate"
+definition_bg = "Мярка: единици валута за 1 евро."

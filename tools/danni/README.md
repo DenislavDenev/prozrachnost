@@ -10,7 +10,7 @@ PostgreSQL не чете друга база от същата връзка, з�
 
 | Схема | Какво е | Кой пише |
 |---|---|---|
-| `core` | общите измерения: `nuts`, `oblast`, `municipality`, `settlement` (ЕКАТТЕ), `org` (ЕИК), `currency`, `fx_rate`, `unit`, `period_kind`, и регистрите `dataset`, `dataset_table`, `indicator`, `xwalk` | само `danni` |
+| `core` | общите измерения: `nuts`, `oblast`, `municipality`, `settlement` (ЕКАТТЕ), `org` (ЕИК), `currency`, `fx_rate` (дневните курсове на БНБ, от Икономика), `unit`, `period_kind`, и регистрите `dataset`, `dataset_table`, `indicator`, `xwalk` | само `danni` |
 | `ops` | дневникът: `run`, `raw_file`, `fetch`, `load`, `hold`, `change_log`, `check_rule`, `check_result`, `source`, `schema_migration`; изгледите `freshness` и `check_latest` | всеки инструмент, без триене |
 | `<slug>_src` | приемната зона на инструмента: редовете, както са в източника, с типове; всеки ред носи `load_id` | инструментът |
 | `<slug>` | чистите таблици на инструмента, с външни ключове към `core`, и изгледите за страниците | инструментът |
@@ -178,6 +178,17 @@ python -m ingest.run --step freshness
   зареждането пази едно име.
 - Инструмент, чиито чисти таблици се извеждат цели, има работна схема `<slug>_stage`. Прави я `provision.sh` на
   инструмента; `enroll.sh` не я дава на всеки.
+
+## Какво поиска Икономика от основата (миграция 0011)
+
+- Дневните курсове в `core.fx_rate` идват от Икономика (БНБ): от 2026 г. референтните курсове на ЕЦБ, както ги
+  публикува БНБ (`source = 'bnb'`); от 05.07.1999 до 2025 г. курсът в левове, превърнат с фиксирания курс
+  1,95583 (`bnb-bgn`). Преди деноминацията курс няма, така че `core.to_eur()` връща `NULL`.
+- Пише ги основата: функцията `core.take_fx_rates()` (собственост на `danni`, `SECURITY DEFINER`) чете само
+  изгледите `ikonomika.fx_rate` и `ikonomika.fx_currency` и привежда `core.currency` и `core.fx_rate` към тях.
+  Икономика я вика в края на всяка своя стъпка; само тя има право да я вика.
+- Тендер още пази курсовете на ЕЦБ в `tender_src.fx_rate`. От 2026 г. те са същите числа като `bnb`; когато Тендер
+  премине на `core.fx_rate`, чете `per_eur` по `currency_code` и `day`.
 
 ## Тестове
 

@@ -52,20 +52,39 @@ MUTATIONS = [
      "            if not lo <= v <= hi:", "            if False:",
      "tests/test_sources.py::test_monthly_and_annual_rates_follow_from_the_index"),
     ("a smaller answer is held", "ingest/store.py",
-     "        if removed:\n            if not held", "        if False:\n            if not held",
+     "hold_when=accept_all if replay else None", "hold_when=accept_all",
      "tests/test_store.py::test_a_smaller_answer_is_held_until_a_second_read_a_day_later_agrees"),
-    ("a hold is confirmed only a day later", "ingest/store.py",
-     "            if not held[1]:\n                return \"held\"\n", "",
+    ("the replaced version leaves the landing zone", "ingest/store.py",
+     "    if done.previous:   # landing policy `latest`", "    if False:",
      "tests/test_store.py::test_a_smaller_answer_is_held_until_a_second_read_a_day_later_agrees"),
-    ("a change is logged", "ingest/store.py",
-     "                            db.log_change(conn, source, name, field, cur[k][i], new[k][i], \"rewritten\")",
-     "                            pass", "tests/test_store.py::test_a_revision_and_a_new_period_are_logged_field_by_field"),
+    ("a corrected number supersedes the old one, nothing is overwritten", "db/build/observation.sql",
+     "UPDATE ikonomika.observation c SET superseded_at = now()", "UPDATE ikonomika.observation c SET value = c.value",
+     "tests/test_store.py::test_a_revision_and_a_new_period_are_logged_and_the_old_fact_is_superseded"),
+    ("a place of Bulgaria points to core.nuts", "db/build/observation.sql",
+     "FROM core.nuts n WHERE n.nuts_code = s.geo AND s.nuts_code IS NULL", "FROM core.nuts n WHERE false",
+     "tests/test_store.py::test_eurostat_step_writes_checks_and_keeps_what_fails"),
+    ("a rule that fails stops the publication", "ingest/run.py",
+     "    return problems + (failed or pipeline.publish(conn, r, ROOT).problems)",
+     "    return problems + failed + pipeline.publish(conn, r, ROOT).problems",
+     "tests/test_store.py::test_a_step_publishes_only_when_its_rules_hold"),
+    ("parity names a cell that differs", "ingest/move.py",
+     "if old_cells.get(k) != new_cells.get(k))", "if False)",
+     "tests/test_store.py::test_replay_builds_from_the_raw_files_and_parity_finds_no_difference"),
+    ("the rates in leva reach core in euro by the fixed rate", "db/migrations/0001_shared.sql",
+     "round(c.fixed_per_eur * x.units / x.value, 10)", "round(x.units / x.value, 10)",
+     "tests/test_store.py::test_the_bnb_rates_reach_core_in_euro"),
+    ("the pages read only the serving layer", "app/main.py",
+     "FROM pub_ikonomika.hold ORDER BY first_at", "FROM ops.hold ORDER BY first_at",
+     "tests/test_pages.py::test_every_answer_says_its_publication_and_the_pages_read_only_the_serving_layer"),
+    ("every answer says its publication", "app/main.py",
+     'response.headers["X-Publication"] = str(snap.publication[0])', "pass",
+     "tests/test_pages.py::test_every_answer_says_its_publication_and_the_pages_read_only_the_serving_layer"),
     ("the BNB rate and its inverse agree", "ingest/bnb.py",
      "                if inv is not None and not agree(rate / units, inv, g[3]):", "                if False:",
      "tests/test_sources.py::test_bnb_rate_and_inverse_must_agree"),
     ("the day's rates are the archive's", "ingest/bnb.py",
      "        if dd >= today - dt.timedelta(days=31) and arch.get((d[\"code\"], dd)) != v:", "        if False:",
-     "tests/test_store.py::test_bnb_step_reads_windows_holds_and_reconciles"),
+     "tests/test_store.py::test_bnb_step_reads_whole_quarters_and_reconciles"),
     ("no data is not 0", "app/main.py",
      '    if v is None:\n        return "няма данни"\n', "    if v is None:\n        v = 0\n",
      "tests/test_pages.py::test_pages_on_real_answers"),
@@ -77,20 +96,32 @@ def pytest(copy, tests):
                           cwd=copy, capture_output=True, text=True)
 
 
+def copy_of(tmp):
+    """The tool and, beside it, the foundation its tests build the database from (tools/danni)."""
+    copy = Path(tmp) / "ikonomika"
+    ignore = shutil.ignore_patterns("__pycache__", ".pytest_cache", ".data")
+    shutil.copytree(ROOT, copy, ignore=ignore)
+    shutil.copytree(ROOT.parent / "danni", Path(tmp) / "danni", ignore=ignore)
+    return copy
+
+
 def main():
-    # the same tests on the unbroken code must pass and none be skipped, else a broken environment (no database,
-    # a missing package) would count every mutation as caught
+    # the same tests on an unbroken copy must pass and none be skipped, else a broken environment (no database, a
+    # missing package, a missing folder) would count every mutation as caught
     tests = sorted({t for *_, ts in MUTATIONS for t in ts.split()})
-    r = pytest(ROOT, tests)
+    with tempfile.TemporaryDirectory() as tmp:
+        r = pytest(copy_of(tmp), tests)
     if r.returncode != 0 or "SKIPPED" in r.stdout:
         print("the tests do not pass on the unbroken code, no mutation is checked:\n" + r.stdout[-2000:] + r.stderr[-1000:])
         sys.exit(1)
     print(f"baseline {r.stdout.strip().splitlines()[-1]}")
     survived = 0
+    only = sys.argv[1:]   # words of the names to run, e.g. `python tests/mutations.py nuts publication`
     for name, path, old, new, tests in MUTATIONS:
+        if only and not any(w in name for w in only):
+            continue
         with tempfile.TemporaryDirectory() as tmp:
-            copy = Path(tmp) / "t"
-            shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".data"))
+            copy = copy_of(tmp)
             f = copy / path
             src = f.read_text(encoding="utf-8")
             assert src.count(old) == 1, f"{name}: the code to break is not found once in {path}"

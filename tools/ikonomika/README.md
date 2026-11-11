@@ -52,20 +52,48 @@ Eurostat, филтри, държави, праг за остаряване), б�
 Подробно: [docs/sources.md](docs/sources.md). Изчисленията, сверките и проверката на тестовете:
 [docs/methodology.md](docs/methodology.md).
 
+## Къде са данните
+
+От 11.11.2026 Икономика е в общата база `prozrachnost` ([tools/danni](../danni/README.md)); старата база
+`ikonomika` остава непроменена за връщане назад.
+
+| Схема | Какво |
+|---|---|
+| `ikonomika_src` | приемната зона: числата и имената на категориите от действащия отговор на всеки показател и прозорец на БНБ |
+| `ikonomika` | чистите таблици: `series` (показател в `core.indicator`, измерения, място; място в България сочи `core.nuts`) и `observation` (числото за период, с вида, началото и края му; поправеното остава със `superseded_at`), `dim_label`, `source_state`, изгледите `fx_rate` и `fx_currency` |
+| `pub_ikonomika` | слоят за показване: `series`, `dim_label`, `source_state`, `hold`, `change_count`. Страниците четат само него и `pub`, в една моментна снимка на заявка; всеки отговор носи `X-Publication`, `ETag` и `Last-Modified` |
+
+Пусканията, суровите файлове, зарежданията, задържането, дневникът на промените, правилата
+([`db/checks.toml`](db/checks.toml)), свежестта и публикуването минават през общия модул `ingest/pipeline.py`
+(непроменено копие на `tools/danni/pipeline.py`). Наборите и показателите са в [`db/datasets.toml`](db/datasets.toml).
+
+Курсовете на БНБ стигат до `core.fx_rate` в евро за всички инструменти: от 2026 г. референтните на ЕЦБ, както ги
+публикува БНБ; от 05.07.1999 до 2025 г. курсът в левове, превърнат с 1,95583. Пише ги основата
+(`core.take_fx_rates()`), която Икономика вика в края на всяка стъпка.
+
 ## Как се пуска
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-export IKONOMIKA_DSN="dbname=ikonomika" IKONOMIKA_DATA=./.data
-python -m ingest.run --step migrate
+export IKONOMIKA_DSN="dbname=prozrachnost" IKONOMIKA_DATA=./.data
+python -m ingest.run --step migrate           # основата на tools/danni трябва да е там (миграция 0011)
 python -m ingest.run --step eurostat          # всички показатели (около минута)
-python -m ingest.run --step bnb               # курсовете от последните 31 дни
+python -m ingest.run --step bnb               # курсовете от тримесечията на последните 31 дни
 python -m ingest.run --step bnb --backfill    # курсовете от 1991 (около 1400 заявки, часове)
+python -m ingest.run --step ecb
+python -m ingest.run --step mf
+python -m ingest.run --step check             # правилата; после публикуване
 python -m ingest.run --step freshness         # какво е закъсняло или задържано
 uvicorn app.main:app --port 8025
 ```
 
-Всяка стъпка печата един JSON ред; изходът е 1 при грешка или при непразно `problems`.
+Всяка стъпка, която пише, завършва с чистите таблици, правилата и, когато минат, публикуване на слоя за
+показване. Печата един JSON ред; изходът е 1 при непразно `problems`.
+
+Преминаването от старата база (еднократно, 11.11.2026): `--step replay` чете всички сурови отговори, които старата
+база е пазила, през същите парсери и проверки, с часа на четенето им; `--step parity` сравнява старата база
+(`IKONOMIKA_OLD_DSN`, по подразбиране `dbname=ikonomika`) със слоя за показване: брой, сбор и отпечатък на всяко
+число по показател и период, имената на категориите и състоянието на четенията.
 
 ## Тестове
 
@@ -74,13 +102,17 @@ IKONOMIKA_TEST_DSN="dbname=ikonomika_test" python -m pytest -q     # базат�
 IKONOMIKA_TEST_DSN="dbname=ikonomika_test" python tests/mutations.py
 ```
 
-Без `IKONOMIKA_TEST_DSN` тестовете с база се пропускат; в CI вървят всички, срещу Postgres 17.
-`tests/mutations.py` чупи нарочно всяко пазещо правило и проверява, че тестовете го хващат.
+Тестовете строят основата от съседната папка `tools/danni` (миграциите и местата от истинския архив на
+ЕКАТТЕ), после таблиците на Икономика. Без `IKONOMIKA_TEST_DSN` тестовете с база се пропускат; в CI вървят
+всички, срещу Postgres 17. `tests/mutations.py` чупи нарочно всяко пазещо правило и проверява, че тестовете го
+хващат (`python tests/mutations.py nuts` пуска само мутациите с тази дума в името).
 
 ## Разписание (UTC)
 
 | Кога | Стъпка |
 |---|---|
 | всеки ден 10:30 | `eurostat` |
+| всеки ден 11:10 | `ecb` |
+| вторник 12:40 | `mf` |
 | работни дни 16:30 | `bnb` |
 | след всяка стъпка | `freshness`; при проблем карта в Discord |

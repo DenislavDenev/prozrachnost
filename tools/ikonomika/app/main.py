@@ -1,4 +1,9 @@
-"""Икономика: server-rendered pages over live.series; the line charts read /api/<indicator>.json."""
+"""Икономика: server-rendered pages over the serving layer (pub_ikonomika); the line charts read /api/<indicator>.json.
+
+The pages read pub_ikonomika and nothing else: not the clean tables, not the landing zone, not the ledger. The web role
+has no right to them. One request is one snapshot: every query of a request sees the same publication, and the answer
+says which (X-Publication, ETag, Last-Modified)."""
+import contextvars
 import csv
 import datetime as dt
 import io
@@ -13,6 +18,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from email.utils import format_datetime
+
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
@@ -25,7 +32,7 @@ from . import feedback
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-DSN = os.environ.get("IKONOMIKA_DSN", "dbname=ikonomika")
+DSN = os.environ.get("IKONOMIKA_DSN", "dbname=prozrachnost")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
 ASSET_V = "10"
 
@@ -40,9 +47,56 @@ MONTHS = "януари февруари март април май юни юли
 ROMAN = {"1": "I", "2": "II", "3": "III", "4": "IV"}
 
 
+_request = contextvars.ContextVar("request_snapshot", default=None)
+
+
+class Snapshot:
+    """The read-only connection of one request, opened at its first query, in REPEATABLE READ: every statement sees
+    the database as of the first one, so the whole answer is of one publication."""
+
+    def __init__(self):
+        self.conn, self.publication = None, None
+
+    def execute(self, sql, args):
+        if self.conn is None:
+            self.conn = psycopg.connect(DSN)
+            self.conn.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+            self.conn.read_only = True
+            self.publication = self.conn.execute(
+                "SELECT publication_id, published_at FROM pub.publication ORDER BY publication_id DESC LIMIT 1").fetchone()
+        return self.conn.execute(sql, args).fetchall()
+
+    def close(self):
+        if self.conn is not None:
+            self.conn.close()
+
+
+@app.middleware("http")
+async def one_snapshot(request: Request, call_next):
+    """Every answer built from the data says which publication it is of. A cache in front of the site keeps an
+    answer until this number moves; the number moves only when the published content does."""
+    snap = Snapshot()
+    token = _request.set(snap)
+    try:
+        response = await call_next(request)
+    finally:
+        _request.reset(token)
+    try:
+        if snap.publication:
+            response.headers["X-Publication"] = str(snap.publication[0])
+            response.headers["ETag"] = f'W/"pub-{snap.publication[0]}"'
+            response.headers["Last-Modified"] = format_datetime(snap.publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    finally:
+        snap.close()
+    return response
+
+
 def q(sql, *args):
-    with psycopg.connect(DSN) as c:
-        return c.execute(sql, args).fetchall()
+    snap = _request.get()
+    if snap is None:   # outside a request (a test that calls a function directly)
+        with psycopg.connect(DSN) as c:
+            return c.execute(sql, args).fetchall()
+    return snap.execute(sql, args)
 
 
 @lru_cache(maxsize=1)
@@ -57,7 +111,7 @@ def label(dim, code, indicator=None):
     if got:
         return got
     if indicator:
-        r = q("SELECT label FROM live.dim_label WHERE indicator = %s AND dim = %s AND code = %s", indicator, dim, code)
+        r = q("SELECT label FROM pub_ikonomika.dim_label WHERE indicator = %s AND dim = %s AND code = %s", indicator, dim, code)
         if r:
             return r[0][0]
     return code
@@ -127,7 +181,7 @@ def page(request, name, nav, **ctx):
 
 
 def freshness_line():
-    r = q("SELECT max(last_ok) FROM ops.source_state WHERE source = 'eurostat'")
+    r = q("SELECT max(last_ok) FROM pub_ikonomika.source_state WHERE source = 'eurostat'")
     return r[0][0] if r else None
 
 
@@ -144,14 +198,14 @@ def where(dims):
 def last(indicator, geo="BG", **dims):
     """(time, value, flag) of the latest period with a value, or None."""
     w, a = where(dims)
-    r = q(f"""SELECT time, value, flag FROM live.series WHERE indicator = %s AND geo = %s AND value IS NOT NULL {w}
+    r = q(f"""SELECT time, value, flag FROM pub_ikonomika.series WHERE indicator = %s AND geo = %s AND value IS NOT NULL {w}
               ORDER BY time DESC LIMIT 1""", indicator, geo, *a)
     return r[0] if r else None
 
 
 def at(indicator, time, geo="BG", **dims):
     w, a = where(dims)
-    r = q(f"SELECT value, flag FROM live.series WHERE indicator = %s AND geo = %s AND time = %s {w}", indicator, geo, time, *a)
+    r = q(f"SELECT value, flag FROM pub_ikonomika.series WHERE indicator = %s AND geo = %s AND time = %s {w}", indicator, geo, time, *a)
     return r[0] if r else (None, None)
 
 
@@ -177,7 +231,7 @@ def src_html(indicator):
 
 def source(indicator):
     """What a panel says under its chart: source, dataset, link, the source's update, our last read."""
-    st = q("SELECT updated, last_ok FROM ops.source_state WHERE source = %s AND ref = %s",
+    st = q("SELECT updated, last_ok FROM pub_ikonomika.source_state WHERE source = %s AND ref = %s",
            (IND.get(indicator) or {}).get("source", "eurostat"), indicator)
     updated, read = st[0] if st else (None, None)
     return {**src_of(indicator), "updated": updated[:10] if updated else None, "read": read}
@@ -185,7 +239,7 @@ def source(indicator):
 
 def euro_area(indicator):
     """The euro area code this indicator has: EA (changing composition), else EA21 or EA20."""
-    have = {r[0] for r in q("SELECT DISTINCT geo FROM live.series WHERE indicator = %s AND geo = ANY(%s)", indicator, EURO_AREA)}
+    have = {r[0] for r in q("SELECT DISTINCT geo FROM pub_ikonomika.series WHERE indicator = %s AND geo = ANY(%s)", indicator, EURO_AREA)}
     return next((g for g in EURO_AREA if g in have), "EA")
 
 
@@ -222,7 +276,7 @@ def inflation(request: Request):
     if month:
         vals = {}
         for ind in ("hicp_rch_a", "hicp_rch_m", "hicp_i15"):
-            for code, v, f in q("""SELECT dims->>'coicop18', value, flag FROM live.series
+            for code, v, f in q("""SELECT dims->>'coicop18', value, flag FROM pub_ikonomika.series
                                    WHERE indicator = %s AND geo = 'BG' AND time = %s""", ind, month):
                 vals.setdefault(code, {})[ind] = (v, f)
         for code, v in vals.items():
@@ -242,9 +296,9 @@ def inflation_panels(month):
     and the price of electricity."""
     items, total = [], None
     if month:
-        w = dict(q("""SELECT dims->>'coicop18', value FROM live.series WHERE indicator = 'hicp_w' AND geo = 'BG' AND time = %s""",
+        w = dict(q("""SELECT dims->>'coicop18', value FROM pub_ikonomika.series WHERE indicator = 'hicp_w' AND geo = 'BG' AND time = %s""",
                    month[:4]))
-        r = dict(q("""SELECT dims->>'coicop18', value FROM live.series WHERE indicator = 'hicp_rch_a' AND geo = 'BG' AND time = %s""",
+        r = dict(q("""SELECT dims->>'coicop18', value FROM pub_ikonomika.series WHERE indicator = 'hicp_rch_a' AND geo = 'BG' AND time = %s""",
                    month))
         for code in (f"CP{n:02d}" for n in range(1, 14)):
             items.append((label("coicop18", code), round(float(w[code]) * float(r[code]) / 1000, 2)
@@ -312,12 +366,12 @@ def measure_values(m, time, codes):
     """{place: value} of a map measure for one period; a measure per something is divided by it."""
     ind, dims, *_, per = MAP_MEASURES[m]
     w, a = where(dims)
-    vals = {g: float(v) for g, v in q(f"""SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s
+    vals = {g: float(v) for g, v in q(f"""SELECT geo, value FROM pub_ikonomika.series WHERE indicator = %s AND time = %s
                                           AND geo = ANY(%s) AND value IS NOT NULL {w}""", ind, time, codes, *a)}
     if per:
         ind2, dims2, factor = per
         w2, a2 = where(dims2)
-        den = {g: float(v) for g, v in q(f"""SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s
+        den = {g: float(v) for g, v in q(f"""SELECT geo, value FROM pub_ikonomika.series WHERE indicator = %s AND time = %s
                                              AND geo = ANY(%s) AND value IS NOT NULL {w2}""", ind2, time, codes, *a2)}
         vals = {g: v / den[g] * factor for g, v in vals.items() if den.get(g)}
     return vals
@@ -340,7 +394,7 @@ def map_data(m, y, o, l):
     shapes = shapes[str(nuts)] if o == "bg" else shapes
     codes = sorted(shapes) + (NON_NUTS if nuts == 0 else [])
     w, a = where(dims)
-    counts = q(f"""SELECT time, count(*) FROM live.series WHERE indicator = %s {w}
+    counts = q(f"""SELECT time, count(*) FROM pub_ikonomika.series WHERE indicator = %s {w}
                    AND geo = ANY(%s) AND value IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""", ind, *a, codes)
     years = [t for t, _ in counts]
     if y is None and years:
@@ -404,7 +458,7 @@ def eu(request: Request, p: str = "inflaciya"):
     rows = []
     if lt:
         w, a = where(dims)
-        got = {g: (v, f) for g, v, f in q(f"SELECT geo, value, flag FROM live.series WHERE indicator = %s AND time = %s {w}",
+        got = {g: (v, f) for g, v, f in q(f"SELECT geo, value, flag FROM pub_ikonomika.series WHERE indicator = %s AND time = %s {w}",
                                           ind, lt[0], *a)}
         ea = euro_area(ind)
         for g in ["EU27_2020", ea, *MEMBERS]:
@@ -429,10 +483,10 @@ def fx_series(code):
     """[(day, currency per 1 euro, how)]: from 1999 the leva rate turned into euro by the fixed rate
     1.95583 (the lev was tied to the euro), from 2026 the ECB reference rate the BNB publishes."""
     out = []
-    for t, v, units in q("""SELECT time, value, dims->>'units' FROM live.series WHERE indicator = 'fx_bgn' AND dims->>'code' = %s
+    for t, v, units in q("""SELECT time, value, dims->>'units' FROM pub_ikonomika.series WHERE indicator = 'fx_bgn' AND dims->>'code' = %s
                             AND time >= '1999-01-01' AND value IS NOT NULL ORDER BY time""", code):
         out.append((t, round(BGN_PER_EUR * float(units) / float(v), 6), "bgn"))
-    out += [(t, float(v), "eur") for t, v in q("""SELECT time, value FROM live.series WHERE indicator = 'fx_eur' AND dims->>'code' = %s
+    out += [(t, float(v), "eur") for t, v in q("""SELECT time, value FROM pub_ikonomika.series WHERE indicator = 'fx_eur' AND dims->>'code' = %s
                                                   AND value IS NOT NULL ORDER BY time""", code)]
     return out
 
@@ -444,13 +498,13 @@ def rates_moved(request: Request):
 
 @app.get("/pari", response_class=HTMLResponse)
 def money(request: Request, code: str = "USD"):
-    latest = q("""SELECT DISTINCT ON (dims->>'code') dims->>'code', time, value FROM live.series WHERE indicator = 'fx_eur'
+    latest = q("""SELECT DISTINCT ON (dims->>'code') dims->>'code', time, value FROM pub_ikonomika.series WHERE indicator = 'fx_eur'
                   ORDER BY dims->>'code', time DESC""")
-    codes = sorted({c for c, _, _ in latest} | {r[0] for r in q("SELECT DISTINCT dims->>'code' FROM live.series WHERE indicator = 'fx_bgn'")})
+    codes = sorted({c for c, _, _ in latest} | {r[0] for r in q("SELECT DISTINCT dims->>'code' FROM pub_ikonomika.series WHERE indicator = 'fx_bgn'")})
     if code not in codes and codes:
         raise HTTPException(404)
     s = fx_series(code) if codes else []
-    span = q("SELECT min(time), max(time), count(*) FROM live.series WHERE indicator = 'fx_bgn'")[0]
+    span = q("SELECT min(time), max(time), count(*) FROM pub_ikonomika.series WHERE indicator = 'fx_bgn'")[0]
     year_ago = str(dt.date.fromisoformat(s[-1][0]) - dt.timedelta(days=365)) if s else ""
     hs, ea = last("rates", series="housing"), last("rates", "EA", series="housing")
     loans = last("bank", series="loans_hh")
@@ -477,7 +531,7 @@ def chart(ind, title, sub, digits=1, geo="BG", chips=None, picked=None, cls="s12
         dim, codes = chips
         # only the buttons that have a line: a combination the source does not publish would be a pressed button with nothing
         w, a = where({k: v for k, v in dims.items() if isinstance(v, str)})
-        have = {r[0] for r in q(f"""SELECT DISTINCT dims->>%s FROM live.series WHERE indicator = %s AND geo = ANY(%s)
+        have = {r[0] for r in q(f"""SELECT DISTINCT dims->>%s FROM pub_ikonomika.series WHERE indicator = %s AND geo = ANY(%s)
                                     AND value IS NOT NULL {w}""", dim, ind, geo.split(","), *a)}
         codes = [c for c in codes if c in have] or codes   # an empty database keeps them all
         picked = ([c for c in (picked or codes) if c in codes] or codes)[:MAX_PICKED]
@@ -562,11 +616,11 @@ def region_bars(ind, title, sub, **dims):
     """The six regions of Bulgaria and the country, for the latest year with all of them."""
     codes = ["BG", *checks.NUTS2]
     w, a = where(dims)
-    t = q(f"""SELECT time FROM live.series WHERE indicator = %s AND geo = ANY(%s) AND value IS NOT NULL {w}
+    t = q(f"""SELECT time FROM pub_ikonomika.series WHERE indicator = %s AND geo = ANY(%s) AND value IS NOT NULL {w}
               GROUP BY 1 HAVING count(*) = %s ORDER BY 1 DESC LIMIT 1""", ind, codes, *a, len(codes))
     if not t:
         return bars(ind, title, sub, [])
-    got = dict(q(f"SELECT geo, value FROM live.series WHERE indicator = %s AND time = %s AND geo = ANY(%s) {w}", ind, t[0][0], codes, *a))
+    got = dict(q(f"SELECT geo, value FROM pub_ikonomika.series WHERE indicator = %s AND time = %s AND geo = ANY(%s) {w}", ind, t[0][0], codes, *a))
     return bars(ind, f"{title}, {t[0][0]}", sub, [(area_name(c), got.get(c), "bg" if c == "BG" else "") for c in codes])
 
 
@@ -607,8 +661,8 @@ FORECAST_ACTUAL = {   # item of the MF forecast -> (indicator, dimensions) of wh
 def forecasts_for_the_year(item, season, lag):
     """{year: value}: what the MF's `season` forecast (Пролетна / Есенна) of year Y - lag said about year Y."""
     got = {}
-    for vin, t, val in q("""SELECT s.dims->>'vintage', s.time, s.value FROM live.series s
-                            JOIN live.dim_label l ON l.indicator = 'mf_forecast' AND l.dim = 'vintage' AND l.code = s.dims->>'vintage'
+    for vin, t, val in q("""SELECT s.dims->>'vintage', s.time, s.value FROM pub_ikonomika.series s
+                            JOIN pub_ikonomika.dim_label l ON l.indicator = 'mf_forecast' AND l.dim = 'vintage' AND l.code = s.dims->>'vintage'
                             WHERE s.indicator = 'mf_forecast' AND s.dims->>'item' = %s AND l.label LIKE %s AND s.value IS NOT NULL
                             ORDER BY 1""", item, season + "%"):
         if int(t) == int(vin[:4]) + lag:
@@ -626,7 +680,7 @@ def api_forecast(item: str):
     w, a = where(dims)
     spring, autumn = forecasts_for_the_year(item, "Пролетна", 0), forecasts_for_the_year(item, "Есенна", 1)
     first = str(int(min([*spring, *autumn], default="2022")) - 2)   # what happened, from two years before the first forecast
-    actual = [[t, float(val), f] for t, val, f in q(f"""SELECT time, value, flag FROM live.series WHERE indicator = %s AND geo = 'BG'
+    actual = [[t, float(val), f] for t, val, f in q(f"""SELECT time, value, flag FROM pub_ikonomika.series WHERE indicator = %s AND geo = 'BG'
                                                       AND value IS NOT NULL AND time >= %s {w} ORDER BY time""", ind, first, *a)]
     series = [{"name": "Какво стана (Eurostat)", "geo": "BG", "points": actual, "color": "#0b7a5e", "symbol": True},
               {"name": "Прогноза на МФ от пролетта на същата година", "geo": "spring", "color": "#121417", "symbol": True,
@@ -667,10 +721,10 @@ def finance(request: Request):
 
 
 def sitc_bars(indic, title):
-    t = q("SELECT max(time) FROM live.series WHERE indicator = 'trade_a' AND value IS NOT NULL")[0][0]
+    t = q("SELECT max(time) FROM pub_ikonomika.series WHERE indicator = 'trade_a' AND value IS NOT NULL")[0][0]
     if not t:
         return bars("trade_a", title, "млрд. €", [], digits=1)
-    got = q("""SELECT dims->>'sitc06', value FROM live.series WHERE indicator = 'trade_a' AND time = %s AND dims->>'indic_et' = %s
+    got = q("""SELECT dims->>'sitc06', value FROM pub_ikonomika.series WHERE indicator = 'trade_a' AND time = %s AND dims->>'indic_et' = %s
                AND dims->>'partner' = 'WORLD' AND dims->>'sitc06' <> 'TOTAL'""", t, indic)
     return bars("trade_a", f"{title}, {t}", "млрд. €, по стокови групи",
                 [(label("sitc06", c, "trade_a"), None if v is None else float(v) / 1000, "") for c, v in got], digits=1)
@@ -726,13 +780,12 @@ def money_panels():
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
     st = {r[0]: r for r in q("""SELECT ref, status, error, last_read, last_ok, last_change, updated, rows
-                                FROM ops.source_state WHERE source IN ('eurostat', 'ecb', 'mf')""")}
-    span = {r[0]: r[1:] for r in q("SELECT indicator, min(time), max(time), count(*) FROM live.series GROUP BY 1")}
+                                FROM pub_ikonomika.source_state WHERE source IN ('eurostat', 'ecb', 'mf')""")}
+    span = {r[0]: r[1:] for r in q("SELECT indicator, min(time), max(time), count(*) FROM pub_ikonomika.series GROUP BY 1")}
     items = [{"ind": i, "st": st.get(i["id"]), "span": span.get(i["id"])} for i in IND.values()]
-    fx = q("SELECT status, error, last_read, last_ok FROM ops.source_state WHERE source = 'bnb' AND ref = 'fx'")
-    held = q("SELECT source, ref, rows, first_at FROM ops.held ORDER BY first_at")
-    changes = q("""SELECT source, cause, count(*) FROM ops.change_log WHERE detected_at > now() - interval '30 days'
-                   GROUP BY 1, 2 ORDER BY 1, 2""")
+    fx = q("SELECT status, error, last_read, last_ok FROM pub_ikonomika.source_state WHERE source = 'bnb' AND ref = 'fx'")
+    held = q("SELECT source, ref, rows, first_at FROM pub_ikonomika.hold ORDER BY first_at")
+    changes = q("SELECT source, cause, n FROM pub_ikonomika.change_count ORDER BY 1, 2")
     return page(request, "sources.html", "Източници", items=items, fx=fx[0] if fx else None,
                 fx_span={k: span.get(k) for k in ("fx_bgn", "fx_eur")}, held=held, changes=changes)
 
@@ -763,7 +816,7 @@ def api(indicator: str, request: Request, geo: str = "BG", since: str = ""):
     for k, v in dims.items():
         sql.append("dims->>%s = ANY(%s)")
         args += [k, v]
-    rows = q(f"SELECT dims, geo, time, value, flag FROM live.series WHERE {' AND '.join(sql)} ORDER BY geo, dims::text, time", *args)
+    rows = q(f"SELECT dims, geo, time, value, flag FROM pub_ikonomika.series WHERE {' AND '.join(sql)} ORDER BY geo, dims::text, time", *args)
     series = {}
     for d, g, t, v, f in rows:
         key = json.dumps({**d, "geo": g}, sort_keys=True)
@@ -790,8 +843,10 @@ def csv_export(indicator: str):
     if indicator not in IND and indicator not in ("fx_bgn", "fx_eur"):
         raise HTTPException(404)
 
+    # read here, not in the generator: the body is sent after the request's snapshot is closed
+    rows = q("SELECT dims, geo, time, value, flag FROM pub_ikonomika.series WHERE indicator = %s ORDER BY dims::text, geo, time", indicator)
+
     def gen():
-        rows = q("SELECT dims, geo, time, value, flag FROM live.series WHERE indicator = %s ORDER BY dims::text, geo, time", indicator)
         keys = sorted({k for d, *_ in rows for k in d})
         buf = io.StringIO()
         w = csv.writer(buf, lineterminator="\n")
@@ -805,7 +860,7 @@ def csv_export(indicator: str):
 
 @app.get("/healthz")
 def healthz():
-    n = q("SELECT count(*) FROM live.series")[0][0]
+    n = q("SELECT count(*) FROM pub_ikonomika.series")[0][0]
     return {"ok": True, "rows": n}
 
 
