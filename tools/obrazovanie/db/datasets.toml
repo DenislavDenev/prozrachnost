@@ -8,7 +8,7 @@ description_bg = "Явили се и среден резултат в точки
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/b56288b6-25aa-4049-9aa6-de2cd4cdabf8"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно"
 tables = ["pub_obrazovanie.nvo7_publication", "pub_obrazovanie.school", "pub_obrazovanie.exam_result", "obrazovanie.nvo7_publication", "obrazovanie.school", "obrazovanie.exam_result", "obrazovanie_src.nvo7", "obrazovanie_src.nvo7_row"]
 
@@ -19,7 +19,7 @@ description_bg = "Код по НЕИСПУО, име, област, община
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/81b81e76-e6aa-4895-b0b0-e0a9af53742f"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно"
 tables = ["obrazovanie_src.register", "obrazovanie_src.register_row"]
 
@@ -30,7 +30,7 @@ description_bg = "Явили се и средна оценка по предме
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/066b4b04-d81d-444e-a61c-8ca0516079e4"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно, две сесии"
 tables = ["pub_obrazovanie.dzi_publication", "pub_obrazovanie.dzi_result", "obrazovanie.dzi_publication", "obrazovanie.dzi_result", "obrazovanie_src.dzi", "obrazovanie_src.dzi_row"]
 
@@ -41,7 +41,7 @@ description_bg = "Явили се и среден резултат в точки
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/5613e75f-2b1b-4244-9f54-b27580a91dfb"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно"
 tables = ["pub_obrazovanie.nvo_publication", "pub_obrazovanie.nvo_result", "obrazovanie.nvo_publication", "obrazovanie.nvo_result", "obrazovanie_src.nvo", "obrazovanie_src.nvo_row"]
 
@@ -52,7 +52,7 @@ description_bg = "Официалните списъци на МОН по уче�
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/7b3c3cbb-e855-4fe7-93f6-fd68016570f8"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно"
 tables = ["pub_obrazovanie.status_publication", "pub_obrazovanie.status_row", "obrazovanie.status_publication", "obrazovanie.status_row", "obrazovanie_src.status", "obrazovanie_src.status_row"]
 
@@ -63,7 +63,7 @@ description_bg = "Националните бройки на МОН: учени�
 source_org = "Министерство на образованието и науката"
 source_url = "https://data.egov.bg/data/view/8c03a6fb-598f-44ea-81e5-9765d6e573df"
 channel = "api"
-licence = "CC0 (условия 1 на data.egov.bg)"
+licence = "CC0 (условия 1 на data.egov.bg, по LICENCES.md)"
 cadence = "годишно"
 tables = ["pub_obrazovanie.context_publication", "pub_obrazovanie.context_kind", "pub_obrazovanie.context_grade", "obrazovanie.context_publication", "obrazovanie.context_kind", "obrazovanie.context_grade", "obrazovanie_src.context", "obrazovanie_src.context_row", "obrazovanie_src.context_grade"]
 
