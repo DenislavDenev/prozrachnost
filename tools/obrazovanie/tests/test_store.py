@@ -234,7 +234,7 @@ def test_serving_layer_moves_only_with_a_publication_and_every_answer_names_it(c
 def test_pages_read_only_the_serving_layer():
     for f in (ROOT / "app").glob("*.py"):
         text = f.read_text(encoding="utf-8")
-        for schema in re.findall(r"\b(live|ops|core|obrazovanie|obrazovanie_src)\.[a-z_]+\b", text):
+        for schema in re.findall(r"\b(live|ops|core|obrazovanie|obrazovanie_src)\.[a-z0-9_]+\b", text):
             pytest.fail(f"{f.name} reads {schema}")
 
 
