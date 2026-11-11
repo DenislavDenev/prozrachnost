@@ -22,7 +22,7 @@ MUTATIONS = [
     ("archive/register.py", "if conn.execute(\"SELECT 1 FROM ops.run", "if False and conn.execute(\"SELECT 1 FROM ops.run"),  # state imported twice
     ("archive/run.py", 'if c["missing"] or c["extra"] or c["size_differs"]:', "if False:"),            # register lag not reported
     ("archive/run.py", "                if r is not None:", "                if False:"),                 # a run's new lines not registered
-    ("archive/register.py", "            if path.stat().st_size != e[\"bytes\"]:", "            if False:"),   # the move blind to a changed file
+    ("archive/register.py", "                    if path.stat().st_size != e[\"bytes\"]:", "                    if False:"),   # the move blind to a changed file
 ]
 
 
