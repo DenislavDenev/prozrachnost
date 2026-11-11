@@ -1,0 +1,67 @@
+# The sources of the archive. pipeline.sync_registry() loads this at `migrate`. Every name that the archive writes in
+# index.jsonl is a source here: a line of a source missing here cannot be registered (ops.fetch points to ops.source).
+# The archive is not shown or distributed, so it has no datasets. stale_after stays empty: the archive loads nothing
+# into a landing zone, and its freshness is read from ops.run (archive/run.py, the same rule as before).
+
+[[source]]
+source = "kolkostruva"
+title_bg = "Колко струва (КЗП), дневните цени"
+url = "https://kolkostruva.bg/opendata_files/"
+channel = "file"
+cadence = "всеки ден в 23:40 и 05:40 UTC"
+
+[[source]]
+source = "erik"
+title_bg = "ЕРИК (Сметна палата), отчетите по изборите"
+url = "https://erik.bulnao.government.bg"
+channel = "html"
+cadence = "всеки ден в 01:00 UTC; всички избори в неделя"
+
+[[source]]
+source = "dfz"
+title_bg = "ДФЗ, изплатените субсидии по финансови години"
+url = "https://seu.dfz.bg/seu/"
+channel = "file"
+cadence = "в понеделник в 00:30 UTC"
+
+[[source]]
+source = "egov"
+title_bg = "data.egov.bg, наборите от плановете"
+url = "https://data.egov.bg/api/"
+channel = "api"
+cadence = "всеки ден в 02:50 UTC"
+
+[[source]]
+source = "eso_load"
+title_bg = "ЕСО, товар и прогноза"
+url = "https://www.eso.bg/api/load_plus_forecast.json.php"
+channel = "api"
+cadence = "всеки ден в 02:10 UTC"
+
+[[source]]
+source = "niggg"
+title_bg = "НИГГГ, земетресенията за 30 дни"
+url = "https://ndc.niggg.bas.bg/data.xml"
+channel = "file"
+cadence = "всеки ден в 02:10 UTC"
+
+[[source]]
+source = "ekatte"
+title_bg = "ЕКАТТЕ (НСИ), регистърът на населените места"
+url = "https://www.nsi.bg/nrnm/ekatte/zip/download?files_type=json"
+channel = "file"
+cadence = "всеки ден в 02:10 UTC"
+
+[[source]]
+source = "gtfs_sofia"
+title_bg = "GTFS на София, разписанието на градския транспорт"
+url = "https://gtfs.sofiatraffic.bg/api/v1/static"
+channel = "file"
+cadence = "всеки ден в 02:10 UTC"
+
+[[source]]
+source = "parliament_ns"
+title_bg = "Народно събрание, съставът и групите"
+url = "https://www.parliament.bg/api/v1/coll-list-ns/bg"
+channel = "api"
+cadence = "всеки ден в 02:10 UTC"

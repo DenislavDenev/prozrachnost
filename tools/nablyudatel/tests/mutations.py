@@ -1,4 +1,4 @@
-"""Breaks six rules of the archive one at a time; each must make the tests fail.
+"""Breaks the rules of the archive and of its register one at a time; each must make the tests fail.
 
     python tests/mutations.py    # from tools/nablyudatel; exit 1 when a mutation survives
 """
@@ -13,6 +13,15 @@ MUTATIONS = [
     ("archive/sources.py", "if data == home:", "if False:"),                                          # ЕРИК's home page as a report
     ("archive/sources.py", 'return m.group(3) if m.group(1) == m.group(2) else (m.group(4) or "")', "return m.group(0)"),
     ("archive/sources.py", "if newest is None or date.fromisoformat(newest) < last - timedelta(days=3):", "if newest is None:"),
+    # the register (these need NABLYUDATEL_TEST_DSN; without it the tests skip and the mutation survives)
+    ("archive/register.py", "if have[k] > 0:", "if have[k] >= 0:"),                                     # a line never registered
+    ("archive/register.py", 'expect_sha=e["sha256"])', "expect_sha=None)"),                              # a file that is not its line
+    ("archive/register.py", "        lines.pop()   # cut: written while we read", "        pass"),         # a half-written line read
+    ("archive/register.py", "            missing += 1", "            pass"),                              # parity blind to a missing line
+    ("archive/register.py", "max(finished_at) FILTER (WHERE status = 'failed')", "max(finished_at) FILTER (WHERE false)"),  # failed runs unseen
+    ("archive/register.py", "if conn.execute(\"SELECT 1 FROM ops.run", "if False and conn.execute(\"SELECT 1 FROM ops.run"),  # state imported twice
+    ("archive/run.py", 'if c["missing"] or c["extra"] or c["size_differs"]:', "if False:"),            # register lag not reported
+    ("archive/run.py", "                if r is not None:", "                if False:"),                 # a run's new lines not registered
 ]
 
 

@@ -1,0 +1,22 @@
+# The rules of the archive in the shared register. They are computed by the step `parity` (archive/run.py) from the
+# files, so they have no SQL; the freshness check reports any of them that failed last time.
+
+[[check]]
+name = "index_in_register"
+title_bg = "Всеки ред на index.jsonl е в регистъра със същите sha256, размер и час"
+kind = "parity"
+
+[[check]]
+name = "register_in_index"
+title_bg = "В регистъра няма сваляне на архива, което го няма в index.jsonl"
+kind = "parity"
+
+[[check]]
+name = "state_in_register"
+title_bg = "Последният отговор на всеки ключ в state/ е последното сваляне на ключа в регистъра"
+kind = "parity"
+
+[[check]]
+name = "freshness_same"
+title_bg = "Свежестта от state/ и от ops.run назовава същите източници"
+kind = "parity"
