@@ -88,6 +88,17 @@ def test_a_name_shared_by_two_settlements_is_not_guessed(conn):
     assert conn.execute("SELECT obrazovanie.ekatte_of('Габрово', NULL, 'гр. Габрово')").fetchone()[0] == "14218"
 
 
+def test_schools_with_the_same_name_are_listed_by_code(conn):
+    """Two schools may have one name; the list, the CSV and the map read them in the order of their codes, not in the
+    order the rows lie in the table."""
+    schools = parse_schools((FIX / "school-register-236b21ed.json").read_bytes())
+    for code in ("2902103", "909612"):
+        schools[code] = replace(schools[code], name="Основно училище")
+    step(conn, lambda r: nvo7(conn, r, schools=schools))
+    named = [x["code"] for x in main.snapshot()["schools"] if x["name"] == "Основно училище"]
+    assert named == ["2902103", "909612"]
+
+
 def test_smaller_response_waits_for_second_read_a_day_later(conn):
     step(conn, lambda r: nvo7(conn, r))
     results = parse_nvo7((FIX / "nvo7-resource-08157f0e.json").read_bytes())

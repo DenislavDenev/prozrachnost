@@ -101,14 +101,14 @@ def snapshot():
         for row in conn.execute("""SELECT s.neispuo,s.name,s.oblast,s.municipality,s.town,s.matched,
             e.subject,e.takers,e.score,e.scale FROM pub_obrazovanie.school s JOIN pub_obrazovanie.exam_result e
             ON s.school_year=e.school_year AND s.neispuo=e.neispuo
-            WHERE s.school_year=%s ORDER BY s.name,e.subject""", (year,)):
+            WHERE s.school_year=%s ORDER BY s.name,s.neispuo,e.subject""", (year,)):
             item = schools.setdefault(row[0], dict(code=row[0], name=row[1], oblast=row[2],
                 municipality=row[3], town=row[4], matched=row[5], subjects={}))
             item["subjects"][row[6]] = dict(takers=row[7], score=row[8], scale=row[9])
     return dict(year=year, exam_resource=publication[1], register_resource=publication[2],
         exam_updated=publication[3][:10], register_updated=publication[4][:10],
         school_count=publication[5], matched=publication[6], unmatched=publication[7],
-        published_at=publication[8], schools=sorted(schools.values(), key=lambda x: x["name"].casefold()))
+        published_at=publication[8], schools=sorted(schools.values(), key=lambda x: (x["name"].casefold(), x["code"])))
 
 
 def weighted(rows, subject):
