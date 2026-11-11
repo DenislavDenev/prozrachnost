@@ -1,14 +1,17 @@
-import os
 import asyncio
+import contextlib
+import datetime as dt
 import hashlib
+import os
+from email.utils import format_datetime
 from pathlib import Path
 from urllib.parse import quote
 from fastapi import FastAPI, Request, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
-from ingest import db
 from ingest.config import DATA, SOURCES
 from . import queries as Q, feedback
 
@@ -23,6 +26,25 @@ class RequestBudget:
             return await self.app(scope,receive,send)
         async with self.slots:
             await self.app(scope,receive,send)
+
+DATA_FREE=('/static/','/favicon.svg','/feedback','/podkrepi')
+def _open(stack):
+    c=stack.enter_context(Q.snapshot());v,state=Q.load(c);return c,v,state
+
+@app.middleware('http')
+async def publication(request:Request,call_next):
+    """Every answer built from the data is read in one snapshot of the serving layer and says which publication it
+    is of. A cache in front of the site keeps an answer until this number moves; it moves only with the content."""
+    if request.url.path.startswith(DATA_FREE) or request.method!='GET':return await call_next(request)
+    with contextlib.ExitStack() as stack:
+        c,v,state=await run_in_threadpool(_open,stack)
+        token=Q.use(c,state)
+        try:response=await call_next(request)
+        finally:Q._state.reset(token)
+    if v:
+        response.headers['X-Publication']=str(v[0]);response.headers['ETag']=f'W/"pub-{v[0]}"'
+        response.headers['Last-Modified']=format_datetime(v[1].astimezone(dt.timezone.utc),usegmt=True)
+    return response
 
 app.add_middleware(RequestBudget)
 app.mount('/static', StaticFiles(directory=ROOT/'static'), name='static')
@@ -48,7 +70,7 @@ def render(request,name,**kw):
 
 @app.get('/healthz')
 def health():
-    with db.connect() as c:c.execute('SELECT 1')
+    Q.current()['conn'].execute('SELECT 1')
     return {'ok':True}
 
 @app.get('/favicon.svg')
@@ -82,13 +104,7 @@ def export(view='all',year='',kind='',sector='',q='',source='',sort='published',
 def detail(request:Request,id:str):
     r=next((r for r in Q.allrows() if r['id']==id),None)
     if not r:raise HTTPException(404)
-    versions=[]
-    document_versions=[]
-    document_ref=r.get('document_id') or id
-    with db.connect() as c:
-        versions=[dict(sha256=x[0],detected_at=x[1]) for x in c.execute('SELECT sha256,detected_at FROM ops.version WHERE ref=%s ORDER BY detected_at',(id,))]
-        document_versions=[dict(sha256=x[0],url=x[1],fetched_at=x[2]) for x in c.execute('SELECT sha256,url,fetched_at FROM ops.document_version WHERE ref=%s ORDER BY fetched_at',(document_ref,))]
-    return render(request,'detail.html',nav='Одити',r=r,versions=versions,document_versions=document_versions)
+    return render(request,'detail.html',nav='Одити',r=r,versions=Q.versions(id),document_versions=Q.document_versions(r.get('document_id') or id))
 
 @app.get('/sources',response_class=HTMLResponse)
 def source_page(request:Request):

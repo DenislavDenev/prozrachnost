@@ -2,8 +2,13 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+TOOL = 'kontrol'
 DATA = Path(os.environ.get('KONTROL_DATA', '/srv/prozrachnost/kontrol'))
-DSN = os.environ.get('KONTROL_DSN', 'dbname=kontrol')
+RAW = DATA / 'raw'
+# the shared database of Прозрачност; this tool owns the schemas kontrol_src, kontrol and pub_kontrol in it
+DSN = os.environ.get('KONTROL_DSN', 'dbname=prozrachnost')
+# the database this tool had on its own until 11.11.2026; read only by the steps replay and parity
+OLD_DSN = os.environ.get('KONTROL_OLD_DSN', 'dbname=kontrol')
 USER_AGENT = 'Prozrachnost/kontrol (+https://github.com/DenislavDenev/prozrachnost)'
 SOURCES = {
     'nao': ('Сметна палата, доклади', 'https://www.bulnao.government.bg/bg/oditna-dejnost/dokladi/'),

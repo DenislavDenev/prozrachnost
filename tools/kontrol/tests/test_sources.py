@@ -86,14 +86,14 @@ def test_identifier_links_only():
     assert parse.verified_unp('Еднакво име на възложител') is None
     assert parse.verified_unp('00123-2024-0045 и 00123-2024-0046') is None
 
-def test_hold_both_directions_and_one_day():
-    now = dt.datetime.now(dt.timezone.utc)
+def test_hold_both_directions():
     assert store.should_hold([dict(id='1', eik='1')], [dict(id='1', eik=None)])
     assert store.should_hold([dict(id='1'), dict(id='2')], [dict(id='1')])
     assert not store.should_hold([dict(id='1')], [dict(id='1'), dict(id='2')])
-    assert not store.confirmed(('a', now), 'a', now + dt.timedelta(hours=23))
-    assert store.confirmed(('a', now), 'a', now + dt.timedelta(days=1))
-    assert not store.confirmed(('a', now), 'b', now + dt.timedelta(days=2))
+    # the description of the read is not a record: a fixed format gap does not hold the read
+    old = {'1': dict(id='1'), '#read': dict(inspection_gaps=[dict(id='x')])}
+    assert store.hold_when(old, {'1': dict(id='1'), '#read': dict(inspection_gaps=[])}) == 0
+    assert store.hold_when(old, {'#read': {}}) == 1
 
 def test_retry_after_and_fail_closed():
     delays, calls = [], []
@@ -115,13 +115,36 @@ def test_bytes_and_determinism():
     assert store.digest(store.encode(parse.canonical(rows))) == store.digest(store.encode(parse.canonical(list(reversed(rows)))))
     assert raw == raw.decode('utf-8').encode('utf-8')
 
-def test_archive_corruption_never_overwritten(tmp_path):
-    raw=b'original source answer'
-    sha=store.archive(None,'nao','https://example.test',raw,tmp_path)
-    path=tmp_path/'raw/nao'/(sha+'.bin');path.write_bytes(b'corrupt')
-    with pytest.raises(parse.ShapeError,match='архив'):
-        store.archive(None,'nao','https://example.test',raw,tmp_path)
-    assert path.read_bytes()==b'corrupt'
+def test_every_record_has_the_fields_of_its_kind():
+    rows = parse.nao((F / 'nao.html').read_bytes(), 'nao', 'https://www.bulnao.government.bg/', '2026')
+    for r in rows:
+        store.check('audit_report', r)
+    with pytest.raises(parse.ShapeError, match='поле'):
+        store.check('audit_report', dict(rows[0], unknown='x'))
+    with pytest.raises(parse.ShapeError, match='поле'):
+        store.check('audit_report', {k: v for k, v in rows[0].items() if k != 'sector'})
+    with pytest.raises(parse.ShapeError, match='източникът не дава'):
+        store.check('audit_report', dict(rows[0], completed_on='2026-01-01'))
+    cpc = parse.cpc((F / 'cpc.html').read_bytes(), 'https://reg.cpc.bg/')[0]
+    for r in cpc:
+        r.pop('pdf_event'); r.pop('document_event')
+        store.check('decision', r)
+
+
+def test_a_record_comes_back_from_its_columns():
+    """What the landing table keeps is the record: the columns rebuild the same dict, so the same sha256."""
+    import datetime
+    rows = parse.nao((F / 'nao.html').read_bytes(), 'nao', 'https://www.bulnao.government.bg/', '2026')
+    row = dict(rows[0], source_kind_values=['a', 'b'], source_discrepancy='x')
+    db = {('record_id' if k == 'id' else k): v for k, v in row.items()}
+    db.update(source_sector_values=None, source_publication_year_values=None)
+    assert store.record('audit_report', db) == row
+    cpc = parse.cpc((F / 'cpc.html').read_bytes(), 'https://reg.cpc.bg/')[0][0]
+    cpc.pop('pdf_event'); cpc.pop('document_event')
+    db = {('record_id' if k == 'id' else k): v for k, v in cpc.items()}
+    db.update(act_date=datetime.date.fromisoformat(cpc['act_date']), pager_discrepancy=None)
+    assert store.digest(store.encode(store.record('decision', db))) == store.digest(store.encode(cpc))
+
 
 def test_cpc_repeated_page_never_counted_as_next(monkeypatch):
     # Sanitized public fixtures intentionally remove ASP.NET viewstate, which can
@@ -132,3 +155,29 @@ def test_cpc_repeated_page_never_counted_as_next(monkeypatch):
         def request(self,*args,**kw):return (F/'cpc.html').read_bytes()
     with pytest.raises(parse.ShapeError,match='страница'):
         sources.cpc(C(),lambda *a:None)
+
+
+def test_the_archive_answers_as_the_source_did(tmp_path):
+    """replay: each request gets the archived answer stored under the address the reader saves it with."""
+    from ingest.move import Archive
+    files = []
+    for name, url in (('a', 'https://x.test/list'), ('b', 'https://x.test/list'), ('c', 'https://x.test/list?year=2026&page=2'),
+                      ('d', 'https://reg.test/Search.aspx?results_page=1')):
+        (tmp_path / name).write_bytes(name.encode())
+        files.append((url, str(tmp_path / name), name))
+    (tmp_path / 'form').write_bytes(b'form')
+    a = Archive(files, {'https://reg.test/Search.aspx': tmp_path / 'form', 'https://x.test/list': tmp_path / 'form'})
+    assert a.get('https://x.test/list') == b'a' and a.get('https://x.test/list') == b'b' and a.get('https://x.test/list') == b'b'
+    assert a.request('POST', 'https://x.test/list?year=2026', data={'page': 2, 'csrfmiddlewaretoken': 't'}) == b'c'
+    assert a.get('https://reg.test/Search.aspx') == b'form'
+    assert a.request('POST', 'https://reg.test/Search.aspx', data={'__VIEWSTATE': 'x'}) == b'd'
+    with pytest.raises(parse.ShapeError, match='архивиран'):
+        a.get('https://x.test/other')
+
+
+def test_an_old_decision_is_read_as_the_old_pages_read_it():
+    from ingest.move import as_shown
+    old = dict(id='cpc:1:decision:Решение № 1:2026-01-01', title='Решение № 1', source='cpc')
+    assert as_shown('cpc', old) == dict(old, act_no='Решение № 1')
+    assert as_shown('cpc', dict(old, act_no='x'))['act_no'] == 'x'
+    assert as_shown('nao', dict(old)) == old

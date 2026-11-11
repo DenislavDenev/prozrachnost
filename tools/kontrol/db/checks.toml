@@ -1,0 +1,162 @@
+# The quality rules of Одити и контрол: rows in ops.check_rule, results in ops.check_result.
+# A rule returns one row: (expected, actual); it holds when |actual - expected| <= tolerance.
+# The parser keeps the rules of one read (a counted traversal, the counter of КЗК, sequence numbers of a list):
+# a read that breaks them is refused before anything is written.
+
+[[check]]
+name = "cpc_source_count"
+title_bg = "Решенията на КЗК в действащия прочит са колкото брояча на регистъра"
+kind = "reconcile"
+dataset = "kontrol.cpc"
+sql = """SELECT r.source_count, (SELECT count(*) FROM kontrol_src.decision d WHERE d.load_id = r.load_id)
+  FROM kontrol_src.read r JOIN ops.load l USING (load_id) WHERE l.tool = 'kontrol' AND l.source = 'cpc' AND l.is_current
+  UNION ALL SELECT 0, 0 LIMIT 1"""
+
+[[check]]
+name = "read_unique_count"
+title_bg = "Всеки действащ прочит има толкова записа, колкото уникални е преброил четецът"
+kind = "reconcile"
+sql = """SELECT 0, count(*) FROM kontrol_src.read r JOIN ops.load l USING (load_id)
+  WHERE l.tool = 'kontrol' AND l.is_current AND r.unique_count <> (
+    (SELECT count(*) FROM kontrol_src.audit_report x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM kontrol_src.adfi_report x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM kontrol_src.adfi_list x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM kontrol_src.inspection x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM kontrol_src.decision x WHERE x.load_id = r.load_id))"""
+
+[[check]]
+name = "every_record_built"
+title_bg = "Всеки запис от действащите прочити е в точно един ред на чистите таблици"
+kind = "reconcile"
+sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'kontrol' AND is_current AND source <> 'document'),
+  ids AS (SELECT record_id FROM kontrol_src.audit_report JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.adfi_report JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.adfi_list JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.inspection JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.decision JOIN cur USING (load_id))
+  SELECT (SELECT count(*) FROM ids),
+         (SELECT count(*) FROM (SELECT record_id FROM kontrol.audit_report UNION ALL SELECT record_id FROM kontrol.adfi_report
+            UNION ALL SELECT record_id FROM kontrol.adfi_list UNION ALL SELECT record_id FROM kontrol.inspection
+            UNION ALL SELECT record_id FROM kontrol.decision) c JOIN ids USING (record_id))"""
+
+[[check]]
+name = "clean_has_no_stray_record"
+title_bg = "В чистите таблици няма запис, който не е в действащ прочит"
+kind = "reconcile"
+sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'kontrol' AND is_current AND source <> 'document'),
+  ids AS (SELECT record_id FROM kontrol_src.audit_report JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.adfi_report JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.adfi_list JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.inspection JOIN cur USING (load_id)
+    UNION SELECT record_id FROM kontrol_src.decision JOIN cur USING (load_id))
+  SELECT 0, count(*) FROM (SELECT record_id FROM kontrol.audit_report UNION ALL SELECT record_id FROM kontrol.adfi_report
+    UNION ALL SELECT record_id FROM kontrol.adfi_list UNION ALL SELECT record_id FROM kontrol.inspection
+    UNION ALL SELECT record_id FROM kontrol.decision) c WHERE record_id NOT IN (SELECT record_id FROM ids)"""
+
+[[check]]
+name = "landing_keeps_the_record"
+title_bg = "Записът, възстановен от колоните на приемната зона, е същият като прочетения (sha256)"
+kind = "reconcile"
+
+[[check]]
+name = "org_unmatched"
+title_bg = "ЕИК от източника, който го няма в общия списък на организациите (остава празен)"
+kind = "unmatched"
+gating = false
+sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'kontrol' AND is_current)
+  SELECT 0, count(*) FROM (SELECT eik FROM kontrol_src.audit_report JOIN cur USING (load_id)
+    UNION ALL SELECT eik FROM kontrol_src.adfi_report JOIN cur USING (load_id)
+    UNION ALL SELECT eik FROM kontrol_src.inspection JOIN cur USING (load_id)) x
+  WHERE eik IS NOT NULL AND NOT EXISTS (SELECT FROM core.org o WHERE o.eik = x.eik)"""
+
+[[check]]
+name = "records_not_fewer"
+title_bg = "Записите в чистите таблици не са по-малко от публикуваните"
+kind = "drop"
+gating = false
+sql = """SELECT (SELECT count(*) FROM pub_kontrol.audit_report) + (SELECT count(*) FROM pub_kontrol.adfi_report)
+       + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
+       + (SELECT count(*) FROM pub_kontrol.decision),
+  GREATEST((SELECT count(*) FROM kontrol.audit_report) + (SELECT count(*) FROM kontrol.adfi_report)
+       + (SELECT count(*) FROM kontrol.adfi_list) + (SELECT count(*) FROM kontrol.inspection)
+       + (SELECT count(*) FROM kontrol.decision),
+    (SELECT count(*) FROM pub_kontrol.audit_report) + (SELECT count(*) FROM pub_kontrol.adfi_report)
+       + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
+       + (SELECT count(*) FROM pub_kontrol.decision))"""
+
+# the serving layer, judged inside the transaction of the publication
+
+[[check]]
+name = "pub_records_complete"
+title_bg = "Слоят за показване има всеки запис и документ на чистите таблици"
+kind = "publish"
+sql = """SELECT (SELECT count(*) FROM kontrol.audit_report) + (SELECT count(*) FROM kontrol.adfi_report)
+       + (SELECT count(*) FROM kontrol.adfi_list) + (SELECT count(*) FROM kontrol.inspection)
+       + (SELECT count(*) FROM kontrol.decision) + (SELECT count(*) FROM kontrol.document),
+  (SELECT count(*) FROM pub_kontrol.audit_report) + (SELECT count(*) FROM pub_kontrol.adfi_report)
+       + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
+       + (SELECT count(*) FROM pub_kontrol.decision) + (SELECT count(*) FROM pub_kontrol.document)"""
+
+[[check]]
+name = "no_private_text_published"
+title_bg = "Текст с лични данни (ЕГН, имейл, телефон, едноличен търговец) не е в слоя за показване"
+kind = "publish"
+sql = """WITH m(v) AS (VALUES ('Източников запис: лични данни не се преиздават'))
+  SELECT 0, count(*) FROM (
+    SELECT 1 FROM kontrol.audit_report c JOIN pub_kontrol.audit_report p USING (record_id), m
+      WHERE ('title' = ANY(c.private_fields) AND p.title <> m.v)
+         OR ('recommendation_text' = ANY(c.private_fields) AND p.recommendation_text <> m.v)
+    UNION ALL SELECT 1 FROM kontrol.adfi_report c JOIN pub_kontrol.adfi_report p USING (record_id), m
+      WHERE ('title' = ANY(c.private_fields) AND p.title <> m.v) OR ('auditee' = ANY(c.private_fields) AND p.auditee <> m.v)
+    UNION ALL SELECT 1 FROM kontrol.adfi_list c JOIN pub_kontrol.adfi_list p USING (record_id), m
+      WHERE 'title' = ANY(c.private_fields) AND p.title <> m.v
+    UNION ALL SELECT 1 FROM kontrol.inspection c JOIN pub_kontrol.inspection p USING (record_id), m
+      WHERE ('title' = ANY(c.private_fields) AND p.title <> m.v) OR ('auditee' = ANY(c.private_fields) AND p.auditee <> m.v)
+         OR ('excerpt' = ANY(c.private_fields) AND p.excerpt <> m.v)
+    UNION ALL SELECT 1 FROM kontrol.decision c JOIN pub_kontrol.decision p USING (record_id), m
+      WHERE ('title' = ANY(c.private_fields) AND p.title <> m.v)
+         OR ('outcome_text' = ANY(c.private_fields) AND p.outcome_text <> m.v)
+    UNION ALL SELECT 1 FROM kontrol.document c JOIN pub_kontrol.document p USING (record_id), m
+      WHERE 'excerpt' = ANY(c.private_fields) AND p.excerpt <> m.v) x"""
+
+# the move from the old database (step parity, 11.11.2026)
+
+[[check]]
+name = "parity_rows"
+title_bg = "Сверка със старата база: записи по списъци"
+kind = "parity"
+
+[[check]]
+name = "parity_rows_differ"
+title_bg = "Сверка със старата база: записи по списъци с различен sha256"
+kind = "parity"
+
+[[check]]
+name = "parity_records"
+title_bg = "Сверка със старата база: уникални записи след сливането на списъците"
+kind = "parity"
+
+[[check]]
+name = "parity_records_differ"
+title_bg = "Сверка със старата база: уникални записи с различни полета за страниците"
+kind = "parity"
+
+[[check]]
+name = "parity_documents"
+title_bg = "Сверка със старата база: документи с еднакви метаданни"
+kind = "parity"
+
+[[check]]
+name = "parity_versions"
+title_bg = "Сверка със старата база: версии на метаданните (запис, sha256, час)"
+kind = "parity"
+
+[[check]]
+name = "parity_document_versions"
+title_bg = "Сверка със старата база: версии на документите (запис, sha256, час)"
+kind = "parity"
+
+[[check]]
+name = "parity_sources"
+title_bg = "Сверка със старата база: списъци с еднакъв брой, страници, брояч и обхват"
+kind = "parity"

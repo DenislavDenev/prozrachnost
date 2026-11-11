@@ -353,5 +353,7 @@ def test_no_name_of_a_person_reaches_the_serving_layer_without_a_decision(conn, 
     # the review list sees a name on the ingest side too, by type or by the name of the column
     conn.execute('CREATE TABLE demo.raw (id int, donor core.person_name, signer_name text, donor_kind text, amount numeric)')
     assert sorted(x[0] for x in conn.execute("SELECT column_name FROM core.person_column_undecided WHERE schema_name = 'demo'")) == ['donor', 'signer_name']
-    assert run.persons(conn) == 39   # the reviewed list is applied again: what is not in it loses its decision
+    import tomllib
+    listed = tomllib.loads((Path(run.__file__).resolve().parent.parent / 'db' / 'persons.toml').read_text(encoding='utf-8'))['person']
+    assert run.persons(conn) == len(listed) > 0   # the reviewed list is applied again: what is not in it loses its decision
     assert [x[0] for x in conn.execute("SELECT reason FROM core.serving_violation WHERE relation = 'pub_demo.t'")] == ['колона с име на човек без решение: mp']

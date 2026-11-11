@@ -1,0 +1,135 @@
+# The datasets and sources of Одити и контрол. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# None of the three bodies states a free licence (private docs/plans/LICENCES.md): shown with a link, not handed out.
+
+[[dataset]]
+dataset = "kontrol.nao"
+title_bg = "Одитни доклади и изпълнение на препоръките на Сметната палата"
+description_bg = "Списъците на сайта на Сметната палата: одитни доклади, доклади за общини, доклади след приключили наказателни производства и докладите за изпълнението на препоръките."
+source_org = "Сметна палата"
+source_url = "https://www.bulnao.government.bg/bg/oditna-dejnost/dokladi/"
+channel = "html"
+licence = "Не е установен свободен лиценз"
+cadence = "всяка седмица"
+tables = ["pub_kontrol.audit_report", "kontrol.audit_report", "kontrol_src.audit_report"]
+
+[[dataset]]
+dataset = "kontrol.adfi"
+title_bg = "Финансови инспекции на АДФИ"
+description_bg = "Публикуваните доклади от финансови инспекции и историческите тримесечни списъци на приключилите инспекции на Агенцията за държавна финансова инспекция."
+source_org = "Агенция за държавна финансова инспекция"
+source_url = "https://www.adfi.minfin.bg/bg/34"
+channel = "html"
+licence = "Не е установен свободен лиценз"
+cadence = "всяка седмица"
+tables = ["pub_kontrol.adfi_report", "pub_kontrol.adfi_list", "pub_kontrol.inspection", "pub_kontrol.inspection_gap",
+          "kontrol.adfi_report", "kontrol.adfi_list", "kontrol.inspection",
+          "kontrol_src.adfi_report", "kontrol_src.adfi_list", "kontrol_src.inspection"]
+
+[[dataset]]
+dataset = "kontrol.cpc"
+title_bg = "Решения на Комисията за защита на конкуренцията"
+description_bg = "Решенията в публичния регистър на КЗК по всички закони: номер, дата, производство, вид производство и надписът на произнасянето."
+source_org = "Комисия за защита на конкуренцията"
+source_url = "https://reg.cpc.bg/Search.aspx"
+channel = "html"
+licence = "Не е установен свободен лиценз"
+cadence = "всеки ден"
+tables = ["pub_kontrol.decision", "kontrol.decision", "kontrol_src.decision"]
+
+[[dataset]]
+dataset = "kontrol.archive"
+title_bg = "Архивът на Одити и контрол: прочитите, версиите и документите"
+description_bg = "Кога и как е прочетен всеки списък, всяка версия на метаданните на запис и прочетените документи с кратък откъс. Следва трите набора, от които е."
+source_org = "Прозрачност"
+channel = "derived"
+licence = "Не е установен свободен лиценз"
+cadence = "с всеки прочит"
+tables = ["pub_kontrol.document", "pub_kontrol.record_version", "pub_kontrol.document_version", "pub_kontrol.source_state",
+          "kontrol.document", "kontrol_src.document", "kontrol_src.read"]
+
+[[source]]
+source = "nao"
+title_bg = "Сметна палата, доклади"
+url = "https://www.bulnao.government.bg/bg/oditna-dejnost/dokladi/"
+channel = "html"
+dataset = "kontrol.nao"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "nao-mun"
+title_bg = "Сметна палата, общини"
+url = "https://www.bulnao.government.bg/bg/oditna-dejnost/dokladi-obshini/"
+channel = "html"
+dataset = "kontrol.nao"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "recommendations"
+title_bg = "Изпълнение на препоръките"
+url = "https://www.bulnao.government.bg/bg/oditna-dejnost/izpylnenie-na-preporykite/"
+channel = "html"
+dataset = "kontrol.nao"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "recommendations-mun"
+title_bg = "Препоръки за общини"
+url = "https://www.bulnao.government.bg/bg/oditna-dejnost/izpylnenie-na-preporykite-obshtini/"
+channel = "html"
+dataset = "kontrol.nao"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "nao-crim"
+title_bg = "Доклади след наказателни производства"
+url = "https://www.bulnao.government.bg/bg/oditna-dejnost/dokladi-sled-priklyuchili-nakazatelni-proizvodstva/"
+channel = "html"
+dataset = "kontrol.nao"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "adfi-history"
+title_bg = "АДФИ, исторически списъци"
+url = "https://www.adfi.minfin.bg/bg/18"
+channel = "html"
+dataset = "kontrol.adfi"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "adfi"
+title_bg = "АДФИ, публични доклади"
+url = "https://www.adfi.minfin.bg/bg/34"
+channel = "html"
+dataset = "kontrol.adfi"
+cadence = "понеделник 02:00 UTC"
+stale_after = "14 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "cpc"
+title_bg = "КЗК, решения"
+url = "https://reg.cpc.bg/Search.aspx"
+channel = "html"
+dataset = "kontrol.cpc"
+cadence = "всеки ден 02:30 UTC"
+stale_after = "3 days"
+
+[[source]]
+source = "document"
+title_bg = "Документите на записите (PDF, DOC)"
+channel = "document"
+dataset = "kontrol.archive"
+cadence = "понеделник за Сметната палата и АДФИ, другите дни за КЗК, 10:15 UTC, с бюджет от време"
