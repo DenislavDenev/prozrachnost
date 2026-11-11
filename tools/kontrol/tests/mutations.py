@@ -28,6 +28,7 @@ if os.environ.get('KONTROL_TEST_DSN'):
      ('db/publish/02_pub_kontrol.adfi_report.sql',"CASE WHEN 'auditee' = ANY(private_fields)","CASE WHEN false",'tests/test_store.py','publication without the mask'),
      ('ingest/store.py',"merged = canonical([row for _, row in rows])","merged = [row for _, row in rows]",'tests/test_store.py','lists not merged into one record'),
      ('ingest/move.py',"return all(json.dumps(a.get(k)","return True or all(json.dumps(a.get(k)",'tests/test_store.py','parity blind to a changed field'),
+     ('db/checks.toml','SELECT 0, GREATEST(pub - clean, 0) FROM n','SELECT 0, GREATEST(clean - pub, 0) FROM n','tests/test_store.py','a growing list counted as a drop'),
      ('ingest/move.py',"files = [(u, p, s) for src, u, p, s, t in raw if src == source and t <= at]","files = [(u, p, s) for src, u, p, s, t in raw if src == source]",'tests/test_store.py','a later document replayed as part of the read'),
     ]
 

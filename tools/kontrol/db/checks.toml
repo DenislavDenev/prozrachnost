@@ -71,18 +71,17 @@ sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'kontrol' AND is
 
 [[check]]
 name = "records_not_fewer"
-title_bg = "Записите в чистите таблици не са по-малко от публикуваните"
+title_bg = "Записите в чистите таблици не са по-малко от публикуваните (колко по-малко)"
 kind = "drop"
 gating = false
-sql = """SELECT (SELECT count(*) FROM pub_kontrol.audit_report) + (SELECT count(*) FROM pub_kontrol.adfi_report)
-       + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
-       + (SELECT count(*) FROM pub_kontrol.decision),
-  GREATEST((SELECT count(*) FROM kontrol.audit_report) + (SELECT count(*) FROM kontrol.adfi_report)
-       + (SELECT count(*) FROM kontrol.adfi_list) + (SELECT count(*) FROM kontrol.inspection)
-       + (SELECT count(*) FROM kontrol.decision),
+sql = """WITH n(pub, clean) AS (SELECT
     (SELECT count(*) FROM pub_kontrol.audit_report) + (SELECT count(*) FROM pub_kontrol.adfi_report)
-       + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
-       + (SELECT count(*) FROM pub_kontrol.decision))"""
+      + (SELECT count(*) FROM pub_kontrol.adfi_list) + (SELECT count(*) FROM pub_kontrol.inspection)
+      + (SELECT count(*) FROM pub_kontrol.decision),
+    (SELECT count(*) FROM kontrol.audit_report) + (SELECT count(*) FROM kontrol.adfi_report)
+      + (SELECT count(*) FROM kontrol.adfi_list) + (SELECT count(*) FROM kontrol.inspection)
+      + (SELECT count(*) FROM kontrol.decision))
+  SELECT 0, GREATEST(pub - clean, 0) FROM n"""
 
 # the serving layer, judged inside the transaction of the publication
 
