@@ -6,7 +6,8 @@
     python -m archive.run freshness            # registers what is missing, then exit 1 with the problems
     python -m archive.run summary              # files and MB per source, the last good read of each
     python -m archive.run migrate              # the sources and rules of the archive in the shared database
-    python -m archive.run replay               # the whole index and the state files into the register (the move)
+    python -m archive.run replay               # the whole index (sha256 as written, sizes checked) and the state files
+                                               # into the register (the move); `freshness` hashes what it registers
     python -m archive.run parity               # every line of the index against the register
 
 ARHIV_DIR is where the archive lives. NABLYUDATEL_DSN is the shared database (default dbname=prozrachnost); every run of a
@@ -70,7 +71,7 @@ def run(store, names, full=False, budget=3000, conn=None):
                 s.update(last_ok=now(), last=out)
                 if r is not None:
                     try:
-                        out = {**out, "registered": register.sync(conn, r, store.root)}
+                        out = {**out, "registered": register.sync(conn, r, store.root, rehash=False)}
                     except Exception as e:
                         raise Failed(f"register: {type(e).__name__}: {e}"[:800]) from e
             print(json.dumps({"source": name, "ok": True, "sec": round(time.monotonic() - t), **out}, ensure_ascii=False))
@@ -155,7 +156,7 @@ def main(argv):
                 elif step == "replay":
                     with register.pipeline.run(conn, register.TOOL, "replay", sha=register.pipeline.code_sha(register.ROOT)) as r:
                         runs = register.import_states(conn, store.root, SOURCES)
-                        result = {"step": step, "ok": True, "runs_imported": runs, "registered": register.sync(conn, r, store.root)}
+                        result = {"step": step, "ok": True, "runs_imported": runs, "registered": register.sync(conn, r, store.root, rehash=False)}
                 else:
                     ok, out = parity(conn, store)
                     result = {"step": step, "ok": ok, **out}

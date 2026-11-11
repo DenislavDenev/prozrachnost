@@ -192,3 +192,16 @@ def test_a_late_or_failed_source_is_a_problem_from_its_runs(conn):
     assert any(p.startswith("egov") and "403" in p for p in problems)
     assert any(p.startswith("kolkostruva") and "h ago" in p for p in problems)
     assert not any(p.startswith("dfz") for p in problems)   # weekly
+
+
+def test_the_move_takes_the_sha_of_the_line_and_checks_the_size(conn, tmp_path):
+    st = Store(tmp_path)
+    put(st, "erik", "page-1", b'{"a": 1}')
+    f = tmp_path / register.index_lines(tmp_path)[0]["file"]
+    f.write_bytes(b'{"a": 10}')
+    with pytest.raises(pipeline.CorruptRaw), ledger(conn) as r:
+        register.sync(conn, r, tmp_path, rehash=False)
+    f.write_bytes(b'{"a": 1}')
+    with ledger(conn) as r:
+        assert register.sync(conn, r, tmp_path, rehash=False) == 1
+    assert fetches(conn)[0][2] == register.index_lines(tmp_path)[0]["sha256"]

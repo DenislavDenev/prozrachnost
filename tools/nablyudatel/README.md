@@ -36,7 +36,7 @@ python -m archive.run erik --full --budget 600000   # всички избори,
 python -m archive.run freshness                 # регистрира липсващото; изход 1 и проблемите, ако има
 python -m archive.run summary                   # файлове и MB по източник
 python -m archive.run migrate                   # източниците и правилата на архива в общата база
-python -m archive.run replay                    # целият индекс и state/ в регистъра (преминаването)
+python -m archive.run replay                    # целият индекс и state/ в регистъра (преминаването; sha256 от индекса, размерът се проверява)
 python -m archive.run parity                    # всеки ред на индекса срещу регистъра
 ARHIV_DIR=/път/до/архива                          # къде е архивът
 NABLYUDATEL_DSN=dbname=prozrachnost               # общата база; празно: без регистър (само за проба)
@@ -48,7 +48,7 @@ NABLYUDATEL_DSN=dbname=prozrachnost               # общата база; пр�
 
 Тестовете (`python -m pytest`) не ползват мрежата. Тестовете на регистъра искат Postgres 17 в
 `NABLYUDATEL_TEST_DSN` (база с `test` в името) и папката `tools/danni` до този инструмент.
-`python tests/mutations.py` чупи нарочно 14 правила и проверява, че тестовете падат.
+`python tests/mutations.py` чупи нарочно 15 правила и проверява, че тестовете падат.
 
 ## Лични данни
 

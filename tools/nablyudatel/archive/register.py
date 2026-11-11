@@ -74,8 +74,12 @@ def registered(conn):
     return out
 
 
-def sync(conn, r, root):
-    """Register every line of the index that is not in the register yet. Returns how many were registered."""
+def sync(conn, r, root, rehash=True):
+    """Register every line of the index that is not in the register yet. Returns how many were registered.
+
+    With `rehash` (every run) the file is read and must have the sha256 of its line. Without it (the move: 51 GB read
+    from tank at about 8 MB/s would take two hours) the sha256 of the line is taken, as the archive computed it when it
+    wrote the file, and only the size is checked; the contents are compared by a sync with `rehash` in a test database."""
     root = Path(root)
     conn.execute("SELECT pg_advisory_lock(%s)", (SYNC_LOCK,))
     try:
@@ -89,8 +93,13 @@ def sync(conn, r, root):
             path = root / e["file"]
             if path.stat().st_size != e["bytes"]:
                 raise pipeline.CorruptRaw(f'{path}: {path.stat().st_size} bytes, the index says {e["bytes"]}')
-            pipeline.register_raw(conn, r, e["source"], e["key"], path, media_type=mimetypes.guess_type(path.name)[0],
-                                  fetched_at=e["at"], expect_sha=e["sha256"])
+            media = mimetypes.guess_type(path.name)[0]
+            if rehash:
+                pipeline.register_raw(conn, r, e["source"], e["key"], path, media_type=media, fetched_at=e["at"],
+                                      expect_sha=e["sha256"])
+            else:   # the two steps of register_raw without reading the file
+                rid = pipeline._register(conn, e["sha256"], e["bytes"], path, media)
+                pipeline._fetch(conn, r, e["source"], e["key"], rid, e["at"], None)
             n += 1
         r.count("registered", n)
         return n
