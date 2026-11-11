@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # one sync at a time: two runs of different sources may end together, and each registers every missing line
 SYNC_LOCK = int.from_bytes(hashlib.sha256(b"nablyudatel-register").digest()[:8], "big", signed=True)
 STAMP = "%Y-%m-%dT%H:%M:%SZ"
+BATCH = 500   # lines registered in one transaction
 
 
 class BadIndex(ValueError):
@@ -84,24 +85,30 @@ def sync(conn, r, root, rehash=True):
     conn.execute("SELECT pg_advisory_lock(%s)", (SYNC_LOCK,))
     try:
         have = Counter({k: len(v) for k, v in registered(conn).items()})
-        n = 0
+        todo = []
         for e in index_lines(root):
             k = key(e)
             if have[k] > 0:
                 have[k] -= 1
-                continue
-            path = root / e["file"]
-            if path.stat().st_size != e["bytes"]:
-                raise pipeline.CorruptRaw(f'{path}: {path.stat().st_size} bytes, the index says {e["bytes"]}')
-            media = mimetypes.guess_type(path.name)[0]
-            if rehash:
-                pipeline.register_raw(conn, r, e["source"], e["key"], path, media_type=media, fetched_at=e["at"],
-                                      expect_sha=e["sha256"])
-            else:   # the two steps of register_raw without reading the file
-                rid = pipeline._register(conn, e["sha256"], e["bytes"], path, media)
-                pipeline._fetch(conn, r, e["source"], e["key"], rid, e["at"], None)
-            n += 1
-        r.count("registered", n)
+            else:
+                todo.append(e)
+        n = 0
+        # one transaction per batch: a commit waits for the WAL on disk, one per line took 0.4 s on CT 118
+        for i in range(0, len(todo), BATCH):
+            with conn.transaction():
+                for e in todo[i:i + BATCH]:
+                    path = root / e["file"]
+                    if path.stat().st_size != e["bytes"]:
+                        raise pipeline.CorruptRaw(f'{path}: {path.stat().st_size} bytes, the index says {e["bytes"]}')
+                    media = mimetypes.guess_type(path.name)[0]
+                    if rehash:
+                        pipeline.register_raw(conn, r, e["source"], e["key"], path, media_type=media, fetched_at=e["at"],
+                                              expect_sha=e["sha256"])
+                    else:   # the two steps of register_raw without reading the file
+                        rid = pipeline._register(conn, e["sha256"], e["bytes"], path, media)
+                        pipeline._fetch(conn, r, e["source"], e["key"], rid, e["at"], None)
+            n += len(todo[i:i + BATCH])
+            r.count("registered", len(todo[i:i + BATCH]))
         return n
     finally:
         conn.execute("SELECT pg_advisory_unlock(%s)", (SYNC_LOCK,))

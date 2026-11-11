@@ -205,3 +205,14 @@ def test_the_move_takes_the_sha_of_the_line_and_checks_the_size(conn, tmp_path):
     with ledger(conn) as r:
         assert register.sync(conn, r, tmp_path, rehash=False) == 1
     assert fetches(conn)[0][2] == register.index_lines(tmp_path)[0]["sha256"]
+
+
+def test_lines_are_registered_in_batches_and_a_bad_batch_leaves_the_good_ones(conn, tmp_path, monkeypatch):
+    monkeypatch.setattr(register, "BATCH", 2)
+    st = Store(tmp_path)
+    for i in range(5):
+        put(st, "erik", f"page-{i}", b'{"a": %d}' % i)
+    (tmp_path / register.index_lines(tmp_path)[4]["file"]).write_bytes(b"{}")
+    with pytest.raises(pipeline.CorruptRaw), ledger(conn) as r:
+        register.sync(conn, r, tmp_path, rehash=False)
+    assert len(fetches(conn)) == 4
