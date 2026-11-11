@@ -4,17 +4,24 @@ from fastapi.testclient import TestClient
 import pytest
 from app import queries as Q
 from app.main import app
-from ingest.parse import parse,population
+from ingest.parse import parse
+import contextlib
+from conftest import REF
 F=Path(__file__).parent/'fixtures'
 @pytest.fixture
 def client(monkeypatch):
  manifest=json.loads((F/'egov/manifest.json').read_text(encoding='utf-8'));ss=[]
  for name,m in manifest.items():
   d=parse((F/'egov'/name).read_bytes(),m['kind'],m['name']);d.update(url='https://data.egov.bg/data/resourceView/'+m['ref'],resource=m['ref']);ss.append(d)
- d=population((F/'grao/grao-latest.txt').read_bytes());d.update(url='https://www.grao.bg/tables.html');ss.append(d)
+ # the registrations of ГРАО as Население publishes them (the fixture is the real table of 15.09.2026)
+ d=json.loads((F/'population.json').read_text(encoding='utf-8'));d.update(kind='population',url='https://www.grao.bg/tna/t41ob-15-09-2026_2.txt');ss.append(d)
  # The fixture date remains explicit: this clone only supplies a dated denominator for quarter tests.
  p=copy.deepcopy(d);p['period']='2026-06-15';ss.append(p)
- monkeypatch.setattr(Q,'snapshots',lambda:ss)
+ # no database: the request reads these documents instead of a snapshot of the serving layer
+ monkeypatch.setattr(Q,'snapshot',contextlib.nullcontext)
+ monkeypatch.setattr(Q,'load',lambda c:(Q.REF.__setitem__(slice(None),REF),Q.REFBY.update({r['id']:r for r in REF}),(None,ss))[-1])
+ # the same documents for the tests that call the queries outside a request
+ Q.use(ss);Q.REF[:]=REF;Q.REFBY.update({r['id']:r for r in REF})
  return TestClient(app)
 @pytest.mark.parametrize('url',['/','/karta','/karta?l=darzhava','/darzhaven','/kfp','/obshtini','/obshtini/000351580','/how'])
 def test_rendered_pages(client,url):

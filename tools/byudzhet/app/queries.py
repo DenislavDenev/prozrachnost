@@ -1,10 +1,18 @@
-import calendar,csv,datetime as dt,io,re,threading,time
-from decimal import Decimal
+"""What the pages read: the serving layer only (pub_byudzhet.*, pub.* and the registrations Население publishes in
+pub_naselenie). Not the clean tables, not the landing zone, not the ledger: the web role has no right to them.
+
+One request is one snapshot: every query of a request sees the same publication, never a mix. The tables of a
+publication are turned into the documents the pages have always used, once per publication."""
+import calendar,contextlib,contextvars,csv,datetime as dt,io,re,threading
+from decimal import Decimal,getcontext
 from urllib.parse import urlencode
+import psycopg
 from fastapi import HTTPException
-from ingest import db
-from ingest.parse import REF
+from ingest.config import DSN
+from ingest.reference import load as load_reference
 from ingest.state import structure
+RATE=Decimal('1.95583')
+getcontext().prec=60   # the euro of an amount in leva is never rounded before display
 LABELS={'debt':'Остатъчна главница по общинския дълг','overdue':'Просрочени задължения','liabilities':'Задължения за разходи','commitments':'Поети ангажименти за разходи'}
 DEFINITIONS={
  'debt':'Парите, които общината още трябва да върне по заемите си и други форми на дълг към края на тримесечието. Показваме оставащата за връщане сума, без бъдещите лихви.',
@@ -14,12 +22,72 @@ DEFINITIONS={
 LEVELS=[('obshtini','Общини'),('oblasti','Области'),('rayoni','Райони'),('makrorayoni','Макрорайони'),('darzhava','Държава')]
 NUTS={'obshtini':4,'oblasti':3,'rayoni':2,'makrorayoni':1,'darzhava':0}
 REGIONS={'BG31':'Северозападен','BG32':'Северен централен','BG33':'Североизточен','BG34':'Югоизточен','BG41':'Югозападен','BG42':'Южен централен','BG3':'Северна и Югоизточна България','BG4':'Югозападна и Южна централна България'}
-REFBY={r['id']:r for r in REF};_cache={};_lock=threading.Lock()
-def snapshots():
+REF=[];REFBY={};_cache={};_lock=threading.Lock();_docs=contextvars.ContextVar('docs',default=None)
+EGOV='https://data.egov.bg/data/resourceView/'
+@contextlib.contextmanager
+def snapshot():
+ """A read-only connection whose every statement sees the database as of its first one."""
+ with psycopg.connect(DSN) as c:
+  c.isolation_level=psycopg.IsolationLevel.REPEATABLE_READ;c.read_only=True
+  yield c
+def version(c):
+ """(number, time) of the publication this snapshot shows; None before the first one."""
+ return c.execute('SELECT publication_id, published_at FROM pub.publication ORDER BY publication_id DESC LIMIT 1').fetchone()
+def money_doc(original,unit,currency):
+ """The money of the old documents: the original as the source writes it, its unit, and the euro unrounded."""
+ if original is None:return {'original':None,'unit':unit,'eur':None}
+ mult=1000000 if unit.startswith('млн.') else 1
+ return {'original':str(original),'unit':unit,'eur':str(original*mult/(RATE if currency=='BGN' else 1))}
+def population_documents(c):
+ """The registrations per municipality Население publishes: the monthly tables by municipality and, from 2021, the
+ detailed yearly ones; for a date with both, the detailed one."""
+ snaps=c.execute("""SELECT as_of,table_kind,url FROM pub_naselenie.snapshot
+  WHERE (table_kind='monthly' AND url LIKE '%%/t41ob-%%') OR (table_kind='detailed' AND url LIKE '%%/tadr%%' AND as_of>='2021-01-01')
+  ORDER BY as_of,(table_kind='detailed')""").fetchall()
+ chosen={str(d):(d,k,u) for d,k,u in snaps}
+ rows={}
+ for d,k,eik,perm,cur in c.execute("""SELECT p.as_of,p.table_kind,m.eik,p.permanent,p.current FROM pub_naselenie.population p
+   JOIN pub.municipality m USING (municipality_code) ORDER BY p.as_of,m.eik"""):
+  if str(d) in chosen and chosen[str(d)][1]==k:rows.setdefault(str(d),[]).append(dict(code=eik,permanent=perm,current=cur))
+ return [dict(kind='population',period=p,url=chosen[p][2],rows=rows.get(p,[])) for p in sorted(chosen)]
+def documents(c):
+ """Every published report as the document the pages read: {kind, period, url, currency, rows, ...}."""
+ docs={}
+ for kind,p,uri,version,currency,rec in c.execute('SELECT kind,period_end,uri,version,currency,reconciliation FROM pub_byudzhet.report ORDER BY period_end,uri'):
+  docs[(kind,str(p))]=dict(kind=kind,period=str(p),url=EGOV+uri,resource=uri,version=version,currency=currency,reconciliation=rec,rows=[])
+ for p,n,line,lo,ao,unit,cur,pct in c.execute('SELECT period_end,row_no,line,law_original,actual_original,source_unit,currency,pct FROM pub_byudzhet.state_line ORDER BY period_end,row_no'):
+  docs[('state',str(p))]['rows'].append(dict(line=line,order=n,law=money_doc(lo,unit,cur),actual=money_doc(ao,unit,cur),pct=None if pct is None else str(pct)))
+ last=None
+ for p,n,bt,item,o,unit,cur in c.execute('SELECT period_end,row_no,budget_type,item,original,source_unit,currency FROM pub_byudzhet.kfp_value ORDER BY period_end,row_no,col_no'):
+  d=docs[('kfp',str(p))]
+  if last!=(p,n):d['rows'].append(dict(budget_type=bt,values={}));last=(p,n)
+  d['rows'][-1]['values'][item]=money_doc(o,unit,cur)
+ for d in docs.values():
+  if d['kind']=='kfp':d['columns']=list(d['rows'][0]['values']) if d['rows'] else []
+ for p,line,o,unit,cur in c.execute('SELECT as_of,line,original,source_unit,currency FROM pub_byudzhet.reserve_line ORDER BY as_of,row_no'):
+  docs[('reserve',str(p))]['rows'].append(dict(line=line,value=money_doc(o,unit,cur)))
+ by={}
+ for p,kind,eik,measure,o,unit,cur in c.execute("""SELECT v.as_of,v.kind,m.eik,v.measure,v.original,v.source_unit,v.currency
+   FROM pub_byudzhet.municipal_value v JOIN pub.municipality m USING (municipality_code)
+   ORDER BY v.as_of,v.kind,m.eik,array_position(ARRAY['debt','overdue','liabilities','commitments'],v.measure)"""):
+  if (kind,str(p),eik) not in by:
+   row=by[(kind,str(p),eik)]=dict(code=eik,values={});docs[(kind,str(p))]['rows'].append(row)
+  by[(kind,str(p),eik)]['values'][measure]=money_doc(o,unit,cur)
+ return sorted(docs.values(),key=lambda d:(d['period'],d['resource']))+population_documents(c)
+def load(c):
+ """The documents of the publication this snapshot shows, built once per publication."""
+ v=version(c);key=v[0] if v else None
  with _lock:
-  if time.monotonic()-_cache.get('time',-1e9)<15:return _cache['data']
-  with db.connect() as c:data=[r[0] for r in c.execute('SELECT payload FROM live.snapshot ORDER BY period,ref')]
-  _cache.update(time=time.monotonic(),data=data);return data
+  if _cache.get('key',-1)!=key or 'docs' not in _cache:
+   ref=load_reference(c,'pub');_cache.update(key=key,docs=documents(c),ref=ref)
+  REF[:]=_cache['ref'];REFBY.clear();REFBY.update({r['id']:r for r in REF})
+  return v,_cache['docs']
+def use(docs):return _docs.set(docs)
+def snapshots():return _docs.get() or []
+def source_rows(c,q=''):
+ rows=[dict(ref=a,kind=b,name=d,period=e,read_at=f,status=g,error=h,version=i) for a,b,d,e,f,g,h,i in c.execute('SELECT ref,kind,name,period,read_at,status,error,version FROM pub_byudzhet.source_state ORDER BY kind,name')]
+ return [r for r in rows if q.casefold() in ' '.join(str(v or '') for v in r.values()).casefold()]
+def problems(c):return [p for (p,) in c.execute('SELECT problem FROM pub_byudzhet.problem ORDER BY problem')]
 def bykind(kind):return {r['period']:r for r in snapshots() if r['kind']==kind}
 def choose(kind,y=None):
  ss=bykind(kind)

@@ -3,9 +3,9 @@ from decimal import Decimal
 from pathlib import Path
 import httpx,pytest
 from ingest import parse
-from ingest.grao import ShapeError
+from ingest.parse import ShapeError
 from ingest.http import Client,Failed
-from ingest.store import confirmed,should_hold
+from ingest.store import hold_when,rows
 from ingest.run import resources
 F=Path(__file__).parent/'fixtures'
 MANIFEST=json.loads((F/'egov/manifest.json').read_text(encoding='utf-8'))
@@ -36,16 +36,20 @@ def test_reconcile_unknown_duplicate_and_units():
 @pytest.mark.parametrize('raw',[b'',b'<html>denied</html>',b'{',b'{"success":true,"data":[]}',b'{"success":true,"data":[[123]]}'])
 def test_invalid(raw):
  with pytest.raises(ShapeError):parse.table(raw)
-def test_grao():
- d=parse.population((F/'grao/grao-latest.txt').read_bytes());assert len(d['rows'])==265 and d['period']=='2026-09-15'
-def test_hold_requires_same_bytes_and_a_day():
- now=dt.datetime.now(dt.timezone.utc)
- assert confirmed(('a',now-dt.timedelta(days=1)),'a',now)
- assert not confirmed(('a',now-dt.timedelta(hours=23)),'a',now)
- assert not confirmed(('a',now-dt.timedelta(days=2)),'b',now)
- a={'rows':[{'code':'a','v':'1'},{'code':'b','v':'2'}]}
- assert should_hold(a,{'rows':a['rows'][:1]})
- assert should_hold(a,{'rows':[{'code':'a','v':None},a['rows'][1]]})
+def test_municipalities_come_from_the_shared_database():
+ # the parser has no list of its own: conftest gives it core.municipality; without it nothing is parsed
+ saved=list(parse.REF)
+ try:
+  parse.use([])
+  with pytest.raises(ShapeError):parse.parse((F/'egov/debt-latest.json').read_bytes(),'debt','2026-06-30')
+ finally:parse.use(saved)
+ d=parse.parse((F/'egov/debt-latest.json').read_bytes(),'debt','2026-06-30')
+ assert {r['municipality_code'] for r in d['rows']}=={r['code'] for r in saved}
+def test_hold_when_a_row_goes_missing_or_empty():
+ a={'m/a':{'debt':'1'},'m/b':{'debt':'2'}}
+ assert hold_when(a,{'m/a':{'debt':'1'}})==1
+ assert hold_when(a,{'m/a':{'debt':None},'m/b':{'debt':'2'}})==1
+ assert hold_when(a,{'m/a':{'debt':'5'},'m/b':{'debt':'2'},'m/c':{'debt':'0'}})==0
 def test_http_retry_after_403_and_html():
  calls=[];wait=[]
  def handler(req):
@@ -61,7 +65,7 @@ def test_catalog_pagination():
  class API:
   def api(self,method,body):
    page=body['page_number'];return json.dumps(dict(success=True,total_records=2,resources=[dict(uri=str(page),name='2026-06-30',version='1',updated_at='2026-09-04')])).encode()
- assert len(resources(API(),'a'))==2
+ assert len(resources(API(),'a')[0])==2
 
 def test_kfp_source_balance_and_guard():
  with pytest.raises(ShapeError):parse.parse((F/'egov/kfp-invalid-balance.json').read_bytes(),'kfp','2025-11-30')
@@ -71,14 +75,13 @@ def test_kfp_source_balance_and_guard():
 
 def test_state_duplicate_names_do_not_mask_missing_values():
  import copy
- from ingest.store import flatten,should_hold
  d=parse.parse((F/'egov/state-latest.json').read_bytes(),'state','2026-08-31')
  both=[r for r in d['rows'] if r['line']=='Общини'];assert len(both)==2
- keys=flatten(d);assert any('/provided/municipalities/' in k for k in keys)
- assert any('/received/municipalities/' in k for k in keys)
+ keys=rows(d);assert any('/provided/municipalities' in k for k in keys)
+ assert any('/received/municipalities' in k for k in keys)
  changed=copy.deepcopy(d);first=next(r for r in changed['rows'] if r['line']=='Общини')
  first['actual']['eur']=None;first['actual']['original']=None
- assert should_hold(d,changed)
+ assert hold_when(rows(d),rows(changed))==1
 
 def test_state_unknown_and_duplicate_categories_stop_parse():
  d=json.loads((F/'egov/state-latest.json').read_bytes())
