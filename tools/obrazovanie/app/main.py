@@ -1,10 +1,12 @@
 """First school pages, backed by a reconciled MON publication."""
 
 import csv
+import datetime as dt
 import io
 import os
 import re
 from decimal import Decimal
+from email.utils import format_datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,13 +16,13 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
 from ingest.config import DATA
-from ingest.db import connect
 from ingest.dzi import DZI_DATASET
 from ingest.nvo import DATASETS as NVO_DATASETS
 from ingest.sources import NVO7_DATASET, SCHOOLS_DATASET
 from ingest.status import DATASETS as STATUS_DATASETS
 from ingest.context import DATASETS as CONTEXT_DATASETS
-from . import education_map, feedback, municipalities
+from . import education_map, feedback, municipalities, queries
+from .queries import connect
 
 
 ROOT = Path(__file__).resolve().parent
@@ -38,6 +40,24 @@ app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost",
     Path(os.environ.get("OBRAZOVANIE_FEEDBACK", str(DATA / "feedback"))), "Образование"))
 templates = Jinja2Templates(directory=ROOT / "templates")
+
+
+@app.middleware("http")
+async def publication_headers(request: Request, call_next):
+    """One request reads one snapshot of the serving layer, and its answer says which publication it is of. A cache
+    in front of the site keeps an answer until this number moves; it moves only when the published content does."""
+    snap = queries.Snapshot()
+    token = queries.current.set(snap)
+    try:
+        response = await call_next(request)
+    finally:
+        queries.current.reset(token)
+        snap.close()
+    if snap.publication:
+        response.headers["X-Publication"] = str(snap.publication[0])
+        response.headers["ETag"] = f'W/"pub-{snap.publication[0]}"'
+        response.headers["Last-Modified"] = format_datetime(snap.publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    return response
 
 
 def fmt(value, digits=0):
@@ -71,24 +91,24 @@ templates.env.filters["subject_name"] = subject_name
 def snapshot():
     """Read one published year; unpublished or held data never reaches pages."""
     with connect() as conn:
-        publication = conn.execute("""SELECT school_year,exam_resource,register_resource,exam_updated_at,
-            register_updated_at,school_count,matched_count,unmatched,published_at
-            FROM live.publication ORDER BY school_year DESC LIMIT 1""").fetchone()
+        publication = conn.execute("""SELECT school_year,exam_resource,register_resource,exam_updated_on::text,
+            register_updated_on::text,school_count,matched_count,unmatched,NULL
+            FROM pub_obrazovanie.nvo7_publication ORDER BY school_year DESC LIMIT 1""").fetchone()
         if not publication:
             return None
         year = publication[0]
         schools = {}
         for row in conn.execute("""SELECT s.neispuo,s.name,s.oblast,s.municipality,s.town,s.matched,
-            e.subject,e.takers,e.score,e.scale FROM live.school s JOIN live.exam_result e
+            e.subject,e.takers,e.score,e.scale FROM pub_obrazovanie.school s JOIN pub_obrazovanie.exam_result e
             ON s.school_year=e.school_year AND s.neispuo=e.neispuo
-            WHERE s.school_year=%s ORDER BY s.name,e.subject""", (year,)):
+            WHERE s.school_year=%s ORDER BY s.name,s.neispuo,e.subject""", (year,)):
             item = schools.setdefault(row[0], dict(code=row[0], name=row[1], oblast=row[2],
                 municipality=row[3], town=row[4], matched=row[5], subjects={}))
             item["subjects"][row[6]] = dict(takers=row[7], score=row[8], scale=row[9])
     return dict(year=year, exam_resource=publication[1], register_resource=publication[2],
         exam_updated=publication[3][:10], register_updated=publication[4][:10],
         school_count=publication[5], matched=publication[6], unmatched=publication[7],
-        published_at=publication[8], schools=sorted(schools.values(), key=lambda x: x["name"].casefold()))
+        published_at=publication[8], schools=sorted(schools.values(), key=lambda x: (x["name"].casefold(), x["code"])))
 
 
 def weighted(rows, subject):
@@ -104,9 +124,9 @@ def school_history(code, before_year):
     years = {}
     with connect() as conn:
         for year, resource, updated, subject, takers, score, scale, matched, verification in conn.execute("""
-            SELECT p.school_year,p.exam_resource,p.exam_updated_at,e.subject,e.takers,e.score,e.scale,s.matched,p.verification
-            FROM live.publication p JOIN live.school s ON s.school_year=p.school_year
-            JOIN live.exam_result e ON e.school_year=s.school_year AND e.neispuo=s.neispuo
+            SELECT p.school_year,p.exam_resource,p.exam_updated_on::text,e.subject,e.takers,e.score,e.scale,s.matched,p.verification
+            FROM pub_obrazovanie.nvo7_publication p JOIN pub_obrazovanie.school s ON s.school_year=p.school_year
+            JOIN pub_obrazovanie.exam_result e ON e.school_year=s.school_year AND e.neispuo=s.neispuo
             WHERE s.neispuo=%s AND p.school_year<%s ORDER BY p.school_year DESC,e.subject
         """, (code, before_year)):
             item = years.setdefault(year, dict(year=year, resource=resource, updated=updated[:10], scale=scale,
@@ -123,9 +143,9 @@ def source_history():
                      register_resource=register, register_updated=register_updated[:10],
                      school_count=school_count, matched_count=matched_count, verification=verification)
                 for year, exam, exam_updated, register, register_updated, school_count, matched_count, verification
-                in conn.execute("""SELECT school_year,exam_resource,exam_updated_at,register_resource,
-                    register_updated_at,school_count,matched_count,verification
-                    FROM live.publication ORDER BY school_year DESC""")]
+                in conn.execute("""SELECT school_year,exam_resource,exam_updated_on::text,register_resource,
+                    register_updated_on::text,school_count,matched_count,verification
+                    FROM pub_obrazovanie.nvo7_publication ORDER BY school_year DESC""")]
 
 
 def dzi_sources():
@@ -133,7 +153,9 @@ def dzi_sources():
         return [dict(resource=row[0], year=row[1], session=row[2], kind=row[3],
                      updated=row[4][:10], schools=row[5], verification=row[6],
                      anomalies=row[7]) for row in conn.execute("""SELECT resource,school_year,session,kind,
-                    updated_at,school_count,verification,anomalies FROM live.dzi_publication
+                    updated_on::text,school_count,verification,
+                    jsonb_build_object('missing_grade',missing_grade,'suppressed_takers',suppressed_takers,
+                    'source_placeholder',source_placeholder) FROM pub_obrazovanie.dzi_publication
                     ORDER BY school_year DESC,session,kind""")]
 
 
@@ -141,8 +163,9 @@ def matura_snapshot(year, session="may", kind="mandatory"):
     if not re.fullmatch(r"20\d{2}/20\d{2}", year) or session not in {"may", "august"} or kind not in {"mandatory", "optional"}:
         return None
     with connect() as conn:
-        row = conn.execute("""SELECT resource,updated_at,source_rows,school_count,verification,
-            result_count,matched_count,unmatched,anomalies FROM live.dzi_publication
+        row = conn.execute("""SELECT resource,updated_on::text,source_rows,school_count,verification,
+            result_count,matched_count,unmatched,jsonb_build_object('missing_grade',missing_grade,
+            'suppressed_takers',suppressed_takers,'source_placeholder',source_placeholder) FROM pub_obrazovanie.dzi_publication
             WHERE school_year=%s AND session=%s AND kind=%s""", (year, session, kind)).fetchone()
         if not row:
             return None
@@ -155,7 +178,7 @@ def matura_snapshot(year, session="may", kind="mandatory"):
                          / nullif(sum(takers) FILTER (WHERE takers>0 AND score IS NOT NULL),0),2) END,
               count(*) FILTER (WHERE score IS NOT NULL AND takers IS NULL),
               count(*) FILTER (WHERE score IS NULL)
-            FROM live.dzi_result WHERE resource=%s AND is_school
+            FROM pub_obrazovanie.dzi_result WHERE resource=%s AND is_school
             GROUP BY subject ORDER BY sum(takers) FILTER (WHERE takers>0) DESC NULLS LAST,subject
         """, (row[0],))]
     return dict(year=year, session=session, kind=kind, resource=row[0], updated=row[1][:10],
@@ -167,9 +190,9 @@ def school_dzi(code):
     groups = {}
     with connect() as conn:
         for year, session, kind, resource, updated, verification, subject, takers, score, matched in conn.execute("""
-            SELECT p.school_year,p.session,p.kind,p.resource,p.updated_at,p.verification,
+            SELECT p.school_year,p.session,p.kind,p.resource,p.updated_on::text,p.verification,
                    r.subject,r.takers,r.score,r.matched
-            FROM live.dzi_result r JOIN live.dzi_publication p ON p.resource=r.resource
+            FROM pub_obrazovanie.dzi_result r JOIN pub_obrazovanie.dzi_publication p ON p.resource=r.resource
             WHERE r.neispuo=%s AND r.is_school ORDER BY p.school_year DESC,p.session,p.kind,r.subject
         """, (code,)):
             item = groups.setdefault(resource, dict(year=year, session=session, kind=kind,
@@ -182,8 +205,8 @@ def nvo_sources():
     with connect() as conn:
         return [dict(resource=r[0], exam=r[1], year=r[2], updated=r[3][:10],
                      schools=r[4], subjects=r[5], verification=r[6], matched=r[7])
-                for r in conn.execute("""SELECT resource,exam,school_year,updated_at,school_count,
-                    subject_count,verification,matched_count FROM live.nvo_publication
+                for r in conn.execute("""SELECT resource,exam,school_year,updated_on::text,school_count,
+                    subject_count,verification,matched_count FROM pub_obrazovanie.nvo_publication
                     ORDER BY school_year DESC,exam""")]
 
 
@@ -191,8 +214,8 @@ def nvo_snapshot(exam, year):
     if exam not in NVO_DATASETS or not re.fullmatch(r"20\d{2}/20\d{2}", year):
         return None
     with connect() as conn:
-        row = conn.execute("""SELECT resource,updated_at,school_count,subject_count,result_count,
-            verification,matched_count,unmatched FROM live.nvo_publication
+        row = conn.execute("""SELECT resource,updated_on::text,school_count,subject_count,result_count,
+            verification,matched_count,unmatched FROM pub_obrazovanie.nvo_publication
             WHERE exam=%s AND school_year=%s""", (exam, year)).fetchone()
         if not row:
             return None
@@ -201,7 +224,7 @@ def nvo_snapshot(exam, year):
                         sum(takers) FILTER (WHERE takers>0 AND score IS NOT NULL),
                         round(sum(score*takers) FILTER (WHERE takers>0 AND score IS NOT NULL)
                             / nullif(sum(takers) FILTER (WHERE takers>0 AND score IS NOT NULL),0),2)
-                        FROM live.nvo_result WHERE resource=%s GROUP BY subject
+                        FROM pub_obrazovanie.nvo_result WHERE resource=%s GROUP BY subject
                         ORDER BY subject""", (row[0],))]
     return dict(exam=exam, year=year, resource=row[0], updated=row[1][:10],
                 schools=row[2], subject_count=row[3], results=row[4], verification=row[5],
@@ -212,9 +235,9 @@ def school_nvo(code):
     groups = {}
     with connect() as conn:
         for exam, year, resource, updated, verification, matched, subject, takers, score in conn.execute("""
-            SELECT p.exam,p.school_year,p.resource,p.updated_at,p.verification,r.matched,
-                   r.subject,r.takers,r.score FROM live.nvo_result r
-            JOIN live.nvo_publication p ON p.resource=r.resource WHERE r.neispuo=%s
+            SELECT p.exam,p.school_year,p.resource,p.updated_on::text,p.verification,r.matched,
+                   r.subject,r.takers,r.score FROM pub_obrazovanie.nvo_result r
+            JOIN pub_obrazovanie.nvo_publication p ON p.resource=r.resource WHERE r.neispuo=%s
             ORDER BY p.exam,p.school_year DESC,r.subject""", (code,)):
             item = groups.setdefault(resource, dict(exam=exam, year=year, resource=resource,
                 updated=updated[:10], verification=verification, matched=matched, subjects=[]))
@@ -226,8 +249,8 @@ def school_status(code):
     with connect() as conn:
         return [dict(kind=r[0], year=r[1], resource=r[2], updated=r[3][:10],
                      name=r[4], town=r[5], scope=r[6]) for r in conn.execute("""
-            SELECT p.kind,p.school_year,p.resource,p.updated_at,r.name,r.town,r.scope
-            FROM live.status_row r JOIN live.status_publication p ON p.resource=r.resource
+            SELECT p.kind,p.school_year,p.resource,p.updated_on::text,r.name,r.town,r.scope
+            FROM pub_obrazovanie.status_row r JOIN pub_obrazovanie.status_publication p ON p.resource=r.resource
             WHERE r.neispuo=%s AND r.is_school
             ORDER BY p.school_year DESC,p.kind,r.row_number""", (code,))]
 
@@ -236,22 +259,24 @@ def status_sources():
     with connect() as conn:
         return [dict(kind=r[0], year=r[1], resource=r[2], updated=r[3][:10],
                      rows=r[4], school_rows=r[5]) for r in conn.execute("""
-            SELECT kind,school_year,resource,updated_at,row_count,school_rows
-            FROM live.status_publication ORDER BY school_year DESC,kind""")]
+            SELECT kind,school_year,resource,updated_on::text,row_count,school_rows
+            FROM pub_obrazovanie.status_publication ORDER BY school_year DESC,kind""")]
 
 
 def context_snapshot():
     with connect() as conn:
         publication = conn.execute("""SELECT school_year,pupils_resource,classes_resource,
-            pupils_updated,classes_updated,kind_count,grade_1_12_students,reported_groups
-            FROM live.context_publication ORDER BY school_year DESC LIMIT 1""").fetchone()
+            pupils_updated_on::text,classes_updated_on::text,kind_count,grade_1_12_students,reported_groups
+            FROM pub_obrazovanie.context_publication ORDER BY school_year DESC LIMIT 1""").fetchone()
         if not publication:
             return None
         kinds = [dict(name=r[0], institutions=r[1], grades=r[2], preschool=r[3],
                       pupils=r[4], groups=r[5], students=sum(r[2].get(str(g), 0) for g in range(1, 13)))
-                 for r in conn.execute("""SELECT kind,institutions,grades,preschool,
-                     reported_pupils,reported_groups FROM live.context_kind
-                     WHERE school_year=%s ORDER BY kind""", (publication[0],))]
+                 for r in conn.execute("""SELECT k.kind,k.institutions,
+                     (SELECT jsonb_object_agg(g.grade::text,g.students) FROM pub_obrazovanie.context_grade g
+                      WHERE (g.school_year,g.kind)=(k.school_year,k.kind)),k.preschool,
+                     k.reported_pupils,k.reported_groups FROM pub_obrazovanie.context_kind k
+                     WHERE k.school_year=%s ORDER BY k.kind""", (publication[0],))]
     grades = [dict(grade=g, students=sum(k["grades"].get(str(g), 0) for k in kinds))
               for g in range(1, 13)]
     for row in grades:
@@ -268,11 +293,11 @@ def context_snapshot():
 def school_identity(code):
     with connect() as conn:
         row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
-            FROM live.nvo_result r JOIN live.nvo_publication p ON p.resource=r.resource
+            FROM pub_obrazovanie.nvo_result r JOIN pub_obrazovanie.nvo_publication p ON p.resource=r.resource
             WHERE r.neispuo=%s ORDER BY p.school_year DESC LIMIT 1""", (code,)).fetchone()
         if not row:
             row = conn.execute("""SELECT r.school,r.oblast,r.municipality,r.town,r.matched
-                FROM live.dzi_result r JOIN live.dzi_publication p ON p.resource=r.resource
+                FROM pub_obrazovanie.dzi_result r JOIN pub_obrazovanie.dzi_publication p ON p.resource=r.resource
                 WHERE r.neispuo=%s AND r.is_school ORDER BY p.school_year DESC LIMIT 1""",
                 (code,)).fetchone()
     return dict(code=code, name=row[0], oblast=row[1], municipality=row[2], town=row[3],
@@ -280,7 +305,7 @@ def school_identity(code):
 
 
 def place_options(resource, table):
-    if table not in {"live.nvo_result", "live.dzi_result"}:
+    if table not in {"pub_obrazovanie.nvo_result", "pub_obrazovanie.dzi_result"}:
         raise ValueError("Unknown result table")
     with connect() as conn:
         return sorted({(row[0], row[1]) for row in conn.execute(
@@ -300,10 +325,10 @@ def nvo_schools(resource, subject="", q="", page=1, limit=50, sort="name", oblas
         (%s='' OR school ILIKE '%%'||%s||'%%' OR neispuo=%s OR town ILIKE '%%'||%s||'%%')"""
     params = [resource, subject, subject, oblast, oblast, municipality, municipality, q, q, q, q]
     with connect() as conn:
-        count = conn.execute("SELECT count(*) FROM live.nvo_result WHERE " + where, params).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM pub_obrazovanie.nvo_result WHERE " + where, params).fetchone()[0]
         rows = [dict(code=r[0], school=r[1], town=r[2], subject=r[3], takers=r[4],
                      score=r[5], matched=r[6]) for r in conn.execute("""
-            SELECT neispuo,school,town,subject,takers,score,matched FROM live.nvo_result
+            SELECT neispuo,school,town,subject,takers,score,matched FROM pub_obrazovanie.nvo_result
             WHERE """ + where + " ORDER BY " + order + " LIMIT %s OFFSET %s",
             params + [limit, (page-1)*limit])]
     return count, rows
@@ -322,11 +347,11 @@ def matura_schools(resource, subject="", q="", page=1, limit=50, sort="name", ob
         AND (%s='' OR oblast=%s) AND (%s='' OR municipality=%s)
         AND (%s='' OR school ILIKE '%%'||%s||'%%' OR neispuo=%s OR town ILIKE '%%'||%s||'%%')"""
     with connect() as conn:
-        count = conn.execute("SELECT count(*) FROM live.dzi_result WHERE " + where, params).fetchone()[0]
+        count = conn.execute("SELECT count(*) FROM pub_obrazovanie.dzi_result WHERE " + where, params).fetchone()[0]
         rows = [dict(code=r[0], school=r[1], town=r[2], subject=r[3], takers=r[4],
                      score=r[5], matched=r[6]) for r in conn.execute("""
             SELECT neispuo,school,town,subject,takers,score,matched
-            FROM live.dzi_result WHERE """ + where + """
+            FROM pub_obrazovanie.dzi_result WHERE """ + where + """
             ORDER BY """ + order + " LIMIT %s OFFSET %s",
             params + [limit, (page-1)*limit])]
     return count, rows
@@ -392,11 +417,11 @@ def map_snapshot(exam="nvo7", year="", session="may", kind="mandatory", subject=
         if exam == "nvo7":
             subjects = ["БЕЛ", "МАТ"]
             raw = list(conn.execute("""SELECT s.oblast,s.municipality,e.score,e.takers,s.matched,e.subject
-                FROM live.school s JOIN live.exam_result e
+                FROM pub_obrazovanie.school s JOIN pub_obrazovanie.exam_result e
                 ON s.school_year=e.school_year AND s.neispuo=e.neispuo
                 WHERE s.school_year=%s""", (year,)))
         else:
-            table = "live.dzi_result" if exam == "dzi" else "live.nvo_result"
+            table = "pub_obrazovanie.dzi_result" if exam == "dzi" else "pub_obrazovanie.nvo_result"
             condition = " AND is_school" if exam == "dzi" else ""
             raw = list(conn.execute("SELECT oblast,municipality,score,takers,matched,subject FROM " + table +
                                     " WHERE resource=%s" + condition, (resource,)))
@@ -563,7 +588,7 @@ def matura_school_list(request: Request, year: str, session: str = "may", kind: 
     page = max(1, page)
     count, rows = matura_schools(exam["resource"], subject, q, page, sort=sort,
                                  oblast=oblast, municipality=municipality)
-    places = place_options(exam["resource"], "live.dzi_result")
+    places = place_options(exam["resource"], "pub_obrazovanie.dzi_result")
     return render(request, "matura_schools.html", snapshot(), nav="Матури", exam=exam,
                   rows=rows, count=count, subject=subject, q=q.strip()[:120], page_number=page, sort=sort,
                   oblast=oblast, municipality=municipality, oblasts=sorted({o for o, _ in places}), places=places)
@@ -628,7 +653,7 @@ def nvo_school_list(request: Request, grade: str, year: str, subject: str = "", 
     page = max(1, page)
     count, rows = nvo_schools(exam["resource"], subject, q, page, sort=sort,
                               oblast=oblast, municipality=municipality)
-    places = place_options(exam["resource"], "live.nvo_result")
+    places = place_options(exam["resource"], "pub_obrazovanie.nvo_result")
     return render(request, "nvo_schools.html", snapshot(), nav="НВО IV и X", exam=exam,
                   grade=grade, rows=rows, count=count, subject=subject, q=q.strip()[:120],
                   page_number=page, sort=sort, oblast=oblast, municipality=municipality,
