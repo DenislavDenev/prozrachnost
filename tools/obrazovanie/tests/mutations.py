@@ -25,7 +25,7 @@ MUTATIONS = [
      "tests/test_store.py::test_a_name_shared_by_two_settlements_is_not_guessed"),
     ("ekatte-anywhere", "db/migrations/0001_shared.sql", "THEN s.municipality_code = in_municipality",
      "THEN s.municipality_code = s.municipality_code", "tests/test_store.py::test_a_name_shared_by_two_settlements_is_not_guessed"),
-    ("municipality-guessed", "db/migrations/0001_shared.sql", "    AND lower(m.name_bg) = lower(btrim(municipality)) AND m.gone_at IS NULL",
+    ("municipality-guessed", "db/migrations/0001_shared.sql", "    AND lower(m.name_bg) = lower(btrim(source_municipality)) AND m.gone_at IS NULL",
      "    AND m.gone_at IS NULL ORDER BY 1 LIMIT 1",
      "tests/test_store.py::test_schools_point_to_the_shared_places_and_unknown_names_get_no_key"),
     ("register-place-ignored", "ingest/store.py", "COALESCE(g.town, r.town), g.neispuo IS NOT NULL",
