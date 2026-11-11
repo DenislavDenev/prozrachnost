@@ -197,7 +197,10 @@ def test_org_from_tender_keeps_only_valid_eik(conn, dsn):
 
 
 def test_licence_list_is_the_only_switch(conn, monkeypatch, tmp_path):
-    assert run.licences(conn) == 12
+    # every entry of the list is applied; counted from the file, which grows with every tool that moves in
+    import tomllib
+    entries = tomllib.loads((Path(run.__file__).resolve().parent.parent / 'db' / 'licences.toml').read_text(encoding='utf-8'))['licence']
+    assert run.licences(conn) == len(entries) >= 13
     assert conn.execute('SELECT dataset, is_distributable FROM core.dataset WHERE is_displayable ORDER BY 1').fetchall() == [
         ('danni.catalog', True), ('danni.ekatte', False), ('danni.municipality', False)]   # the datasets of naselenie and partii are not registered here
     conn.execute("UPDATE core.dataset SET is_distributable = true, licence_checked_on = '2026-01-01' WHERE dataset = 'danni.ekatte'")

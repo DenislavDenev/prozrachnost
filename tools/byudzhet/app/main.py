@@ -1,14 +1,14 @@
-import os
+import contextlib,datetime as dt,os
+from email.utils import format_datetime
 from pathlib import Path
 from decimal import Decimal
 from fastapi import FastAPI,Request,HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse,Response,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
-from ingest import db
 from ingest.config import DATA,ROOT as TOOLROOT,SOURCE_NAMES
-from ingest.checks import freshness
 from . import feedback,queries as Q
 ROOT=Path(__file__).resolve().parent
 app=FastAPI(title='Бюджет',docs_url=None,redoc_url=None)
@@ -24,6 +24,23 @@ def date(v):
  if not v:return 'няма данни'
  s=str(v);return s[8:10]+'.'+s[5:7]+'.'+s[:4]
 t.env.filters.update(num=number,money=money,date=date)
+DATA_FREE=('/static/','/favicon.svg','/feedback','/podkrepi')
+def _open(stack):
+ c=stack.enter_context(Q.snapshot());v,docs=Q.load(c);return c,v,docs
+@app.middleware('http')
+async def publication(request:Request,call_next):
+ """Every answer built from the data is read in one snapshot of the serving layer and says which publication it
+ is of. A cache in front of the site keeps an answer until this number moves; it moves only with the content."""
+ if request.url.path.startswith(DATA_FREE) or request.method!='GET':return await call_next(request)
+ with contextlib.ExitStack() as stack:
+  c,v,docs=await run_in_threadpool(_open,stack)
+  request.state.db=c;token=Q.use(docs)
+  try:response=await call_next(request)
+  finally:Q._docs.reset(token)
+ if v:
+  response.headers['X-Publication']=str(v[0]);response.headers['ETag']=f'W/"pub-{v[0]}"'
+  response.headers['Last-Modified']=format_datetime(v[1].astimezone(dt.timezone.utc),usegmt=True)
+ return response
 def render(request,name,**context):
  hub=os.environ.get('HUB_URL','https://prozrachnost.denev.work')
  return t.TemplateResponse(request=request,name=name,context=dict(v='5',hub_url=hub,feedback_button=Markup(feedback.BUTTON),support_link=Markup(feedback.support_link(hub)),fresh=max((s['period'] for s in Q.snapshots()),default=None),labels=Q.LABELS,source_names=SOURCE_NAMES,is_summary=Q.is_summary,**context))
@@ -32,9 +49,9 @@ def serial(data):
  return JSONResponse(json.loads(json.dumps(data,default=lambda v:float(v) if isinstance(v,Decimal) else str(v))))
 def csv(data):return Response(data,media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename="byudzhet.csv"'})
 @app.get('/healthz')
-def health():
- with db.connect() as c:c.execute('SELECT 1')
- return {'ok':True}
+def health(request:Request):
+ v=Q.version(request.state.db)
+ return {'ok':True,'publication':v[0] if v else None}
 @app.get('/favicon.svg')
 def favicon():return Response((ROOT/'static/favicon.svg').read_text(),media_type='image/svg+xml')
 @app.get('/',response_class=HTMLResponse)
@@ -104,16 +121,12 @@ def budget_csv(kind='state',y=None,q='',budget_type=''):
     rows.append(dict(period=s['period'],budget_type=r.get('budget_type',''),item=k,value_eur=Q.euros(v),unit=v['unit'],original=v['original']))
  headers=['period','line','law_eur','actual_eur','pct','unit','law_original','actual_original','row_key','parent','depth'] if kind=='state' else ['period','budget_type','item','value_eur','unit','original']
  return csv(Q.csv_response(rows,headers))
-def source_rows(q=''):
- with db.connect() as c:
-  rows=[dict(ref=a,kind=b,name=d,period=e,read_at=f,status=g,error=h,version=i) for a,b,d,e,f,g,h,i in c.execute('SELECT ref,kind,name,period,read_at,status,error,version FROM src.resource ORDER BY kind,name')]
- return [r for r in rows if q.casefold() in ' '.join(str(v or '') for v in r.values()).casefold()]
 @app.get('/export-sources.csv')
-def sources_csv(q=''):return csv(Q.csv_response(source_rows(q),['kind','ref','name','period','read_at','version','status','error']))
+def sources_csv(request:Request,q=''):return csv(Q.csv_response(Q.source_rows(request.state.db,q),['kind','ref','name','period','read_at','version','status','error']))
 @app.get('/sources',response_class=HTMLResponse)
 def sources(request:Request,q=''):
  import json
- with db.connect() as c:problems=freshness(c)
- return render(request,'sources.html',nav='Източници',rows=source_rows(q),q=q,problems=problems,meta=json.loads((TOOLROOT/'db/ref/datasets.json').read_text(encoding='utf-8')))
+ c=request.state.db
+ return render(request,'sources.html',nav='Източници',rows=Q.source_rows(c,q),q=q,problems=Q.problems(c),meta=json.loads((TOOLROOT/'db/ref/datasets.json').read_text(encoding='utf-8')))
 @app.get('/how',response_class=HTMLResponse)
 def how(request:Request):return render(request,'how.html',nav='Източници',definitions=Q.DEFINITIONS)

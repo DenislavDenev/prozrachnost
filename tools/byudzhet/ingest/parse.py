@@ -1,8 +1,8 @@
 """Source values remain decimal strings; euro comparisons never round before display."""
-import calendar,csv,datetime as dt,json,re
+import calendar,datetime as dt,json,re
 from decimal import Decimal,InvalidOperation,getcontext
 from .config import ROOT
-from .grao import ShapeError
+from .pipeline import ShapeError
 RATE=Decimal('1.95583')
 getcontext().prec=60
 SCHEMAS=json.loads((ROOT/'db/ref/schemas.json').read_text(encoding='utf-8'))
@@ -20,9 +20,11 @@ def key(ob,name):
  name={'ЛЕСИЧЕВО':'ЛЕСИЧОВО','ДОЛНА МИТРОПОЛИ':'ДОЛНА МИТРОПОЛИЯ','СТОЛИЧНА ОБЩИНА':'СТОЛИЧНА'}.get(name,name)
  if name=='СТОЛИЧНА':ob='СОФИЯ-ГРАД'
  return ob,name
-def reference():
- with (ROOT/'db/ref/municipality.csv').open(encoding='utf-8-sig') as f:return list(csv.DictReader(f))
-REF=reference(); MATCH={key(r['oblast'],r['name_bg']):r for r in REF}
+# The municipalities as the shared database has them (ingest/reference.py loads them from core): id is the ЕИК of the
+# municipality, by which МФ and the pages address it; code is its code by НСИ. Set by use() before parsing.
+REF=[];MATCH={}
+def use(ref):
+ REF[:]=ref;MATCH.clear();MATCH.update({key(r['oblast'],r['name_bg']):r for r in ref})
 def number(s):
  s=clean(s).replace('\u00a0','').replace(' ','')
  if re.fullmatch(r'-?\d{1,3}(?:,\d{3})+\.\d+',s):s=s.replace(',','')
@@ -99,7 +101,7 @@ def municipalities(rows,kind,p):
    totals=nums[:len(fields)];continue
   r=MATCH.get(key(*row[:2]))
   if not r:raise ShapeError('Несъпоставена община: '+repr(row[:2]))
-  out.append(dict(code=r['id'],name=r['name_bg'],oblast=r['oblast'],nuts3=r['nuts3'],nuts2=r['nuts2'],nuts1=r['nuts1'],values={k:money(v,currency(p)) for k,v in zip(fields,row[2:])},extra=dict(zip(head[2+len(fields):],row[2+len(fields):]))))
+  out.append(dict(code=r['id'],municipality_code=r['code'],name=r['name_bg'],oblast=r['oblast'],nuts3=r['nuts3'],nuts2=r['nuts2'],nuts1=r['nuts1'],values={k:money(v,currency(p)) for k,v in zip(fields,row[2:])},extra=dict(zip(head[2+len(fields):],row[2+len(fields):]))))
  if len(out)!=265 or len({r['code'] for r in out})!=265:raise ShapeError('Не са съпоставени 265/265 общини')
  if totals:
   for i,k in enumerate(fields):near(sum(Decimal(r['values'][k]['original']) for r in out),totals[i])
@@ -180,17 +182,10 @@ def reserve(rows,p):
  if len(parts)!=2:raise ShapeError('Липсват съставните части на резерва')
  near(number(out[0]['value']['original']),sum(parts))
  return dict(rows=out,notes=notes,reconciliation='Фискален резерв = средства + вземания')
-def parse(raw,kind,name):
- p=period(name);rows=table(raw)
+def parse_rows(rows,kind,name):
+ """The rows of a table (as table() returns them, header first) into the parsed report. Nothing is written."""
+ p=period(name)
  data=municipalities(rows,kind,p) if kind in ('debt','indicators') else globals()[kind](rows,p)
  data.update(period=p,kind=kind,input_rows=len(rows),currency=currency(p))
  return data
-def population(raw):
- from .grao import parse as grao
- d=grao(raw);out=[]
- for row in d['municipalities']:
-  r=MATCH.get(key(row['oblast'],row['municipality']))
-  if not r:raise ShapeError('Несъпоставена община на ГРАО: '+str(row))
-  out.append(dict(code=r['id'],name=r['name_bg'],permanent=row['permanent'],current=row['current']))
- if len(out)!=265 or len({r['code'] for r in out})!=265:raise ShapeError('ГРАО: не са 265/265 общини')
- return dict(period=d['date'],kind='population',rows=out,input_rows=len(out),reconciliation='265/265; областни сборове на ГРАО',notes=[])
+def parse(raw,kind,name):return parse_rows(table(raw),kind,name)

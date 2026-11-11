@@ -1,0 +1,71 @@
+# The datasets and sources of Бюджет. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# The registrations per municipality (for "per person") are not read here: they are Население's (naselenie.grao).
+
+[[dataset]]
+dataset = "byudzhet.mf"
+title_bg = "Изпълнение на бюджета, КФП, фискален резерв и показатели на общините"
+description_bg = "Таблиците на Министерството на финансите в data.egov.bg: държавен бюджет и КФП по месеци, фискален резерв, общински дълг и финансови показатели на общините по тримесечия."
+source_org = "Министерство на финансите"
+source_url = "https://data.egov.bg"
+channel = "api"
+licence = "CC0 (условия за ползване 1 на data.egov.bg)"
+cadence = "месечно (бюджет, КФП, резерв); тримесечно (общини)"
+tables = ["pub_byudzhet.report", "pub_byudzhet.state_line", "pub_byudzhet.kfp_value", "pub_byudzhet.reserve_line",
+          "pub_byudzhet.municipal_value", "pub_byudzhet.source_state", "pub_byudzhet.problem",
+          "byudzhet.report", "byudzhet.state_line", "byudzhet.kfp_value", "byudzhet.reserve_line", "byudzhet.municipal_value",
+          "byudzhet.known_gap", "byudzhet_src.egov_catalog", "byudzhet_src.egov_file", "byudzhet_src.egov_row"]
+
+[[source]]
+source = "egov-catalog"
+title_bg = "Каталозите на наборите на МФ"
+url = "https://data.egov.bg/api/listResources"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден"
+stale_after = "48 hours"
+
+[[source]]
+source = "state"
+title_bg = "Държавен бюджет"
+url = "https://data.egov.bg/data/view/79ce7de2-0150-4ba7-a96c-dbacb76c95b6"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден се четат всички ресурси"
+stale_after = "48 hours"
+
+[[source]]
+source = "kfp"
+title_bg = "КФП"
+url = "https://data.egov.bg/data/view/bfcdd4cb-4737-4272-92ea-9b2395f7cb14"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден се четат всички ресурси"
+stale_after = "48 hours"
+
+[[source]]
+source = "reserve"
+title_bg = "Фискален резерв"
+url = "https://data.egov.bg/data/view/3178b3ee-cfe8-4adc-b716-659d3228407f"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден се четат всички ресурси"
+stale_after = "48 hours"
+
+[[source]]
+source = "debt"
+title_bg = "Общински дълг"
+url = "https://data.egov.bg/data/view/ee08391e-be09-44c1-b278-b4af8b62a147"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден се четат всички ресурси"
+stale_after = "48 hours"
+
+[[source]]
+source = "indicators"
+title_bg = "Финансови показатели"
+url = "https://data.egov.bg/data/view/980fa747-e0d0-4371-9457-f41d730040cd"
+channel = "api"
+dataset = "byudzhet.mf"
+cadence = "всеки ден се четат всички ресурси"
+stale_after = "48 hours"

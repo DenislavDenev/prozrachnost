@@ -29,6 +29,12 @@ display = true
 note = "public information of a state body, no licence stated: shown with a link to the source, not handed out"
 
 [[licence]]
+dataset = "byudzhet.mf"
+checked_on = 2026-09-30
+distribute = true
+note = "data.egov.bg, terms of use 1 (no protected copyright, CC0) on each of the five datasets of МФ, read from the portal"
+
+[[licence]]
 dataset = "partii.donations"
 checked_on = 2026-11-10
 display = true

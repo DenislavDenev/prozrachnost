@@ -1,0 +1,140 @@
+# The quality rules of Бюджет. Each query returns one row: expected, actual. They run after every step.
+# The sums inside one table (the parts to the total, the balance, 265 of 265 municipalities, the national total)
+# are checked by the parser, which refuses the table; the rules here check what is stored.
+
+[[check]]
+name = "municipalities_per_report"
+title_bg = "Всяка таблица на общините има стойности за 265 общини (таблици с друг брой)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM (SELECT as_of, kind FROM byudzhet.municipal_value WHERE superseded_at IS NULL GROUP BY 1, 2 HAVING count(DISTINCT municipality_code) <> 265) t"
+
+[[check]]
+name = "every_report_has_rows"
+title_bg = "Всяка действаща таблица има редове в чистите таблици (таблици без редове)"
+kind = "reconcile"
+sql = """SELECT 0, count(*) FROM byudzhet.report r WHERE r.superseded_at IS NULL AND NOT EXISTS (
+  SELECT FROM byudzhet.state_line x WHERE r.kind = 'state' AND x.period_end = r.period_end AND x.superseded_at IS NULL
+  UNION ALL SELECT FROM byudzhet.kfp_value x WHERE r.kind = 'kfp' AND x.period_end = r.period_end AND x.superseded_at IS NULL
+  UNION ALL SELECT FROM byudzhet.reserve_line x WHERE r.kind = 'reserve' AND x.as_of = r.period_end AND x.superseded_at IS NULL
+  UNION ALL SELECT FROM byudzhet.municipal_value x WHERE x.kind = r.kind AND x.as_of = r.period_end AND x.superseded_at IS NULL)"""
+
+[[check]]
+name = "rows_belong_to_a_report"
+title_bg = "Всеки действащ ред е от четенето на действаща таблица (редове без таблица)"
+kind = "reconcile"
+sql = """SELECT 0, (SELECT count(*) FROM byudzhet.state_line x WHERE x.superseded_at IS NULL AND NOT EXISTS (SELECT FROM byudzhet.report r WHERE r.superseded_at IS NULL AND r.load_id = x.load_id))
+  + (SELECT count(*) FROM byudzhet.kfp_value x WHERE x.superseded_at IS NULL AND NOT EXISTS (SELECT FROM byudzhet.report r WHERE r.superseded_at IS NULL AND r.load_id = x.load_id))
+  + (SELECT count(*) FROM byudzhet.reserve_line x WHERE x.superseded_at IS NULL AND NOT EXISTS (SELECT FROM byudzhet.report r WHERE r.superseded_at IS NULL AND r.load_id = x.load_id))
+  + (SELECT count(*) FROM byudzhet.municipal_value x WHERE x.superseded_at IS NULL AND NOT EXISTS (SELECT FROM byudzhet.report r WHERE r.superseded_at IS NULL AND r.load_id = x.load_id))"""
+
+[[check]]
+name = "reports_are_current_loads"
+title_bg = "Всяка действаща таблица идва от действащо четене на ресурса си (таблици от старо четене)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM byudzhet.report r JOIN ops.load l USING (load_id) WHERE r.superseded_at IS NULL AND NOT l.is_current"
+
+[[check]]
+name = "amount_is_original_in_currency"
+title_bg = "Сумата във валутата е оригиналът по единицата му (редове с разлика)"
+kind = "reconcile"
+sql = """SELECT 0, (SELECT count(*) FROM byudzhet.state_line WHERE superseded_at IS NULL AND (law_amount <> round(law_original * 1000000, 2) OR actual_amount <> round(actual_original * 1000000, 2)))
+  + (SELECT count(*) FROM byudzhet.kfp_value WHERE superseded_at IS NULL AND amount <> round(original * 1000000, 2))
+  + (SELECT count(*) FROM byudzhet.reserve_line WHERE superseded_at IS NULL AND amount <> round(original * 1000000, 2))
+  + (SELECT count(*) FROM byudzhet.municipal_value WHERE superseded_at IS NULL AND amount <> round(original, 2))"""
+
+[[check]]
+name = "euro_by_fixed_rate"
+title_bg = "Сумата в евро е по фиксирания курс на лева (редове с разлика)"
+kind = "reconcile"
+sql = """SELECT 0, (SELECT count(*) FROM byudzhet.kfp_value WHERE superseded_at IS NULL AND amount_eur IS DISTINCT FROM core.to_eur(amount, currency, period_end))
+  + (SELECT count(*) FROM byudzhet.municipal_value WHERE superseded_at IS NULL AND amount_eur IS DISTINCT FROM core.to_eur(amount, currency, as_of))
+  + (SELECT count(*) FROM byudzhet.reserve_line WHERE superseded_at IS NULL AND amount_eur IS DISTINCT FROM core.to_eur(amount, currency, as_of))
+  + (SELECT count(*) FROM byudzhet.state_line WHERE superseded_at IS NULL AND (law_eur IS DISTINCT FROM core.to_eur(law_amount, currency, period_end) OR actual_eur IS DISTINCT FROM core.to_eur(actual_amount, currency, period_end)))"""
+
+[[check]]
+name = "currency_by_year"
+title_bg = "Таблиците до 2025 г. са в лева, от 2026 г. в евро (таблици с друга валута)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM byudzhet.report WHERE superseded_at IS NULL AND currency <> CASE WHEN period_end >= '2026-01-01' THEN 'EUR' ELSE 'BGN' END"
+
+# Is the newest table of each source recent? Not gating: a late table of one source does not stop the others
+# from being published. The step freshness reports it.
+[[check]]
+name = "monthly_recent"
+title_bg = "Последните месечни таблици (бюджет, КФП, резерв) са от последните 45 дни (дни над прага)"
+kind = "drop"
+gating = false
+sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - m, 9999)) - 45) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['state', 'kfp', 'reserve']) k) t"
+
+[[check]]
+name = "quarterly_recent"
+title_bg = "Последните таблици на общините (дълг, показатели) са от последните 150 дни (дни над прага)"
+kind = "drop"
+gating = false
+sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - m, 9999)) - 150) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['debt', 'indicators']) k) t"
+
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+[[check]]
+name = "published_reports"
+title_bg = "Публикуваните таблици са колкото действащите"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM byudzhet.report WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_byudzhet.report)"
+
+[[check]]
+name = "published_rows"
+title_bg = "Публикуваните редове са колкото действащите в чистите таблици"
+kind = "publish"
+sql = """SELECT (SELECT count(*) FROM byudzhet.state_line WHERE superseded_at IS NULL) + (SELECT count(*) FROM byudzhet.kfp_value WHERE superseded_at IS NULL)
+  + (SELECT count(*) FROM byudzhet.reserve_line WHERE superseded_at IS NULL) + (SELECT count(*) FROM byudzhet.municipal_value WHERE superseded_at IS NULL),
+  (SELECT count(*) FROM pub_byudzhet.state_line) + (SELECT count(*) FROM pub_byudzhet.kfp_value)
+  + (SELECT count(*) FROM pub_byudzhet.reserve_line) + (SELECT count(*) FROM pub_byudzhet.municipal_value)"""
+
+[[check]]
+name = "published_municipal_sum"
+title_bg = "Публикуваният сбор на общинските стойности е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(amount), 0) FROM byudzhet.municipal_value WHERE superseded_at IS NULL), (SELECT COALESCE(sum(amount), 0) FROM pub_byudzhet.municipal_value)"
+
+[[check]]
+name = "published_state_actual_sum"
+title_bg = "Публикуваният сбор на отчета по държавния бюджет е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(actual_amount), 0) FROM byudzhet.state_line WHERE superseded_at IS NULL), (SELECT COALESCE(sum(actual_amount), 0) FROM pub_byudzhet.state_line)"
+
+# The move from the tool's own database to the shared one: the step `parity` records these.
+[[check]]
+name = "parity_reports"
+title_bg = "Таблици на МФ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_rows"
+title_bg = "Редове в таблиците на МФ: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_original_sum"
+title_bg = "Сбор на оригиналните стойности: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_eur_sum"
+title_bg = "Сбор на стойностите в евро (до цент): старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_rows_differ"
+title_bg = "Таблици на МФ с ред, който се различава между старата и общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_population_dates"
+title_bg = "Дати на регистрациите по общини: старата база срещу публикуваните от Население"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_population_differ"
+title_bg = "Дати, на които регистрациите по общини се различават от публикуваните от Население"
+kind = "parity"
+gating = false

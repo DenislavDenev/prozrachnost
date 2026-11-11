@@ -2,24 +2,31 @@
 from pathlib import Path
 import subprocess,sys
 root=Path(__file__).resolve().parent.parent
-cases=[('ingest/parse.py',".translate(str.maketrans('ABCEHKMOPTXY','АВСЕНКМОРТХУ'))",'', 'tests/test_sources.py::test_manual_three_and_currency'),('ingest/parse.py',"RATE=Decimal('1.95583')","RATE=Decimal('2')",'tests/test_sources.py::test_manual_three_and_currency'),('ingest/parse.py',"if a is None or b is None or abs(a-b)>Decimal(tol):","if False:",'tests/test_sources.py::test_reconcile_unknown_duplicate_and_units'),('ingest/store.py','now-held[1]>=dt.timedelta(days=1)','now-held[1]>=dt.timedelta(0)','tests/test_sources.py::test_hold_requires_same_bytes_and_a_day')]
-cases.extend([
+cases=[
+ ('ingest/parse.py',".translate(str.maketrans('ABCEHKMOPTXY','АВСЕНКМОРТХУ'))",'','tests/test_sources.py::test_manual_three_and_currency'),
+ ('ingest/parse.py',"RATE=Decimal('1.95583')","RATE=Decimal('2')",'tests/test_sources.py::test_manual_three_and_currency'),
+ ('ingest/parse.py',"if a is None or b is None or abs(a-b)>Decimal(tol):","if False:",'tests/test_sources.py::test_reconcile_unknown_duplicate_and_units'),
+ ('ingest/parse.py',"if any(r['ident'].startswith('unknown:') for r in classified)","if False",'tests/test_sources.py::test_state_unknown_and_duplicate_categories_stop_parse'),
+ ('ingest/parse.py',"MATCH.update({key(r['oblast'],r['name_bg']):r for r in ref})","MATCH.update({key(r['oblast'],r['name_bg']):dict(r,code=None) for r in ref})",'tests/test_sources.py::test_municipalities_come_from_the_shared_database'),
+ ('ingest/store.py',"if v is not None and new[k].get(f) is None","if False",'tests/test_sources.py::test_hold_when_a_row_goes_missing_or_empty'),
+ ('ingest/store.py',"out['s/' + r['key']]","out['s/' + r['line']]",'tests/test_sources.py::test_state_duplicate_names_do_not_mask_missing_values'),
+ ('ingest/store.py',"round(lo * m, 2), round(ao * m, 2), core.to_eur","round(lo, 2), round(ao * m, 2), core.to_eur",'tests/test_store.py::test_amounts_are_unfolded_rounded_and_in_euro'),
+ ('ingest/store.py',"WHERE kind = %s AND period_end = %s AND superseded_at IS NULL''', (at, kind, period))","WHERE false''', ())",'tests/test_store.py::test_load_unchanged_corrected_and_invalid'),
+ ('ingest/run.py',"if (ref, sha) not in gaps:","if True:",'tests/test_store.py::test_replay_and_parity_against_the_old_database'),
+ ('app/queries.py',"mult=1000000 if unit.startswith('млн.') else 1","mult=1",'tests/test_store.py::test_replay_and_parity_against_the_old_database'),
  ('app/queries.py',"if not budget_type or r['budget_type']==budget_type","if True",'tests/test_pages.py::test_kfp_selected_budget_changes_hero_chart_and_csv'),
  ('app/queries.py',"if row['actual']['eur'] is None:row['pct']=None","if False:row['pct']=None",'tests/test_pages.py::test_state_hierarchy_and_empty_original_value'),
- ('app/main.py',"pct=r['pct']","pct=r['source_pct']",'tests/test_pages.py::test_state_hierarchy_and_empty_original_value')
-])
-cases.extend([
  ('app/queries.py',"{r['key']:r for r in structure(s['rows'])}","{r['line']:r for r in structure(s['rows'])}",'tests/test_pages.py::test_state_transfer_context_previous_and_incomplete_plan'),
  ('app/queries.py',"out['spending']+out['eu_contribution']","out['spending']",'tests/test_pages.py::test_state_chart_total_includes_eu_and_matches_published_balance'),
- ('ingest/store.py',"statekeys.get(r.get('order'),r.get('code',r.get('line',r.get('budget_type',str(i)))))","r.get('code',r.get('line',r.get('budget_type',str(i))))",'tests/test_sources.py::test_state_duplicate_names_do_not_mask_missing_values'),
- ('ingest/parse.py',"if any(r['ident'].startswith('unknown:') for r in classified)","if False",'tests/test_sources.py::test_state_unknown_and_duplicate_categories_stop_parse')
-])
+ ('app/main.py',"pct=r['pct']","pct=r['source_pct']",'tests/test_pages.py::test_state_hierarchy_and_empty_original_value'),
+ ('app/main.py',"response.headers['X-Publication']=str(v[0])","pass",'tests/test_store.py::test_pages_read_the_serving_layer_with_its_version'),
+]
 for file,old,new,test in cases:
  p=root/file;original=p.read_bytes();s=original.decode('utf-8')
  if old not in s:raise SystemExit('mutation target missing: '+old)
  try:
   p.write_bytes(s.replace(old,new,1).encode('utf-8'))
-  r=subprocess.run([sys.executable,'-B','-m','pytest','-q',test],cwd=root,capture_output=True,text=True,encoding="utf-8")
+  r=subprocess.run([sys.executable,'-B','-m','pytest','-q','-x',test],cwd=root,capture_output=True,text=True,encoding="utf-8")
   if r.returncode==0:raise SystemExit('SURVIVED '+file+' '+old)
   print('caught',old)
  finally:p.write_bytes(original)
