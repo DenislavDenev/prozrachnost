@@ -6,7 +6,8 @@
     documents  the documents of the records (--source cpc for КЗК); --limit and --max-seconds bound the work
     build      the clean tables again from the current reads
     check      every quality rule, then the publication
-    replay     the reads and documents of the old database, from its raw files and through the same parser (the move)
+    replay     the reads and documents of the old database, from its raw files and through the same parser (the move);
+               --source replays one list
     parity     the old database of its own against the shared one
     freshness  the list of problems, empty when all is well
     summary    the weekly report
@@ -125,7 +126,7 @@ def main(argv=None):
                     problems = extra.pop('problems')
                 elif a.step == 'replay':
                     from .move import replay
-                    problems = replay(conn, r)
+                    problems = replay(conn, r, only=a.source)
                 if a.step == 'parity':
                     from .move import parity
                     parity(conn, r)

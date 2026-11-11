@@ -155,3 +155,29 @@ def test_cpc_repeated_page_never_counted_as_next(monkeypatch):
         def request(self,*args,**kw):return (F/'cpc.html').read_bytes()
     with pytest.raises(parse.ShapeError,match='страница'):
         sources.cpc(C(),lambda *a:None)
+
+
+def test_the_archive_answers_as_the_source_did(tmp_path):
+    """replay: each request gets the archived answer stored under the address the reader saves it with."""
+    from ingest.move import Archive
+    files = []
+    for name, url in (('a', 'https://x.test/list'), ('b', 'https://x.test/list'), ('c', 'https://x.test/list?year=2026&page=2'),
+                      ('d', 'https://reg.test/Search.aspx?results_page=1')):
+        (tmp_path / name).write_bytes(name.encode())
+        files.append((url, str(tmp_path / name), name))
+    (tmp_path / 'form').write_bytes(b'form')
+    a = Archive(files, {'https://reg.test/Search.aspx': tmp_path / 'form', 'https://x.test/list': tmp_path / 'form'})
+    assert a.get('https://x.test/list') == b'a' and a.get('https://x.test/list') == b'b' and a.get('https://x.test/list') == b'b'
+    assert a.request('POST', 'https://x.test/list?year=2026', data={'page': 2, 'csrfmiddlewaretoken': 't'}) == b'c'
+    assert a.get('https://reg.test/Search.aspx') == b'form'
+    assert a.request('POST', 'https://reg.test/Search.aspx', data={'__VIEWSTATE': 'x'}) == b'd'
+    with pytest.raises(parse.ShapeError, match='архивиран'):
+        a.get('https://x.test/other')
+
+
+def test_an_old_decision_is_read_as_the_old_pages_read_it():
+    from ingest.move import as_shown
+    old = dict(id='cpc:1:decision:Решение № 1:2026-01-01', title='Решение № 1', source='cpc')
+    assert as_shown('cpc', old) == dict(old, act_no='Решение № 1')
+    assert as_shown('cpc', dict(old, act_no='x'))['act_no'] == 'x'
+    assert as_shown('nao', dict(old)) == old
