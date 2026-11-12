@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Търсене{% endblock %}
+{% block main %}
+<h1>Търсене</h1>
+<form class="ctl" method="get" action="/tarsene"><input type="search" name="q" value="{{ q }}" placeholder="Дума от заглавие на акт, консултация или стратегия" aria-label="Търсене" size="48" autofocus><button class="btn" type="submit">Търси</button></form>
+{% if q %}
+<p class="lede">За „{{ q }}“: <b>{{ r.counts.acts | num }}</b> {{ 'акт' if r.counts.acts == 1 else 'акта' }} на Министерския съвет, <b>{{ r.counts.consultations | num }}</b> {{ 'консултация' if r.counts.consultations == 1 else 'консултации' }}, <b>{{ r.counts.strategies | num }}</b> {{ 'стратегически документ' if r.counts.strategies == 1 else 'стратегически документа' }}. Всяка дума се търси от началото си; показани са най-новите.</p>
+<div class="grid">
+<section class="p s12"><h2>Актове на Министерския съвет</h2>
+  <p class="mut">Всички: <a class="l" href="/aktove?q={{ q | urlencode }}">списък</a> · <a class="l" href="/aktove.csv?q={{ q | urlencode }}">CSV</a> · <a class="l" href="/aktove.json?q={{ q | urlencode }}">JSON</a></p>
+  <table><tbody>{% for a in r.acts %}<tr><td class="n">{{ a.accepted | date }}</td><td>{{ a.act_type }} № {{ a.doc_num }}</td><td><a class="l" href="/aktove/{{ a.pris_id }}">{{ a.about | truncate(200) }}</a></td></tr>{% else %}<tr><td class="mut">Няма намерени актове.</td></tr>{% endfor %}</tbody></table></section>
+<section class="p s12"><h2>Консултации</h2>
+  <p class="mut">Всички: <a class="l" href="/konsultacii?q={{ q | urlencode }}">списък</a> · <a class="l" href="/konsultacii.csv?q={{ q | urlencode }}">CSV</a> · <a class="l" href="/konsultacii.json?q={{ q | urlencode }}">JSON</a></p>
+  <table><tbody>{% for c in r.consultations %}<tr><td class="n">{{ c.opened | date }}</td><td>{{ c.institution_name or 'няма данни' }}</td><td><a class="l" href="/konsultacii/{{ c.reg_num }}">{{ c.name | truncate(200) }}</a></td></tr>{% else %}<tr><td class="mut">Няма намерени консултации.</td></tr>{% endfor %}</tbody></table></section>
+<section class="p s12"><h2>Стратегически документи</h2>
+  <p class="mut">Всички: <a class="l" href="/strategii?q={{ q | urlencode }}">списък</a> · <a class="l" href="/strategii.csv?q={{ q | urlencode }}">CSV</a> · <a class="l" href="/strategii.json?q={{ q | urlencode }}">JSON</a></p>
+  <table><tbody>{% for s in r.strategies %}<tr><td class="n">{{ s.accepted | date if s.accepted else 'няма данни' }}</td><td>{{ s.level or '' }}</td><td>{{ s.name | truncate(200) }}</td></tr>{% else %}<tr><td class="mut">Няма намерени документи.</td></tr>{% endfor %}</tbody></table></section>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, exports, opts %}
+{% block title %}Актове на Министерския съвет{% endblock %}
+{% block main %}
+<h1>Актове на Министерския съвет</h1>
+<p class="lede"><b>{{ total | num }} {{ 'акт' if total == 1 else 'акта' }}</b> по избраните условия{% if rows|length < total %}; на страницата са най-новите {{ rows|length }}, всички са в CSV и JSON{% endif %}.</p>
+<details class="explain"><summary>С прости думи</summary><p>Това е регистърът на актовете на Министерския съвет от 1946 г. насам, както го публикува Администрацията на Министерския съвет. Постановлението е общ акт, който влиза в сила след обнародване. Решението е за конкретен въпрос, например одобряване на законопроект или стратегия. Разпореждането е за поименна работа. Вносителят е министерството или длъжността, предложила акта. Ако актът е обнародван, виждате броя и годината на „Държавен вестник“. Поверителните актове са в списъка, но без текст. Търсенето намира думите от заглавието („Относно“).</p></details>
+<form class="ctl filters" method="get" action="/aktove">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Търси в заглавията" aria-label="Търсене в заглавията">
+  <label>Вид <select name="type"><option value="">всички</option>{{ opts(types, f.type) }}</select></label>
+  <label>Година <select name="year"><option value="">всички</option>{{ opts(years, f.year) }}</select></label>
+  <label>Вносител <select name="importer"><option value="">всички</option>{{ opts(importers, f.importer) }}</select></label>
+  <label>ДВ <select name="gazette"><option value="">всички</option><option value="da" {{ 'selected' if f.gazette == 'da' }}>с брой на ДВ</option><option value="ne" {{ 'selected' if f.gazette == 'ne' }}>без брой на ДВ</option></select></label>
+  <label>От <input type="date" name="frm" value="{{ f['from'].isoformat() if f['from'] }}"></label><label>До <input type="date" name="to" value="{{ f['to'].isoformat() if f['to'] }}"></label>
+  <button class="btn" type="submit">Покажи</button><a class="l" href="/aktove">Изчисти</a>
+</form>
+<div class="grid">
+  <section class="p s12"><div class="ph"><div><h2>По седмици</h2><div class="sub">Постановления, решения и разпореждания в избрания период (седмица от понеделник)</div></div></div>
+    <div class="legend"><span><i style="background:#0b7a5e"></i>постановления</span><span><i style="background:#121417"></i>решения</span><span><i style="background:#8a5cb8"></i>разпореждания</span></div>
+    <div class="chart" id="weeks-chart" role="img" aria-label="Приети актове по седмици"></div>
+    <script id="weeks-data" type="application/json">{{ weeks | tojson }}</script>
+    <div class="src">Графиката следва периода (година или от/до), не другите условия · АМС · <a href="{{ source_url }}" rel="noopener">набор</a></div></section>
+  <section class="p s12"><div class="ph"><div><h2>Актове</h2></div><div class="src">{{ exports('/aktove', query) }}</div></div>
+    <div class="scroll"><table class="sortable" id="acts-table"><thead><tr><th>Дата</th><th>Вид {{ help('act_type', 'вид акт') }}</th><th>№</th><th>Относно</th><th>Вносител</th><th>ДВ</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td data-v="{{ r.accepted.isoformat() }}">{{ r.accepted | date }}</td><td>{{ r.act_type }}</td><td>{{ r.doc_num }}</td>
+      <td>{% if r.confidential %}<a class="l" href="/aktove/{{ r.pris_id }}">Поверителен акт</a>{% else %}<a class="l" href="/aktove/{{ r.pris_id }}">{{ r.about | truncate(220) }}</a>{% endif %}{% if not r.active %} <span class="flag">неактивен</span>{% endif %}</td>
+      <td>{{ r.importer or 'няма данни' }}</td><td data-v="{{ r.gazette_year or '' }}{{ '%05d' % r.gazette_number if r.gazette_number else '' }}">{% if r.gazette_number %}бр. {{ r.gazette_number }}{% if r.gazette_year %} / {{ r.gazette_year }}{% endif %}{% else %}няма данни{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="mut">Няма актове по избраните условия.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор „Справки от Портала за обществени консултации“</a> · лиценз CC-BY · сортирането е само в показаните редове</div></section>
+</div>
+{% endblock %}

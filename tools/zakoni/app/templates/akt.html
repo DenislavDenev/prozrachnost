@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}{{ a.act_type }} № {{ a.doc_num }}{% endblock %}
+{% block main %}
+<p class="mut"><a class="l" href="/aktove">← Актове на Министерския съвет</a></p>
+{% set one = {'Постановления': 'Постановление', 'Решения': 'Решение', 'Протоколни решения': 'Протоколно решение', 'Разпореждания': 'Разпореждане', 'Протоколи': 'Протокол', 'Стенограми': 'Стенограма'} %}
+<h1>{{ one.get(a.act_type, a.act_type) }} № {{ a.doc_num }} от {{ a.accepted | date }}</h1>
+<p class="lede">{% if a.confidential %}Актът е поверителен: в данните има само че съществува.{% else %}{{ a.about }}{% endif %}</p>
+<div class="grid">
+  <section class="p s8"><h2>Данни</h2>
+    <dl class="dl">
+      <dt>Номер на документа</dt><dd>{{ a.doc_num }} (номерът без годината не е уникален; ключът е {{ a.pris_id }})</dd>
+      <dt>Вид {{ help('act_type', 'вид акт') }}</dt><dd>{{ a.act_type }}</dd>
+      <dt>Дата на издаване</dt><dd>{{ a.accepted | date }}</dd>
+      <dt>Вносител</dt><dd>{{ a.importer or 'няма данни' }}</dd>
+      <dt>Правно основание</dt><dd>{{ a.legal_reason or 'няма данни' }}</dd>
+      <dt>Протокол</dt><dd>{{ a.protocol or 'няма данни' }}</dd>
+      <dt>Държавен вестник</dt><dd>{% if a.gazette_number %}брой {{ a.gazette_number }}{% if a.gazette_year %} от {{ a.gazette_year }} г.{% endif %}{% else %}няма данни в регистъра{% endif %}</dd>
+      {% if a.institutions %}<dt>Институции</dt><dd>{{ a.institutions | map(attribute='name') | join('; ') }}</dd>{% endif %}
+      {% if a.consultation %}<dt>Обществена консултация</dt><dd><a class="l" href="/konsultacii/{{ a.consultation.reg_num }}">{{ a.consultation.reg_num }}: {{ a.consultation.name }}</a> ({{ a.consultation.opened | date }} до {{ a.consultation.closes | date }})</dd>{% endif %}
+      {% if a.bill_title %}<dt>Законопроект</dt><dd>{{ a.bill_title }}. Законопроектите са в <a class="l" href="{{ hub_url }}">Парламент</a>; тук няма сигнатура, по която да ги свържем без налучкване.</dd>{% endif %}
+      <dt>Статус в регистъра</dt><dd>{{ 'действащ запис' if a.active else 'неактивен запис' }}; регистър: {{ 'действащи' if a.origin == 'current' else 'архив (до 1988 г.)' }}</dd>
+      <dt>Първо видян при нас</dt><dd>{{ a.first_seen | date }}; последна промяна на записа {{ a.last_seen | date }}</dd>
+    </dl>
+    {% if a.tags %}<h2 class="sec">Термини</h2><p>{{ a.tags | join(' · ') }}</p>{% endif %}
+  </section>
+  <section class="p s4"><h2>Свързани актове</h2>
+    {% if a.relations %}<ul class="plain">{% for r in a.relations %}<li>{{ r.relation_type or 'Свързан' }}: {% if r.related_in_data %}<a class="l" href="/aktove/{{ r.related_pris_id }}">{{ r.act_name }}</a>{% else %}{{ r.act_name }} <span class="mut">(няма го в регистъра)</span>{% endif %}</li>{% endfor %}</ul>{% else %}<p class="mut">Регистърът не посочва свързани актове.</p>{% endif %}
+    <h2 class="sec">Източник</h2><p><a class="l" href="{{ a.source_url }}" rel="noopener">{{ a.source }}</a> · лиценз CC-BY · <a class="l" href="/aktove/{{ a.pris_id }}.json">JSON</a></p>
+    <p class="mut">Връзка към текста на акта в регистъра на Министерския съвет не се дава: адресът му не е проверен. Търсете по номера и датата.</p>
+  </section>
+  {% if a.changes %}<section class="p s12"><h2>Промени в записа</h2><p class="mut">Какво е променил източникът след първото прочитане. Историята не се презаписва.</p>
+  <table><thead><tr><th>Кога</th><th>Поле</th><th>Преди</th><th>След</th><th>Вид</th></tr></thead><tbody>{% for c in a.changes %}<tr><td>{{ c.detected_at | date }}</td><td>{{ c.field or '' }}</td><td>{{ c.old or '' }}</td><td>{{ c.new or '' }}</td><td>{{ c.cause }}</td></tr>{% endfor %}</tbody></table></section>{% endif %}
+</div>
+{% endblock %}

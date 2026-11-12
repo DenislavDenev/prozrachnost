@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help %}
+{% block title %}Консултация {{ c.reg_num }}{% endblock %}
+{% block main %}
+<p class="mut"><a class="l" href="/konsultacii">← Обществени консултации</a></p>
+<h1>{{ c.name }}</h1>
+<p class="lede">Срок от <b>{{ c.opened | date }}</b> до <b>{{ c.closes | date }}</b>: <b>{{ c.days }} {{ 'ден' if c.days == 1 else 'дни' }}</b> {{ help('days', 'срок в дни') }}.
+ {% if c.short_term_applies %}Срокът е под 30 дни {{ help('short', 'кратък срок') }}{% if c.reason_given %}; вносителят е посочил мотив.{% else %}; мотив не е посочен в данните.{% endif %}{% elif c.short_term %}Срокът е под 30 дни, но правилото за 30 дни се прилага за проекти на нормативни актове, открити от 04.11.2016 г.; индикатор не се смята.{% else %}Срокът е поне 30 дни.{% endif %}</p>
+<div class="grid">
+  <section class="p s8"><h2>Данни</h2>
+    <dl class="dl">
+      <dt>Номер</dt><dd>{{ c.reg_num }}</dd>
+      <dt>Ниво {{ help('kind', 'вид консултация') }}</dt><dd>{{ c.level }}</dd>
+      <dt>Вид акт</dt><dd>{{ c.act_type or 'няма данни' }}</dd>
+      <dt>Област на политика</dt><dd>{{ c.policy_area }}{% if c.archived_area %} <span class="mut">(архивна област)</span>{% endif %}</dd>
+      <dt>Институция</dt><dd>{{ c.institution_name or 'няма данни' }}{% if c.municipality %} · <a class="l" href="/konsultacii?municipality={{ c.municipality_id }}">{{ c.municipality }}, {{ c.oblast }}</a>{% endif %}</dd>
+      <dt>Коментари</dt><dd>{{ c.comment_count }} (текстовете и авторите им не се пазят тук)</dd>
+      {% if c.short_term_reason %}<dt>Мотив за кратък срок {{ help('reason', 'мотив') }}</dt><dd>{{ c.short_term_reason }}</dd>{% endif %}
+      {% if c.law_name %}<dt>Закон</dt><dd>{{ c.law_name }}</dd>{% endif %}
+      {% if c.act %}<dt>Приетият акт</dt><dd><a class="l" href="/aktove/{{ c.act.pris_id }}">{{ c.act.act_type }} № {{ c.act.doc_num }} от {{ c.act.accepted | date }}</a></dd>{% endif %}
+      {% for x in c.acts %}{% if not c.act or x.pris_id != c.act.pris_id %}<dt>Акт, който я посочва</dt><dd><a class="l" href="/aktove/{{ x.pris_id }}">{{ x.act_type }} № {{ x.doc_num }} от {{ x.accepted | date }}</a></dd>{% endif %}{% endfor %}
+      <dt>Първо видяна при нас</dt><dd>{{ c.first_seen | date }}</dd>
+    </dl>
+    {% if c.description_plain %}<h2 class="sec">Описание</h2><div class="prose">{% for para in c.description_plain.split('\n') %}<p>{{ para }}</p>{% endfor %}</div>{% endif %}
+  </section>
+  <section class="p s4"><h2>Документи на портала</h2>
+    {% if c.files %}<ul class="plain">{% for f in c.files %}<li>{{ f.kind }}{% if f.doc_date %} ({{ f.doc_date | date }}){% endif %}: <a class="l" href="{{ f.link }}" rel="noopener">отвори ↗</a></li>{% endfor %}</ul>{% else %}<p class="mut">Порталът не публикува документи към тази консултация.</p>{% endif %}
+    <h2 class="sec">Източник</h2><p><a class="l" href="{{ c.source_url }}" rel="noopener">Консултацията на strategy.bg ↗</a></p><p><a class="l" href="{{ source_url }}" rel="noopener">{{ c.source }}</a> · лиценз CC-BY · <a class="l" href="/konsultacii/{{ c.reg_num }}.json">JSON</a></p>
+  </section>
+</div>
+{% endblock %}

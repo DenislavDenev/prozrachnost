@@ -12,7 +12,8 @@ INSERT INTO gold.act (pris_id, doc_num, accepted, year, act_type, about, about_o
 SELECT a.pris_id, a.doc_num, a.accepted, extract(year FROM a.accepted)::smallint, a.legal_act_type, a.about, a.about_raw,
        a.legal_reason, a.importer, a.protocol,
        (SELECT c.reg_num FROM silver.consultation c WHERE c.valid_to IS NULL AND c.reg_num = a.public_consultation_number),
-       a.gazette_number, a.gazette_year, a.active, a.confidential, a.origin,
+       CASE WHEN abs(a.gazette_year - extract(year FROM a.accepted)) <= 1 THEN a.gazette_number END,
+       CASE WHEN abs(a.gazette_year - extract(year FROM a.accepted)) <= 1 THEN a.gazette_year END, a.active, a.confidential, a.origin,
        (SELECT array_agg(t.tag ORDER BY t.ord) FROM silver.pris_tag t WHERE t.pris_id = a.pris_id AND t.valid_to IS NULL),
        (SELECT count(*) FROM silver.pris_related r WHERE r.pris_id = a.pris_id AND r.valid_to IS NULL),
        'data.egov.bg, АМС', 'https://data.egov.bg/data/view/18da0fff-79b2-45c6-a9af-1509df96261b', a.raw_sha256,
@@ -25,7 +26,7 @@ SELECT DISTINCT i.pris_id, i.institution_id, i.name FROM silver.pris_institution
 INSERT INTO gold.act_relation
 SELECT r.pris_id, r.ord, r.relation_type, r.related_pris_id, EXISTS (SELECT 1 FROM gold.act x WHERE x.pris_id = r.related_pris_id),
        r.act_type, r.act_name
-FROM silver.pris_related r JOIN gold.act a USING (pris_id) WHERE r.valid_to IS NULL;
+FROM silver.pris_related r JOIN gold.act a USING (pris_id) WHERE r.valid_to IS NULL AND r.related_pris_id <> r.pris_id;
 
 INSERT INTO gold.consultation
 SELECT c.reg_num, split_part(c.reg_num, '-', 1)::int, c.name, c.description, c.consultation_type, c.act_type, c.date_open,
@@ -80,5 +81,9 @@ FROM silver.strategy_doc x JOIN gold.strategy_doc s USING (doc_key) WHERE x.vali
 INSERT INTO gold.unmatched (build_id, tbl, key, field, value, reason)
 SELECT %(build)s, 'impact_contract', i.ic_key, 'eik', NULL, 'няма ЕИК (физическо лице или липсва)' FROM gold.impact_contract i WHERE i.eik IS NULL;
 INSERT INTO gold.unmatched (build_id, tbl, key, field, value, reason)
-SELECT %(build)s, 'act', a.pris_id::text, 'gazette_year', s.gazette_year_raw, 'годината на ДВ не се определя'
-FROM silver.pris_act s JOIN gold.act a USING (pris_id) WHERE s.valid_to IS NULL AND s.gazette_year_raw IS NOT NULL AND s.gazette_year IS NULL;
+SELECT %(build)s, 'act', a.pris_id::text, 'gazette', coalesce(s.gazette_number::text, '') || ' / ' || coalesce(s.gazette_year_raw, ''),
+       'годината на ДВ не се определя или не е около годината на акта (' || extract(year FROM a.accepted)::int || '): броят и годината не се показват'
+FROM silver.pris_act s JOIN gold.act a USING (pris_id) WHERE s.valid_to IS NULL AND (s.gazette_number IS NOT NULL OR s.gazette_year_raw IS NOT NULL) AND a.gazette_year IS NULL;
+INSERT INTO gold.unmatched (build_id, tbl, key, field, value, reason)
+SELECT %(build)s, 'act_relation', r.pris_id::text, 'related_pris_id', r.related_pris_id::text, 'актът е посочен като свързан със себе си: връзката не се показва'
+FROM silver.pris_related r JOIN gold.act a USING (pris_id) WHERE r.valid_to IS NULL AND r.related_pris_id = r.pris_id;
