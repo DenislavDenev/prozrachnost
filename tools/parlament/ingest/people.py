@@ -20,11 +20,11 @@ KINDS = {1: "събрание", 2: "група", 3: "комисия", 4: "вре
 
 
 def assemblies(conn):
-    """db/ref/assemblies.csv into live.assembly; rows the API refined keep the API's dates."""
+    """db/ref/assemblies.csv into parlament.assembly; rows the API refined keep the API's dates."""
     with open(ROOT / "db" / "ref" / "assemblies.csv", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     for r in rows:
-        conn.execute("""INSERT INTO live.assembly (no, kind, name, start, "end") VALUES (%s,%s,%s,%s,%s)
+        conn.execute("""INSERT INTO parlament.assembly (no, kind, name, start, "end") VALUES (%s,%s,%s,%s,%s)
                         ON CONFLICT (no) DO UPDATE SET kind = EXCLUDED.kind, name = EXCLUDED.name
                         """, (int(r["no"]), r["kind"], r["name"], r["start"], r["end"] or None))
     date_sittings(conn)
@@ -41,7 +41,7 @@ def people(conn, stats_, get=None, everyone=False):
     current = max(n for _, n in known)
     read, empty, problems = 0, 0, []
     for api_id, no in sorted(known, key=lambda x: x[1]):
-        conn.execute("UPDATE live.assembly SET api_id = %s WHERE no = %s", (api_id, no))
+        conn.execute("UPDATE parlament.assembly SET api_id = %s WHERE no = %s", (api_id, no))
         ref = f"assembly/{no}"
         try:
             if no != current:            # the current one answers 500 here; its bodies come with the memberships
@@ -49,15 +49,15 @@ def people(conn, stats_, get=None, everyone=False):
                 a = parse.archive(raw)
                 with conn.transaction():
                     save_raw(conn, ref, f"archive-{api_id}.json", raw)
-                    conn.execute("""UPDATE live.assembly SET start = %s, "end" = %s WHERE no = %s""", (a["start"], a["end"], no))
+                    conn.execute("""UPDATE parlament.assembly SET start = %s, "end" = %s WHERE no = %s""", (a["start"], a["end"], no))
                     for b in a["bodies"]:
-                        conn.execute("""INSERT INTO live.body VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET
+                        conn.execute("""INSERT INTO parlament.body VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET
                                         assembly = EXCLUDED.assembly, kind = EXCLUDED.kind, name = EXCLUDED.name, since = EXCLUDED.since,
                                         until = EXCLUDED.until, n_start = EXCLUDED.n_start, n_end = EXCLUDED.n_end, n_total = EXCLUDED.n_total""",
                                      (b["id"], no, b["kind"], b["name"], b["since"], b["until"], b["n_start"], b["n_end"], b["n_total"]))
             raw = get(f"{API}/fn-mps/bg/{api_id}")
             ids = parse.mps(raw)
-            have = {i for i, in conn.execute("SELECT id FROM live.profile WHERE assembly = %s", (no,))}
+            have = {i for i, in conn.execute("SELECT id FROM parlament.profile WHERE assembly = %s", (no,))}
             for pid in ids:
                 if pid in have and no != current and not everyone:
                     continue
@@ -77,8 +77,8 @@ def people(conn, stats_, get=None, everyone=False):
     date_sittings(conn)
     linked = link(conn)
     # the roll calls and the stenograms get the profiles; what the pages read is built again
-    stats.link_speakers(conn, assemblies=[n for n, in conn.execute("SELECT DISTINCT assembly FROM live.profile")])
-    voted = [n for n, in conn.execute("SELECT DISTINCT assembly FROM live.sitting WHERE iv_sha IS NOT NULL")]
+    stats.link_speakers(conn, assemblies=[n for n, in conn.execute("SELECT DISTINCT assembly FROM parlament.profile")])
+    voted = [n for n, in conn.execute("SELECT DISTINCT assembly FROM parlament.sitting WHERE iv_sha IS NOT NULL")]
     if voted:
         stats.rebuild(conn, voted)
     stats.link_bodies(conn)
@@ -91,32 +91,32 @@ def profile(conn, assembly, pid, get):
     p = parse.profile(raw)
     if p["id"] != pid:
         raise parse.ShapeError(f"asked for profile {pid}, got {p['id']}")
-    past = [n for n, in conn.execute("SELECT no FROM live.assembly WHERE api_id = ANY(%s)", (p["past"],))]
+    past = [n for n, in conn.execute("SELECT no FROM parlament.assembly WHERE api_id = ANY(%s)", (p["past"],))]
     with conn.transaction():
         save_raw(conn, f"profile/{pid}", f"mp-profile-{pid}.json", raw)
-        conn.execute("""INSERT INTO live.profile (id, assembly, name, district, list, profession, languages) VALUES (%s,%s,%s,%s,%s,%s,%s)
+        conn.execute("""INSERT INTO parlament.profile (id, assembly, name, district, list, profession, languages) VALUES (%s,%s,%s,%s,%s,%s,%s)
                         ON CONFLICT (id) DO UPDATE SET assembly = EXCLUDED.assembly, name = EXCLUDED.name, district = EXCLUDED.district,
                         list = EXCLUDED.list, profession = EXCLUDED.profession, languages = EXCLUDED.languages, read_at = now()""",
                      (pid, assembly, p["name"], p["district"], p["list"], p["profession"], p["languages"]))
-        conn.execute("DELETE FROM live.profile_past WHERE profile = %s", (pid,))
+        conn.execute("DELETE FROM parlament.profile_past WHERE profile = %s", (pid,))
         for n in past:
-            conn.execute("INSERT INTO live.profile_past VALUES (%s,%s) ON CONFLICT DO NOTHING", (pid, n))
-        conn.execute("DELETE FROM live.membership WHERE profile = %s", (pid,))
+            conn.execute("INSERT INTO parlament.profile_past VALUES (%s,%s) ON CONFLICT DO NOTHING", (pid, n))
+        conn.execute("DELETE FROM parlament.membership WHERE profile = %s", (pid,))
         for m in p["memberships"]:
-            conn.execute("INSERT INTO live.membership VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
+            conn.execute("INSERT INTO parlament.membership VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
                          (m["id"], pid, m["body"], m["body_name"], m["body_kind"], m["role"], m["since"], m["until"]))
-            conn.execute("""INSERT INTO live.body (id, assembly, kind, name) VALUES (%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING""",
+            conn.execute("""INSERT INTO parlament.body (id, assembly, kind, name) VALUES (%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING""",
                          (m["body"], assembly, KINDS.get(m["body_kind"]), m["body_name"]))
 
 
 def link(conn):
-    """live.profile.person: the smallest profile id of the same person. Two profiles are one person where the later
+    """parlament.profile.person: the smallest profile id of the same person. Two profiles are one person where the later
     one lists the earlier assembly and the full name is there once. -> the number of people."""
-    edges = conn.execute("""SELECT pp.profile, min(o.id) FROM live.profile_past pp
-                            JOIN live.profile p ON p.id = pp.profile
-                            JOIN live.profile o ON o.assembly = pp.assembly AND o.name = p.name
+    edges = conn.execute("""SELECT pp.profile, min(o.id) FROM parlament.profile_past pp
+                            JOIN parlament.profile p ON p.id = pp.profile
+                            JOIN parlament.profile o ON o.assembly = pp.assembly AND o.name = p.name
                             GROUP BY pp.profile, pp.assembly HAVING count(*) = 1""").fetchall()
-    boss = {i: i for i, in conn.execute("SELECT id FROM live.profile")}
+    boss = {i: i for i, in conn.execute("SELECT id FROM parlament.profile")}
 
     def root(x):
         while boss[x] != x:
@@ -132,7 +132,7 @@ def link(conn):
         with conn.cursor().copy("COPY person_of FROM STDIN") as cp:
             for i in boss:
                 cp.write_row((i, root(i)))
-        conn.execute("""UPDATE live.profile p SET person = x.person FROM person_of x
+        conn.execute("""UPDATE parlament.profile p SET person = x.person FROM person_of x
                         WHERE x.id = p.id AND p.person IS DISTINCT FROM x.person""")
     return len({root(i) for i in boss})
 
@@ -142,9 +142,9 @@ def absences(conn, stats_, get=None):
     get = get or http.post
     new = {}
     for ref, url, parser, table, cols in (
-            ("absences", f"{API}/mp-absense/bg", parse.absences, "live.absence",
+            ("absences", f"{API}/mp-absense/bg", parse.absences, "parlament.absence",
              ("id", "date", "profile", "name", "body", "body_name", "kind")),
-            ("penalties", f"{API}/mp-penalty", parse.penalties, "live.penalty",
+            ("penalties", f"{API}/mp-penalty", parse.penalties, "parlament.penalty",
              ("id", "date", "profile", "name", "kind", "note", "by", "what"))):
         raw = get(url, json.dumps({}).encode())
         rows = parser(raw)
