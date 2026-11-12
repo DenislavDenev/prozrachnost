@@ -545,13 +545,15 @@ def freshness(conn, tool):
     and steps whose last run failed."""
     problems = []
     for title, last_ok in conn.execute('SELECT title_bg, last_ok_at FROM ops.freshness WHERE tool = %s AND is_stale ORDER BY source', (tool,)):
-        problems.append(f'{title}: ' + ('няма успешно четене' if last_ok is None else f'последно успешно четене {last_ok:%d.%m.%Y %H:%M} UTC'))
+        # a timestamptz comes back in the time zone of the session: the time is written in UTC, as the text says
+        problems.append(f'{title}: ' + ('няма успешно четене' if last_ok is None
+                                        else f'последно успешно четене {last_ok.astimezone(dt.timezone.utc):%d.%m.%Y %H:%M} UTC'))
     # a hold is a problem once the source has had its chance to confirm it: a day for a source read daily,
     # longer for one read weekly (ops.source.hold_alert_after)
     for source, ref, reason, first_at in conn.execute('''SELECT h.source, h.ref, h.reason, h.first_at
             FROM ops.hold h JOIN ops.source s USING (tool, source)
             WHERE h.tool = %s AND h.first_at < now() - s.hold_alert_after ORDER BY h.first_at''', (tool,)):
-        problems.append(f'{source} {ref}: задържан от {first_at:%d.%m.%Y} ({reason})')
+        problems.append(f'{source} {ref}: задържан от {first_at.astimezone(dt.timezone.utc):%d.%m.%Y} ({reason})')
     for title, expected, actual in conn.execute('''SELECT title_bg, expected, actual FROM ops.check_latest
             WHERE tool = %s AND gating AND ok = false ORDER BY name''', (tool,)):
         problems.append(f'{title}: очаквано {expected}, получено {actual}')
