@@ -1,0 +1,72 @@
+# The datasets and the source of Парламент. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# The names of the MPs and of the officials who speak are there in their public role (personal_data = public-role;
+# the decision for every column is in tools/danni/db/persons.toml).
+
+[[dataset]]
+dataset = "parlament.votes"
+title_bg = "Поименни гласувания в Народното събрание"
+description_bg = "Всяка регистрация и всяко гласуване от юли 2009 г., по парламентарни групи и по депутати, сверени помежду си; линията на всяка група и участието на всеки депутат."
+source_org = "Народно събрание"
+source_url = "https://www.parliament.bg/bg/plenaryst"
+channel = "site-json"
+licence = "не е посочен (публична информация на държавен орган, по LICENCES.md)"
+personal_data = "public-role"
+cadence = "ежедневно"
+tables = ["parlament.sitting", "parlament.item", "parlament.item_group", "parlament.mp", "parlament.vote", "parlament.line", "parlament.mp_stat", "pub_parlament.sitting", "pub_parlament.item", "pub_parlament.item_group", "pub_parlament.mp", "pub_parlament.vote", "pub_parlament.line", "pub_parlament.mp_stat"]
+
+[[dataset]]
+dataset = "parlament.people"
+title_bg = "Народните събрания и депутатите"
+description_bg = "Всички събрания от 1879 г.; от 39-о групите, комисиите и делегациите с датите, профилите на депутатите с членствата им и същият депутат в различните събрания; сегашният списък; официалните отсъствия и наказанията."
+source_org = "Народно събрание"
+source_url = "https://www.parliament.bg/bg/MP"
+channel = "site-json"
+licence = "не е посочен (публична информация на държавен орган, по LICENCES.md)"
+personal_data = "public-role"
+cadence = "седмично; отсъствията ежедневно"
+tables = ["parlament.assembly", "parlament.body", "parlament.profile", "parlament.profile_past", "parlament.membership", "parlament.roster", "parlament.absence", "parlament.penalty", "pub_parlament.assembly", "pub_parlament.body", "pub_parlament.profile", "pub_parlament.membership", "pub_parlament.absence", "pub_parlament.penalty"]
+
+[[dataset]]
+dataset = "parlament.stenograms"
+title_bg = "Стенограмите на пленарните заседания"
+description_bg = "Стенограмата на всяко заседание от 1992 г., разделена по изказвания, с името и ролята на изказалия се; видеото от 2010 г.; сканираните стенограми преди 1992 г."
+source_org = "Народно събрание"
+source_url = "https://www.parliament.bg/bg/plenaryst"
+channel = "site-json"
+licence = "не е посочен (публична информация на държавен орган, по LICENCES.md)"
+personal_data = "public-role"
+cadence = "ежедневно"
+tables = ["parlament.speech", "pub_parlament.speech"]
+
+[[dataset]]
+dataset = "parlament.bills"
+title_bg = "Законопроектите от 2001 г."
+description_bg = "Вносителите, комисиите, етапите, обнародването и гласуванията в зала по всеки законопроект."
+source_org = "Народно събрание"
+source_url = "https://www.parliament.bg/bg/bills"
+channel = "site-json"
+licence = "не е посочен (публична информация на държавен орган, по LICENCES.md)"
+personal_data = "public-role"
+cadence = "ежедневно"
+tables = ["parlament.bill", "parlament.bill_sponsor", "parlament.bill_committee", "parlament.bill_step", "parlament.bill_item", "pub_parlament.bill", "pub_parlament.bill_sponsor", "pub_parlament.bill_committee", "pub_parlament.bill_step", "pub_parlament.bill_item"]
+
+[[dataset]]
+dataset = "parlament.reads"
+title_bg = "Четенето на източника"
+description_bg = "Кога е прочетен всеки ресурс на parliament.bg, с какъв резултат и защо е отказан."
+source_org = "Прозрачност"
+channel = "derived"
+licence = "следва наборите на Парламент"
+cadence = "при всяко четене"
+tables = ["parlament_src.read_state", "pub_parlament.read_state"]
+
+[[source]]
+source = "parliament"
+title_bg = "Народно събрание: API-то и файловете на parliament.bg"
+url = "https://www.parliament.bg/api/v1/"
+channel = "site-json"
+dataset = "parlament.votes"
+cadence = "ежедневно"
+# a smaller answer waits for a second read a day later; it is a problem after two days (as before the move)
+hold_alert_after = "2 days"

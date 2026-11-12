@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-S, T = "tests/test_sources.py", "tests/test_store.py"
+S, T, M, P = "tests/test_sources.py", "tests/test_store.py", "tests/test_move.py", "tests/test_pages.py"
 
 MUTATIONS = [
     ("a vote is counted by group", "ingest/parse.py",
@@ -64,7 +64,7 @@ MUTATIONS = [
      "AND (v.code = '+') <> (l.line = '+')),", "AND v.code <> l.line),",
      f"{T}::test_two_sittings_are_written_checked_and_counted"),
     ("the constituency only by a unique name", "ingest/stats.py",
-     "              AND (SELECT count(*) FROM live.roster x WHERE x.assembly = r.assembly AND x.name = r.name) = 1\n", "",
+     "              AND (SELECT count(*) FROM parlament.roster x WHERE x.assembly = r.assembly AND x.name = r.name) = 1\n", "",
      f"{T}::test_the_roster_gives_the_constituency_only_by_a_unique_full_name"),
     ("a sheet is read as the CSV it was exported from", "ingest/parse.py",
      "str(int(v)) if isinstance(v, float) and v.is_integer() else", "",
@@ -112,6 +112,18 @@ MUTATIONS = [
     ("a late sitting is reported", "ingest/checks.py",
      '        if status == "held":\n            continue', "        continue",
      f"{T}::test_an_empty_file_is_no_roll_call_and_a_late_sitting_is_reported_for_a_week"),
+    ("a speech of someone who is not an MP has no key, in the serving layer", "db/migrations/0002_serving.sql",
+     "  CONSTRAINT speech_profile_only_mp_ck CHECK (profile IS NULL OR", "  CONSTRAINT speech_profile_only_mp_ck CHECK (true OR",
+     f"{P}::test_a_name_of_someone_who_is_not_an_mp_has_no_key"),
+    ("the lines and the statistics are built at the move, not copied", "ingest/move.py",
+     "    stats.rebuild(conn, voted)\n", "",
+     f"{M}::test_the_old_database_is_replayed_built_and_proved_equal"),
+    ("parity compares the content, not only the count", "ingest/move.py",
+     "            if a != b:", "            if a[0] != b[0]:",
+     f"{M}::test_parity_finds_a_changed_vote_a_missing_speech_and_a_changed_result"),
+    ("the pages wait for a publication", "app/main.py",
+     "        response.headers[\"X-Publication\"] = str(snap.publication[0])", "        pass",
+     f"{P}::test_the_pages_read_the_serving_layer_only_and_say_its_version"),
 ]
 
 
@@ -132,8 +144,10 @@ def main():
     survived = 0
     for name, path, old, new, tests in MUTATIONS:
         with tempfile.TemporaryDirectory() as tmp:
-            copy = Path(tmp) / "t"
+            copy = Path(tmp) / "parlament"
             shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".data"))
+            # the tests need the foundation beside the tool
+            shutil.copytree(ROOT.parent / "danni", Path(tmp) / "danni", ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache"))
             f = copy / path
             src = f.read_text(encoding="utf-8")
             assert src.count(old) == 1, f"{name}: the code to break is not found once in {path}"

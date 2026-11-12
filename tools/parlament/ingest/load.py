@@ -10,32 +10,24 @@ import datetime as dt
 import hashlib
 import urllib.parse
 
-from . import db, http, parse, stats
-from .config import API, RAW, SITE
+from . import db, http, parse, pipeline, stats
+from .config import API, RAW, SITE, TOOL
 
 SOURCE = "parliament"
 CONFIRM_AFTER = dt.timedelta(days=1)
 
 
 def save_raw(conn, ref, name, raw):
-    """Keep an answer under raw/<date>/, unless it is the same as the last one of this ref."""
-    sha = hashlib.sha256(raw).hexdigest()
-    last = conn.execute("SELECT sha256 FROM ops.raw_file WHERE source = %s AND ref = %s ORDER BY id DESC LIMIT 1",
-                        (SOURCE, ref)).fetchone()
-    if not last or last[0] != sha:
-        path = RAW / str(dt.date.today()) / f"{sha[:12]}-{name}"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(raw)
-        conn.execute("INSERT INTO ops.raw_file (source, ref, path, sha256, bytes) VALUES (%s,%s,%s,%s,%s)",
-                     (SOURCE, ref, str(path), sha, len(raw)))
-    return sha
+    """Keep an answer under raw/<sha256[:2]>/<sha256>-<name> (once for the same content) and record the read in
+    ops.raw_file and ops.fetch. -> its sha256."""
+    return pipeline.save_raw(conn, db.current(), SOURCE, ref, raw, RAW, name=name).sha256
 
 
 def state(conn, ref, **kw):
-    """Upsert ops.source_state; `now` in a value means the current time."""
+    """Upsert parlament_src.read_state; `now` in a value means the current time."""
     cols = ["last_read", *kw]
     vals = ["now()", *("now()" if v == "now" else "%s" for v in kw.values())]
-    conn.execute(f"""INSERT INTO ops.source_state (source, ref, {', '.join(cols)}) VALUES (%s, %s, {', '.join(vals)})
+    conn.execute(f"""INSERT INTO parlament_src.read_state (source, ref, {', '.join(cols)}) VALUES (%s, %s, {', '.join(vals)})
                      ON CONFLICT (source, ref) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in cols)}""",
                  (SOURCE, ref, *(v for v in kw.values() if v != "now")))
 
@@ -51,7 +43,7 @@ def roster(conn, stats_, get=None):
     with conn.transaction():
         save_raw(conn, "roster", "coll-list-ns.json", raw)
         old = {r[0]: r[1:] for r in conn.execute(
-            "SELECT profile, name, grp_name, district, since FROM live.roster WHERE assembly = %s", (got["assembly"],))}
+            "SELECT profile, name, grp_name, district, since FROM parlament.roster WHERE assembly = %s", (got["assembly"],))}
         for m in got["mps"]:
             new = (m["name"], m["group"], m["district"], m["since"])
             if old.get(m["profile"]) == new:
@@ -62,7 +54,7 @@ def roster(conn, stats_, get=None):
                         db.log_change(conn, SOURCE, f"roster/{got['assembly']}/{m['profile']}", f, a, b, "rewritten")
             elif old:
                 db.log_change(conn, SOURCE, f"roster/{got['assembly']}/{m['profile']}", None, None, m["name"], "new-record")
-            conn.execute("""INSERT INTO live.roster VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (assembly, profile)
+            conn.execute("""INSERT INTO parlament.roster VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (assembly, profile)
                             DO UPDATE SET name = EXCLUDED.name, grp_name = EXCLUDED.grp_name, district = EXCLUDED.district,
                             since = EXCLUDED.since""", (got["assembly"], m["profile"], *new))
         state(conn, "roster", status="ok", error=None, last_ok="now", rows=len(got["mps"]))
@@ -73,19 +65,21 @@ def roster(conn, stats_, get=None):
 # ---------- the sittings ----------
 
 def hold(conn, ref, sha, rows, old, new):
-    """The smaller answer waits: True while it must (first seen, or seen less than CONFIRM_AFTER ago), False when a
-    later read gave the same (then it replaces ours, logged as confirmed)."""
-    held = conn.execute("SELECT sha256, first_at <= now() - %s FROM ops.held WHERE source = %s AND ref = %s",
-                        (CONFIRM_AFTER, SOURCE, ref)).fetchone()
+    """The smaller answer waits in ops.hold: True while it must (first seen, or seen less than CONFIRM_AFTER ago), False
+    when a later read gave the same (then it replaces ours, logged as confirmed)."""
+    held = conn.execute("SELECT content_sha256, first_at <= now() - %s FROM ops.hold WHERE tool = %s AND source = %s AND ref = %s",
+                        (CONFIRM_AFTER, TOOL, SOURCE, ref)).fetchone()
     if not held or held[0] != sha:
-        conn.execute("""INSERT INTO ops.held (source, ref, sha256, rows) VALUES (%s,%s,%s,%s) ON CONFLICT (source, ref)
-                        DO UPDATE SET sha256 = EXCLUDED.sha256, rows = EXCLUDED.rows, first_at = now()""", (SOURCE, ref, sha, rows))
+        conn.execute("""INSERT INTO ops.hold (tool, source, ref, content_sha256, rows, reason, first_at) VALUES (%s,%s,%s,%s,%s,%s,now())
+                        ON CONFLICT (tool, source, ref) DO UPDATE SET content_sha256 = EXCLUDED.content_sha256, rows = EXCLUDED.rows,
+                        reason = EXCLUDED.reason, first_at = now()""",
+                     (TOOL, SOURCE, ref, sha, rows, f"новото четене има {new}, пазеното {old}"))
         db.log_change(conn, SOURCE, ref, "rows", old, new, "held")
         return True
     if not held[1]:
         return True
     db.log_change(conn, SOURCE, ref, "rows", old, new, "confirmed")
-    conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
+    conn.execute("DELETE FROM ops.hold WHERE tool = %s AND source = %s AND ref = %s", (TOOL, SOURCE, ref))
     return False
 
 
@@ -102,7 +96,7 @@ def load(conn, stats_, first=None, get=None, today=None):
     get = get or http.get
     today = today or dt.date.today()
     if first is None:
-        last = conn.execute("SELECT max(date) FROM live.sitting WHERE iv_sha IS NOT NULL").fetchone()[0]
+        last = conn.execute("SELECT max(date) FROM parlament.sitting WHERE iv_sha IS NOT NULL").fetchone()[0]
         last = last or today
         first = (last.year - (last.month == 1), 12 if last.month == 1 else last.month - 1)
     out, problems, touched = {}, [], set()
@@ -129,7 +123,7 @@ def load(conn, stats_, first=None, get=None, today=None):
                 touched.add(assembly)
             # a sitting the source cannot answer is a problem while it is recent; the old ones are known (/sources)
             if got == "invalid" or got == "no-answer" and day >= today - dt.timedelta(days=60):
-                err = conn.execute("SELECT error FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()
+                err = conn.execute("SELECT error FROM parlament_src.read_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()
                 problems.append(f"Парламент: заседание {sid}: {err[0]}")
     if touched:
         stats.rebuild(conn, sorted(touched))
@@ -142,7 +136,7 @@ def recheck(conn, stats_, get=None):
     every assembly its groups' one code and rebuild what the pages read."""
     get = get or http.get
     out, problems, touched = {}, [], set()
-    for sid, in conn.execute("""SELECT substr(ref, 6)::int FROM ops.source_state WHERE source = %s AND ref ~ '^sten/[0-9]+$'
+    for sid, in conn.execute("""SELECT substr(ref, 6)::int FROM parlament_src.read_state WHERE source = %s AND ref ~ '^sten/[0-9]+$'
                                 AND status IN ('invalid', 'no-files') ORDER BY 1""", (SOURCE,)).fetchall():
         try:
             got, assembly = sitting(conn, sid, get)
@@ -155,8 +149,8 @@ def recheck(conn, stats_, get=None):
         out[got] = out.get(got, 0) + 1
         if got == "invalid":
             problems.append(f"Парламент: заседание {sid}: " + conn.execute(
-                "SELECT error FROM ops.source_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()[0])
-    everyone = [a for a, in conn.execute("SELECT DISTINCT assembly FROM live.sitting ORDER BY 1")]
+                "SELECT error FROM parlament_src.read_state WHERE source = %s AND ref = %s", (SOURCE, f"sten/{sid}")).fetchone()[0])
+    everyone = [a for a, in conn.execute("SELECT DISTINCT assembly FROM parlament.sitting ORDER BY 1")]
     stats.rebuild(conn, everyone)
     stats_.update(sittings=out, rebuilt=everyone, problems=problems)
     return stats_
@@ -165,7 +159,7 @@ def recheck(conn, stats_, get=None):
 def sitting(conn, sid, get):
     """Read one sitting, its stenogram and its vote files. -> (outcome of the votes, assembly): stored | unchanged |
     no-votes (the sitting has no vote file: before 07.2009, or none published) | no-files (vote files, none readable) |
-    held | invalid (the files do not add up; the reason is in ops.source_state). The stenogram is written apart
+    held | invalid (the files do not add up; the reason is in parlament_src.read_state). The stenogram is written apart
     (steno()), whatever the votes are.
 
     Every CSV of the sitting is read and told apart by its content (parse.kind), not its name. The day is the
@@ -180,13 +174,13 @@ def sitting(conn, sid, get):
         raise parse.ShapeError(f"asked for sitting {sid}, got {s['id']}")
     with conn.transaction():
         save_raw(conn, ref, "pl-sten.json", raw)
-        conn.execute("""INSERT INTO live.sitting (id, date, assembly, heading, video, pdf) VALUES (%s,%s,%s,%s,%s,%s)
-                        ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, assembly = coalesce(EXCLUDED.assembly, live.sitting.assembly),
+        conn.execute("""INSERT INTO parlament.sitting (id, date, assembly, heading, video, pdf) VALUES (%s,%s,%s,%s,%s,%s)
+                        ON CONFLICT (id) DO UPDATE SET date = EXCLUDED.date, assembly = coalesce(EXCLUDED.assembly, parlament.sitting.assembly),
                         heading = EXCLUDED.heading, video = EXCLUDED.video, pdf = EXCLUDED.pdf""",
                      (sid, s["date"], s["assembly"], s["heading"], s["video"] or None, s["pdf"]))
         if s["assembly"] is None:
             date_sittings(conn)
-        assembly = conn.execute("SELECT assembly FROM live.sitting WHERE id = %s", (sid,)).fetchone()[0]
+        assembly = conn.execute("SELECT assembly FROM parlament.sitting WHERE id = %s", (sid,)).fetchone()[0]
     why = []
     try:
         with conn.transaction():
@@ -225,7 +219,7 @@ def sitting(conn, sid, get):
     tried = []
     for gsha, (gpath, gv) in found["gv"].items():
         for isha, (ipath, iv) in found["iv"].items():
-            if conn.execute("SELECT 1 FROM live.sitting WHERE id = %s AND gv_sha = %s AND iv_sha = %s", (sid, gsha, isha)).fetchone():
+            if conn.execute("SELECT 1 FROM parlament.sitting WHERE id = %s AND gv_sha = %s AND iv_sha = %s", (sid, gsha, isha)).fetchone():
                 state(conn, ref, status="ok", error=None, last_ok="now")
                 return "unchanged", s["assembly"]
             items = parse.groups(gv)
@@ -247,15 +241,15 @@ def sitting(conn, sid, get):
     with conn.transaction():
         save_raw(conn, f"{ref}/gv", s["gv"].rsplit("/", 1)[-1], gv)
         save_raw(conn, f"{ref}/iv", s["iv"].rsplit("/", 1)[-1], iv)
-        n_items, n_votes = conn.execute("""SELECT (SELECT count(*) FROM live.item WHERE sitting = %s),
-                                                  (SELECT count(*) FROM live.vote WHERE sitting = %s)""", (sid, sid)).fetchone()
+        n_items, n_votes = conn.execute("""SELECT (SELECT count(*) FROM parlament.item WHERE sitting = %s),
+                                                  (SELECT count(*) FROM parlament.vote WHERE sitting = %s)""", (sid, sid)).fetchone()
         if (len(items) < n_items or len(votes) < n_votes) and hold(conn, ref, held_sha, len(votes), n_votes, len(votes)):
             state(conn, ref, status="held", error=f"новите файлове имат {len(items)} точки и {len(votes)} гласа, "
                                                    f"пазените {n_items} и {n_votes}")
             return "held", s["assembly"]
-        conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
+        conn.execute("DELETE FROM ops.hold WHERE tool = %s AND source = %s AND ref = %s", (TOOL, SOURCE, ref))
         write(conn, sid, s["assembly"], items, votes, notes, logged=n_votes > 0)
-        conn.execute("UPDATE live.sitting SET gv = %s, iv = %s, gv_sha = %s, iv_sha = %s, note = %s WHERE id = %s",
+        conn.execute("UPDATE parlament.sitting SET gv = %s, iv = %s, gv_sha = %s, iv_sha = %s, note = %s WHERE id = %s",
                      (gpath, ipath, gsha, isha, note, sid))
         state(conn, ref, status="ok", error=None, last_ok="now", last_change="now", rows=len(votes))
     return "stored", s["assembly"]
@@ -266,39 +260,39 @@ def write(conn, sid, assembly, items, votes, notes, logged):
     `notes` {item: text}: where the roll call differs a little from the file by group (parse.check)."""
     old = {}
     if logged:
-        old = {(i, mp): c for i, mp, c in conn.execute("SELECT item, mp, code FROM live.vote WHERE sitting = %s", (sid,))}
+        old = {(i, mp): c for i, mp, c in conn.execute("SELECT item, mp, code FROM parlament.vote WHERE sitting = %s", (sid,))}
         new = {(item, no): code for no, _, _, item, code in votes}
         for k in sorted(old.keys() | new.keys()):
             if old.get(k) != new.get(k):
                 db.log_change(conn, SOURCE, f"sten/{sid}/{k[0]}/{k[1]}", "code", old.get(k), new.get(k),
                               "rewritten" if k in old and k in new else "new-record" if k in new else "removed")
-    conn.execute("DELETE FROM live.item WHERE sitting = %s", (sid,))
-    with conn.cursor().copy("COPY live.item (sitting, no, kind, at, topic, yes, no_, abstain, voted, present, listed, mismatch) FROM STDIN") as cp:
+    conn.execute("DELETE FROM parlament.item WHERE sitting = %s", (sid,))
+    with conn.cursor().copy("COPY parlament.item (sitting, no, kind, at, topic, yes, no_, abstain, voted, present, listed, mismatch) FROM STDIN") as cp:
         for no, it in sorted(items.items()):
             counts = (*it["total"], None, None) if it["kind"] == "vote" else (None, None, None, None, *it["total"])
             cp.write_row((sid, no, it["kind"], it["at"], it["topic"], *counts, notes.get(no)))
-    with conn.cursor().copy("COPY live.item_group (sitting, no, grp, yes, no_, abstain, voted, present, listed) FROM STDIN") as cp:
+    with conn.cursor().copy("COPY parlament.item_group (sitting, no, grp, yes, no_, abstain, voted, present, listed) FROM STDIN") as cp:
         for no, it in sorted(items.items()):
             for g, c in it["groups"].items():
                 c = c or (None,) * (4 if it["kind"] == "vote" else 2)   # an empty row in the file by group: no numbers
                 cp.write_row((sid, no, g, *((*c, None, None) if it["kind"] == "vote" else (None, None, None, None, *c))))
     names = {no: name for no, name, *_ in votes}
-    was = dict(conn.execute("SELECT no, name FROM live.mp WHERE assembly = %s AND no = ANY(%s)", (assembly, list(names))))
+    was = dict(conn.execute("SELECT no, name FROM parlament.mp WHERE assembly = %s AND no = ANY(%s)", (assembly, list(names))))
     for no, name in names.items():
         if was.get(no) == name:
             continue
         if no in was:
             db.log_change(conn, SOURCE, f"mp/{assembly}/{no}", "name", was[no], name, "rewritten")
-        conn.execute("""INSERT INTO live.mp VALUES (%s,%s,%s) ON CONFLICT (assembly, no) DO UPDATE SET name = EXCLUDED.name""",
+        conn.execute("""INSERT INTO parlament.mp VALUES (%s,%s,%s) ON CONFLICT (assembly, no) DO UPDATE SET name = EXCLUDED.name""",
                      (assembly, no, name))
-    with conn.cursor().copy("COPY live.vote (sitting, item, mp, grp, code) FROM STDIN") as cp:
+    with conn.cursor().copy("COPY parlament.vote (sitting, item, mp, grp, code) FROM STDIN") as cp:
         for no, _, g, item, code in votes:
             cp.write_row((sid, item, no, g, code))
 
 
 def date_sittings(conn):
     """The assembly of a sitting whose heading does not name it (before 2009): the last one begun by its day."""
-    conn.execute("""UPDATE live.sitting s SET assembly = (SELECT a.no FROM live.assembly a WHERE a.start <= s.date
+    conn.execute("""UPDATE parlament.sitting s SET assembly = (SELECT a.no FROM parlament.assembly a WHERE a.start <= s.date
                                                            ORDER BY a.start DESC LIMIT 1)
                     WHERE s.assembly IS NULL""")
 
@@ -310,8 +304,8 @@ def steno(conn, sid, assembly, body):
     if not sp:
         return None
     sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    old_sha, old_n = conn.execute("""SELECT steno_sha, (SELECT count(*) FROM live.speech WHERE sitting = %s)
-                                     FROM live.sitting WHERE id = %s""", (sid, sid)).fetchone()
+    old_sha, old_n = conn.execute("""SELECT steno_sha, (SELECT count(*) FROM parlament.speech WHERE sitting = %s)
+                                     FROM parlament.sitting WHERE id = %s""", (sid, sid)).fetchone()
     if old_sha == sha:
         return "unchanged"
     ref = f"sten/{sid}/text"
@@ -319,11 +313,11 @@ def steno(conn, sid, assembly, body):
         return "held"
     if old_sha:
         db.log_change(conn, SOURCE, ref, "speeches", old_n, len(sp), "rewritten")
-    conn.execute("DELETE FROM live.speech WHERE sitting = %s", (sid,))
-    with conn.cursor().copy("COPY live.speech (sitting, no, role, name, note, grp, text) FROM STDIN") as cp:
+    conn.execute("DELETE FROM parlament.speech WHERE sitting = %s", (sid,))
+    with conn.cursor().copy("COPY parlament.speech (sitting, no, role, name, note, grp, text) FROM STDIN") as cp:
         for x in sp:
             cp.write_row((sid, x["no"], x["role"], x["name"], x["note"], x["grp"], x["text"]))
-    conn.execute("UPDATE live.sitting SET steno_sha = %s WHERE id = %s", (sha, sid))
+    conn.execute("UPDATE parlament.sitting SET steno_sha = %s WHERE id = %s", (sha, sid))
     stats.link_speakers(conn, sitting=sid)
     return "stored"
 
@@ -331,8 +325,8 @@ def steno(conn, sid, assembly, body):
 def pdfs(conn, stats_, get=None, limit=0):
     """Archive the scanned stenograms (before 1992) we have not archived: they are the only record of those sittings."""
     get = get or http.get
-    todo = conn.execute("""SELECT s.id, s.pdf FROM live.sitting s WHERE s.pdf IS NOT NULL AND NOT EXISTS
-                             (SELECT 1 FROM ops.raw_file r WHERE r.source = %s AND r.ref = 'sten/' || s.id || '/pdf')
+    todo = conn.execute("""SELECT s.id, s.pdf FROM parlament.sitting s WHERE s.pdf IS NOT NULL AND NOT EXISTS
+                             (SELECT 1 FROM ops.fetch f WHERE f.tool = 'parlament' AND f.source = %s AND f.ref = 'sten/' || s.id || '/pdf')
                            ORDER BY s.date""" + (" LIMIT %s" % int(limit) if limit else ""), (SOURCE,)).fetchall()
     n, size, problems = 0, 0, []
     for sid, path in todo:

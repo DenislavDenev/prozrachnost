@@ -1,0 +1,1 @@
+SELECT s.source, s.ref, s.last_read, s.last_ok, s.last_change, s.status, s.error, s.rows, h.first_at FROM parlament_src.read_state s LEFT JOIN ops.hold h ON h.tool = 'parlament' AND h.source = s.source AND h.ref = s.ref

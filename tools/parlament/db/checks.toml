@@ -1,0 +1,338 @@
+# The quality rules of Парламент. Each query returns one row: expected, actual. They run after every step that writes,
+# so they are cheap: the files of a sitting are checked against each other before anything of it is written
+# (ingest/parse.check), and the database itself refuses a key of an MP on a speech of someone who is not one
+# (constraint speech_profile_only_mp_ck).
+
+[[check]]
+name = "sitting_has_an_assembly"
+title_bg = "Всяко заседание е на събрание"
+kind = "not_null"
+sql = "SELECT 0, count(*) FROM parlament.sitting WHERE assembly IS NULL"
+
+[[check]]
+name = "votes_have_their_files"
+title_bg = "Заседание с гласувания има прочетените си файлове"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM parlament.sitting s WHERE s.iv_sha IS NULL AND EXISTS (SELECT FROM parlament.item i WHERE i.sitting = s.id)"
+
+[[check]]
+name = "every_mp_has_statistics"
+title_bg = "Всеки депутат от поименното гласуване има статистика"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM parlament.mp), (SELECT count(*) FROM parlament.mp_stat)"
+
+[[check]]
+name = "every_vote_has_group_lines"
+title_bg = "Гласувания с поименни гласове в група, но без линия на нито една група (последните 60 дни)"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM parlament.item i JOIN parlament.sitting s ON s.id = i.sitting WHERE s.date >= current_date - 60 AND i.kind = 'vote' AND EXISTS (SELECT FROM parlament.vote v WHERE v.sitting = i.sitting AND v.item = i.no AND v.grp NOT IN ('НЕЗ', 'НЕЧЛ')) AND NOT EXISTS (SELECT FROM parlament.line l WHERE l.sitting = i.sitting AND l.item = i.no)"
+
+[[check]]
+name = "profile_of_a_speech_exists"
+title_bg = "Профилът на изказване е профил на депутат"
+kind = "fk"
+sql = "SELECT 0, count(*) FROM (SELECT DISTINCT profile FROM parlament.speech WHERE profile IS NOT NULL) x WHERE NOT EXISTS (SELECT FROM parlament.profile p WHERE p.id = x.profile)"
+
+# the serving layer, judged inside the transaction of the publication
+[[check]]
+name = "published_votes"
+title_bg = "Публикуваните поименни гласове са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM parlament.vote), (SELECT count(*) FROM pub_parlament.vote)"
+
+[[check]]
+name = "published_speeches"
+title_bg = "Публикуваните изказвания са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM parlament.speech), (SELECT count(*) FROM pub_parlament.speech)"
+
+[[check]]
+name = "published_results"
+title_bg = "Публикуваният сбор на гласовете „за“ е сборът в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT COALESCE(sum(yes), 0) FROM parlament.item), (SELECT COALESCE(sum(yes), 0) FROM pub_parlament.item)"
+
+[[check]]
+name = "published_people"
+title_bg = "Публикуваните профили на депутати са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM parlament.profile), (SELECT count(*) FROM pub_parlament.profile)"
+
+# The move from the tool's own database to the shared one: the step `parity` records these. They are the evidence of
+# the move, not a daily gate.
+
+[[check]]
+name = "parity_assembly_rows"
+title_bg = "Брой редове, assembly: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_assembly_rows"
+title_bg = "Брой редове, assembly: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_sitting_rows"
+title_bg = "Брой редове, sitting: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_sitting_rows"
+title_bg = "Брой редове, sitting: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_item_rows"
+title_bg = "Брой редове, item: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_item_rows"
+title_bg = "Брой редове, item: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_item_group_rows"
+title_bg = "Брой редове, item_group: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_item_group_rows"
+title_bg = "Брой редове, item_group: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_mp_rows"
+title_bg = "Брой редове, mp: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_mp_rows"
+title_bg = "Брой редове, mp: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_vote_rows"
+title_bg = "Брой редове, vote: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_vote_rows"
+title_bg = "Брой редове, vote: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_roster_rows"
+title_bg = "Брой редове, roster: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_body_rows"
+title_bg = "Брой редове, body: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_body_rows"
+title_bg = "Брой редове, body: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_profile_rows"
+title_bg = "Брой редове, profile: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_profile_rows"
+title_bg = "Брой редове, profile: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_profile_past_rows"
+title_bg = "Брой редове, profile_past: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_membership_rows"
+title_bg = "Брой редове, membership: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_membership_rows"
+title_bg = "Брой редове, membership: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_absence_rows"
+title_bg = "Брой редове, absence: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_absence_rows"
+title_bg = "Брой редове, absence: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_penalty_rows"
+title_bg = "Брой редове, penalty: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_penalty_rows"
+title_bg = "Брой редове, penalty: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_speech_rows"
+title_bg = "Брой редове, speech: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_speech_rows"
+title_bg = "Брой редове, speech: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_bill_rows"
+title_bg = "Брой редове, bill: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_bill_rows"
+title_bg = "Брой редове, bill: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_bill_sponsor_rows"
+title_bg = "Брой редове, bill_sponsor: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_bill_sponsor_rows"
+title_bg = "Брой редове, bill_sponsor: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_bill_committee_rows"
+title_bg = "Брой редове, bill_committee: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_bill_committee_rows"
+title_bg = "Брой редове, bill_committee: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_bill_step_rows"
+title_bg = "Брой редове, bill_step: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_bill_step_rows"
+title_bg = "Брой редове, bill_step: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_bill_item_rows"
+title_bg = "Брой редове, bill_item: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_bill_item_rows"
+title_bg = "Брой редове, bill_item: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_line_rows"
+title_bg = "Брой редове, line: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_line_rows"
+title_bg = "Брой редове, line: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_mp_stat_rows"
+title_bg = "Брой редове, mp_stat: старата база срещу чистата таблица"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_mp_stat_rows"
+title_bg = "Брой редове, mp_stat: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_read_state_rows"
+title_bg = "Брой редове, състоянието на четенето: старата база срещу приемната зона"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_pub_read_state_rows"
+title_bg = "Брой редове, състоянието на четенето: старата база срещу слоя за показване"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_ledger_runs_rows"
+title_bg = "Брой редове, пусканията: старата база срещу ops.run"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_ledger_changes_rows"
+title_bg = "Брой редове, дневникът на промените: старата база срещу ops.change_log"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_ledger_reads_rows"
+title_bg = "Брой редове, суровите файлове: старата база срещу ops.fetch"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_differ"
+title_bg = "Таблици и събрания, в които старата и общата база се различават по брой или по съдържание"
+kind = "parity"
+gating = false

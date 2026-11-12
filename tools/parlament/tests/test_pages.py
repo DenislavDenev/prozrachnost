@@ -1,7 +1,8 @@
 """Every page rendered through the app, on an empty database and on two real sittings (AGENTS 4): a template error is a
 500 for everyone, "няма данни" is never a 0, and every value in the lede is bold (AGENTS 7).
 
-Runs only when PARLAMENT_TEST_DSN points at a disposable database (it is wiped).
+Runs only when PARLAMENT_TEST_DSN points at a disposable database (it is wiped). The pages read the serving layer
+pub_parlament only, so every test publishes what it loaded.
 """
 import os
 import re
@@ -20,11 +21,9 @@ MORE = ["/zasedaniya?g=2026", "/zasedaniya?ns=52", "/zasedanie/11159", "/zasedan
         "/zakonoproekt/167546"]
 
 
-def wipe():
-    from ingest import db
-    with db.connect(autocommit=True) as c:
-        c.execute("DROP SCHEMA IF EXISTS live, ops CASCADE; DROP TABLE IF EXISTS public.schema_migrations")
-        db.migrate(c)
+def publish(conn):
+    from ingest import run
+    assert run.publish(conn) == []
 
 
 @pytest.fixture
@@ -35,21 +34,19 @@ def client():
 
 
 @pytest.fixture
-def loaded(tmp_path, monkeypatch):
-    from ingest import db, load
-    from tests.test_store import Source, run
-    monkeypatch.setattr(load, "RAW", tmp_path / "raw")
-    wipe()
-    from tests.test_store import FX, everyone
+def loaded(conn):
+    """The two real sittings, the people and the bills, published: the pages read the serving layer only."""
+    from tests.test_store import FX, Source, everyone, run
     src = Source()
     src.files["pl-sten/11159"] = (FX / "sten-310726-text.json").read_bytes()
-    with db.connect(autocommit=True) as c:
-        run(c, src)
-        everyone(c, src)
+    run(conn, src)
+    everyone(conn, src)
+    publish(conn)
+    return conn
 
 
-def test_every_page_renders_on_an_empty_database(client):
-    wipe()
+def test_every_page_renders_on_an_empty_database(client, conn):
+    publish(conn)
     for path in [p for p in PAGES if "ns=" not in p]:
         r = client.get(path)
         assert r.status_code == 200, path
@@ -148,3 +145,31 @@ def test_the_bill_page_and_its_link_from_the_vote(client, loaded):
     assert "Министерския съвет" in html and "Позицията на групите" in html and "/glasuvane/11174/2" in html
     assert 'href="/zakonoproekt/167546"' in client.get("/glasuvane/11174/2").text
     assert client.get("/zakonoproekt/1").status_code == 404
+
+
+def test_the_pages_read_the_serving_layer_only_and_say_its_version(client, loaded):
+    """No query of the app names the ingest side; every answer says the publication it is of, and the number moves only
+    when a publication changes something."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "app" / "main.py").read_text(encoding="utf-8")
+    assert not re.search(r"(parlament|parlament_src|ops|core|live)\.", src)
+    first = client.get("/glasuvane/11174/2")
+    n = int(first.headers["X-Publication"])
+    assert first.headers["ETag"] == f'W/"pub-{n}"' and "Last-Modified" in first.headers
+    publish(loaded)                                                                  # nothing changed: no new number
+    assert client.get("/").headers["X-Publication"] == str(n)
+    loaded.execute("UPDATE parlament.item SET topic = 'друга тема' WHERE sitting = 11174 AND no = 2")
+    assert "друга тема" not in client.get("/glasuvane/11174/2").text              # not before it is published
+    publish(loaded)
+    after = client.get("/glasuvane/11174/2")
+    assert int(after.headers["X-Publication"]) > n and "друга тема" in after.text
+
+
+def test_a_name_of_someone_who_is_not_an_mp_has_no_key(loaded):
+    """A minister, the president or a guest who speaks keeps the name the stenogram gives, never a profile: the database
+    refuses it on both sides."""
+    import psycopg
+    for schema in ("parlament", "pub_parlament"):
+        with pytest.raises(psycopg.errors.CheckViolation):
+            with loaded.transaction():
+                loaded.execute(f"UPDATE {schema}.speech SET role = 'министър', profile = 5237 WHERE sitting = 11159 AND no = 3")
