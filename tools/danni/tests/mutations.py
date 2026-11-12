@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = [
+    ('freshness-in-session-zone', 'pipeline.py', '{last_ok.astimezone(dt.timezone.utc):%d.%m.%Y %H:%M}', '{last_ok:%d.%m.%Y %H:%M}',
+     'tests/test_pipeline.py::test_the_times_of_freshness_are_in_utc_whatever_the_session_zone'),
     ('hold-delay', 'pipeline.py', 'now - held[1] < hold:', 'now - held[1] < hold * 0:',
      'tests/test_pipeline.py::test_smaller_answer_is_held_until_the_same_comes_a_day_later'),
     ('hold-missing-keys', 'pipeline.py', 'if missing:', 'if False:',

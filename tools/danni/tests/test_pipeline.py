@@ -246,6 +246,21 @@ def test_stale_source_is_a_problem(demo):
     assert pipeline.freshness(demo, 'demo')[0].startswith('Списък: последно успешно четене')
 
 
+def test_the_times_of_freshness_are_in_utc_whatever_the_session_zone(demo):
+    """The server of Прозрачност runs in Europe/Sofia: a timestamptz comes back in local time, the text says UTC."""
+    at = dt.datetime(2026, 10, 1, 22, 45, tzinfo=dt.timezone.utc)   # 02.10.2026 01:45 in Sofia (summer time)
+    load(demo, ROWS, now=at)
+    load(demo, {'a': ROWS['a']}, now=at)
+    demo.execute("UPDATE ops.hold SET first_at = %s", (at,))
+    demo.execute("SET TIME ZONE 'Europe/Sofia'")
+    try:
+        problems = pipeline.freshness(demo, 'demo')
+    finally:
+        demo.execute('SET TIME ZONE DEFAULT')
+    assert 'Списък: последно успешно четене 01.10.2026 22:45 UTC' in problems
+    assert any(p.startswith('list x: задържан от 01.10.2026') for p in problems), problems
+
+
 def test_registry_sync_and_only_the_licence_list_opens_a_dataset(demo, tmp_path):
     (tmp_path / 'db').mkdir()
     (tmp_path / 'db' / 'datasets.toml').write_text('''
