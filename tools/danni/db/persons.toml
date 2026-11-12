@@ -363,3 +363,126 @@ kind = "not-a-person"
 shown_as = "full"
 decided_on = 2026-11-11
 basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+# Парламент (the move into the shared database, 13.11.2026). Every name is of a member of parliament or of an
+# official in the plenary, as the Assembly's own files name them. The serving layer keeps the Assembly's number of
+# an MP's profile, which is the source's identifier; a person who is not an MP has none.
+
+[[person]]
+column = "parlament.mp.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.mp.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "parlament.mp_stat.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.mp_stat.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "parlament.roster.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of the current assembly (decision 1); public office; not in the serving layer"
+
+[[person]]
+column = "parlament.profile.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the profile of a member of parliament on parliament.bg, with the Assembly's number of the profile (decision 1); public office; no date or place of birth, phone, e-mail or photo is kept"
+
+[[person]]
+column = "pub_parlament.profile.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the profile of a member of parliament on parliament.bg, with the Assembly's number of the profile (decision 1); public office"
+
+[[person]]
+column = "parlament.absence.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of official absences (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.absence.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of official absences (decision 1); public office"
+
+[[person]]
+column = "parlament.penalty.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of penalties by the chair (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.penalty.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of penalties by the chair (decision 1); public office"
+
+[[person]]
+column = "parlament.penalty.by_name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the chair of the sitting who imposed the penalty, as the Assembly's list names them (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.penalty.by_name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the chair of the sitting who imposed the penalty, as the Assembly's list names them (decision 1); public office"
+
+[[person]]
+column = "parlament.bill_sponsor.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the sponsor of a bill as the Assembly lists them: a member of parliament or the Council of Ministers (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.bill_sponsor.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the sponsor of a bill as the Assembly lists them: a member of parliament or the Council of Ministers (decision 1); public office"
+
+[[person]]
+column = "parlament.speech.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "who has the floor in the plenary, as the official stenogram names them: a member of parliament, or an official given the floor in that role (minister, president, ombudsman, prosecutor general; checked 13.11.2026 on 924 450 speeches). Only a speech of an MP has a profile; anyone else gets no key (constraint speech_profile_only_mp_ck). A name inside the text of a speech is not caught"
+
+[[person]]
+column = "pub_parlament.speech.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "who has the floor in the plenary, as the official stenogram names them: a member of parliament, or an official given the floor in that role (minister, president, ombudsman, prosecutor general; checked 13.11.2026 on 924 450 speeches). Only a speech of an MP has a profile; anyone else gets no key (constraint speech_profile_only_mp_ck). A name inside the text of a speech is not caught"

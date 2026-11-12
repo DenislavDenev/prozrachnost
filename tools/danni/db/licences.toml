@@ -174,3 +174,37 @@ dataset = "kontrol.archive"
 checked_on = 2026-11-11
 display = true
 note = "derived from the three datasets of Контрол (the state of each read, the versions, the documents); follows them"
+
+# Парламент (the move into the shared database, 13.11.2026). LICENCES.md: parliament.bg states no licence on the pages
+# read; public information of a state body: shown with a link to the source, not handed out until the review by chapter
+# four of ЗДОИ.
+
+[[licence]]
+dataset = "parlament.votes"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.people"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.stenograms"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.bills"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.reads"
+checked_on = 2026-11-13
+display = true
+note = "derived from the reads of parliament.bg (the time and the result of each read); follows the datasets of Парламент"
