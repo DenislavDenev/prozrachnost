@@ -103,3 +103,35 @@ def test_a_part_inside_a_sub_point_is_never_added_to_the_points():
     assert parts and sum(r.cells[0][2] for r in parts) > 0
     d = {r.scope: r for r in checks.point_sums(b, "types")}
     assert d["1."].got == d["1."].expected
+
+
+def test_a_general_directorate_with_a_block_of_its_own_is_counted_once():
+    """In 2021 and 2020 the directorates have a block each (and none in 2024): they must not be added once from their block and
+    again from the table by structures (that gave 68 825 instead of 67 310 on the real 2021 answer)."""
+    bl, st = blocks(h.D), blocks(h.B)[0]
+    c_reg, c_sol = checks.col_of(bl[0], "reg"), checks.col_of(bl[0], "solved")
+    s_reg, s_sol = checks.col_of(st, "reg"), checks.col_of(st, "solved")
+    for row in [r for r in st.rows if r.text.startswith("ГД")]:
+        b = copy.deepcopy(bl[0])
+        b.structure = row.text
+        t = next(r for r in b.rows if r.total)
+        t.cells = [(c, str(checks.value(row, s_reg if c == c_reg else s_sol)), checks.value(row, s_reg if c == c_reg else s_sol), False) if c in (c_reg, c_sol) else x
+                   for x in t.cells for c in [x[0]]]
+        bl.append(b)
+    res = checks.blocks_vs_structures(bl, st, resolve)
+    assert len(res) == 2 * (28 + 3 + 2) and all(r.status == checks.OK for r in res), [r for r in res if r.status != checks.OK]
+
+
+def test_a_known_difference_of_the_original_is_marked_source_and_any_other_number_still_differs():
+    """db/ref/source_differences.csv records the exact numbers of a difference that is in the original (resource, check, scope,
+    expected, got). The check is not switched off: the same check with other numbers is still a difference."""
+    known = checks.known_differences()
+    key = next(k for k in known if k[1] == "structures_sum" and k[2] == "reg")
+    uri, _, _, want, got = key
+    assert (want, got) == (73111, 72714) and known[key].startswith("таблицата по структури повтаря реда на Търговище")
+    same = checks.apply_known([checks.Result("structures_sum", "reg", want, got, checks.DIFFERS, True)], uri, known)
+    assert same[0].status == checks.SOURCE and same[0].detail.startswith("разлика в оригинала:")
+    other = checks.apply_known([checks.Result("structures_sum", "reg", want, got + 1, checks.DIFFERS, True)], uri, known)
+    assert other[0].status == checks.DIFFERS
+    other = checks.apply_known([checks.Result("structures_sum", "reg", want, got, checks.DIFFERS, True)], "another-resource", known)
+    assert other[0].status == checks.DIFFERS

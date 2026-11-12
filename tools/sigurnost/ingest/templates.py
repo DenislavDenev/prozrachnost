@@ -1,17 +1,17 @@
-"""Which table is this? Found from the header rows, never from the name: all 25 resources of a "Полицейска статистика" set
-carry one name.
+"""Which table is this, and what does each column mean? Found from the header rows, never from the name: all 25 resources of a
+"Полицейска статистика" set carry one name.
 
-A family is a kind of table this tool publishes (gold). The title lines, the label of the second column and the labels of the
-value columns, as sheet.py assembles them, must all match; a table whose title says it is of a family but whose columns do
-not match is a TemplateError (the resource is marked invalid and the problem is reported). A table that matches no family
-stays in silver as it is (the other 20 kinds of table of a set are offered as raw tables).
+A family is a kind of table this tool publishes (gold). The kind comes from the title lines, the label of the second column and
+the number of blocks. Each value column gets its indicator from the *meaning* of its label (not from its position, not from
+the exact words: the Ministry has printed the same table with long prefixed headings in 2016-2020, with a comma for a dot,
+with two columns swapped in 2023). Every column must be understood and the set of indicators must be one the family has;
+otherwise TemplateError and the resource is marked invalid. The `template_id` is a fingerprint of the family and the
+normalised labels: tables with the same id are comparable across years, a different id is a break in the series even when
+the meaning is the same (the dialect of the heading changed).
 """
 import hashlib
 import re
 
-from . import sheet
-
-# indicator codes are listed in db/migrations/0002_gold.sql (gold.indicator)
 FAMILIES = {
     "types": "Регистрирани и разкрити, по видове престъпления (против личността и собствеността), страната",
     "structures": "Регистрирани и разкрити, по структури на МВР (против личността и собствеността)",
@@ -20,52 +20,13 @@ FAMILIES = {
     "econ_by_structure": "Икономически престъпления по видове, структура след структура",
 }
 
-_AB = [(2, "reg"), (3, "reg_unknown"), (4, "per100k"), (5, "solved"), (6, "clearance"), (7, "solved_unknown"),
-       (8, "share_solved_unknown"), (9, "share_unknown_solved")]
-_AB_LABELS = [
-    "общ брой регистрирани престъпления",
-    "от тях с неизвестен извършител",
-    "брой на 100 хил. души",
-    "общ брой",
-    "% на разкриваемост спрямо общия брой регистрирани престъпления",
-    "брой на разкритите престъпления с неизвестентен извършител",
-    "% спрямо общо разкритите престъпления",
-    "% спрямо регистрираните престъпления с неизвестен извършител",
-]
-_C = [(2, "reg"), (3, "reg_attempts"), (4, "per100k"), (5, "solved"), (6, "clearance"), (7, "persons"), (8, "persons_women"),
-      (9, "persons_minors"), (10, "persons_foreigners")]
-_C_LABELS = [
-    "регистрирани престъпления през текущата година общ брой",
-    "от тях опити",
-    "брой на 100 хил. души",
-    "престъпления от регистрираните през текущата година общ брой",
-    "% на разкриваемост",
-    "по разкритите престъпления, общ брой",
-    "регистрирани през текущата година жени",
-    "от тях: непълнолетни (14-17 г.)",
-    "чужденци",
-]
-_D = [(2, "reg"), (3, "per100k"), (4, "solved"), (5, "clearance"), (6, "persons"), (7, "persons_women"), (8, "persons_minors"),
-      (9, "persons_foreigners"), (10, "solved_prev"), (11, "persons_prev")]
-_D_LABELS = [
-    "регистрирани престъпления през текущата година общ брой",
-    "брой на 100 хил, души",
-    "разкрити престъпления от регистрираните през текущата година общ брой",
-    "% на разкриваемост",
-    "установени извършители по разкритите престъпления, общ брой",
-    "регистрирани през текущата година жени",
-    "от тях: непълнолетни (14-17 г.)",
-    "чужденци",
-    "регистрирани в предишни години и разкрити през текущата. установени извършители разкрити престъпления",
-    "установени извършители",
-]
-
-SPECS = {
-    "types": (_AB, _AB_LABELS),
-    "structures": (_AB, _AB_LABELS),
-    "main": (_C, _C_LABELS),
-    "types_by_structure": (_D, _D_LABELS),
-    "econ_by_structure": (_D, _D_LABELS),
+AB = {"reg", "reg_unknown", "per100k", "solved", "clearance", "solved_unknown", "share_solved_unknown", "share_unknown_solved"}
+C = {"reg", "reg_attempts", "per100k", "solved", "clearance", "persons", "persons_women", "persons_minors", "persons_foreigners"}
+D = {"reg", "per100k", "solved", "clearance", "persons", "persons_women", "persons_minors", "persons_foreigners", "solved_prev", "persons_prev"}
+ALLOWED = {
+    "types": [AB], "structures": [AB],
+    "main": [C, C | {"solved_prev", "persons_prev"}],
+    "types_by_structure": [D], "econ_by_structure": [D],
 }
 
 
@@ -74,26 +35,77 @@ class TemplateError(Exception):
 
 
 def norm(s):
-    return re.sub(r"\s+", " ", s.lower()).strip()
+    """Lower case, dots and commas removed (the Ministry prints "г." and "г," for the same thing), one space."""
+    return re.sub(r"\s+", " ", re.sub(r"[.,;*]", "", s.lower().replace("текушата", "текущата"))).strip()
 
 
-def _title(sh):
-    return norm(sh.title)
+def classify(label):
+    """The indicator a column label means, or None. The rules are ordered: the specific ones first."""
+    s = norm(label)
+    if "разкриваемост" in s:
+        return "clearance"
+    if "%" in s:
+        return "share_unknown_solved" if "спрямо регистр" in s else "share_solved_unknown" if "спрямо общо" in s else None
+    if "на 100 хил" in s:
+        return "per100k"
+    if "опити" in s:
+        return "reg_attempts"
+    if "непълнолетни" in s:
+        return "persons_minors"
+    if "чужденци" in s:
+        return "persons_foreigners"
+    if s.endswith("жени"):
+        return "persons_women"
+    if "предишни години" in s:
+        return "persons_prev" if s.startswith("установени извършители") else "solved_prev"
+    if s == "установени извършители":
+        return "persons_prev"
+    if "неизвестен" in s:
+        return "solved_unknown" if "разкрит" in s else "reg_unknown"
+    if "установени извършители" in s or "по разкритите престъпления" in s:
+        return "persons"
+    if "от регистрираните" in s or "разкрит" in s:
+        return "solved" if "общ брой" in s else None
+    if "общ брой" in s:
+        return "solved" if s == "общ брой" else "reg"
+    return None
 
 
-def family_of(sh):
+def column_map(fam, columns):
+    """{col_no: indicator} for the value columns [(col_no, label)], or TemplateError."""
+    got = {c: classify(lab) for c, lab in columns}
+    unknown = [(c, lab) for c, lab in columns if got[c] is None]
+    if unknown:
+        raise TemplateError(f"{fam}: колона без разпознат смисъл: {unknown[0]}")
+    inds = list(got.values())
+    if len(set(inds)) != len(inds):
+        dup = sorted({i for i in inds if inds.count(i) > 1})
+        raise TemplateError(f"{fam}: два пъти един показател: {dup}")
+    if set(inds) not in ALLOWED[fam]:
+        want = min(ALLOWED[fam], key=lambda a: len(a ^ set(inds)))
+        raise TemplateError(f"{fam}: показателите не са на таблицата: липсват {sorted(want - set(inds))}, излишни {sorted(set(inds) - want)}")
+    return got
+
+
+def _is_ab(b):
+    """The table by types / by structures: eight value columns with the unknown-offender parts and the clearance."""
+    labels = " | ".join(norm(lab) for _, lab in b.columns)
+    return len(b.columns) == 8 and "неизвестен" in labels
+
+
+def family_of(sh, set_kind="police"):
     """The family by the header, or None when the table is of a kind that is not published as a family. Raises
-    TemplateError when the title is of a family but the columns are not."""
-    if sh.kind != "table":
+    TemplateError when the title is of a family but the columns are not understood. Only the sets "Полицейска статистика"
+    have families; the old set of 2014-2015 stays in silver as it is."""
+    if sh.kind != "table" or set_kind != "police":
         return None
     b = sh.blocks[0]
-    title, dim = _title(sh), norm(b.dimension)
+    title, dim = norm(sh.title), norm(b.dimension)
     fam = None
-    if "основна таблица" in title:
+    if "основна таблица" in title or dim.startswith("наказуеми деяния"):
         fam = "main"
-    elif ("регистрирани и разкрити престъпления против личността и собствеността на гражданите разкрити престъпления по регистрираните през текущата година" in title
-          and len(sh.blocks) == 1):
-        fam = "types" if dim.startswith("видове престъпления") else "structures" if dim.startswith("области") else None
+    elif len(sh.blocks) == 1 and dim.startswith(("видове престъпления", "области")) and _is_ab(b):
+        fam = "types" if dim.startswith("видове престъпления") else "structures"
     elif len(sh.blocks) > 1:
         # structure after structure: the title lines say nothing, the first rows tell the kinds apart
         first = next((norm(r.text) for r in b.rows if not r.total), "")
@@ -103,21 +115,15 @@ def family_of(sh):
             fam = "econ_by_structure"
     if fam is None:
         return None
-    labels = SPECS[fam][1]
-    got = [norm(lab) for _, lab in b.columns]
-    if got != labels:
-        bad = [(i, g, w) for i, (g, w) in enumerate(zip(got, labels)) if g != w]
-        raise TemplateError(f"{fam}: {len(got)} колони вместо {len(labels)}" if len(got) != len(labels) else f"{fam}: непознати заглавия на колони: {bad[:2]}")
+    column_map(fam, b.columns)
     return fam
 
 
 def template_id(sh, fam):
-    """A short fingerprint of the family and its column labels: tables with the same id are comparable across years, a
-    new id is a break in the series."""
     b = sh.blocks[0]
     key = fam + "|" + "|".join(norm(lab) for _, lab in b.columns)
     return fam + "-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:8]
 
 
-def indicators(fam):
-    return dict(SPECS[fam][0])
+def indicators(fam, columns):
+    return column_map(fam, columns)

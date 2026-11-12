@@ -38,12 +38,37 @@ class Result:
         return None if self.expected is None or self.got is None else self.got - self.expected
 
 
+def known_differences():
+    """db/ref/source_differences.csv: a difference that is in the original, proven by a resource and the exact numbers of the
+    check. Such a result is published and marked `source` (the check is not switched off: any other number is still a failure)."""
+    import csv
+    with open(config.ROOT / "db/ref/source_differences.csv", encoding="utf-8", newline="") as f:
+        return {(r["resource_uri"], r["check_id"], r["scope"], Decimal(r["expected"] or "NaN"), Decimal(r["got"] or "NaN")): r["note"] for r in csv.DictReader(f)}
+
+
+def isolated():
+    """db/ref/isolated.csv: tables kept in silver and left out of gold, each with the reason."""
+    import csv
+    with open(config.ROOT / "db/ref/isolated.csv", encoding="utf-8", newline="") as f:
+        return {r["resource_uri"]: r for r in csv.DictReader(f)}
+
+
+def apply_known(results, resource_uri, known):
+    for r in results:
+        if r.status == DIFFERS and r.expected is not None and r.got is not None:
+            note = known.get((resource_uri, r.check_id, r.scope, r.expected, r.got))
+            if note:
+                r.status, r.detail = SOURCE, "разлика в оригинала: " + note
+    return results
+
+
 def _res(check_id, scope, expected, got, gating, detail=""):
     return Result(check_id, scope, expected, got, OK if expected == got else (DIFFERS if gating else SOURCE), gating, detail)
 
 
-def col_of(fam, ind):
-    return next(c for c, i in templates.SPECS[fam][0] if i == ind)
+def col_of(block, ind):
+    """The column of the block whose label means `ind` (the position differs between the Ministry's templates)."""
+    return next(c for c, lab in block.columns if templates.classify(lab) == ind)
 
 
 def value(row, col):
@@ -64,7 +89,7 @@ def structures_sum(block, fam="structures"):
         return [Result("structures_sum", "total", None, None, DIFFERS, True, "няма ред Общ брой")]
     out = []
     for ind in ("reg", "reg_unknown", "solved", "solved_unknown"):
-        c = col_of(fam, ind)
+        c = col_of(block, ind)
         got = sum((value(r, c) or 0 for r in block.rows if not r.total), Decimal(0))
         out.append(_res("structures_sum", ind, value(tot, c), got, True))
     return out
@@ -75,7 +100,7 @@ def types_vs_structures(types_block, structures_block):
     a, b = total_row(types_block), total_row(structures_block)
     out = []
     for ind in ("reg", "reg_unknown", "solved", "solved_unknown"):
-        out.append(_res("types_vs_structures", ind, value(b, col_of("structures", ind)), value(a, col_of("types", ind)), True))
+        out.append(_res("types_vs_structures", ind, value(b, col_of(structures_block, ind)), value(a, col_of(types_block, ind)), True))
     return out
 
 
@@ -93,7 +118,7 @@ def blocks_vs_structures(blocks, structures_block, resolve, fam="types_by_struct
             continue
         by[code] = b
     for ind, sind in (("reg", "reg"), ("solved", "solved")):
-        c, sc = col_of(fam, ind), col_of("structures", sind)
+        c, sc = col_of(blocks[0], ind), col_of(structures_block, sind)
         oblast_sum = Decimal(0)
         for code, b in by.items():
             t = total_row(b)
@@ -103,9 +128,9 @@ def blocks_vs_structures(blocks, structures_block, resolve, fam="types_by_struct
             row = rows.get(code)
             out.append(_res("blocks_vs_structures", f"{ind}:{code}", value(row, sc) if row else None, value(t, c), True))
         if "BG" in by:
-            gd = sum((value(r, sc) or 0 for code, r in rows.items() if code.startswith("GD-")), Decimal(0))
+            gd = sum((value(r, sc) or 0 for code, r in rows.items() if code.startswith("GD-") and code not in by), Decimal(0))
             national = value(total_row(by["BG"]), c)
-            out.append(_res("blocks_vs_structures", f"{ind}:BG", national, oblast_sum + gd, True, "областите и ГД без блок"))
+            out.append(_res("blocks_vs_structures", f"{ind}:BG", national, oblast_sum + gd, True, "областите и ГД (с блок или само в таблицата по структури)"))
             tot = total_row(structures_block)
             out.append(_res("blocks_vs_structures", f"{ind}:total", value(tot, sc), national, True))
     return out
@@ -117,7 +142,7 @@ def _rows(blocks):
 
 def clearance_formula(blocks, fam):
     """The printed share is solved / registered x 100 to 0.01; counted over all rows with both numbers."""
-    cr, cs, cc = col_of(fam, "reg"), col_of(fam, "solved"), col_of(fam, "clearance")
+    cr, cs, cc = col_of(blocks[0], "reg"), col_of(blocks[0], "solved"), col_of(blocks[0], "clearance")
     bad = n = 0
     for r in _rows(blocks):
         reg, sol, cl = value(r, cr), value(r, cs), value(r, cc)
@@ -132,7 +157,7 @@ def clearance_formula(blocks, fam):
 
 
 def solved_le_registered(blocks, fam):
-    cr, cs = col_of(fam, "reg"), col_of(fam, "solved")
+    cr, cs = col_of(blocks[0], "reg"), col_of(blocks[0], "solved")
     n = bad = 0
     for r in _rows(blocks):
         reg, sol = value(r, cr), value(r, cs)
@@ -147,7 +172,7 @@ def point_sums(block, fam):
     """Information about the original's arithmetic: the total row against the sum of the main points (rows with a printed
     number of one level, "1." "2." ...), and each main point against the sum of its sub-points ("1.1." ...). The "·" and "-"
     rows are "в това число" parts and are never added."""
-    cr = col_of(fam, "reg")
+    cr = col_of(block, "reg")
     out = []
     tot = total_row(block)
     points = [r for r in block.rows if r.level == 1 and r.code]
@@ -199,15 +224,18 @@ def freshness(c, now=None, st=None):
         if now - first > dt.timedelta(days=1):
             problems.append(TEXT.format(f"{ref} е задържан над ден: {reason}"))
     for uri, note, name in c.execute(
-            """SELECT r.resource_uri, r.note, r.name FROM silver.resource r
-               WHERE r.status = 'invalid' AND NOT EXISTS (SELECT 1 FROM silver.resource q WHERE q.resource_uri = r.resource_uri
+            """SELECT r.resource_uri, r.note, r.name FROM silver.resource r JOIN silver.dataset d USING (set_uri)
+               WHERE r.status = 'invalid' AND d.kind IN ('police', 'crime-old') AND NOT EXISTS (SELECT 1 FROM silver.resource q WHERE q.resource_uri = r.resource_uri
                      AND q.status = 'built' AND q.read_at > r.read_at)"""):
         problems.append(TEXT.format(f"{uri} е невалиден: {note}"))
     from . import gold      # the table that stands for each (year, family) is the one gold picks
     for year, fam in c.execute("""SELECT DISTINCT d.year, r.family FROM silver.resource r JOIN silver.dataset d USING (set_uri)
                                   WHERE r.family IS NOT NULL AND r.is_current AND r.status = 'built' AND d.kind = 'police'
                                   ORDER BY 1, 2""").fetchall():
-        top = gold.candidates(c, year, fam)[0]
+        cand = gold.candidates(c, year, fam)
+        if not cand:
+            continue          # isolated with a reason (db/ref/isolated.csv)
+        top = cand[0]
         pub = c.execute("SELECT resource_uri, sha256 FROM gold.source_table WHERE year = %s AND family = %s", (year, fam)).fetchone()
         if pub != (top[0], top[1]):
             problems.append(TEXT.format(f"{year} {fam}: таблицата не е публикувана (сверката не е минала)"))
