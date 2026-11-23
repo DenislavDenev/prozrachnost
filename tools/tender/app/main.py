@@ -212,7 +212,7 @@ def person(request: Request, pid: str):
     return page(request, "person.html", p=p, nav="Лица")
 
 
-@app.get("/buyers/{eik}", response_class=HTMLResponse)
+@app.get("/buyers/{eik:path}", response_class=HTMLResponse)   # the source joins some numbers with a slash
 def buyer(request: Request, eik: str, offset: int = 0):
     if eik.endswith(".csv"):
         return csv_response(Q.contracts_of(buyer=eik.removesuffix(".csv"), limit=100000), "contracts.csv")

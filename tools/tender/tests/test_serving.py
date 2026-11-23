@@ -226,3 +226,12 @@ def test_a_supplier_by_name_only_stays_on_the_contract_and_has_no_profile(conn):
     status, _, body = get("/buyers/000695089")
     assert status == 200 and "георги" not in body.lower() and "Без ЕИК и правна форма" in body         # not in the ranking
     assert get("/companies/unnamed")[0] == 307
+
+
+def test_a_buyer_whose_number_has_a_slash_has_a_page(conn):
+    fill(conn)
+    odd = "000695089/1234567890123"
+    build(conn, [{**contract(1, A, "А ООД", "01.06.2022", 1000), "buyerRegistryNumber": odd}])
+    assert one(conn, "SELECT count(*) FROM pub_tender.buyer WHERE eik = %s", odd) == 1
+    assert get(f"/buyers/{odd}")[0] == 200
+    assert get("/buyers/000000000/1")[0] == 404
