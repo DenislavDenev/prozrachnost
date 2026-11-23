@@ -101,6 +101,10 @@ def partidas(conn, stats, part=None):
 
     def one(r, item):
         eik, sha, fetched_at = item
+        # the list was made at the start and the readers go on: a partida read since has its own load
+        now = conn.execute("SELECT sha256 FROM tender_src.tr_deed WHERE eik = %s AND status = 'ok' AND load_id IS NULL FOR UPDATE", (eik,)).fetchone()
+        if not now or now[0] != sha:
+            return False
         path = RAW_TR / "deeds" / eik[:3] / f"{eik}.xml.gz"
         xml = gzip.decompress(path.read_bytes()) if path.exists() else None
         if xml is None or hashlib.sha256(xml).hexdigest() != sha:
@@ -137,6 +141,10 @@ def procedures(conn, stats, part=None):
 
     def one(r, item):
         tid, sha, fetched_at = item
+        now = conn.execute("SELECT sha256 FROM tender_src.eopsvc_queue WHERE tender_id = %s AND status = 'done' FOR UPDATE", (tid,)).fetchone()
+        if not now or now[0] != sha or conn.execute("SELECT 1 FROM ops.load WHERE tool = %s AND source = 'offers' AND ref = %s AND is_current",
+                                                    (TOOL, str(tid))).fetchone():
+            return False
         for path in sorted((eop_offers.RAW / str(tid)).glob("*.json.gz"), reverse=True):
             blob = gzip.decompress(path.read_bytes())
             if hashlib.sha256(blob).hexdigest() == sha:

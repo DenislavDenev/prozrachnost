@@ -6,12 +6,15 @@ Pure functions over rows; ingest.build writes the result into schema `stage`.
 """
 import datetime as dt
 import hashlib
+import pickle
 import re
+import sys
+import tempfile
 import unicodedata
 import zoneinfo
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 
-from .config import BGN_PER_EUR
+from .config import BGN_PER_EUR, DATA
 
 RULES_VERSION = "normalize_v5"  # v2: implausible dates, estimate ratio, EUR estimates, raw pointers; v3: lot and tender status;
 # v4: an annex's value in the annex's own currency (after 01.01.2026 annexes restate лев contracts in euro);
@@ -52,6 +55,7 @@ def day_of(v):
 
 
 SOFIA = zoneinfo.ZoneInfo("Europe/Sofia")
+NEVER = dt.datetime.min.replace(tzinfo=dt.timezone.utc)   # sorts a record without a date first; moments carry a zone
 _TS = re.compile(r"(\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d)(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?$")
 
 
@@ -80,7 +84,10 @@ def flag(v):
 
 def text(v):
     s = str(v).strip() if v is not None else ""
-    return s if s and s != "None" else None
+    if not s or s == "None":
+        return None
+    # the same buyer, procedure and CPV text repeats in hundreds of thousands of rows: one copy of each in memory
+    return sys.intern(s) if len(s) <= 300 else s
 
 
 # ---------- identity ----------
@@ -248,12 +255,38 @@ def value_flag(eff_eur, proc_est_eur, own_est_eur, initial, current, annex_steps
 
 # ---------- main ----------
 
+# one row of source_record: 670 000 of them, as tuples because a dict each cost about 150 MB more
+Pointer = namedtuple("Pointer", "entity ref day kind idx")
+
+
+class OnDisk:
+    """A list that is appended to and then read once, kept in a temporary file. The contracts of the OCDS files are
+    almost all repeats of the flat files, and which ones are is known only after the last day."""
+
+    def __init__(self):
+        DATA.mkdir(parents=True, exist_ok=True)   # not /tmp: on CT 118 it is tmpfs, which is the memory this saves
+        self.file = tempfile.TemporaryFile(dir=DATA)
+
+    def extend(self, items):
+        for x in items:
+            pickle.dump(x, self.file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def __iter__(self):
+        self.file.seek(0)
+        while True:
+            try:
+                yield pickle.load(self.file)
+            except EOFError:
+                self.file.close()
+                return
+
+
 def normalize(days_rows, fx):
-    """days_rows: iterable of (day, kind, rows). Returns dict of table -> list of dicts."""
+    """days_rows: iterable of (day, kind, rows). Returns dict of table -> list of rows (dicts, or Pointer)."""
     buyers, tenders = {}, {}
     contracts = {}
     annexes = defaultdict(list)
-    ocds_contracts = []
+    ocds_contracts = OnDisk()
     # where each tender / contract / OCDS release sits in the raw files, so the pages can show
     # every published field of the original record (source_record)
     src = []
@@ -273,7 +306,7 @@ def normalize(days_rows, fx):
             if kind == "tenders":
                 unp = _tender_row(r, day, tenders, buyers)
                 if unp:
-                    src.append({"entity": "tender", "ref": unp, "day": day, "kind": kind, "idx": i})
+                    src.append(Pointer("tender", unp, day, kind, i))
                     st["tenders_used"] += 1
                 else:
                     st["tenders_without_unp"] += 1
@@ -283,12 +316,12 @@ def normalize(days_rows, fx):
                     unawarded.add((unp, lot_no(r.get("lotIdentifier"))))
                     _award_row(r, day, awards)
                     if unp:
-                        src.append({"entity": "award", "ref": unp, "day": day, "kind": kind, "idx": i})
+                        src.append(Pointer("award", unp, day, kind, i))
                     st["contracts_no_award"] += 1
                     continue
                 cid, how = _contract_row(r, day, contracts, buyers, idents, replaced)
                 st[f"contracts_{how}"] += 1
-                src.append({"entity": "contract", "ref": cid, "day": day, "kind": kind, "idx": i})
+                src.append(Pointer("contract", cid, day, kind, i))
             elif kind == "annexes":
                 key = (text(r.get("uniqueProcurementNumber")), text(r.get("contractNumber")))
                 annexes[key].append((ts_of(r.get("publicationDate")), day, r))
@@ -299,7 +332,7 @@ def normalize(days_rows, fx):
                     if a.get("status") == "unsuccessful" and tid:
                         unawarded_tid.add((tid, lot_no((a.get("relatedLots") or [None])[0])))
                 if tid:
-                    src.append({"entity": "ocds", "ref": tid, "day": day, "kind": kind, "idx": i})
+                    src.append(Pointer("ocds", tid, day, kind, i))
                 for party in r.get("parties") or []:
                     eik = clean_eik((party.get("identifier") or {}).get("id"))
                     a = party.get("address") or {}
@@ -325,7 +358,7 @@ def normalize(days_rows, fx):
     out_contracts, suppliers, amendments, subcontracts = [], [], [], []
     raw_tid = {}  # УНП -> the ЦАИС ЕОП id its contracts carry (tenderId)
     for c in contracts.values():
-        chain = sorted(assigned.get(c["id"], []), key=lambda a: (a[0] or dt.datetime.min, a[1]))
+        chain = sorted(assigned.get(c["id"], []), key=lambda a: (a[0] or NEVER, a[1]))
         steps, current, current_ccy = [], None, None
         for ts, aday, a in chain:
             last, cur = num(a.get("lastContractValue")), num(a.get("currentContractValue"))
@@ -436,10 +469,12 @@ def normalize(days_rows, fx):
     for t in tenders.values():
         t.pop("synthetic_header", None)
     # the pointers of a replaced contract lead to the correction that replaced it
-    for s in src:
-        if s["entity"] == "contract":
-            while s["ref"] in replaced:
-                s["ref"] = replaced[s["ref"]]
+    for n, s in enumerate(src):
+        if s.entity == "contract" and s.ref in replaced:
+            ref = s.ref
+            while ref in replaced:
+                ref = replaced[ref]
+            src[n] = s._replace(ref=ref)
     for a in awards.values():
         a["tender_id"] = a["tender_id"] or (tenders.get(a["unp"]) or {}).get("tender_id")
     st["ocds_added"] = ocds_added
@@ -542,7 +577,7 @@ def assign_annexes(annexes, contracts, st):
             groups[(unp, number, lot_no(a[2].get("lotIdentifier")))].append(a)
     assigned, orphans = defaultdict(list), []
     for (unp, number, lot), rows in groups.items():
-        rows.sort(key=lambda a: (a[0] or dt.datetime.min, a[1]))
+        rows.sort(key=lambda a: (a[0] or NEVER, a[1]))
         target, how = None, None
         same = by_num.get((unp, number), [])
         if len(same) == 1:
