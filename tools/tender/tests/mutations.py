@@ -78,6 +78,8 @@ CASES = [
      'tests/test_changes.py::test_a_bidder_by_name_only_is_not_named_and_the_bidders_stay_distinct'),
     ('bidders-without-a-name-become-one', 'db/publish/21_pub_tender.offer.sql', "ORDER BY n.upper_name) END", "ORDER BY n.upper_name IS NULL) END",
      'tests/test_changes.py::test_a_bidder_by_name_only_is_not_named_and_the_bidders_stay_distinct'),
+    ('one-bad-day-stops-the-rest', 'ingest/tr_worker.py', "            failed.append(str(day))\n", "            raise\n",
+     'tests/test_changes.py::test_a_day_the_register_does_not_answer_for_does_not_stop_the_days_after_it'),
     ('a-unit-names-the-company', 'db/derive/20_network.sql', "(ref IS DISTINCT FROM 'eik:' || substr(id, 3)), label, ref;", "label, ref;", PEOPLE),
     ('an-invented-key-to-core', 'db/derive/90_core.sql', "UPDATE company c SET org_eik = o.eik FROM core.org o WHERE o.eik = c.eik;",
      "UPDATE company c SET org_eik = c.eik WHERE c.eik ~ '^[0-9]{9}$';",

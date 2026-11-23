@@ -727,3 +727,26 @@ def test_a_bidder_by_name_only_is_not_named_and_the_bidders_stay_distinct(conn):
     assert conn.execute("SELECT receiver_name FROM pub_tender.payment").fetchone()[0] == "Без ЕИК и правна форма"
     html = page("/tenders/W").lower()
     assert "георги" not in html and "мария" not in html and "петър колев" not in html and "участник без еик" in html
+
+
+def test_a_day_the_register_does_not_answer_for_does_not_stop_the_days_after_it(conn, monkeypatch):
+    import pytest
+    from ingest import tr_worker as T
+    monkeypatch.setattr(T, "CHANGES_PAUSE", 0)
+    today, bad, asked = dt.date(2026, 11, 10), {"2026-11-08"}, []
+
+    def changes(day, page):
+        asked.append(day)
+        if day in bad or "all" in bad:
+            raise RuntimeError("no list")
+        return {"items": [], "has_more": False}
+    monkeypatch.setattr(T.R, "changes", changes)
+    with pytest.raises(RuntimeError, match="2026-11-08"):      # the run is not reported as clean
+        T.read_changes(conn, 600, st := {}, today)
+    assert st["failed_days"] == ["2026-11-08"] and "2026-11-07" in asked      # the day after it in the list is read
+    assert conn.execute("SELECT count(*) FROM tender_src.tr_change_day WHERE done").fetchone()[0] == 13
+    asked.clear()
+    bad = {"all"}
+    with pytest.raises(RuntimeError):
+        T.read_changes(conn, 600, st := {}, today + dt.timedelta(days=20))
+    assert len(asked) == T.CHANGES_DOWN and st["left"] == 14 - T.CHANGES_DOWN  # a portal that is down is not asked for every day
