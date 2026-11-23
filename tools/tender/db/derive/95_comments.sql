@@ -217,6 +217,7 @@ INSERT INTO column_text VALUES
 ('subcontract', 'percent', 'Дял на подизпълнителя в проценти.'),
 ('subcontract', 'amount', 'Стойност на подизпълнението във валутата на договора.'),
 ('unnamed_party', 'party_key', 'Ключът на изпълнителя по името му. Не се публикува: в слоя за показване всички са unnamed.'),
+('unnamed_name', 'upper_name', 'Името с главни букви. Не се публикува.'),
 ('tag', 'entity_type', 'Вид на обекта: company, buyer, person или contract.'),
 ('tag', 'entity_id', 'Ключът на обекта.'),
 ('tag', 'code', 'Кодът на индикатора (tag_def.code).'),

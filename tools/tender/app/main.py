@@ -118,6 +118,8 @@ def tc(s):
     """Registry names come in upper case; show them in title case, keeping legal forms upper."""
     if not s:
         return ""
+    if s.startswith(("Участник без ЕИК", "Член без ЕИК", "Без ЕИК")):   # our own label for a name that is not shown
+        return s
     s = re.sub(r"(^|[\s\-\"„(])(\w)", lambda m: m.group(1) + m.group(2).upper(), s.lower())
     return re.sub(r"(?<!\w)(Ад|Оод|Еоод|Еад|Ет|Дп|Дззд|Кд)(?!\w)", lambda m: m.group(0).upper(), s)
 
