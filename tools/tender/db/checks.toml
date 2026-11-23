@@ -86,7 +86,10 @@ kind = "publish"
 sql = """SELECT 0, (SELECT count(*) FROM pub_tender.company c JOIN tender.unnamed_party u ON u.party_key = c.key)
   + (SELECT count(*) FROM pub_tender.search_item s JOIN tender.unnamed_party u ON u.party_key = s.ref)
   + (SELECT count(*) FROM pub_tender.contract_supplier s JOIN tender.unnamed_party u USING (party_key))
-  + (SELECT count(*) FROM pub_tender.subcontract s JOIN tender.unnamed_party u USING (party_key))"""
+  + (SELECT count(*) FROM pub_tender.subcontract s JOIN tender.unnamed_party u USING (party_key))
+  + (SELECT count(*) FROM pub_tender.offer o JOIN tender.unnamed_name u ON u.upper_name = upper(o.bidder_name) WHERE o.bidder_eik IS NULL AND o.company_key IS NULL)
+  + (SELECT count(*) FROM pub_tender.offer o, jsonb_array_elements(coalesce(o.consortium, '[]')) m JOIN tender.unnamed_name u ON u.upper_name = upper(m->>'name') WHERE coalesce(m->>'eik', '') = '')
+  + (SELECT count(*) FROM pub_tender.payment p JOIN tender.unnamed_name u ON u.upper_name = upper(p.receiver_name) WHERE p.company_key IS NULL AND NOT coalesce(p.is_person, false))"""
 
 [[check]]
 name = "shown_roles_only_with_public_money"

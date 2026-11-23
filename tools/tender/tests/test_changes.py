@@ -703,3 +703,27 @@ def test_the_build_stops_at_its_memory_limit_and_gives_it_back():
         with build.memory_limit(used + 50):
             bytearray(200 * 1024 * 1024)
     assert resource.getrlimit(resource.RLIMIT_AS) == before
+
+
+def test_a_bidder_by_name_only_is_not_named_and_the_bidders_stay_distinct(conn):
+    from ingest import normalize as N
+    tender = {"uniqueProcurementNumber": "W", "tenderId": "1001", "isLot": "Не", "publicationDate": "2026-05-01T10:00:00", "subject": "W",
+              "noticeId": "10010", "noticeType": "Обявление за поръчка – Общата директива, стандартен режим",
+              "buyerRegistryNumber": "000093442", "buyerName": "ОБЩИНА"}
+    res = N.normalize([("2026-05-01", "tenders", [tender])], N.Fx({}))
+    conn.execute("""INSERT INTO tender_src.eopsvc_offer (tender_id, lot_no, round, offer_id, bidder_name, bidder_eik, consortium, price_opened, fetched_at) VALUES
+        (1001, 0, 1, 1, 'ГЕОРГИ СТОЯНОВ ДИМОВ', NULL, NULL, false, now()), (1001, 0, 1, 2, 'МАРИЯ ИВАНОВА КОЛЕВА', NULL, NULL, false, now()),
+        (1001, 0, 1, 3, 'БЕТА ООД', NULL, NULL, false, now()), (1001, 0, 1, 4, 'Физическо лице', NULL, NULL, false, now()),
+        (1001, 0, 1, 5, 'ОБЕДИНЕНИЕ ГАМА', NULL, '[{"name": "ПЕТЪР КОЛЕВ МАРИНОВ", "eik": null}, {"name": "ДЕЛТА ЕООД", "eik": "831641791"}]', false, now())""")
+    conn.execute("INSERT INTO tender_src.sebra_resource (uri, name, format) VALUES ('r', 'x', 'csv')")
+    conn.execute("""INSERT INTO tender_src.sebra_payment (resource_uri, row_no, settlement_date, receiver_name, is_person, amount, currency)
+        VALUES ('r', 1, '2026-06-01', 'ГЕОРГИ СТОЯНОВ ДИМОВ', false, 10, 'EUR')""")
+    build_small(conn, res)
+    got = dict(conn.execute("SELECT offer_id, bidder_name FROM pub_tender.offer").fetchall())
+    assert got[3] == "БЕТА ООД" and got[4] == "Физическо лице" and got[5] == "ОБЕДИНЕНИЕ ГАМА"
+    assert got[1].startswith("Участник без ЕИК") and got[2].startswith("Участник без ЕИК") and got[1] != got[2]    # two bidders, not one
+    members = conn.execute("SELECT consortium FROM pub_tender.offer WHERE offer_id = 5").fetchone()[0]
+    assert [m["name"] for m in members] == ["Член без ЕИК и правна форма", "ДЕЛТА ЕООД"]
+    assert conn.execute("SELECT receiver_name FROM pub_tender.payment").fetchone()[0] == "Без ЕИК и правна форма"
+    html = page("/tenders/W").lower()
+    assert "георги" not in html and "мария" not in html and "петър колев" not in html and "участник без еик" in html
