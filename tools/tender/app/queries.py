@@ -448,6 +448,26 @@ def buyer(eik):
     return b
 
 
+def public_ocds(rec, named):
+    """The OCDS release is one for the whole procedure. A party without a number may be a person: only the contract it
+    is named on shows its name, and no release shows its identifier, address or contact. Returns a copy (the raw is cached)."""
+    plain = {}
+    for p in rec.get("parties") or []:
+        if not re.fullmatch(r"\d{9,13}", str((p.get("identifier") or {}).get("id") or "")):
+            name = str(p.get("name") or "")
+            plain[p.get("id")] = name if name.upper() in named else "Без ЕИК и правна форма"
+
+    def clean(v):
+        if isinstance(v, list):
+            return [clean(x) for x in v]
+        if not isinstance(v, dict):
+            return v
+        if "name" in v and v.get("id") in plain:
+            return {"name": plain[v["id"]], **({"roles": v["roles"]} if "roles" in v else {})}
+        return {k: clean(x) for k, x in v.items() if k != "contactPoint"}
+    return clean(rec)
+
+
 def contract(cid):
     c = one("""SELECT c.*, b.name buyer_name, t.subject tender_subject, t.estimated_eur tender_estimate_eur, t.tender_id unp_tender_id
                FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik LEFT JOIN pub_tender.tender t ON t.unp = c.unp
@@ -463,7 +483,8 @@ def contract(cid):
     c["source"] = one("SELECT day, kind, key, sha256 FROM pub_tender.eop_file WHERE day = %s AND kind = %s",
                       c["source_day"], "contracts" if c["source"] == "eop" else "ocds")
     c["records"] = raw_records("contract", cid)
-    c["ocds"] = raw_records("ocds", c["unp_tender_id"]) if c.get("unp_tender_id") else []
+    named = {x["name"].upper() for x in c["suppliers"] + c["subcontracts"] if x.get("name")}
+    c["ocds"] = [{**r, "rec": public_ocds(r["rec"], named)} for r in raw_records("ocds", c["unp_tender_id"])] if c.get("unp_tender_id") else []
     # the lot this contract belongs to (numbered as in ЦАИС ЕОП when read), with its offers and sibling contracts
     t = tender(c["unp"], raw=False) if c.get("unp") else None
     lots = tender_lots(t) if t else []
