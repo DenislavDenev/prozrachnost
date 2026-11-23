@@ -1,1 +1,1 @@
-SELECT key, eik, name, legal_form, seat, registered_on, deed_status, capital_eur, tr_status, tr_fetched_at, is_public_body FROM tender.company
+SELECT key, eik, name, legal_form, seat, registered_on, deed_status, capital_eur, tr_status, tr_fetched_at, is_public_body FROM tender.company c WHERE NOT EXISTS (SELECT FROM tender.unnamed_party u WHERE u.party_key = c.key)

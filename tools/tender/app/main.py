@@ -190,6 +190,8 @@ def link(kind, ref):
 
 @app.get("/companies/{key:path}", response_class=HTMLResponse)
 def company(request: Request, key: str):
+    if key == "unnamed":   # no profile: the line of a ranking leads to the contracts themselves
+        return RedirectResponse("/contracts?company=unnamed")
     if key.endswith("/contracts.csv"):
         return csv_response(Q.contracts_of(key=key.removesuffix("/contracts.csv"), limit=100000), "contracts.csv")
     if re.fullmatch(r"\d{9}(\d{4})?", key):
@@ -572,7 +574,7 @@ def place(request: Request, aid: str):
     stats = Q.one(f"SELECT count(*) n, round({Q.SUM}) eur, count(DISTINCT c.buyer_eik) buyers, {SINGLE} single_pct {base} WHERE {cond}", *a0)
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
         WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", *a0)
-    suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+    suppliers = Q.rows(f"""SELECT s.party_key key, {Q.SUPPLIER_NAME} name, count(DISTINCT c.id) n, round({Q.SUM}) eur
         {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE {cond} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", *a0)
     by_year = Q.rows(f"""SELECT extract(year FROM c.effective_date)::int y, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} WHERE {cond} AND {Q.YEARS} GROUP BY 1 ORDER BY 1""", *a0)
@@ -591,7 +593,7 @@ def map_detail(request: Request, aid: str, by: str = "buyer"):
         buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
             FROM pub_tender.contract c LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
             WHERE {SUP_HERE} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", len(aid), aid, *args)
-        suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+        suppliers = Q.rows(f"""SELECT s.party_key key, {Q.SUPPLIER_NAME} name, count(DISTINCT c.id) n, round({Q.SUM}) eur
             FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id {MEMBER_CODE}
             WHERE left(mc.code, %s) = %s AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", len(aid), aid, *args)
         return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
@@ -600,7 +602,7 @@ def map_detail(request: Request, aid: str, by: str = "buyer"):
     buyers = Q.rows(f"""SELECT c.buyer_eik eik, max(b.name) name, max(bp.basis) basis, count(*) n, round({Q.SUM}) eur, {SINGLE} single_pct
         {base} LEFT JOIN pub_tender.buyer b ON b.eik = c.buyer_eik
         WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", *a0, *args)
-    suppliers = Q.rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({Q.SUM}) eur
+    suppliers = Q.rows(f"""SELECT s.party_key key, {Q.SUPPLIER_NAME} name, count(DISTINCT c.id) n, round({Q.SUM}) eur
         {base} JOIN pub_tender.contract_supplier s ON s.contract_id = c.id
         WHERE {cond} AND {where} GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 12""", *a0, *args)
     return JSONResponse(json.loads(json.dumps({"buyers": buyers, "suppliers": suppliers}, default=jdefault)))
@@ -844,6 +846,7 @@ def flow_names(mode, keys):
         elif dim == "supplier":
             out.update({f"supplier|{r['key']}": tc(r["name"]) for r in Q.rows("SELECT key, name FROM pub_tender.company WHERE key = ANY(%s)", ks)})
             out.update({f"supplier|{k}": tc(k[5:]) for k in ks if k.startswith("name:")})
+            out["supplier|unnamed"] = "Без ЕИК и правна форма"
         elif dim == "primary":
             out.update({f"primary|{r['k']}": r["n"] for r in Q.rows(
                 "SELECT DISTINCT ON (primary_org_code) primary_org_code k, primary_organization n FROM pub_tender.payment WHERE primary_org_code = ANY(%s) ORDER BY 1, 2", ks)})

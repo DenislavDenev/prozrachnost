@@ -10,7 +10,7 @@
 
 {% set cur = c.value_current_eur if c.value_current_eur is not none else c.value_initial_eur %}
 <div class="tiles">
-  <div class="tile"><span>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</span>{% for s in c.suppliers %}<a class="u" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% endfor %}</div>
+  <div class="tile"><span>{{ 'Обединение' if c.suppliers | length > 1 else 'Изпълнител' }}</span>{% for s in c.suppliers %}{% if s.party_key == 'unnamed' %}<b>{{ s.name | tc }}</b>{% else %}<a class="u" href="/companies/{{ s.party_key | q }}">{{ (s.co_name or s.name) | tc }}</a>{% endif %}{% endfor %}</div>
   <div class="tile"><span>Възложител</span><a class="u" href="/buyers/{{ c.buyer_eik }}">{{ c.buyer_name | tc }}</a></div>
   <div class="tile"><span>Стойност</span><b>{{ cur | eur if cur is not none else (c.value_initial | eurc(c.currency)) }}</b>{% if c.annex_count %}<small>с {{ c.annex_count }} анекса</small>{% endif %}</div>
   <div class="tile"><span>Прогнозна</span><b>{{ c.estimated_eur | eur if c.estimated_eur else 'няма данни' }}</b>{% if c.estimate_ratio %}<small class="{{ 'warn' if c.estimate_ratio >= 2 }}">договорът е {{ c.estimate_ratio | num(2) }}× прогнозната</small>{% endif %}</div>
@@ -31,7 +31,7 @@
     {% if c.siblings %}<h3 class="h3s">Другите договори по поръчката ({{ c.siblings | length }})</h3>
       {% for k in c.siblings[:8] %}<div class="kline"><a class="u" href="/contracts/{{ k.id }}">{{ k.supplier | tc }}</a> · {{ k.effective_date | date }} · <b>{{ k.eur | eur }}</b></div>{% endfor %}
       {% if c.siblings | length > 8 %}<a class="l" href="/tenders/{{ c.unp | q }}">всички</a>{% endif %}{% endif %}
-    {% if c.subcontracts %}<h3 class="h3s">Подизпълнители</h3>{% for s in c.subcontracts %}<div class="kline"><a class="u" href="/companies/{{ s.party_key | q }}">{{ s.name | tc }}</a>{% if s.percent %} · {{ s.percent | num }}%{% endif %}</div>{% endfor %}{% endif %}
+    {% if c.subcontracts %}<h3 class="h3s">Подизпълнители</h3>{% for s in c.subcontracts %}<div class="kline">{% if s.party_key == 'unnamed' %}{{ s.name | tc }}{% else %}<a class="u" href="/companies/{{ s.party_key | q }}">{{ s.name | tc }}</a>{% endif %}{% if s.percent %} · {{ s.percent | num }}%{% endif %}</div>{% endfor %}{% endif %}
   </section>
 
   <section class="p s12"><div class="ph"><div><h2>Офертите за {{ 'позицията' if c.lot and c.lot.lot_no else 'поръчката' }}</h2>

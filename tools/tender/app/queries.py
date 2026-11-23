@@ -169,6 +169,10 @@ def company(key):
     return c
 
 
+# a supplier by name only, who may be a person, is on the contract and not in a ranking: all of them are one line
+SUPPLIER_NAME = "CASE WHEN s.party_key = 'unnamed' THEN 'Без ЕИК и правна форма' ELSE max(s.name) END"
+
+
 def articles(kind, ref):
     return rows("""SELECT url, title, source, published_at FROM pub_tender.article WHERE entity_type = %s AND entity_id = %s
                    AND status = 'confirmed' ORDER BY published_at DESC NULLS LAST, url LIMIT 20""", kind, ref)
@@ -432,7 +436,7 @@ def buyer(eik):
     b["by_year"] = rows(f"""SELECT extract(year FROM effective_date)::int y, count(*) n, round({SUM}) eur,
         round(100.0 * count(*) FILTER (WHERE offers_count = 1) / nullif(count(*) FILTER (WHERE offers_count IS NOT NULL), 0), 1) single_pct
         FROM pub_tender.contract c WHERE buyer_eik = %s AND {YEARS} GROUP BY 1 ORDER BY 1""", eik)
-    b["suppliers_top"] = rows(f"""SELECT s.party_key key, max(s.name) name, count(DISTINCT c.id) n, round({SUM}) eur
+    b["suppliers_top"] = rows(f"""SELECT s.party_key key, {SUPPLIER_NAME} name, count(DISTINCT c.id) n, round({SUM}) eur
         FROM pub_tender.contract c JOIN pub_tender.contract_supplier s ON s.contract_id = c.id WHERE c.buyer_eik = %s
         GROUP BY 1 ORDER BY eur DESC NULLS LAST, 1 LIMIT 8""", eik)
     b["procedures"] = rows(f"""SELECT coalesce(procedure_type, 'неизвестна') p, count(*) n, round({SUM}) eur,

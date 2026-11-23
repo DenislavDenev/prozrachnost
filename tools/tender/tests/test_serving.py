@@ -209,3 +209,20 @@ def test_the_build_links_to_the_shared_dimensions(conn):
     finally:
         conn.execute("DROP SCHEMA tender CASCADE; CREATE SCHEMA tender")
         conn.execute("DELETE FROM core.org WHERE eik = %s", (A,))
+
+
+def test_a_supplier_by_name_only_stays_on_the_contract_and_has_no_profile(conn):
+    fill(conn)
+    who, firm = "ГЕОРГИ СТОЯНОВ ДИМОВ", "БЕТА ООД"
+    build(conn, [contract(1, A, "А ООД", "01.06.2022", 1000), contract(2, "", who, "01.01.2024", 700), contract(3, "", firm, "01.02.2024", 60)])
+    assert one(conn, "SELECT party_key FROM pub_tender.contract_supplier WHERE name = %s", who) == "unnamed"
+    assert one(conn, "SELECT count(*) FROM pub_tender.company WHERE name = %s", who) == 0
+    assert one(conn, "SELECT count(*) FROM pub_tender.company_stats WHERE key LIKE %s", "%ГЕОРГИ%") == 0
+    assert one(conn, "SELECT count(*) FROM pub_tender.search_item WHERE key LIKE %s", "%ГЕОРГИ%") == 0
+    assert one(conn, "SELECT count(*) FROM pub_tender.company WHERE name = %s", firm) == 1            # a legal form is a company
+    cid = one(conn, "SELECT contract_id FROM pub_tender.contract_supplier WHERE name = %s", who)
+    status, _, body = get(f"/contracts/{cid}")
+    assert status == 200 and "георги" in body.lower() and "/companies/unnamed" not in body             # on the contract, without a link
+    status, _, body = get("/buyers/000695089")
+    assert status == 200 and "георги" not in body.lower() and "Без ЕИК и правна форма" in body         # not in the ranking
+    assert get("/companies/unnamed")[0] == 307
