@@ -1,1 +1,1 @@
-SELECT contract_id, "position", party_key, eik, name, joint FROM tender.contract_supplier
+SELECT contract_id, "position", CASE WHEN EXISTS (SELECT FROM tender.unnamed_party u WHERE u.party_key = t.party_key) THEN 'unnamed' ELSE t.party_key END, eik, name, joint FROM tender.contract_supplier t

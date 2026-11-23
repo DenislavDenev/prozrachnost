@@ -1,1 +1,1 @@
-SELECT key, contracts, joint_contracts, amount_eur, amount_eur_sole, contracts_without_value, frameworks, buyers, first_contract, last_contract FROM tender.company_stats
+SELECT key, contracts, joint_contracts, amount_eur, amount_eur_sole, contracts_without_value, frameworks, buyers, first_contract, last_contract FROM tender.company_stats c WHERE NOT EXISTS (SELECT FROM tender.unnamed_party u WHERE u.party_key = c.key)

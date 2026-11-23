@@ -1,1 +1,1 @@
-SELECT contract_id, party_key, eik, name, percent, amount, row_number() OVER (PARTITION BY contract_id ORDER BY t)::int FROM tender.subcontract t
+SELECT contract_id, CASE WHEN EXISTS (SELECT FROM tender.unnamed_party u WHERE u.party_key = t.party_key) THEN 'unnamed' ELSE t.party_key END, eik, name, percent, amount, row_number() OVER (PARTITION BY contract_id ORDER BY t)::int FROM tender.subcontract t

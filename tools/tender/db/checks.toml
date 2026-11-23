@@ -77,7 +77,16 @@ sql = "SELECT (SELECT COALESCE(sum(amount_eur), 0) FROM tender.payment), (SELECT
 name = "published_company_rows"
 title_bg = "Публикуваните фирми са колкото в чистата таблица"
 kind = "publish"
-sql = "SELECT (SELECT count(*) FROM tender.company), (SELECT count(*) FROM pub_tender.company)"
+sql = "SELECT (SELECT count(*) FROM tender.company c WHERE NOT EXISTS (SELECT FROM tender.unnamed_party u WHERE u.party_key = c.key)), (SELECT count(*) FROM pub_tender.company)"
+
+[[check]]
+name = "unnamed_suppliers_have_no_profile"
+title_bg = "Изпълнител само с име, без ЕИК и правна форма, няма профил, търсене или ключ по името си в показването"
+kind = "publish"
+sql = """SELECT 0, (SELECT count(*) FROM pub_tender.company c JOIN tender.unnamed_party u ON u.party_key = c.key)
+  + (SELECT count(*) FROM pub_tender.search_item s JOIN tender.unnamed_party u ON u.party_key = s.ref)
+  + (SELECT count(*) FROM pub_tender.contract_supplier s JOIN tender.unnamed_party u USING (party_key))
+  + (SELECT count(*) FROM pub_tender.subcontract s JOIN tender.unnamed_party u USING (party_key))"""
 
 [[check]]
 name = "shown_roles_only_with_public_money"
