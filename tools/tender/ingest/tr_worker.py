@@ -66,24 +66,37 @@ def seed_from_contracts(conn):
 # change list is read at one page per 30 s: 25 partidas a page, about 100 pages a day, close to an hour for a day.
 CHANGES_PAUSE = 30
 CHANGES_WINDOW = 14   # days back: the list of a day is read the day after and once more two weeks later
+CHANGES_DOWN = 3      # so many days in a row without an answer: the portal is down, the next run goes on
 
 
 def read_changes(conn, budget_s, stats, today=None):
     """The portal's change list for every day of the window that is not read to its end: yesterday first, then the
     second pass of the day two weeks back, then older days a run did not finish (the list is long, and until
     10.11.2026 this step shared its lane with the hourly read and mostly did not get to run). A day is resumed at
-    the page it stopped on. Stops when the budget is spent; the next run goes on."""
+    the page it stopped on. Stops when the budget is spent; the next run goes on. A day the portal does not answer
+    for does not stop the days after it. The run still ends as failed and names the days."""
     today = today or dt.date.today()
     deadline = time.monotonic() + budget_s
     todo = [(today - dt.timedelta(days=1), 1), (today - dt.timedelta(days=CHANGES_WINDOW), 2)]
     todo += [(today - dt.timedelta(days=lag), 1) for lag in range(2, CHANGES_WINDOW)]
+    failed, streak = [], 0
     for day, pass_no in todo:
-        if time.monotonic() >= deadline:
+        if time.monotonic() >= deadline or streak >= CHANGES_DOWN:
             stats["left"] = stats.get("left", 0) + 1
             continue
-        n = enqueue_changes(conn, day, pass_no, deadline)
+        try:
+            n = enqueue_changes(conn, day, pass_no, deadline)
+        except (RuntimeError, ValueError):
+            failed.append(str(day))
+            streak += 1
+            time.sleep(CHANGES_PAUSE)
+            continue
         if n is not None:
+            streak = 0
             stats[f"pass{pass_no}_{day}"] = n
+    if failed:
+        stats["failed_days"] = failed
+        raise RuntimeError(f"порталът на ТР не върна списъка с промени за {', '.join(failed)}")
 
 
 def enqueue_changes(conn, day, pass_no, deadline=None):
