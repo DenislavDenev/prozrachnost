@@ -4,6 +4,7 @@ The pages read only pub_tender and pub. A person is published only in a role in 
 money, under a token that lives for one build. The serving layer follows a build only when the rules hold.
 Needs TENDER_TEST_DSN (a disposable database).
 """
+from urllib.parse import quote
 import asyncio
 import re
 from pathlib import Path
@@ -72,9 +73,12 @@ def get(path):
     """One request through the whole app (the middleware too), without a server: (status, headers, body)."""
     from app import main
     path, _, query = path.partition("?")
-    sent = []
+    sent, asked = [], []
 
     async def receive():
+        if asked:                    # a streamed answer (CSV) listens for a disconnect until it ends
+            await asyncio.Future()
+        asked.append(1)
         return {"type": "http.request", "body": b"", "more_body": False}
 
     async def send(message):
@@ -226,6 +230,38 @@ def test_a_supplier_by_name_only_stays_on_the_contract_and_has_no_profile(conn):
     status, _, body = get("/buyers/000695089")
     assert status == 200 and "георги" not in body.lower() and "Без ЕИК и правна форма" in body         # not in the ranking
     assert get("/companies/unnamed")[0] == 307
+
+
+def test_a_name_without_an_eik_is_on_its_contract_and_in_no_list(conn):
+    fill(conn)
+    who = "ГЕОРГИ СТОЯНОВ ДИМОВ"
+    build(conn, [contract(1, A, "А ООД", "01.06.2022", 1000), contract(2, "", who, "01.01.2024", 700)])
+    cid = one(conn, "SELECT contract_id FROM pub_tender.contract_supplier WHERE name = %s", who)
+    assert one(conn, "SELECT supplier_display FROM pub_tender.contract WHERE id = %s", cid) == "Без ЕИК и правна форма"
+    assert "георги" in get(f"/contracts/{cid}")[2].lower()
+    for url in ("/contracts", "/contracts?format=csv", "/buyers/000695089.csv", "/"):
+        status, _, body = get(url)
+        assert status == 200 and "георги" not in body.lower(), url
+    status, _, body = get("/contracts?who=" + quote(who))                       # the box repeats what was typed; no contract is found by it
+    assert status == 200 and f"/contracts/{cid}" not in body
+
+
+def test_the_release_of_a_procedure_names_a_person_only_on_the_contract_of_that_person():
+    from app.queries import public_ocds
+    who = "ГЕОРГИ СТОЯНОВ ДИМОВ"
+    rec = {"parties": [{"id": "p1", "name": who, "roles": ["supplier"], "identifier": {"id": "X1", "legalName": who},
+                        "address": {"streetAddress": "ул. Първа 1"}, "contactPoint": {"email": "a@b.bg"}},
+                       {"id": "p2", "name": "А ООД", "roles": ["supplier"], "identifier": {"id": "123456789"},
+                        "contactPoint": {"email": "c@d.bg"}}],
+           "awards": [{"suppliers": [{"id": "p1", "name": who}, {"id": "p2", "name": "А ООД"}]}]}
+    before = repr(rec)
+    other = repr(public_ocds(rec, {"А ООД"}))
+    assert who not in other and "Без ЕИК и правна форма" in other and "А ООД" in other
+    own = repr(public_ocds(rec, {who}))
+    assert who in own
+    for private in ("X1", "ул. Първа", "a@b.bg", "c@d.bg"):
+        assert private not in own and private not in other
+    assert repr(rec) == before                                                  # the cached raw is not changed
 
 
 def test_a_buyer_whose_number_has_a_slash_has_a_page(conn):
