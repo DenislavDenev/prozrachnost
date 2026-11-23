@@ -107,8 +107,8 @@ def run(final=False):
     with db.connect(autocommit=True) as conn:
         if done(conn, day):
             return {"day": day, "skipped": "done"}
-        failed = conn.execute("""SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status = 'failed'
-                                 AND params->>'day' = %s""", (day,)).fetchone()[0]
+        failed = conn.execute("""SELECT count(*) FROM ops.run WHERE tool = 'tender' AND step = 'daily' AND status IN ('failed', 'running')
+                                 AND params->>'day' = %s""", (day,)).fetchone()[0]   # a run the OOM killer took stays 'running'
     if failed >= 2 and not final:
         return {"day": day, "skipped": f"failed {failed} times, the {FINAL_UTC} UTC run tries again"}
     if eop.list_day(day) is None:

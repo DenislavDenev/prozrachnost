@@ -367,6 +367,10 @@ def test_daily_waits_runs_once_and_does_not_loop_on_failure(conn, monkeypatch):
         with pytest.raises(RuntimeError, match="normalize broke"):
             daily.run()
     assert "failed 2 times" in daily.run()["skipped"]
+    # a run the OOM killer took never says it failed: it stays 'running' and counts the same
+    conn.execute("UPDATE ops.run SET status = 'running', finished_at = NULL WHERE tool = 'tender' AND step = 'daily'")
+    assert "failed 2 times" in daily.run()["skipped"]
+    conn.execute("UPDATE ops.run SET status = 'failed' WHERE tool = 'tender' AND step = 'daily'")
     with pytest.raises(RuntimeError, match="normalize broke"):
         daily.run(final=True)
 
@@ -667,3 +671,35 @@ def test_adopt_gives_a_load_to_what_was_read_before(conn, tmp_path, monkeypatch)
     # again: nothing to do
     adopt.run(conn, st2 := {})
     assert st2["tr"] == 0 and "offers" not in st2 and st2["sebra_files"] == 0 and "eop_loaded" not in st2
+
+
+def test_adopt_leaves_a_partida_a_reader_took_meanwhile(conn, tmp_path, monkeypatch):
+    import gzip, hashlib
+    from ingest import adopt, tr_worker as T
+    monkeypatch.setattr(adopt, "RAW_TR", tmp_path)
+    monkeypatch.setattr(T, "RAW_TR", tmp_path)
+    eik, xml = "121212121", partida("121212121")
+    path = tmp_path / "deeds" / eik[:3] / f"{eik}.xml.gz"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(gzip.compress(xml))
+    conn.execute("INSERT INTO tender_src.tr_deed (eik, status, fetched_at, sha256) VALUES (%s, 'ok', now(), %s)", (eik, hashlib.sha256(xml).hexdigest()))
+    each = adopt._each
+
+    def after_a_new_read(c, items, one, stats, key):
+        T.store(conn, eik, partida(eik, "МАРИЯ ПЕТРОВА"))
+        each(c, items, one, stats, key)
+    monkeypatch.setattr(adopt, "_each", after_a_new_read)
+    adopt.partidas(conn, st := {})
+    assert st.get("tr", 0) == 0 and [s for s, _, _ in loads(conn, "tr")] == ["loaded"]     # the old answer did not become current
+    assert conn.execute("SELECT holder_name FROM tender_src.tr_role").fetchone() == ("МАРИЯ ПЕТРОВА",)
+
+
+def test_the_build_stops_at_its_memory_limit_and_gives_it_back():
+    import resource
+    from ingest import build
+    before = resource.getrlimit(resource.RLIMIT_AS)
+    used = int(open("/proc/self/statm").read().split()[0]) * resource.getpagesize() // 1024 // 1024
+    with pytest.raises(MemoryError):
+        with build.memory_limit(used + 50):
+            bytearray(200 * 1024 * 1024)
+    assert resource.getrlimit(resource.RLIMIT_AS) == before

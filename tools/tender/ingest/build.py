@@ -4,9 +4,11 @@ The clean tables are rebuilt from the raw files and the landing zone (tender_src
 tender_stage, then moved into schema tender in one transaction, only after every step of the cycle succeeded.
 The pages read neither: they read the serving layer pub_tender, which the last step publishes when the rules hold.
 """
+import contextlib
 import datetime as dt
 import os
 import re
+import resource
 import shutil
 
 from . import db, eop, fx, normalize, pipeline
@@ -125,6 +127,11 @@ def _days_rows(conn):
 def _copy(conn, table, rows):
     if not rows:
         return 0
+    if isinstance(rows[0], tuple):   # source_record: named tuples, in the order of their fields
+        with conn.cursor().copy(f"COPY tender_stage.{table} ({', '.join(rows[0]._fields)}) FROM STDIN") as cp:
+            for r in rows:
+                cp.write_row(r)
+        return len(rows)
     cols = [c for c in rows[0] if not c.startswith("_")]
     with conn.cursor().copy(f"COPY tender_stage.{table} ({', '.join(cols)}) FROM STDIN") as cp:
         for r in rows:
@@ -150,9 +157,23 @@ def start_stage(conn):
     conn.execute("SET search_path = public")
 
 
+@contextlib.contextmanager
+def memory_limit(mb=None):
+    """The build holds every contract in memory. Past this limit it fails with MemoryError, recorded as a failed step;
+    without it the kernel's OOM killer chooses, and on 22.11.2026 it took PostgreSQL for the whole server."""
+    mb = mb or int(os.environ.get("TENDER_BUILD_MEMORY_MB", "2400"))
+    soft, hard = resource.getrlimit(resource.RLIMIT_AS)
+    resource.setrlimit(resource.RLIMIT_AS, (mb * 1024 * 1024, hard))
+    try:
+        yield
+    finally:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, hard))
+
+
 def step_normalize(conn, stats):
     """Rebuild the build schema from the loaded raw files: base procurement tables."""
-    res = normalize.normalize(_days_rows(conn), normalize.Fx(fx.load(conn)))
+    with memory_limit():
+        res = normalize.normalize(_days_rows(conn), normalize.Fx(fx.load(conn)))
     with conn.transaction():
         start_stage(conn)
         for table in ("buyer", "tender", "lot", "contract", "contract_supplier", "amendment", "subcontract",

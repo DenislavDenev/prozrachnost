@@ -135,7 +135,7 @@ def test_estimate_ratio_eur_estimates_and_implausible_date():
     assert round(tt["estimated_eur"]) == 100000                       # BGN at 1.95583
     assert k["estimate_ratio"] == 2.5 and k["value_flag"] == "ok"     # 2.5x the estimate, below the 10x review
     assert str(k["effective_date"]) == "2024-05-23" and k["date_flag"] == "contract_date_implausible"
-    assert {r["entity"] for r in res["source_record"]} == {"tender", "contract"}
+    assert {r.entity for r in res["source_record"]} == {"tender", "contract"}
 
 
 def test_clean_name_drops_personal_numbers_and_representatives():
@@ -370,7 +370,7 @@ def test_award_notice_without_award_is_kept_with_its_offers():
     (aw,) = res["award"]
     assert (aw["notice_id"], aw["offers_count"], aw["lot_no"], aw["tender_id"]) == ("895881", 6, 1, "563386")
     assert {n["notice_id"] for n in res["notice"]} == {"848280", "895881"} and res["contract"] == []
-    assert [s["entity"] for s in res["source_record"]] == ["tender", "award"] and res["tender"][0]["state"] == "unawarded"
+    assert [s.entity for s in res["source_record"]] == ["tender", "award"] and res["tender"][0]["state"] == "unawarded"
     assert res["lot"] == []   # LOT-0001 of a procedure without lots is the procedure itself, not a lot of its own
 
 
@@ -418,7 +418,7 @@ def test_a_corrected_republication_replaces_the_contract_instead_of_adding_one()
                       pub="2021-05-19T10:00:00")
     res = N.normalize([("2020-11-23", "contracts", [first]), ("2021-05-19", "contracts", [fixed])], N.Fx({}))
     assert [c["supplier_display"] for c in res["contract"]] == ["Д & Д ООД"] and res["_stats"]["contracts_corrected"] == 1
-    assert {s["ref"] for s in res["source_record"]} == {res["contract"][0]["id"]}     # both versions point to the survivor
+    assert {s.ref for s in res["source_record"]} == {res["contract"][0]["id"]}     # both versions point to the survivor
     # the other way round (the older one read last) keeps the newer
     res = N.normalize([("2021-05-19", "contracts", [fixed]), ("2021-05-20", "contracts", [first])], N.Fx({}))
     assert [c["supplier_display"] for c in res["contract"]] == ["Д & Д ООД"]

@@ -105,8 +105,9 @@ sql = "SELECT 0, (SELECT count(*) FROM pub_tender.person s JOIN tender_src.tr_pe
 
 [[check]]
 name = "landed_rows_have_a_load"
-title_bg = "Всеки приет ред носи зареждането си (редове без зареждане)"
+title_bg = "Приети редове, които още нямат зареждане (стъпката adopt ги приема бавно, затова не спира публикуването)"
 kind = "not_null"
+gating = false
 sql = """SELECT 0, (SELECT count(*) FROM tender_src.eop_file WHERE load_id IS NULL)
   + (SELECT count(*) FROM tender_src.fx_rate WHERE load_id IS NULL)
   + (SELECT count(*) FROM tender_src.tr_deed WHERE status = 'ok' AND load_id IS NULL)
