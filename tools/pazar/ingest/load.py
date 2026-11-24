@@ -115,6 +115,7 @@ def build_day(c, r, day, parsed, sha, zip_path, zip_bytes, load_id, note=None, r
     mask = IDENT_MASK
     with c.transaction():
         c.execute("SET LOCAL work_mem = '256MB'")
+        c.execute("SET LOCAL max_parallel_workers_per_gather = 0")     # each worker would take its own work_mem
         c.execute("SET LOCAL synchronous_commit = off")
         if replace:
             for t in ("pazar.chain_day", "pazar.day"):

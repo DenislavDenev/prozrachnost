@@ -305,3 +305,18 @@ def test_a_month_built_later_keeps_the_first_day_and_the_newest_name(c):
                      (LIDL,)).fetchone()[0] == dt.date(2026, 9, 29)
     put(c, D2, fixture(D2))                                            # a later day keeps the first day
     assert c.execute("SELECT first_day FROM pazar.chain WHERE eik = %s", (LIDL,)).fetchone()[0] == dt.date(2026, 9, 29)
+
+
+def test_without_free_memory_the_step_waits_and_stops_before_a_day(c, tmp_path, monkeypatch):
+    """The database lives on the same server: a day is not parsed while the memory is short, and the step can go on later."""
+    from ingest import archive, config, memory
+    arch = archive_dir(tmp_path, {D1: fixture(D1), D2: fixture(D2)})
+    monkeypatch.setattr(config, "ARCHIVE", arch)
+    free = iter([2000, 100, 100, 100])
+    monkeypatch.setattr(memory, "available_mb", lambda: next(free, 100))
+    monkeypatch.setattr(memory.time, "sleep", lambda s: None)
+    rep = build.catch_up(c, run_(c), st=archive.state(arch))
+    assert rep["built"] == 1 and "памет" in rep["stopped"]
+    assert [r[0] for r in c.execute("SELECT day FROM pazar.day ORDER BY day")] == [dt.date(2026, 9, 29)]
+    monkeypatch.setattr(memory, "available_mb", lambda: 5000)
+    assert build.catch_up(c, run_(c), st=archive.state(arch))["built"] == 1      # goes on from where it stopped
