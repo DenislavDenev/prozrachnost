@@ -650,3 +650,17 @@ kind = "registered"
 shown_as = "masked"
 decided_on = 2026-11-24
 basis = "a natural person or a sole trader with more than 1 250 euro in a year, the threshold under which ДФЗ itself publishes no name: the first name and ***, until two years after the year; at or below the threshold only in pub_subsidii.below_threshold"
+
+[[person]]
+column = "pazar_src.file.member"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the name of a chain's CSV file in the daily ZIP of Колко струва: „<Верига (Фирма)>_<ЕИК>.csv“, a company"
+
+[[person]]
+column = "pazar_src.bad_row.member"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the same file name, beside a row of that file that was not valid"
