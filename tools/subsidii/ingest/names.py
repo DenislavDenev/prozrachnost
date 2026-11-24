@@ -52,21 +52,22 @@ def place_key(oblast, obshtina):
     return f(oblast), f(obshtina)
 
 
-def load_places():
-    """({(oblast, municipality) key: id}, {key: (id, evidence)} of the aliases)."""
-    ref = config.ROOT / "db" / "ref"
+def load_places(c):
+    """({(oblast, municipality) key: code}, {key: (code, evidence)} of the aliases). The municipalities are the shared ones
+    (core.municipality, from EKATTE); the oblast is compared by its label ("София област", "София (столица)")."""
     by = {}
-    for r in csv.DictReader((ref / "municipality.csv").open(encoding="utf-8-sig")):
-        by[place_key(r["oblast"], r["name_bg"])] = r["id"]
+    for label, name, code in c.execute("""SELECT o.label_bg, m.name_bg, m.municipality_code FROM core.municipality m
+                                          JOIN core.oblast o USING (oblast_code) WHERE m.gone_at IS NULL"""):
+        by[place_key(label, name)] = code
     alias = {}
-    for r in csv.DictReader((ref / "municipality_alias.csv").open(encoding="utf-8")):
-        alias[place_key(r["oblast_raw"], r["obshtina_raw"])] = (r["municipality_id"], r["evidence"])
+    for r in csv.DictReader((config.ROOT / "db" / "ref" / "municipality_alias.csv").open(encoding="utf-8")):
+        alias[place_key(r["oblast_raw"], r["obshtina_raw"])] = (r["municipality_code"], r["evidence"])
     return by, alias
 
 
-def match_place(oblast, obshtina, places=None):
-    """(municipality id, method, evidence) or None."""
-    by, alias = places or load_places()
+def match_place(oblast, obshtina, places):
+    """(municipality code, method, evidence) or None."""
+    by, alias = places
     k = place_key(oblast, obshtina)
     if k in alias:
         return alias[k][0], "alias", alias[k][1]

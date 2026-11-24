@@ -1,0 +1,19 @@
+{% macro help(id, label) %}<button type="button" class="help-trigger" data-help="{{ id }}" aria-label="Какво е: {{ label }}">?</button>{% endmacro %}
+{% macro filters(action, s, years, q=None, tip=True, fond=True, extra='') %}
+<form class="ctl" method="get" action="{{ action }}" id="filters">
+  <label><span class="lbl">Финансова година {{ help('year', 'финансова година') }}</span> <select name="fy" aria-label="Финансова година">
+    {% for y in years %}<option value="{{ y.fy }}" {{ 'selected' if y.fy == s.fy }}>{{ y.fy }} ({{ y.starts|date }} - {{ y.ends|date }})</option>{% endfor %}</select></label>
+  {% set snaps = (years|selectattr('fy', 'equalto', s.fy)|first).snaps %}
+  {% if snaps|length > 1 %}<label><span class="lbl">Справка към {{ help('snapshot', 'справка към дата') }}</span> <select name="snap" aria-label="Справка към дата">
+    {% for d in snaps %}<option value="{{ d }}" {{ 'selected' if d == s.snap }}>{{ d|date }}</option>{% endfor %}</select></label>{% endif %}
+  <label>Област <select name="oblast" id="oblast" aria-label="Област"><option value="">Всички</option>{% for o in oblasti %}<option {{ 'selected' if o == s.oblast }}>{{ o }}</option>{% endfor %}</select></label>
+  <label>Община <select name="obshtina" id="obshtina" aria-label="Община"><option value="">Всички</option>{% for r in refs %}<option value="{{ r.id }}" data-oblast="{{ r.oblast }}" {{ 'selected' if r.id == s.obshtina }}>{{ r.name_bg }}</option>{% endfor %}</select></label>
+  {% if tip %}<label><span class="lbl">Получател {{ help('kind', 'вид на получателя') }}</span> <select name="tip" aria-label="Вид получател">{% for k, n in kind_names.items() %}<option value="{{ k }}" {{ 'selected' if k == s.kind }}>{{ n }}</option>{% endfor %}</select></label>{% endif %}
+  {% if fond %}<label>Фонд <select name="fond" aria-label="Фонд"><option value="">Всички</option>{% for k, n in fund_names.items() %}<option value="{{ k }}" {{ 'selected' if k == s.fond }}>{{ n }}</option>{% endfor %}</select></label>{% endif %}
+  {% if q is not none %}<label>Търси фирма <input type="search" name="q" value="{{ q }}" placeholder="име на фирма" aria-label="Търси фирма по име"></label>{% endif %}
+  {{ extra|safe }}
+  <button>Покажи</button>
+</form>
+{% endmacro %}
+{% macro src(csv, json=None) %}<div class="src">{{ source_name }} · <a href="/sources">набор и четене</a> · <a href="{{ csv }}">CSV</a>{% if json %} · <a href="{{ json }}">JSON</a>{% endif %}</div>{% endmacro %}
+{% macro eur(v, s) %}{% if v is none %}<span class="mut">няма данни</span>{% else %}{{ v|full }}{% endif %}{% endmacro %}

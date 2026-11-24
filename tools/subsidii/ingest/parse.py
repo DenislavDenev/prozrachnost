@@ -135,7 +135,7 @@ def read_lines(raw):
 
 
 class Tally:
-    """The sums and the checks of a file, added line by line. `result()` is what is stored in silver.snapshot.
+    """The sums and the checks of a file, added line by line. `result()` is what is stored in subsidii.snapshot.
 
     * rows: lines after the header; they are compared with the count of the archive (a different count of newlines);
     * identities: in every ОБЩО row, ЕЗФРС + НБ = "ЕЗФРС и НБ" and ЕФГЗ + "ЕЗФРС и НБ" = "Обща сума" (a blank is 0);

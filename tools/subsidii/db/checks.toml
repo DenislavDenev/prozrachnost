@@ -1,0 +1,112 @@
+# The quality rules of Субсидии и помощи (read into ops.check_rule by migrate). Every rule returns (expected, actual).
+# The checks of one snapshot (its sums against the file, the dates inside the year, the unknown municipalities, a fall
+# of the recipients) are in db/checks/*.sql and stop the build of that snapshot; these look at all of them.
+
+[[check]]
+name = "snapshots_built"
+title_bg = "Записани файлове без добро изграждане на сборовете"
+kind = "reconcile"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM subsidii.snapshot s LEFT JOIN subsidii.build b ON b.fy = s.fy AND b.snap_day = s.day
+WHERE s.status = 'built' AND b.ok IS NOT TRUE"""
+
+[[check]]
+name = "totals_reconcile"
+title_bg = "Прочити, чиито сборове по общини и непознати общини не са сборът на редовете ОБЩО във файла"
+kind = "reconcile"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM subsidii.snapshot s JOIN subsidii.build b ON b.fy = s.fy AND b.snap_day = s.day AND b.ok
+JOIN subsidii.summary a ON a.fy = s.fy AND a.snap_day = s.day AND a.scope = 'all'
+WHERE a.total IS DISTINCT FROM s.total_all OR a.recipients <> s.holders
+   OR coalesce((SELECT sum(total) FROM subsidii.municipality_fy f WHERE f.fy = s.fy AND f.snap_day = s.day), 0)
+      + coalesce((SELECT sum(h.total) FROM subsidii_src.holder h JOIN subsidii.beneficiary g USING (beneficiary_id)
+                  WHERE h.fy = s.fy AND h.from_day <= s.day AND (h.to_day IS NULL OR h.to_day >= s.day) AND g.municipality_code IS NULL), 0)
+      <> coalesce(s.total_all, 0)"""
+
+[[check]]
+name = "recipients_classified"
+title_bg = "Получатели без вид"
+kind = "not_null"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM subsidii_src.beneficiary b WHERE NOT EXISTS (SELECT 1 FROM subsidii.beneficiary g WHERE g.beneficiary_id = b.beneficiary_id)"""
+
+[[check]]
+name = "people_not_grouped"
+title_bg = "Физически лица или ЕТ с ключ за търсене или наименование на фирма"
+kind = "reconcile"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM subsidii.beneficiary WHERE kind <> 'legal' AND (name_norm IS NOT NULL OR org_id IS NOT NULL)"""
+
+[[check]]
+name = "unmatched_municipalities"
+title_bg = "Получатели в общини, които справочникът не знае"
+kind = "unmatched"
+dataset = "subsidii.paid"
+gating = false
+sql = """SELECT 0, coalesce(sum(n), 0) FROM subsidii.unmatched WHERE kind = 'municipality'"""
+
+# ---------------------------------------------------------------- the serving layer, judged inside the publication
+
+[[check]]
+name = "pub_every_row_once"
+title_bg = "За всеки публикуван прочит: редовете с име или маска, редовете под прага и непознатите общини са точно редовете ОБЩО"
+kind = "publish"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM pub_subsidii.build b JOIN pub_subsidii.summary a ON a.fy = b.fy AND a.snap_day = b.snap_day AND a.scope = 'all'
+WHERE b.ok AND a.recipients <>
+      (SELECT count(*) FROM pub_subsidii.recipient r WHERE r.fy = b.fy AND r.from_day <= b.snap_day AND (r.to_day IS NULL OR r.to_day >= b.snap_day))
+    + (SELECT coalesce(sum(recipients), 0) FROM pub_subsidii.below_threshold t WHERE t.fy = b.fy AND t.snap_day = b.snap_day)
+    + (SELECT count(*) FROM subsidii_src.holder h JOIN subsidii.beneficiary g USING (beneficiary_id)
+       WHERE h.fy = b.fy AND h.from_day <= b.snap_day AND (h.to_day IS NULL OR h.to_day >= b.snap_day) AND g.kind <> 'legal' AND g.municipality_code IS NULL
+         AND NOT EXISTS (SELECT 1 FROM pub_subsidii.recipient r WHERE r.holder_id = h.holder_id))"""
+
+[[check]]
+name = "pub_no_person_below_threshold"
+title_bg = "Ред на физическо лице или ЕТ с прага или по-малко в слоя за показване"
+kind = "publish"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM pub_subsidii.recipient r JOIN pub_subsidii.fiscal_year y USING (fy)
+WHERE r.kind <> 'legal' AND (y.eur_per_unit IS NULL OR r.total IS NULL OR r.total * y.eur_per_unit <= y.name_threshold_eur)"""
+
+[[check]]
+name = "pub_no_mask_after_term"
+title_bg = "Маскирано име на физическо лице след срока от две години"
+kind = "publish"
+dataset = "subsidii.paid"
+sql = """SELECT 0, count(*) FROM pub_subsidii.recipient r JOIN pub_subsidii.fiscal_year y USING (fy)
+WHERE r.person_masked IS NOT NULL AND subsidii.today() >= y.names_until"""
+
+[[check]]
+name = "pub_totals"
+title_bg = "Сборът на общините в слоя за показване е този на чистите таблици"
+kind = "publish"
+dataset = "subsidii.paid"
+sql = """SELECT (SELECT coalesce(sum(f.total), 0) FROM subsidii.municipality_fy f JOIN subsidii.build b ON b.fy = f.fy AND b.snap_day = f.snap_day AND b.ok),
+       (SELECT coalesce(sum(total), 0) FROM pub_subsidii.municipality_fy)"""
+
+# ---------------------------------------------------------------- the move from the old database (step parity)
+
+[[check]]
+name = "parity_snapshots"
+title_bg = "Сверка със старата база: прочити с еднакви редове, получатели, плащания и суми по фондове"
+kind = "parity"
+
+[[check]]
+name = "parity_spans"
+title_bg = "Сверка със старата база: интервали на редовете ОБЩО и на плащанията с еднакво съдържание"
+kind = "parity"
+
+[[check]]
+name = "parity_aggregates"
+title_bg = "Сверка със старата база: сборове по община, мярка и вид получател с еднакви бройки и суми"
+kind = "parity"
+
+[[check]]
+name = "parity_beneficiaries"
+title_bg = "Сверка със старата база: получатели с еднакъв вид, ключ и община"
+kind = "parity"
+
+[[check]]
+name = "parity_observations"
+title_bg = "Сверка със старата база: наблюдения с еднаква стойност"
+kind = "parity"

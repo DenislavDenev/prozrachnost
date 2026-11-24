@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, filters, src, eur with context %}
+{% block title %}Общини{% endblock %}
+{% block main %}
+<h1>Общини</h1>
+<p class="lede">{{ s.fy_row.label_bg }}, справка към {{ s.snap|date }}: <b>{{ d.rows|selectattr('has_data')|list|length }}</b> от {{ d.rows|length }} {{ 'община' if d.rows|length == 1 else 'общини' }} имат получатели в избрания обхват.</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Сумите са на получателите, които ДФЗ води в общината (по адреса им в справката). „На жител“ дели сумата на жителите с постоянен адрес към {{ d.population_date|date }} (ГРАО, чрез „Население“){% if d.population_late %}; по-ранни данни няма, затова датата е след края на годината{% endif %}. Това сравнява общини, не показва какво получава един жител. {{ help('resident', 'на жител') }}</p>
+  <p>Община без получатели е „няма данни“, не нула, докато справката не покаже друго.</p></details>
+{{ filters("/obshtini", s, years, tip=True, fond=False) }}
+<section class="p"><div class="tools"><input type="search" placeholder="Търси община" aria-label="Търси община" data-filter="obshtini"></div>
+  <div class="scroll"><table class="sortable" id="obshtini"><thead><tr><th>Община</th><th>Област</th><th class="n">Редове</th><th class="n">ЕФГЗ, €</th><th class="n">ЕЗФРСР, €</th><th class="n">Нац. бюджет, €</th><th class="n">Общо, €</th><th class="n">Жители</th><th class="n">€ на жител {{ help('resident', 'на жител') }}</th></tr></thead><tbody>
+  {% for r in d.rows %}<tr><td><a href="/obshtini/{{ r.id }}?fy={{ s.fy }}">{{ r.name }}</a></td><td>{{ r.oblast }}</td><td class="n">{{ r.recipients|num if r.has_data else 'няма данни' }}</td>
+    {% for k in ['efgz', 'ezfrs', 'nb', 'total'] %}<td class="n" data-v="{{ r[k + '_eur'] if r[k + '_eur'] is not none else '' }}">{{ eur(r[k + '_eur'], s) }}</td>{% endfor %}
+    <td class="n" data-v="{{ r.persons or '' }}">{{ r.persons|num if r.persons else 'няма данни' }}</td><td class="n" data-v="{{ r.per_resident if r.per_resident is not none else '' }}">{{ r.per_resident|num(2) if r.per_resident is not none else 'няма данни' }}</td></tr>{% endfor %}</tbody></table></div>
+  {{ src("/export-obshtini.csv?" ~ qs, "/api/obshtini.json?" ~ qs) }}</section>
+<p class="mut">Жители: ГРАО към {{ d.population_date|date }}, постоянен адрес.</p>
+{% endblock %}

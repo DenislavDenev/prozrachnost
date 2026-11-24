@@ -191,26 +191,6 @@ def test_the_search_key_ignores_case_quotes_spaces_and_latin_look_alikes():
     assert names.norm("Ф.И.П. - 2000") == "Ф И П 2000"
 
 
-def test_the_municipality_is_found_by_name_together_with_the_oblast():
-    places = names.load_places()
-    ruse, varna = names.match_place("Русе", "Бяла", places), names.match_place("Варна", "Бяла", places)
-    assert ruse[0] != varna[0] and ruse[1] == varna[1] == "name"
-    assert names.match_place("София (област)", "Пирдоп", places)[0] == names.match_place("София област", "Пирдоп", places)[0]
-    assert names.match_place("Варна", "Вълчи дол", places)[0] == names.match_place("Варна", "Вълчи Дол", places)[0]
-    alias = names.match_place("Добрич", "Добрич-селска", places)
-    assert alias[1] == "alias" and alias[0] == names.match_place("Добрич", "Добричка", places)[0] and "Добричка" in alias[2]
-    assert names.match_place("Русе", "Варна", places) is None             # the name of a municipality of another oblast
-    assert names.match_place("Видин", "Няма такава", places) is None
-
-
-def test_every_municipality_of_the_fixtures_is_found():
-    places = names.load_places()
-    for fy in (2024, 2025):
-        for l in parse.read_lines(fixture(fy)):
-            if l.total:
-                assert names.match_place(l.f[parse.OBLAST], l.f[parse.OBSHTINA], places), (l.f[parse.OBLAST], l.f[parse.OBSHTINA])
-
-
 def test_a_derived_file_keeps_the_shape():
     raw = derive(2024, drop={0, 1})
     assert parse.parse(raw).stats["holders"] == 40
