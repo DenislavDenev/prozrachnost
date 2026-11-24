@@ -27,5 +27,5 @@ TABLES = {
         "date_expiring")),
     "impact_contract": (("ic_key",), (
         "institution_id", "institution_name", "contract_date", "price_bgn", "eik", "executor", "executor_kind",
-        "subject", "description", "active")),
+        "subject", "description", "active", "price_eur")),
 }
