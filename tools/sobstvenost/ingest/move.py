@@ -69,8 +69,10 @@ def replay(conn, r, old_dsn=OLD_DSN, ops='ops', live='live'):
         times[(source, 'details', key) if key else (source, kind)].add(at)
 
     def one(source, ref, at, work):
+        # one transaction per read: its files, fetches and load commit together (a commit is slow on a busy server)
         try:
-            work(archive.at(at), at)
+            with conn.transaction():
+                work(archive.at(at), at)
             r.count('reads')
         except (ShapeError, pipeline.CorruptRaw) as e:
             pipeline.reject(conn, r, source, ref, e, now=at)
