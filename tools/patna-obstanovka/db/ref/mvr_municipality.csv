@@ -1,0 +1,2 @@
+region,municipality,municipality_code,evidence
+ДОБРИЧ,ДОБРИЧ-ГРАД,DOB28,"ptp.zip of 24.11.2026: 902 crashes in region ДОБРИЧ are in ДОБРИЧ-ГРАД, beside ДОБРИЧКА (DOB15) and the six other municipalities of the oblast; the file never writes ДОБРИЧ as a municipality. DOB28 is the municipality of the city (Добрич)"

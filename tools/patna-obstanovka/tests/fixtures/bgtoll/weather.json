@@ -1,0 +1,62 @@
+﻿[
+    {
+        "station_id": 1,
+        "scp": 1001,
+        "name": "Мотел Ихтиман",
+        "nameENG": "Motel Ihtiman",
+        "lat": 42.426981,
+        "lon": 23.854053,
+        "air": -0.23523,
+        "surface": 1.958613,
+        "humidity": 58.676414,
+        "pressure": 941.419189,
+        "wind": 28.906227,
+        "wind_dir": 308.659485,
+        "time": "2026-11-24 15:30:00"
+    },
+    {
+        "station_id": 5,
+        "scp": 1004,
+        "name": "Чурек",
+        "nameENG": "Churek",
+        "lat": 42.77861,
+        "lon": 23.736149,
+        "air": 0.12533,
+        "surface": 0,
+        "humidity": 58.977509,
+        "pressure": 930.137634,
+        "wind": 5.974198,
+        "wind_dir": 214.84906,
+        "time": "2026-11-24 15:30:00"
+    },
+    {
+        "station_id": 6,
+        "scp": 1005,
+        "name": "Разлив",
+        "nameENG": "Razliv",
+        "lat": 42.907531,
+        "lon": 23.877779,
+        "air": 1.761812,
+        "surface": 0,
+        "humidity": 51.854744,
+        "pressure": 974.490173,
+        "wind": 5.236763,
+        "wind_dir": 201.876724,
+        "time": "2026-11-24 15:30:00"
+    },
+    {
+        "station_id": 7,
+        "scp": 1006,
+        "name": "Белокопитово",
+        "nameENG": "Belokopitovo",
+        "lat": 43.337204,
+        "lon": 26.900232,
+        "air": 1.930044,
+        "surface": 2.873822,
+        "humidity": 58.879055,
+        "pressure": 997.298523,
+        "wind": 18.359205,
+        "wind_dir": 277.199402,
+        "time": "2026-11-24 15:30:00"
+    }
+]
