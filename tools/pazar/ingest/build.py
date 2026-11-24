@@ -82,6 +82,10 @@ def build_one(c, day, raw, sha, path, now=None, month_replay=False, st=None, sou
     if rewritten or later:
         if rewritten:
             log(c, day, "sha256", row[1], sha, "rewritten")
+        if confirmed:             # the month rebuild leaves out the days still held: this one is not held any more
+            c.execute("DELETE FROM silver.day WHERE day = %s AND status = 'held'", (day,))
+            c.execute("DELETE FROM ops.held WHERE ref = %s", (str(day),))
+            log(c, day, None, None, sha, "confirmed")
         if source is None:        # the month is read from the archive, with this day's bytes as they are now
             st = st or archive.state()
             source = {d(k): None for k in archive.days(st)}
