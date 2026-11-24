@@ -322,6 +322,23 @@ def test_a_gazette_year_that_cannot_be_right_and_a_relation_to_itself_stay_off_t
     assert conn.execute("SELECT gazette_number, gazette_year FROM pub_zakoni.act WHERE pris_id = 170973").fetchone() == (84, 2026)
 
 
+def test_a_new_version_of_the_contracts_with_the_price_in_euro_is_loaded_and_the_source_price_is_kept(conn, arch):
+    """Version 5 of the report (12.11.2026) gives the price in euro too; the build takes it, and an older read had none."""
+    build(conn)
+    assert count(conn, "SELECT count(*) FROM zakoni_src.impact_contract WHERE price_eur IS NOT NULL") == 0
+    before = conn.execute("SELECT price_eur FROM zakoni.impact_contract WHERE eik = '121026679' AND price_bgn = 31680").fetchone()[0]
+    put(arch, "043ba0e4-18e1-4880-8a1f-ea739103dca4", (FX / "v5" / "043ba0e4-18e1-4880-8a1f-ea739103dca4.json").read_bytes(), version="5")
+    problems, _ = build(conn, now=T0 + dt.timedelta(days=1, hours=1))
+    assert not any("невалиден" in p for p in problems)
+    assert state(conn, "043ba0e4-18e1-4880-8a1f-ea739103dca4") == "задържан до второ четене"   # the fixture has fewer records
+    build(conn, now=T0 + dt.timedelta(days=2, hours=2))
+    assert count(conn, "SELECT count(*) FROM zakoni_src.impact_contract WHERE price_eur IS NOT NULL") == 6
+    rows = conn.execute("SELECT price_bgn, price_eur FROM zakoni.impact_contract WHERE eik = '121026679' ORDER BY price_bgn").fetchall()
+    assert [(str(a), str(b)) for a, b in rows] == [("20340.00", "10399.68"), ("31680.00", "16197.73")]
+    assert str(before) == "16197.73"                       # the old conversion by the fixed rate gave the same number
+    assert count(conn, "SELECT actual FROM ops.check_latest WHERE tool = 'zakoni' AND name = 'impact_eur_is_the_fixed_rate'") == 0
+
+
 def test_the_reference_list_is_a_source_of_its_own(conn, arch):
     build(conn)
     from ingest.config import ROOT
@@ -343,7 +360,7 @@ def old_database(conn, arch):
         conn.execute(sql.replace("ops.", "old_ops.").replace("SCHEMA IF NOT EXISTS ops", "SCHEMA IF NOT EXISTS old_ops"))
     from ingest.schema import TABLES
     for t, (key, data) in TABLES.items():
-        cols = ", ".join([*key, *data])
+        cols = ", ".join([*key, *(c for c in data if c != "price_eur")])     # the old silver predates the price in euro
         conn.execute(f"""INSERT INTO silver.{t} ({cols}, valid_from, row_sha, raw_sha256)
             SELECT {cols}, %s, 'x', 'x' FROM zakoni_src.{t}""", (T0,))
     for t in ("act", "act_institution", "act_relation", "consultation", "strategy_doc"):
