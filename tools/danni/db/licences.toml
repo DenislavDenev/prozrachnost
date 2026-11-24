@@ -174,3 +174,15 @@ dataset = "kontrol.archive"
 checked_on = 2026-11-11
 display = true
 note = "derived from the three datasets of Контрол (the state of each read, the versions, the documents); follows them"
+
+[[licence]]
+dataset = "sigurnost.police"
+checked_on = 2026-10-02
+display = true
+note = "the sets of the Ministry of the Interior on data.egov.bg; each set states its own terms (CC0, CC BY or none, db/ref/datasets.csv of Сигурност): shown with a link to the source; not handed out until the API carries the terms of each set"
+
+[[licence]]
+dataset = "sigurnost.bulletin"
+checked_on = 2026-10-02
+display = true
+note = "the list of the monthly bulletin on data.egov.bg (CC0): only the names, months and links are kept; the PDF files on mvr.bg are not read"

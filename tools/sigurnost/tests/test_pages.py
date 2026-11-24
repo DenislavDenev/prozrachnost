@@ -5,7 +5,9 @@ import json
 
 import pytest
 
-from ingest import config, gold, load
+import datetime as dt
+
+from ingest import config
 from tests import helpers as h
 
 
@@ -15,9 +17,8 @@ def client(c, tmp_path, monkeypatch):
     from app import main
     monkeypatch.setattr(config, "ARCHIVE", tmp_path)
     monkeypatch.setattr(config, "DATA", tmp_path / "data")
-    st = h.build_archive(tmp_path, {h.POLICE: h.police_2024()})
-    load.ingest(c, st)
-    gold.build(c)
+    st = h.build_archive(tmp_path, {h.POLICE: h.police_2024()}, last_ok=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    h.build(c, st)
     return TestClient(main.app)
 
 
@@ -65,7 +66,7 @@ def test_a_missing_value_is_not_a_zero_in_the_table_csv_and_json(client):
 
 
 def test_types_with_a_comparison_year_of_another_template_say_they_are_not_comparable(client, c):
-    c.execute("UPDATE gold.observation SET template = 'other-1' WHERE family = 'types'")
+    c.execute("UPDATE pub_sigurnost.observation SET template = 'other-1' WHERE family = 'types'")
     body = text(client.get("/vidove?y=2024&sr=2024"))
     assert "Сравни с" in body
     from app import queries as Q
@@ -111,3 +112,12 @@ def test_an_unknown_structure_and_a_general_directorate_are_404_for_pages_that_n
     assert client.get("/oblasti/BG").status_code == 404
     assert client.get("/vidove?o=GD-GP").status_code == 404
     assert client.get("/api/series.json?o=XX").status_code == 404
+
+
+def test_every_answer_says_its_publication_and_the_web_reads_only_the_serving_layer(client):
+    r = client.get("/oblasti.csv?y=2024")
+    assert r.status_code == 200 and r.headers["X-Publication"].isdigit() and r.headers["ETag"] == f'W/"pub-{r.headers["X-Publication"]}"'
+    src = (config.ROOT / "app" / "queries.py").read_text(encoding="utf-8")
+    import re
+    schemas = set(re.findall(r"(pub\w*|sigurnost\w*|ops|core|silver|gold)\.[a-z_]+", src))
+    assert schemas <= {"pub", "pub_sigurnost"}, schemas

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from ingest import checks, config, db
+from ingest import config
 from . import feedback, queries as Q
 
 ROOT = Path(__file__).resolve().parent
@@ -20,6 +20,23 @@ app = FastAPI(title="Престъпност и пожари", docs_url=None, red
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", Path(os.environ.get("SIGURNOST_FEEDBACK", str(config.DATA / "feedback"))), "Престъпност и пожари"))
 t = Jinja2Templates(directory=ROOT / "templates")
+
+
+@app.middleware("http")
+async def publication(request, call_next):
+    """Every answer says which publication of the serving layer it shows, so a cache can keep it until the next one."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static"):
+        return response
+    try:
+        v = Q.version()
+    except Exception:
+        v = None
+    if v:
+        response.headers["X-Publication"] = str(v["publication_id"])
+        response.headers["ETag"] = f'W/"pub-{v["publication_id"]}"'
+        response.headers["Last-Modified"] = v["published_at"].astimezone(dt.timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    return response
 MENU = [("Табло", "/"), ("Карта", "/karta"), ("Видове", "/vidove"), ("Области", "/oblasti"), ("Пожари", "/pozhari"), ("Източници", "/sources")]
 V = "1"
 MAP_MEASURES = {"per100k": "Регистрирани на 100 хил. души", "reg": "Регистрирани престъпления", "clearance": "Разкриваемост, %"}
@@ -107,9 +124,7 @@ def chart_series(code):
 
 @app.get("/healthz")
 def health():
-    with db.connect() as c:
-        c.execute("SELECT 1")
-    return {"ok": True}
+    return {"ok": Q.health()}
 
 
 @app.get("/favicon.svg")
@@ -311,15 +326,13 @@ def pozhari(request: Request):
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
-    with db.connect() as c:
-        problems, info = checks.freshness(c)
+    problems, info = Q.state()
     return render(request, "sources.html", nav="Източници", s=Q.sources(), problems=problems, info=info, checks=Q.checks())
 
 
 @app.get("/sources.json")
 def sources_json():
-    with db.connect() as c:
-        problems, info = checks.freshness(c)
+    problems, info = Q.state()
     s = Q.sources()
     return serial(dict(tool="sigurnost", problems=problems, info=info,
                        datasets=[dict(id=d["set_uri"], title=d["title"], kind=d["kind"], year=d["year"], channel="api", licence=d["licence"],
