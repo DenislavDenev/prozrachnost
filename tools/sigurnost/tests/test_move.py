@@ -26,7 +26,8 @@ def legacy(c, root):
     for f in sorted((config.ROOT / "db" / "legacy").glob("*.sql")):
         sql = f.read_text(encoding="utf-8").replace("ops.", "old_ops.").replace("SCHEMA IF NOT EXISTS ops", "SCHEMA IF NOT EXISTS old_ops")
         c.execute(sql)
-    rel = lambda p: Path(p).relative_to(root).as_posix()
+    # the path inside the archive: the shared register keeps the first place a file was seen, which may be another test's folder
+    rel = lambda p: "egov/" + Path(p).as_posix().split("/egov/", 1)[1]
     for set_uri, lid, path, sha, at in c.execute(
             """SELECT d.set_uri, d.list_load_id, f.path, f.sha256, x.fetched_at FROM sigurnost.dataset d
                LEFT JOIN ops.load l ON l.load_id = d.list_load_id LEFT JOIN ops.raw_file f USING (raw_file_id)

@@ -8,7 +8,7 @@ from decimal import Decimal
 
 import pytest
 
-from ingest import archive, checks, config, gold, pipeline
+from ingest import checks, config, pipeline
 from tests import helpers as h
 
 UTC = dt.timezone.utc
