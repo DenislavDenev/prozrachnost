@@ -149,6 +149,15 @@ def test_a_person_above_the_threshold_is_masked_until_two_years_after_the_year_a
     assert outside[person] == (None, None) and outside[firm] == (None, "БГ Агро Земеделска Компания ЕООД")     # a firm is shown whatever the date
 
 
+def test_the_rule_against_a_mask_after_the_term_sees_one(c):
+    """The second guard: were the SELECT of the serving layer to keep a mask past the term, the rule sees it."""
+    built(c, (2024, D1, fixture(2024)))
+    published(c, 2024, "2026-10-14")
+    c.execute("SELECT set_config('subsidii.today', '2030-01-01', false)")
+    sql = c.execute("SELECT sql FROM ops.check_rule WHERE tool = 'subsidii' AND name = 'pub_no_mask_after_term'").fetchone()[0]
+    assert c.execute(sql).fetchone()[1] > 0
+
+
 def test_a_person_at_or_below_the_threshold_is_only_in_the_sums(c):
     built(c, (2024, D1, fixture(2024)))
     publish(c)

@@ -93,7 +93,7 @@ CASES = [
     ("db/checks.toml", "WHERE r.kind <> 'legal' AND (y.eur_per_unit IS NULL OR r.total IS NULL OR r.total * y.eur_per_unit <= y.name_threshold_eur)", "WHERE false",
      "tests/test_gold.py::test_a_publication_that_would_show_a_small_person_is_refused_and_changes_nothing"),
     ("db/checks.toml", "WHERE r.person_masked IS NOT NULL AND subsidii.today() >= y.names_until", "WHERE false",
-     "tests/test_gold.py::test_a_person_above_the_threshold_is_masked_until_two_years_after_the_year_and_then_has_no_name"),
+     "tests/test_gold.py::test_the_rule_against_a_mask_after_the_term_sees_one"),
     # the pages
     ("app/queries.py", "if mu and ob and mu[\"oblast\"] != ob:", "if False:", "tests/test_pages.py::test_the_oblast_limits_the_municipality_and_a_foreign_municipality_is_dropped"),
     ("app/queries.py", "same_scope=ca == cb,", "same_scope=True,", "tests/test_pages.py::test_the_comparison_says_when_the_scope_differs"),
