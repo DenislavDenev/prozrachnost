@@ -84,6 +84,29 @@ def test_a_shorter_read_waits_a_day(conn):
     assert count(conn, "SELECT count(*) FROM ops.load WHERE tool = 'kontrol' AND is_current") == 1
 
 
+def test_the_hold_of_cpc_follows_the_decisions_not_the_pages(conn):
+    """24.11.2026: КЗК stayed held although no decision had left. The pager note had moved to another decision and the
+    hash of the raw last page differed between two reads of the same decisions."""
+    rs = cpc()
+    note = dict(first=1, printed_end=30, total=len(rs), actual_rows=len(rs), next_link_style='color: black')
+
+    def read(rows, sha):
+        return manifest(rows, source_count=len(rows), source_discrepancies=[dict(url='u', sha256=sha, **note)])
+    first = [dict(x) for x in rs]
+    first[0]['source_pager_discrepancy'] = note
+    moved = [dict(x) for x in rs]
+    moved[1]['source_pager_discrepancy'] = dict(note, first=2)
+    fewer = moved[:-1]
+    now = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)
+    with pipeline.run(conn, 'kontrol', 'cpc') as r:
+        assert store.load(conn, r, 'cpc', first, read(first, 'a' * 64), now=now).status == 'loaded'
+        assert store.load(conn, r, 'cpc', moved, read(moved, 'b' * 64), now=now + dt.timedelta(hours=1)).status == 'loaded'
+        # a decision that leaves is held, and a day later the same decisions from a page with another hash confirm it
+        assert store.load(conn, r, 'cpc', fewer, read(fewer, 'c' * 64), now=now + dt.timedelta(hours=2)).status == 'held'
+        assert store.load(conn, r, 'cpc', fewer, read(fewer, 'd' * 64), now=now + dt.timedelta(days=2)).status == 'confirmed'
+    assert count(conn, "SELECT count(*) FROM ops.hold WHERE tool = 'kontrol'") == 0
+
+
 def load_all(conn, r, private=False):
     a = adfi()
     if private:

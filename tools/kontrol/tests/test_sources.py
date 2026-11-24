@@ -95,6 +95,27 @@ def test_hold_both_directions():
     assert store.hold_when(old, {'1': dict(id='1'), '#read': dict(inspection_gaps=[])}) == 0
     assert store.hold_when(old, {'#read': {}}) == 1
 
+def test_a_pager_note_that_moves_with_the_last_page_loses_nothing():
+    # 24.11.2026: the note stood on decision 2008/1126, the first row of the last page in October; the register grew
+    # and the note moved to the first row of the new last page. No decision left, yet the read was held
+    note = dict(first=15421, printed_end=15450, total=15446, actual_rows=26, next_link_style='color: black')
+    old = {'1': dict(id='1', law='ЗЗК', source_pager_discrepancy=note), '2': dict(id='2', law='ЗОП'), '#read': {}}
+    moved = {'1': dict(id='1', law='ЗЗК'), '2': dict(id='2', law='ЗОП', source_pager_discrepancy=dict(note, first=15571)),
+             '#read': {}}
+    assert store.hold_when(old, moved) == 0
+    # a value of the decision itself that becomes empty is still a loss
+    assert store.hold_when(old, dict(moved, **{'1': dict(id='1', law=None)})) == 1
+
+def test_the_hash_of_a_raw_page_is_not_content_of_the_read():
+    # an ASP.NET page differs on every read (its state field), so its sha256 would make two reads of the same decisions
+    # differ and a held read could never be confirmed; the raw file keeps it (ops.fetch)
+    def read(sha):
+        return dict(complete=True, occurrence_count=1, source_count=1, pages=1, scope='x', answer_sha256=sha,
+                    source_discrepancies=[dict(url='u', sha256=sha, first=1, printed_end=30, total=1, actual_rows=1)])
+    a, b = store.keyed([dict(id='1')], read('a' * 64)), store.keyed([dict(id='1')], read('b' * 64))
+    assert a == b
+    assert a['#read']['source_discrepancies'] == [dict(url='u', first=1, printed_end=30, total=1, actual_rows=1)]
+
 def test_retry_after_and_fail_closed():
     delays, calls = [], []
     def handler(request):
