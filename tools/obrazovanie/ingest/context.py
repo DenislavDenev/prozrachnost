@@ -66,6 +66,15 @@ def _rows(raw: bytes, expected: set[str], label: str) -> dict[str, dict]:
     return result
 
 
+# Gaps that are in the source itself, each proven on the named resources (docs/sources.md): the total of pupils and of
+# groups is above the sum of its parts. Only this school type and these years; any other gap stops the import.
+HEARING = "за обучение и подкрепа на ученици с увреден слух"
+KNOWN_GAPS = {
+    (HEARING, "2025/2026"): (3, Decimal("0.25")),
+    (HEARING, "2026/2027"): (2, Decimal("0.33333")),   # pupils 9fe7ef67, groups aa736683: 1/3 of a group
+}
+
+
 def parse_context(pupils_raw: bytes, classes_raw: bytes, year: str) -> list[KindCounts]:
     pupils = _rows(pupils_raw, PUPIL_KEYS, "pupils")
     classes = _rows(classes_raw, CLASS_KEYS, "classes")
@@ -85,8 +94,8 @@ def parse_context(pupils_raw: bytes, classes_raw: bytes, year: str) -> list[Kind
                           Decimal(0))
         groups = Decimal(str(c["br_gr_klas_all"]))
         class_gap = groups - class_parts
-        known_gap = kind == "за обучение и подкрепа на ученици с увреден слух" and year == "2025/2026"
-        if pupil_gap != (3 if known_gap else 0) or abs(class_gap - (Decimal("0.25") if known_gap else 0)) > Decimal("0.00001"):
+        known_pupils, known_groups = KNOWN_GAPS.get((kind, year), (0, Decimal(0)))
+        if pupil_gap != known_pupils or abs(class_gap - known_groups) > Decimal("0.00001"):
             raise ShapeError(f"Pupil/group totals do not reconcile for {kind}")
         result.append(KindCounts(kind, p["br_inst"], grades, preschool, p["br_stds"], groups))
     return result
