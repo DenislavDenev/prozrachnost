@@ -76,6 +76,12 @@ CASES = [
     ("db/checks/04_periods_inside_year.sql", "AND (p.starts < y.starts OR p.ends > y.ends)", "AND false", "tests/test_gold.py::test_a_payment_outside_the_year_stops_gold_even_if_silver_let_it_in"),
     ("ingest/gold.py", "if problems:\n                raise ChecksFailed(problems)", "if False:\n                raise ChecksFailed(problems)",
      "tests/test_gold.py::test_a_recipient_in_an_unknown_municipality_stops_the_snapshot_and_leaves_the_earlier_one"),
+    # the pages
+    ("app/queries.py", "if mu and ob and mu[\"oblast\"] != ob:", "if False:", "tests/test_pages.py::test_the_oblast_limits_the_municipality_and_a_foreign_municipality_is_dropped"),
+    ("app/queries.py", "same_scope=ca == cb,", "same_scope=True,", "tests/test_pages.py::test_the_comparison_says_when_the_scope_differs"),
+    ("app/queries.py", "v = float(amount / p[\"persons\"]) if p and p[\"n\"] == nmembers and p[\"persons\"] else None", "v = float(amount / p[\"persons\"]) if p and p[\"persons\"] else None",
+     "tests/test_pages.py::test_per_inhabitant_needs_the_inhabitants_and_says_their_date"),
+    ("app/main.py", "recipient=r[\"name_export\"]", "recipient=r[\"name_shown\"]", "tests/test_pages.py::test_an_export_has_no_name_of_a_person_and_the_json_neither"),
 ]
 
 

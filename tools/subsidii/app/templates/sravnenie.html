@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, eur with context %}
+{% block title %}Сравнение{% endblock %}
+{% block main %}
+<h1>Сравнение между две справки</h1>
+<p class="lede">{{ a.fy_row.label_bg }}, справка към {{ a.snap|date }}, срещу {{ b.fy_row.label_bg|lower }}, справка към {{ b.snap|date }}. {% if cmp.same_scope %}Мерките на двете справки са същите.{% else %}<b>Обхватът е различен</b>: мерките на двете справки не са същите.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Можете да сложите една до друга всеки две справки: две финансови години, или две дати на една и съща година (справката се променя през годината и ние пазим всяко четене). Числата се сравняват само когато мерките са същите; иначе показваме кои са само в едната и не твърдим, че разликата е „ръст“ или „спад“. {{ help('compare', 'сравнение между години') }}</p></details>
+<form class="ctl" method="get" action="/sravnenie">
+  <fieldset><legend>Първа справка</legend>
+    <label>Година <select name="a_fy">{% for y in years %}<option value="{{ y.fy }}" {{ 'selected' if y.fy == a.fy }}>{{ y.fy }}</option>{% endfor %}</select></label>
+    <label>Към <select name="a_snap">{% for y in years if y.fy == a.fy %}{% for d in y.snaps %}<option value="{{ d }}" {{ 'selected' if d == a.snap }}>{{ d|date }}</option>{% endfor %}{% endfor %}</select></label></fieldset>
+  <fieldset><legend>Втора справка</legend>
+    <label>Година <select name="b_fy">{% for y in years %}<option value="{{ y.fy }}" {{ 'selected' if y.fy == b.fy }}>{{ y.fy }}</option>{% endfor %}</select></label>
+    <label>Към <select name="b_snap">{% for y in years if y.fy == b.fy %}{% for d in y.snaps %}<option value="{{ d }}" {{ 'selected' if d == b.snap }}>{{ d|date }}</option>{% endfor %}{% endfor %}</select></label></fieldset>
+  <label>Област <select name="oblast" id="oblast"><option value="">Всички</option>{% for o in oblasti %}<option {{ 'selected' if o == oblast }}>{{ o }}</option>{% endfor %}</select></label>
+  <label>Община <select name="obshtina" id="obshtina"><option value="">Всички</option>{% for r in refs %}<option value="{{ r.id }}" data-oblast="{{ r.oblast }}" {{ 'selected' if r.id == obshtina }}>{{ r.name_bg }}</option>{% endfor %}</select></label>
+  <label>Получател <select name="tip">{% for k, n in kind_names.items() %}<option value="{{ k }}" {{ 'selected' if k == tip }}>{{ n }}</option>{% endfor %}</select></label>
+  <button>Сравни</button>
+</form>
+{% if not cmp.same_scope %}<section class="p warning"><h2>Различен обхват</h2>
+  <p>Само в първата справка: {{ cmp.only_a|join(', ') or 'няма' }}. Само във втората: {{ cmp.only_b|join(', ') or 'няма' }}. Сумите по-долу са верни за всяка справка, но разликата между тях не е сравнение на едно и също.</p></section>{% endif %}
+{% if not cmp.same_currency %}<section class="p warning"><p>Валутата на оригинала е различна или непотвърдена за поне една от годините: сравняваме само суми в евро, а ако за някоя липсват, разликата не се смята.</p></section>{% endif %}
+<section class="p"><div class="scroll"><table class="sortable"><thead><tr><th>Фонд</th><th class="n">Първа, €</th><th class="n">Втора, €</th><th class="n">Промяна</th></tr></thead><tbody>
+  {% for r in cmp.rows %}<tr class="{{ 'sum' if r.code == 'total' }}"><td>{{ r.name }}</td><td class="n" data-v="{{ r.a if r.a is not none else '' }}">{{ eur(r.a, none) }}</td><td class="n" data-v="{{ r.b if r.b is not none else '' }}">{{ eur(r.b, none) }}</td>
+    <td class="n">{% if cmp.same_scope and r.change is not none %}{{ r.change|signed }}{% else %}<span class="mut">не се смята</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">{{ source_name }} · <a href="/sources">набор и четене</a> · <a href="/export-sravnenie.csv?{{ qs }}">CSV</a> · <a href="/api/sravnenie.json?{{ qs }}">JSON</a></div></section>
+{% endblock %}
