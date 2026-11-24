@@ -444,3 +444,17 @@ kind = "not-a-person"
 shown_as = "full"
 decided_on = 2026-11-24
 basis = "only the name of a legal entity: the name of a sole trader, a registered farmer or a person is replaced (publish rule no_person_concessionaire_published); a default of 24.11.2026 the owner may overrule"
+
+[[person]]
+column = "zakoni.strategy_doc.authority"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the kind of institution that accepted a strategic document (Министерски съвет, общински съвет ...), as the source gives it"
+
+[[person]]
+column = "pub_zakoni.strategy_doc.authority"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the kind of institution that accepted a strategic document (Министерски съвет, общински съвет ...), as the source gives it"

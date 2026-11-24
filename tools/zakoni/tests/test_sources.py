@@ -206,12 +206,12 @@ def test_every_fixture_is_the_shape_the_parsers_know():
         parse.count_only(recs(CONS), "title", "Заглавие", "x")
 
 
-def test_the_silver_tables_of_the_migration_are_the_columns_of_the_parsers():
+def test_the_landing_tables_of_the_migration_are_the_columns_of_the_parsers():
     from ingest.schema import TABLES
     sql = (Path(__file__).parent.parent / "db" / "migrations" / "0001_init.sql").read_text(encoding="utf-8")
     for table, (key, data) in TABLES.items():
-        body = re.search(rf"CREATE TABLE silver\.{table} \((.*?)\n\);", sql, re.S).group(1)
-        cols = set(re.findall(r"\b(\w+) (?:bigserial|integer|smallint|text|date|boolean|numeric|timestamptz)\b", body))
+        body = re.search(rf"CREATE TABLE zakoni_src\.{table} \((.*?)\n\);", sql, re.S).group(1)
+        cols = set(re.findall(r"^\s+(\w+)\s+(?:bigint|integer|smallint|text|date|boolean|numeric|timestamptz)\b", body, re.M))
         assert set(key + data) <= cols, (table, set(key + data) - cols)
-        # every column of the table except the versioning ones is either a key or a data column
-        assert cols - {"id", "valid_from", "valid_to", "row_sha", "raw_sha256"} == set(key + data), table
+        # every column of the table except the load and what travels with a record is either a key or a data column
+        assert cols - {"load_id", "record_sha", "first_seen_at", "changed_at"} == set(key + data), table
