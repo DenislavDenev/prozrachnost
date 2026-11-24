@@ -107,6 +107,8 @@ CASES = [
     ("db/checks.toml", "WHERE NOT r.dup),", "),", STORE + "test_a_known_difference_and_a_duplicate_row_publish_the_table_with_the_difference_named"),
     ("app/queries.py", "FROM pub_sigurnost.observation o\n                  JOIN pub_sigurnost.structure s", "FROM sigurnost.observation o\n                  JOIN pub_sigurnost.structure s",
      "tests/test_pages.py::test_every_answer_says_its_publication_and_the_web_reads_only_the_serving_layer"),
+    ("ingest/load.py", "return t if t.tzinfo else t.replace(tzinfo=PORTAL_ZONE)", "return t if t.tzinfo else t.replace(tzinfo=dt.timezone.utc)",
+     STORE + "test_the_times_of_the_portal_are_local_time_of_sofia"),
     # the move to the shared database
     ("ingest/parity.py", "groups += _diff(o, n, detail, \"стойности\")", "groups += 0", MOVE + "test_parity_names_a_value_a_table_and_a_reconciliation_that_differ"),
     ("ingest/parity.py", "o[uri] = (*row, dig[0][0], dig[1][0], dig[2][0])", "o[uri] = (*row, dig[0][0], dig[1][0], dig[2][0])[:-1] + (None,)",
