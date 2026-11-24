@@ -2,7 +2,7 @@
 for everyone, "няма данни" is never a 0, the feedback button and the support link are in place, and every list has the
 same scope as its CSV and JSON.
 
-Runs only when ZAKONI_TEST_DSN points at a disposable database (it is wiped).
+Runs only when ZAKONI_TEST_DSN points at a disposable database whose name contains 'test'.
 """
 import csv
 import datetime as dt
@@ -13,7 +13,9 @@ import re
 
 import pytest
 
-from tests.test_store import FX, T0, arch, build, conn  # noqa: F401  (fixtures)
+from pathlib import Path
+
+from tests.conftest import build
 
 DSN = os.environ.get("ZAKONI_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="ZAKONI_TEST_DSN not set")
@@ -31,10 +33,8 @@ def client(conn):  # noqa: F811
 
 
 @pytest.fixture
-def loaded(conn, arch):  # noqa: F811
-    from ingest import gold
-    build(conn)
-    gold.build(conn, {}, 1)
+def loaded(conn, arch):
+    assert build(conn)[0] == []
 
 
 def test_every_page_renders_on_an_empty_database(client):
@@ -93,10 +93,9 @@ def test_type_and_year_filters_apply_to_the_table_the_csv_and_the_json(client, l
     assert all(r["gazette_number"] is not None for r in j["data"])
 
 
-def test_oblast_and_municipality_are_one_pair_in_the_table_the_csv_and_the_json(client, loaded):
-    from ingest import db
-    with db.connect() as c:
-        devin, oblast = c.execute("SELECT id, oblast FROM ref.municipality WHERE name_bg = 'Девин'").fetchone()
+def test_oblast_and_municipality_are_one_pair_in_the_table_the_csv_and_the_json(client, loaded, conn):
+    devin, oblast = conn.execute("""SELECT m.eik, o.label_bg FROM pub.municipality m JOIN pub.oblast o USING (oblast_code)
+                                    WHERE m.name_bg = 'Девин'""").fetchone()
     base = client.get("/konsultacii.json").json()["total"]
     a = client.get(f"/konsultacii.json?oblast={oblast}&municipality={devin}").json()
     assert a["total"] >= 1 and all(r["municipality_id"] == devin and r["oblast"] == oblast for r in a["data"])
@@ -128,10 +127,11 @@ def test_one_act_and_one_consultation(client, loaded):
     assert "https://strategy.bg/bg/public-consultations/12692" in t and "Срокът е поне 30 дни" in t
 
 
-def test_the_map_data_is_the_municipal_consultations_by_municipality_and_oblast(client, loaded):
+def test_the_map_data_is_the_municipal_consultations_by_municipality_and_oblast(client, loaded, conn):
     p = client.get("/api/karta.json?m=n&l=obshtini&y=2026").json()
     assert p["o"] == "bg" and p["nuts"] == 4 and p["y"] == "2026" and len(p["items"]) == 265
-    assert sum(i["n"] for i in p["items"]) == _matched_municipal(2026) >= 1
+    assert sum(i["n"] for i in p["items"]) == conn.execute("""SELECT count(*) FROM pub_zakoni.consultation
+        WHERE municipality_id IS NOT NULL AND extract(year FROM opened) = 2026""").fetchone()[0] >= 1
     no = [i for i in p["items"] if i["n"] == 0]
     assert no and all(i["v"] == 0 for i in no)                                  # a count of nothing is 0; the share has no data
     share = client.get("/api/karta.json?m=share&l=obshtini&y=2026").json()
@@ -143,18 +143,12 @@ def test_the_map_data_is_the_municipal_consultations_by_municipality_and_oblast(
     assert len(c) == 265
 
 
-def _matched_municipal(year):
-    from ingest import db
-    with db.connect() as c:
-        return c.execute("SELECT count(*) FROM gold.consultation WHERE municipality_id IS NOT NULL AND extract(year FROM opened) = %s", (year,)).fetchone()[0]
-
-
 def test_search_finds_words_from_the_beginning_and_survives_odd_input(client, loaded):
     j = client.get("/tarsene.json?q=законопроект").json()["data"]
     assert j["counts"]["acts"] >= 2 and all("ЗАКОНОПРОЕКТ" in a["about"].upper() for a in j["acts"])
     j = client.get("/tarsene.json?q=закон").json()["data"]
     assert j["counts"]["acts"] >= 2          # "закон" is the beginning of "законопроект" too
-    for q in ("'; DROP TABLE gold.act; --", "<script>alert(1)</script>", "&", "   ", "а" * 5000, "ъ:* | !"):
+    for q in ("'; DROP TABLE pub_zakoni.act; --", "<script>alert(1)</script>", "&", "   ", "а" * 5000, "ъ:* | !"):
         assert client.get("/tarsene", params={"q": q}).status_code == 200, q
         assert client.get("/aktove", params={"q": q}).status_code == 200, q
     assert client.get("/aktove.json").json()["total"] > 0
@@ -181,3 +175,21 @@ def test_sources_lists_every_resource_the_json_has_a_licence_and_the_reconciliat
 def test_a_static_file_and_the_favicon(client):
     assert client.get("/favicon.svg").status_code == 200 and client.get("/static/app.js").status_code == 200
     assert client.get("/static/karta.js").status_code == 200 and client.get("/static/bg-municipalities.json").status_code == 200
+
+
+def test_pages_read_the_serving_layer_with_its_version(client, loaded, conn):
+    """Every answer says which publication it is of, and it moves only with a publication."""
+    n = conn.execute("SELECT max(publication_id) FROM pub.publication").fetchone()[0]
+    for path in ("/", "/aktove.json", "/konsultacii/12692-K", "/sources"):
+        r = client.get(path)
+        assert r.headers["X-Publication"] == str(n) and r.headers["ETag"] == f'W/"pub-{n}"' and r.headers["Last-Modified"], path
+    j = client.get("/aktove.json").json()
+    assert j["build"] == conn.execute("SELECT max(publication_id) FROM pub.publication WHERE tool = 'zakoni'").fetchone()[0]
+
+
+def test_the_pages_read_nothing_but_the_serving_layer():
+    root = Path(__file__).resolve().parent.parent / "app"
+    code = (root / "queries.py").read_text(encoding="utf-8") + (root / "main.py").read_text(encoding="utf-8")
+    tables = set(re.findall(r"(?<!year )(?:FROM|JOIN)\s+([a-z_]+)\.", code))   # not extract(year FROM c.opened)
+    assert tables <= {"pub", "pub_zakoni"}, tables
+    assert "ingest import db" not in code and "zakoni_src" not in code and "ops." not in code

@@ -3,6 +3,7 @@ import datetime as dt
 import json
 import os
 from decimal import Decimal
+from email.utils import format_datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -11,9 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from ingest import db as _db
-from ingest.config import DATA, ROOT as TOOLROOT
-from ingest import checks as _checks
+from ingest.config import DATA
 
 from . import feedback
 from . import queries as Q
@@ -29,6 +28,25 @@ app = FastAPI(title="Закони и решения", docs_url=None, redoc_url=N
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", os.getenv("ZAKONI_FEEDBACK", str(DATA / "feedback")), "Закони и решения"))
 T = Jinja2Templates(directory=ROOT / "templates")
+
+
+@app.middleware("http")
+async def publication_headers(request: Request, call_next):
+    """One request reads one snapshot of the serving layer, and its answer says which publication it is of. A cache
+    in front of the site keeps an answer until this number moves; it moves only when the published content does."""
+    snap = Q.Snapshot()
+    token = Q.current.set(snap)
+    try:
+        response = await call_next(request)
+    finally:
+        Q.current.reset(token)
+        snap.close()
+    if snap.publication:
+        n = snap.publication["publication_id"]
+        response.headers["X-Publication"] = str(n)
+        response.headers["ETag"] = f'W/"pub-{n}"'
+        response.headers["Last-Modified"] = format_datetime(snap.publication["published_at"].astimezone(dt.timezone.utc), usegmt=True)
+    return response
 
 
 def bgdate(v):
@@ -103,8 +121,7 @@ async def not_found(request, exc):
 
 @app.get("/healthz")
 def health():
-    with _db.connect() as c:
-        c.execute("SELECT 1 FROM gold.build LIMIT 1")
+    Q.one("SELECT 1 AS ok FROM pub.publication LIMIT 1")
     return {"ok": True}
 
 
@@ -123,9 +140,9 @@ def home(request: Request, na: str = ""):
     on = Q.d(na, today())                              # as_of: the page as it stood on a day
     monday = week_start(on)
     week = Q.one("""SELECT count(*) AS n, count(*) FILTER (WHERE act_type = 'Постановления') AS p, count(*) FILTER (WHERE act_type = 'Решения') AS r,
-                           count(*) FILTER (WHERE act_type = 'Разпореждания') AS z FROM gold.act
+                           count(*) FILTER (WHERE act_type = 'Разпореждания') AS z FROM pub_zakoni.act
                     WHERE accepted BETWEEN %s AND %s AND act_type IN ('Постановления', 'Решения', 'Разпореждания')""", (monday, on))
-    newest = Q.one("SELECT max(accepted) AS d FROM gold.act WHERE accepted <= %s", (on,))["d"]
+    newest = Q.one("SELECT max(accepted) AS d FROM pub_zakoni.act WHERE accepted <= %s", (on,))["d"]
     cnt = Q.open_count(on)
     weeks = Q.acts_by_week(on - dt.timedelta(days=7 * 52), on)
     return render(request, "home.html", "Табло", on=on, monday=monday, week=week, newest=newest, cnt=cnt, open=Q.open_now(on),
@@ -152,13 +169,13 @@ def map_payload(m, l, y):
     years = [str(x) for x in Q.consultation_filters()["years"]]
     if not y or y not in years:
         # the latest year in which at least 80% of the municipalities appear (AGENTS.md 7)
-        good = Q.rows("""SELECT extract(year FROM opened)::int AS y, count(DISTINCT municipality_id) AS n FROM gold.consultation
+        good = Q.rows("""SELECT extract(year FROM opened)::int AS y, count(DISTINCT municipality_id) AS n FROM pub_zakoni.consultation
                          WHERE municipality_id IS NOT NULL GROUP BY 1 ORDER BY 1 DESC""")
-        total = Q.one("SELECT count(*) AS n FROM ref.municipality")["n"]
+        total = Q.one("SELECT count(*) AS n FROM pub.municipality")["n"]
         y = str(next((r["y"] for r in good if r["n"] >= 0.8 * total), years[0] if years else ""))
     items = Q.map_data(m, l, y) if y else []
     name, unit, definition = MEASURES[m]
-    allm = Q.one("""SELECT count(*) AS n, count(*) FILTER (WHERE short_term_applies) AS short FROM gold.consultation
+    allm = Q.one("""SELECT count(*) AS n, count(*) FILTER (WHERE short_term_applies) AS short FROM pub_zakoni.consultation
                     WHERE municipality_id IS NOT NULL AND extract(year FROM opened) = %s""", (int(y or 0),))
     bg = allm["n"] if m == "n" else allm["short"] if m == "short" else (round(100 * allm["short"] / allm["n"], 1) if allm["n"] else None)
     for it in items:
@@ -376,8 +393,7 @@ def source_names():
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
-    with _db.connect(autocommit=True) as c:
-        problems = _checks.freshness(c)
+    problems = Q.problems()
     return render(request, "sources.html", "Източници", rows=Q.sources(), names=source_names(), recon=Q.reconciliations(), problems=problems, build=Q.build())
 
 

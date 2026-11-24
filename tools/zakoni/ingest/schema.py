@@ -1,6 +1,6 @@
-"""The silver tables: name -> (key columns, data columns). db/migrations/0001_init.sql has the same columns with types;
-a test compares the two. Every silver row is versioned (valid_from, valid_to) and carries the sha256 of the file it came
-from; the row's own hash is taken over the data columns only."""
+"""The tables of the landing zone (zakoni_src): name -> (key columns, data columns), as the parser gives them.
+db/migrations/0001_init.sql has the same columns with types; a test compares the two. Every row carries the load it came
+with (load_id); a parent row carries the hash of its record and when the record was first seen and last changed."""
 
 TABLES = {
     "pris_act": (("pris_id",), (
@@ -29,8 +29,3 @@ TABLES = {
         "institution_id", "institution_name", "contract_date", "price_bgn", "eik", "executor", "executor_kind",
         "subject", "description", "active")),
 }
-
-# which tables belong to one source record (children go with their parent in the hold rule)
-PARENT = {"pris_institution": "pris_act", "pris_tag": "pris_act", "pris_related": "pris_act",
-          "consultation_file": "consultation", "strategy_author": "strategy_doc", "strategy_file": "strategy_doc",
-          "strategy_sub": "strategy_doc"}

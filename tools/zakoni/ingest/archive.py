@@ -52,7 +52,20 @@ def latest(resource):
 
 def verified(resource):
     """-> (path, sha256, bytes, version, mtime). The sha256 of the content must start with the one in the name."""
-    p, sha12, version = latest(resource)
+    return checked(*latest(resource))
+
+
+def named(p):
+    """A file of the archive by its path (replay reads the files the old database was built from)."""
+    parts = p.name.split(".")
+    if not p.is_file():
+        raise ArchiveError(f"файлът {p} липсва в архива")
+    if len(parts) != 3 or len(parts[1]) != 12:
+        raise ArchiveError(f"името на файла {p.name} не е <версия>.<sha12>.json")
+    return checked(p, parts[1], parts[0])
+
+
+def checked(p, sha12, version):
     sha, size = sha256_file(p)
     if not sha.startswith(sha12):
         raise ArchiveError(f"файлът {p.name} е повреден: sha256 на съдържанието е {sha[:12]}")
