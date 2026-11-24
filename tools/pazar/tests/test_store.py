@@ -143,6 +143,23 @@ def test_a_held_answer_confirmed_by_a_second_read(c):
     assert c.execute("SELECT status, note FROM pazar.day WHERE day = %s", (D2,)).fetchone() == ("built", "confirmed after a second read")
 
 
+def test_a_held_day_confirmed_after_a_later_day_is_built_into_the_month(c):
+    """The month is rebuilt because a later day is there; the confirmed day must be in it, and stay out of the holds."""
+    put(c, "2026-09-26", fixture("2026-09-26"))
+    small = derive(D1, only={LIDL, KAUFLAND, TMARKET})
+    t0 = dt.datetime(2026, 9, 30, 6, 0, tzinfo=dt.timezone.utc)
+    assert put(c, D1, small, now=t0)[0] == "held"
+    assert put(c, D2, fixture(D2), now=t0 + dt.timedelta(hours=1))[0] == "built"
+    state, _ = put(c, D1, small, now=t0 + dt.timedelta(hours=21))
+    assert state == "rebuilt"
+    assert [r[0] for r in c.execute("SELECT status FROM pazar.day ORDER BY day")] == ["built", "built", "built"]
+    assert count(c, "SELECT count(*) FROM ops.hold WHERE tool = 'pazar'") == 0
+    assert [r[0] for r in c.execute("SELECT cause FROM ops.change_log WHERE ref = %s AND cause IN ('held', 'confirmed') ORDER BY change_id", (D1,))] == ["held", "confirmed"]
+    assert day_rows(c, D1) == csv_rows(small) and day_rows(c, D2) == csv_rows(fixture(D2))
+    # the next build finds nothing to do
+    assert put(c, D1, small, now=t0 + dt.timedelta(hours=45))[0] == "unchanged"
+
+
 def test_currency_switch_is_found_from_the_prices(c):
     put(c, "2025-10-16", fixture("2025-10-16"))
     assert {r[0] for r in c.execute("SELECT currency FROM pazar.chain_day WHERE day = '2025-10-16'")} == {"BGN"}

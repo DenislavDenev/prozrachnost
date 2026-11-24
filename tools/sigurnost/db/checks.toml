@@ -1,0 +1,134 @@
+# The quality rules of Сигурност. Each query returns one row: expected, actual. They run after every step.
+# The reconciliations inside the tables of the Ministry (structures to the total, types against structures, blocks against
+# structures) are computed by ingest/checks.py for each table; their results are in sigurnost.reconciliation and a table
+# whose gating results differ is not taken into the clean tables. The rules here check what is stored.
+
+[[check]]
+name = "no_published_table_differs"
+title_bg = "Нито една таблица в чистите таблици няма задължителна сверка, която не излиза"
+kind = "reconcile"
+sql = """SELECT 0, count(*) FROM sigurnost.reconciliation c JOIN sigurnost.source_table s USING (year, family)
+         WHERE c.gating AND c.status = 'differs' AND c.resource_uri = s.resource_uri AND c.raw_sha256 = s.raw_sha256"""
+
+[[check]]
+name = "rows_in_one_output"
+title_bg = "Всеки ред на взетите таблици е или ред в чистите таблици, или несъпоставена структура"
+kind = "reconcile"
+sql = """SELECT (SELECT count(*) FROM sigurnost_src.row r JOIN sigurnost.source_table s USING (load_id) WHERE NOT r.dup),
+                (SELECT count(*) FROM sigurnost.crime_row)
+              + (SELECT count(*) FROM sigurnost_src.row r JOIN sigurnost.source_table s USING (load_id)
+                 JOIN sigurnost.unmatched u ON u.year = s.year AND u.family = s.family AND u.resource_uri = s.resource_uri
+                  AND u.name = CASE WHEN s.family = 'structures' THEN r.text ELSE r.structure END
+                 WHERE NOT r.dup)"""
+
+[[check]]
+name = "observation_value_is_its_cell"
+title_bg = "Всяка стойност в чистите таблици е числото на клетката си в източника (или няма число, когато клетката не е число)"
+kind = "reconcile"
+sql = """SELECT 0, count(*) FROM sigurnost.observation o JOIN sigurnost.source_table s USING (year, family)
+         WHERE o.raw_sha256 <> s.raw_sha256 OR o.resource_uri <> s.resource_uri
+            OR NOT EXISTS (SELECT 1 FROM sigurnost_src.cell c WHERE c.load_id = s.load_id AND c.row_no = o.row_no
+                           AND c.text = o.value_text AND c.value IS NOT DISTINCT FROM o.value)"""
+
+[[check]]
+name = "oblast_structures_known"
+title_bg = "Всяка областна дирекция сочи към област в core.nuts"
+kind = "fk"
+sql = "SELECT 28, count(*) FROM sigurnost.structure s JOIN core.nuts n ON n.nuts_code = s.nuts_code AND n.level = 3 WHERE s.kind = 'oblast'"
+
+[[check]]
+name = "serving_observations"
+title_bg = "Слоят за показване има всички стойности на чистите таблици"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM sigurnost.observation), (SELECT count(*) FROM pub_sigurnost.observation)"
+
+# The move from the tool's own database to the shared one: the step `parity` records these.
+[[check]]
+name = "parity_datasets"
+title_bg = "Наборите: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_datasets_differ"
+title_bg = "Набори с различен лиценз, година или брой ресурси в списъка"
+kind = "parity"
+
+[[check]]
+name = "parity_links"
+title_bg = "Връзките към месечния бюлетин: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_links_differ"
+title_bg = "Връзки с различно име, адрес или месец"
+kind = "parity"
+
+[[check]]
+name = "parity_resources"
+title_bg = "Действащи таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_resources_differ"
+title_bg = "Действащи таблици с различен файл, вид, шаблон, редове, колони, клетки или текст"
+kind = "parity"
+
+[[check]]
+name = "parity_rejected"
+title_bg = "Отказани отговори (не са таблица): старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_cells"
+title_bg = "Клетки в действащите таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_cell_sum"
+title_bg = "Сбор на числата в действащите таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_gold_tables"
+title_bg = "Публикувани (година, вид): старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_gold_tables_differ"
+title_bg = "Публикувани (година, вид) с друга таблица, файл, шаблон или бележка"
+kind = "parity"
+
+[[check]]
+name = "parity_rows"
+title_bg = "Редове на публикуваните таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_observations"
+title_bg = "Стойности на публикуваните таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_observation_sum"
+title_bg = "Сбор на стойностите на публикуваните таблици: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_groups_differ"
+title_bg = "Групи (година, вид, показател) с различен брой или сбор, и редове с различен текст"
+kind = "parity"
+
+[[check]]
+name = "parity_reconciliations"
+title_bg = "Сверки на таблиците: старата база срещу общата"
+kind = "parity"
+
+[[check]]
+name = "parity_reconciliations_differ"
+title_bg = "Сверки с различно очаквано, получено или състояние"
+kind = "parity"
+
+[[check]]
+name = "parity_unmatched"
+title_bg = "Несъпоставени структури: старата база срещу общата"
+kind = "parity"

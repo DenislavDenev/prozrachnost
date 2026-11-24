@@ -209,8 +209,9 @@ TEXT = "Сигурност: {}"
 
 
 def freshness(c, now=None, st=None):
-    """(problems, info). Problems are what n8n reports; info is shown on /sources and is not a failure (a yearly set that is
-    not yet published, a monthly bulletin that stopped in 2020, empty resources, cells with text)."""
+    """(problems, info) of the tool itself; the shared ones (holds past their time, failed rules and steps, a list not read)
+    are pipeline.freshness(). Problems are what n8n reports; info is shown on /sources and is not a failure (a yearly set
+    that is not yet published, a monthly bulletin that stopped, empty resources, cells with text)."""
     now = now or dt.datetime.now(dt.timezone.utc)
     problems, info = [], []
     try:
@@ -220,29 +221,32 @@ def freshness(c, now=None, st=None):
             problems.append(TEXT.format(f"архивът не е четен успешно {age:.0f} ч (над {config.MAX_ARCHIVE_AGE_H} ч)"))
     except archive.ArchiveError as e:
         problems.append(TEXT.format(str(e)))
-    for ref, first, reason in c.execute("SELECT ref, first_seen, reason FROM ops.held"):
-        if now - first > dt.timedelta(days=1):
-            problems.append(TEXT.format(f"{ref} е задържан над ден: {reason}"))
-    for uri, note, name in c.execute(
-            """SELECT r.resource_uri, r.note, r.name FROM silver.resource r JOIN silver.dataset d USING (set_uri)
-               WHERE r.status = 'invalid' AND d.kind IN ('police', 'crime-old') AND NOT EXISTS (SELECT 1 FROM silver.resource q WHERE q.resource_uri = r.resource_uri
-                     AND q.status = 'built' AND q.read_at > r.read_at)"""):
-        problems.append(TEXT.format(f"{uri} е невалиден: {note}"))
-    from . import gold      # the table that stands for each (year, family) is the one gold picks
-    for year, fam in c.execute("""SELECT DISTINCT d.year, r.family FROM silver.resource r JOIN silver.dataset d USING (set_uri)
-                                  WHERE r.family IS NOT NULL AND r.is_current AND r.status = 'built' AND d.kind = 'police'
+    # the last read of a table of a police set (or the old one) was refused, and nothing read after it
+    for uri, reason in c.execute(
+            """SELECT x.ref, x.reason FROM (
+                 SELECT DISTINCT ON (l.ref) l.ref, l.status, l.reason FROM ops.load l
+                 WHERE l.tool = 'sigurnost' AND l.source = 'egov' AND l.status IN ('rejected', 'loaded', 'confirmed', 'unchanged')
+                 ORDER BY l.ref, l.load_id DESC) x
+               WHERE x.status = 'rejected'
+                 AND EXISTS (SELECT 1 FROM sigurnost.dataset d JOIN sigurnost_src.list_entry e ON e.load_id = d.list_load_id
+                             WHERE e.resource_uri = x.ref AND d.kind IN ('police', 'crime-old'))
+               ORDER BY x.ref"""):
+        problems.append(TEXT.format(f"{uri} е невалиден: {reason}"))
+    from . import gold      # the table that stands for each (year, family) is the one the clean tables take
+    for year, fam in c.execute("""SELECT DISTINCT d.year, r.family FROM sigurnost_src.current_resource r JOIN sigurnost.dataset d USING (set_uri)
+                                  WHERE r.family IS NOT NULL AND r.kind = 'table' AND d.kind = 'police'
                                   ORDER BY 1, 2""").fetchall():
         cand = gold.candidates(c, year, fam)
         if not cand:
             continue          # isolated with a reason (db/ref/isolated.csv)
-        top = cand[0]
-        pub = c.execute("SELECT resource_uri, sha256 FROM gold.source_table WHERE year = %s AND family = %s", (year, fam)).fetchone()
-        if pub != (top[0], top[1]):
+        pub = c.execute("SELECT load_id FROM sigurnost.source_table WHERE year = %s AND family = %s", (year, fam)).fetchone()
+        if pub is None or pub[0] != cand[0][7]:
             problems.append(TEXT.format(f"{year} {fam}: таблицата не е публикувана (сверката не е минала)"))
-    n_un = c.execute("SELECT count(*) FROM gold.unmatched").fetchone()[0]
+    n_un = c.execute("SELECT count(*) FROM sigurnost.unmatched").fetchone()[0]
     if n_un:
-        problems.append(TEXT.format(f"{n_un} структури не са в списъка (gold.unmatched)"))
-    newest = c.execute("SELECT max(d.year) FROM silver.dataset d WHERE d.kind = 'police' AND EXISTS (SELECT 1 FROM silver.resource r WHERE r.set_uri = d.set_uri AND r.is_current)").fetchone()[0]
+        problems.append(TEXT.format(f"{n_un} структури не са в списъка (sigurnost.unmatched)"))
+    newest = c.execute("""SELECT max(d.year) FROM sigurnost.dataset d WHERE d.kind = 'police'
+                          AND EXISTS (SELECT 1 FROM sigurnost_src.current_resource r WHERE r.set_uri = d.set_uri)""").fetchone()[0]
     if newest is None:
         problems.append(TEXT.format("няма прочетена полицейска статистика"))
     else:
@@ -250,20 +254,20 @@ def freshness(c, now=None, st=None):
             problems.append(TEXT.format(f"Полицейска статистика: последната година е {newest}, а има {now.year - newest} години без нова"))
         elif newest < now.year - 1:
             info.append(f"Полицейска статистика за {newest + 1} още не е публикувана на портала (последната е за {newest}).")
-    last_bulletin = c.execute("SELECT max(period) FROM silver.link").fetchone()[0]
+    last_bulletin = c.execute("SELECT max(period) FROM sigurnost.link").fetchone()[0]
     if last_bulletin and (now.date() - last_bulletin).days > 75:
         info.append(f"Последният месечен бюлетин на МВР е за {last_bulletin:%m.%Y}: няма нов над два месеца.")
-    n_empty = c.execute("SELECT count(*) FROM silver.resource WHERE kind = 'empty' AND is_current").fetchone()[0]
+    n_empty = c.execute("SELECT count(*) FROM sigurnost_src.current_resource WHERE kind = 'empty'").fetchone()[0]
     if n_empty:
         info.append(f"{n_empty} ресурса на портала са без таблица (празен отговор).")
-    n_issue = c.execute("SELECT coalesce(sum(issues), 0) FROM silver.resource WHERE is_current AND kind = 'table'").fetchone()[0]
+    n_issue = c.execute("SELECT coalesce(sum(issues), 0) FROM sigurnost_src.current_resource WHERE kind = 'table'").fetchone()[0]
     if n_issue:
         info.append(f"{n_issue} клетки в оригиналните таблици съдържат текст на мястото на число: стойността е „няма данни“, текстът е запазен.")
     return problems, info
 
 
 def weekly(c):
-    row = c.execute("""SELECT count(*) FILTER (WHERE is_current AND status = 'built'), count(*) FILTER (WHERE status = 'invalid'),
-                              coalesce(sum(n_rows) FILTER (WHERE is_current AND status = 'built'), 0) FROM silver.resource""").fetchone()
-    pub = c.execute("SELECT count(*), min(year), max(year) FROM gold.source_table").fetchone()
-    return {"resources": row[0], "invalid": row[1], "rows": row[2], "gold_tables": pub[0], "from": pub[1], "to": pub[2]}
+    row = c.execute("""SELECT count(*), coalesce(sum(n_rows), 0) FROM sigurnost_src.current_resource""").fetchone()
+    invalid = c.execute("SELECT count(DISTINCT (ref, raw_file_id)) FROM ops.load WHERE tool = 'sigurnost' AND source = 'egov' AND status = 'rejected'").fetchone()[0]
+    pub = c.execute("SELECT count(*), min(year), max(year) FROM sigurnost.source_table").fetchone()
+    return {"resources": row[0], "invalid": invalid, "rows": row[1], "gold_tables": pub[0], "from": pub[1], "to": pub[2]}

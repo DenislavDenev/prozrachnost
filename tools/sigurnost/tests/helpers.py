@@ -68,3 +68,21 @@ def build_archive(root, sets, last_ok="2026-10-02T02:56:05Z", now_read="2026-10-
 def police_2024():
     return {A: fixture(POLICE, A), B: fixture(POLICE, B), C: fixture(POLICE, C), D: fixture(POLICE, D), E: fixture(POLICE, E),
             OTHER: fixture(POLICE, OTHER)}
+
+
+def ingest(c, st, now=None, reread=False):
+    """The lists and tables of the archive into the landing zone, as one run of the step."""
+    from ingest import load, pipeline
+    with pipeline.run(c, "sigurnost", "build") as r:
+        return load.ingest(c, r, st, now, reread=reread)
+
+
+def build(c, st, now=None):
+    """What the step `build` does after its check of the archive's age: the landing zone, the clean tables, the rules and
+    the publication of the serving layer."""
+    from ingest import gold, load, pipeline, run
+    with pipeline.run(c, "sigurnost", "build") as r:
+        rep = load.ingest(c, r, st, now)
+        rep["gold"] = gold.build(c)
+        rep["problems"] = run.finish(c, r, rep["problems"] + rep["gold"].get("problems", []))
+    return rep
