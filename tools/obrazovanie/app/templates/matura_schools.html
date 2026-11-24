@@ -10,18 +10,18 @@
   <label>Област<select name="oblast"><option value="">Всички области</option>{% for name in oblasts %}<option value="{{ name }}" {{ 'selected' if name == oblast }}>{{ name }}</option>{% endfor %}</select></label>
   <label>Община<select name="municipality"><option value="">Всички общини</option>{% for area, name in places %}<option value="{{ name }}" data-oblast="{{ area }}" {{ 'selected' if name == municipality and (not oblast or area == oblast) }}>{{ name }}</option>{% endfor %}</select></label>
   <label>Училище, код или населено място<input name="q" value="{{ q }}" placeholder="Търси"></label>
-  <label>Подредба<select name="sort"><option value="name" {% if sort == 'name' %}selected{% endif %}>По име</option><option value="takers" {% if sort == 'takers' %}selected{% endif %}>По брой явили се</option><option value="score" {% if sort == 'score' %}selected{% endif %}>По оценка (поне 5 явили се)</option></select></label>
+  {% if exam.counted %}<label>Подредба<select name="sort"><option value="name" {% if sort == 'name' %}selected{% endif %}>По име</option><option value="takers" {% if sort == 'takers' %}selected{% endif %}>По брой явили се</option><option value="score" {% if sort == 'score' %}selected{% endif %}>По оценка (поне 5 явили се)</option></select></label>{% endif %}
   <button type="submit">Покажи</button>
 </form>
 <section class="p"><div class="ph"><div><h2>Резултати</h2><p class="sub">{{ count | num }} реда{% if sort == 'score' %}. При подредбата по оценка малките и скритите групи са след останалите{% endif %}.</p></div></div>
 <div class="table-scroll"><table><thead><tr><th>Училище</th><th>Населено място</th><th>Предмет и вариант</th><th class="n">Явили се</th><th class="n">Средна оценка</th></tr></thead><tbody>
-{% for row in rows %}<tr><td>{% if row.code and row.matched %}<a class="l" href="/uchilishta/{{ row.code }}">{{ row.school }}</a>{% else %}{{ row.school }}{% endif %}</td><td>{{ row.town }}</td><td>{{ row.subject | subject_name }}</td><td class="n">{{ row.takers | num }}</td><td class="n">{{ row.score | num(2) }}</td></tr>{% endfor %}
+{% for row in rows %}<tr><td>{% if row.code and row.matched %}<a class="l" href="/uchilishta/{{ row.code }}">{{ row.school }}</a>{% else %}{{ row.school }}{% endif %}</td><td>{{ row.town }}</td><td>{{ row.subject | subject_name }}</td><td class="n">{% if exam.counted %}{{ row.takers | num }}{% else %}не е публикуван{% endif %}</td><td class="n">{{ row.score | num(2) }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% if not rows %}<p class="sub">Няма резултати за избраното търсене.</p>{% endif %}
 {% set filter_query = 'session=' + exam.session + '&kind=' + exam.kind + '&subject=' + (subject | urlencode) + '&q=' + (q | urlencode) + '&oblast=' + (oblast | urlencode) + '&municipality=' + (municipality | urlencode) + '&sort=' + sort %}
 {% if count > 50 %}<nav class="pager" aria-label="Страници">{% if page_number > 1 %}<a class="l" href="?{{ filter_query }}&page={{ page_number-1 }}">← Предишна</a>{% endif %}<span>Страница {{ page_number }} от {{ ((count-1)//50)+1 }}</span>{% if page_number*50 < count %}<a class="l" href="?{{ filter_query }}&page={{ page_number+1 }}">Следваща →</a>{% endif %}</nav>{% endif %}
 <p class="src"><a href="{{ dzi_url }}">Източник · МОН · {{ exam.updated }} · ресурс {{ exam.resource[:8] }} ↗</a> · <a href="/matura/{{ exam.year | replace('/', '-') }}/uchilishta.csv?{{ filter_query }}">CSV</a></p>
 </section>
-<p class="asof space-top">Празна оценка и скрит брой явили се остават „няма данни“. Малките групи не служат за класация.{% if exam.verification == 'no-code' %} За тази година няма сверка с регистър по код.{% endif %}</p>
+<p class="asof space-top">{% if exam.counted %}Празна оценка и скрит брой явили се остават „няма данни“. Малките групи не служат за класация.{% else %}За тази сесия МОН е публикувало само средните оценки на училищата, без броя явили се. Без него не се знае колко малка е групата, затова списъкът е само по име, без подредба по оценка.{% endif %}{% if exam.verification == 'no-code' %} За тази година няма сверка с регистър по код.{% endif %}</p>
 {% include "_dzi_glossary.html" %}
 {% endblock %}

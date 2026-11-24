@@ -583,11 +583,18 @@ def selected_matura(year, session, kind, subject):
     return exam
 
 
+def school_sort(exam, sort):
+    """A session without counts (August 2025/2026) is listed by name only: without the number of takers no one knows
+    how small a group is, so there is no order by takers or by grade. Old links fall back to the name."""
+    return "name" if not exam["counted"] and sort in {"takers", "score"} else sort
+
+
 @app.get("/matura/{year}/uchilishta", response_class=HTMLResponse)
 def matura_school_list(request: Request, year: str, session: str = "may", kind: str = "mandatory",
                        subject: str = "", q: str = "", page: int = 1, sort: str = "name",
                        oblast: str = "", municipality: str = ""):
     exam = selected_matura(year, session, kind, subject)
+    sort = school_sort(exam, sort)
     page = max(1, page)
     count, rows = matura_schools(exam["resource"], subject, q, page, sort=sort,
                                  oblast=oblast, municipality=municipality)
@@ -602,6 +609,7 @@ def matura_school_csv(year: str, session: str = "may", kind: str = "mandatory",
                       subject: str = "", q: str = "", sort: str = "name",
                       oblast: str = "", municipality: str = ""):
     exam = selected_matura(year, session, kind, subject)
+    sort = school_sort(exam, sort)
     _, rows = matura_schools(exam["resource"], subject, q, limit=100000, sort=sort,
                              oblast=oblast, municipality=municipality)
     out = io.StringIO()

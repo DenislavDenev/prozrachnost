@@ -335,6 +335,16 @@ def test_grades_only_session_is_published_without_a_made_up_mean(conn):
     assert all(s["takers"] is None and s["mean"] is None for s in view["subjects"])
     page = TestClient(main.app).get("/matura/2025-2026?session=august&kind=mandatory")
     assert page.status_code == 200 and "не е публикуван" in page.text and "скрит брой" not in page.text
+    # the list by school: by name only, the old links with an order by grade or takers fall back to the name
+    client = TestClient(main.app)
+    for sort in ("score", "takers"):
+        listing = client.get(f"/matura/2025-2026/uchilishta?session=august&kind=mandatory&sort={sort}")
+        assert listing.status_code == 200
+        assert 'name="sort"' not in listing.text and "При подредбата по оценка" not in listing.text
+        assert "&amp;sort=name" in listing.text and "скрит брой" not in listing.text
+        assert listing.text.count("не е публикуван</td>") == sum(1 for x in table.results if x.is_school)
+    csv_text = client.get("/matura/2025-2026/uchilishta.csv?session=august&kind=mandatory&sort=score").text
+    assert len(csv_text.strip().splitlines()) == 1 + sum(1 for x in table.results if x.is_school)
     assert sum(float(s) for (s,) in conn.execute(
         "SELECT score FROM pub_obrazovanie.dzi_result WHERE resource = %s", (uri,))) == pytest.approx(
         sum(float(x.score) for x in table.results))
