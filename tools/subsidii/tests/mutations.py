@@ -46,6 +46,8 @@ CASES = [
      "tests/test_store.py::test_a_recipient_that_leaves_and_comes_back_has_two_spans"),
     ("ingest/load.py", "AND s.beneficiary_id = p.beneficiary_id AND s.occ = p.occ)\"\"\", (prev, fy)).rowcount", "AND s.beneficiary_id = p.beneficiary_id AND s.occ = p.occ AND FALSE)\"\"\", (prev, fy)).rowcount",
      "tests/test_store.py::test_a_changed_amount_closes_one_span_and_opens_another_and_the_old_day_stays_readable"),
+    ("ingest/load.py", "    finally:\n        c.execute(\"TRUNCATE subsidii_src.line\")", "    finally:\n        pass",
+     "tests/test_store.py::test_a_file_is_stored_as_the_file_says"),
     # the hold: a smaller file waits for a second read of the archive
     ("ingest/load.py", "    if not prev:\n        return None\n    if prev[\"holders\"]", "    return None\n    if prev[\"holders\"]",
      "tests/test_store.py::test_a_much_smaller_file_is_held_until_the_second_read_a_day_later"),
