@@ -53,6 +53,8 @@ CASES = [
     ("ingest/build.py", "if rewritten or later:", "if False:", "tests/test_store.py::test_an_older_day_arriving_late_rebuilds_the_month_in_order"),
     ("ingest/build.py", "            log(c, r, day, None, None, sha, \"confirmed\", now)", "            pass",
      "tests/test_store.py::test_a_held_day_confirmed_after_a_later_day_is_built_into_the_month"),
+    ("ingest/memory.py", "if have is None or have >= need_mb:", "if True:",
+     "tests/test_store.py::test_without_free_memory_the_step_waits_and_stops_before_a_day"),
     # the daily observations
     ("db/build/20_category_day.sql", "AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL", "AND cd.day = %(d)s AND cd.filed",
      "tests/test_gold.py::test_a_chain_has_its_own_figures_and_a_copy_of_another_chain_has_none"),

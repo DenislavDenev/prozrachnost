@@ -19,3 +19,6 @@ MAX_ARCHIVE_AGE_H = 30       # the build refuses an archive whose last good read
 HOLD_CHAINS = 0.8            # a day with fewer files than this share of the previous built day is held
 HOLD_ROWS = 0.7              # ... or with fewer valid rows than this share
 HOLD_AGAIN_H = 20            # the same file read again this much later confirms a held day (the build runs once a day)
+# a day is built only with this much memory free on the server (a parsed day is several hundred MB, and the database
+# shares the server); the step waits up to 30 minutes for it, then stops and goes on at the next run
+MIN_FREE_MB = int(os.environ.get("PAZAR_MIN_FREE_MB", "900"))
