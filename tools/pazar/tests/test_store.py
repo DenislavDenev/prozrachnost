@@ -303,3 +303,5 @@ def test_a_month_built_later_keeps_the_first_day_and_the_newest_name(c):
     assert name != "СТАРО ИМЕ" and first == dt.date(2026, 9, 29)
     assert c.execute("SELECT min(s.first_day) FROM pazar.store s JOIN pazar.chain ch USING (chain_id) WHERE ch.eik = %s",
                      (LIDL,)).fetchone()[0] == dt.date(2026, 9, 29)
+    put(c, D2, fixture(D2))                                            # a later day keeps the first day
+    assert c.execute("SELECT first_day FROM pazar.chain WHERE eik = %s", (LIDL,)).fetchone()[0] == dt.date(2026, 9, 29)
