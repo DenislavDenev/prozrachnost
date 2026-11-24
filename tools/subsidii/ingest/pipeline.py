@@ -470,12 +470,23 @@ class _Refused(Exception):
     pass
 
 
-def publish(conn, r, root):
+def _window(text):
+    """The condition of a publish file that starts with `-- window: <condition>`, or None."""
+    first = text.lstrip().split('\n', 1)[0]
+    return first[len('-- window:'):].strip() or None if first.startswith('-- window:') else None
+
+
+def publish(conn, r, root, window=None):
     """Bring the serving layer of a tool up to its clean tables, as one transaction with a version number.
 
     <root>/db/publish/NN_<schema>.<table>.sql each hold one SELECT that yields the rows of a serving table
     (schema pub or pub_<tool>) from the ingest side. The table is brought to exactly those rows: what is not
     in the SELECT is removed, what is new is added, an unchanged row is not touched.
+
+    A large table that changes only at its end (prices by day) is compared in a window. Its file starts with
+    `-- window: <condition on the columns of the table>`, with named parameters, and `window` gives their values,
+    for example {'since': day}. The table is then compared and changed only where the condition holds, on both
+    sides; the rows outside it are not read and not touched. Without `window` every file is compared whole.
 
     The transaction commits only when the serving layer breaks none of its guards (core.serving_violation) and
     every rule of kind `publish` of the tool holds against the new content. Otherwise everything rolls back and
@@ -502,11 +513,21 @@ def publish(conn, r, root):
                 if not key:
                     raise RuntimeError(f'{target} has no primary key')
                 conn.execute(f'CREATE TEMP TABLE pz_publish (LIKE {target}) ON COMMIT DROP')
-                conn.execute(f'INSERT INTO pz_publish {f.read_text(encoding="utf-8")}')
-                removed = conn.execute(
-                    f'DELETE FROM {target} t USING (SELECT * FROM {target} EXCEPT SELECT * FROM pz_publish) d WHERE '
-                    + ' AND '.join(f't.{c} = d.{c}' for c in key)).rowcount
-                added = conn.execute(f'INSERT INTO {target} SELECT * FROM pz_publish EXCEPT SELECT * FROM {target}').rowcount
+                text = f.read_text(encoding='utf-8')
+                scope = _window(text) if window is not None else None
+                if scope:   # only the rows in the window, on both sides
+                    conn.execute(f'INSERT INTO pz_publish SELECT * FROM ({text}\n) s WHERE {scope}', window)
+                    removed = conn.execute(
+                        f'DELETE FROM {target} t USING (SELECT * FROM {target} WHERE {scope} EXCEPT SELECT * FROM pz_publish) d WHERE '
+                        + ' AND '.join(f't.{c} = d.{c}' for c in key), window).rowcount
+                    added = conn.execute(f'INSERT INTO {target} SELECT * FROM pz_publish EXCEPT SELECT * FROM {target} WHERE {scope}',
+                                         window).rowcount
+                else:
+                    conn.execute(f'INSERT INTO pz_publish {text}')
+                    removed = conn.execute(
+                        f'DELETE FROM {target} t USING (SELECT * FROM {target} EXCEPT SELECT * FROM pz_publish) d WHERE '
+                        + ' AND '.join(f't.{c} = d.{c}' for c in key)).rowcount
+                    added = conn.execute(f'INSERT INTO {target} SELECT * FROM pz_publish EXCEPT SELECT * FROM {target}').rowcount
                 conn.execute('DROP TABLE pz_publish')
                 if removed or added:
                     changes[target] = {'added': added, 'removed': removed}
