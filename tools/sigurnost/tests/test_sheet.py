@@ -9,7 +9,7 @@ from tests import helpers as h
 
 
 def parse(set_uri, res):
-    return sheet.parse(h.fixture(set_uri, res))
+    return sheet.parse(h.fixture(set_uri, res), flat=set_uri == h.OLD)
 
 
 def row(block, text):
@@ -111,8 +111,8 @@ def test_a_later_block_of_a_flat_table_has_only_the_structures_name_above_it():
 
 
 def test_a_resource_without_a_table_is_empty_not_an_error():
-    assert sheet.parse(h.fixture(h.OLD, "02165265")).kind == "empty"          # {"success":true}
-    sh = sheet.parse(h.fixture(h.OLD, "0e0ee6b9"))                            # one column of separators
+    assert sheet.parse(h.fixture(h.OLD, "02165265"), flat=True).kind == "empty"          # {"success":true}
+    sh = sheet.parse(h.fixture(h.OLD, "0e0ee6b9"), flat=True)                            # one column of separators
     assert sh.kind == "empty" and sh.note == "само разделители"
 
 
@@ -164,14 +164,106 @@ def test_the_kind_is_found_from_the_header_not_from_the_name():
                    h.OTHER: None, h.NOLABELS: None}
 
 
-def test_a_table_of_a_known_title_with_other_columns_is_a_template_error():
+def test_a_column_of_a_family_whose_meaning_is_unknown_is_a_template_error():
     d = json.loads(h.fixture(h.POLICE, h.B))
-    d["data"][5][6] = "Разкрити"                    # a heading that is not the known one
-    with pytest.raises(templates.TemplateError):
+    for i in range(3, 8):
+        d["data"][i][6] = ""
+    d["data"][5][6] = "Нещо друго"
+    with pytest.raises(templates.TemplateError, match="без разпознат смисъл"):
         templates.family_of(sheet.parse(json.dumps(d).encode()))
+
+
+def test_two_columns_with_one_meaning_or_a_missing_indicator_are_template_errors():
+    cols = [(2, "Общ брой регистрирани престъпления"), (3, "Общ брой регистрирани престъпления")]
+    with pytest.raises(templates.TemplateError, match="два пъти"):
+        templates.column_map("types", cols)
+    with pytest.raises(templates.TemplateError, match="показателите не са на таблицата"):
+        templates.column_map("types", cols[:1])
+
+
+def test_the_meaning_of_a_column_does_not_depend_on_the_position_or_the_dialect():
+    """2016 prints long prefixed headings ("Разкрити престъпления по регистрираните през текушата година - % спрямо
+    общоразкритите престъпления": a typo in "текущата" too), 2023 swaps the last two columns of the same table, 2024 has the short ones."""
+    def inds(set_uri, res):
+        sh = parse(set_uri, res)
+        fam = templates.family_of(sh)
+        return fam, {c: i for c, i in templates.column_map(fam, sh.blocks[0].columns).items()}
+    f16, m16 = inds(h.Y2016, "b6369887")
+    f23, m23 = inds(h.Y2023, "b1b14807")
+    f24, m24 = inds(h.POLICE, h.A)
+    assert f16 == f23 == f24 == "types"
+    assert set(m16.values()) == set(m23.values()) == set(m24.values()) == templates.AB
+    assert m24[8] == "share_solved_unknown" and m23[8] == "share_unknown_solved" and m23[9] == "share_solved_unknown"      # swapped in 2023
+    assert m16[8] == "share_solved_unknown" and m16[9] == "share_unknown_solved"
+    # the dialects are different templates even though the meaning is the same: no comparison across them
+    ids = {templates.template_id(parse(s, r), "types") for s, r in ((h.Y2016, "b6369887"), (h.Y2023, "b1b14807"), (h.POLICE, h.A))}
+    assert len(ids) == 3
+
+
+def test_the_old_structures_table_and_the_old_main_table_are_found():
+    assert templates.family_of(parse(h.Y2016, "b9a2090b")) == "structures"
+    sh = parse(h.Y2016, "d241ebbc")                                # "НАКАЗУЕМИ ДЕЯНИЯ", no title
+    assert templates.family_of(sh) == "main" and sh.issues == 19
+    assert templates.family_of(parse(h.Y2020, "847ff57f")) == "main"
+    assert {i for i in templates.column_map("main", parse(h.Y2020, "847ff57f").blocks[0].columns).values()} >= {"solved_prev", "persons_prev"}
+
+
+def test_a_hash_of_stars_where_a_number_belongs_is_an_issue_not_a_shape_error():
+    """Resource 3402d59a (2017): "1680.**********" is Excel's overflow; six cells of 256 are more than 2%."""
+    sh = parse(h.Y2017, "3402d59a")
+    assert sh.issues == 6
+    stars = [c for r in sh.blocks[0].rows for c in r.cells if "*" in c[1]]
+    assert len(stars) == 6 and all(c[2] is None and c[3] for c in stars)
+
+
+def test_a_row_as_an_object_and_a_stray_cell_in_a_column_without_a_heading():
+    """Resource eb0edc37 (2023) holds each row as {"0": ..., "1": ...} and puts the population (6465097) under a 13th key in two rows."""
+    sh = parse(h.Y2023, "eb0edc37")
+    b = sh.blocks[0]
+    assert len(b.rows) == 32 and len(b.columns) == 8
+    assert sh.dropped == ["колона 12: 2 клетки без заглавие"]
+    assert templates.family_of(sh) == "structures"
+
+
+def test_a_header_printed_twice_in_a_row_is_one_header():
+    """Resource 3f2e7395 (2019): in the block of Пловдив the heading is printed twice, one after the other."""
+    sh = parse(h.Y2019, "3f2e7395")
+    assert len(sh.blocks) == 16 and sh.blocks[-1].structure == "Пловдив"
+    assert [lab for _, lab in sh.blocks[-1].columns] == [lab for _, lab in sh.blocks[0].columns]
+    assert templates.family_of(sh) == "econ_by_structure"
+
+
+def test_the_banner_year_is_read():
+    assert parse(h.POLICE, h.B).banner_year == 2024 and parse(h.Y2023, "eb0edc37").banner_year == 2023
+    assert parse(h.Y2016, "b9a2090b").banner_year is None
 
 
 def test_template_ids_differ_between_families_and_are_stable():
     ids = {templates.template_id(parse(h.POLICE, u), f) for u, f in ((h.A, "types"), (h.B, "structures"), (h.C, "main"), (h.D, "types_by_structure"))}
     assert len(ids) == 4
-    assert templates.template_id(parse(h.POLICE, h.B), "structures") == "structures-c059b805"
+    assert templates.template_id(parse(h.POLICE, h.B), "structures") == templates.template_id(parse(h.POLICE, h.B), "structures")
+
+
+def test_a_numbered_row_printed_twice_is_flagged_and_the_count_of_rows_keeps_it():
+    """Resource eb0edc37 (2023) prints "25. Търговище" twice, identical: the second is a duplicate of the first (and the table lacks
+    the row of ГД „Борба с организираната престъпност“). Rows that repeat without a number (zero lines "по поръчение на ОПГ") are not."""
+    sh = parse(h.Y2023, "eb0edc37")
+    rows = sh.blocks[0].rows
+    dups = [r for r in rows if r.dup]
+    assert len(rows) == 32 and [(r.code, r.text, r.no) for r in dups] == [("25.", "Търговище", 32)] and sh.dups == ["25. Търговище (ред 32)"]
+    assert not any(r.dup for r in parse(h.POLICE, h.A).blocks[0].rows)
+
+
+def test_a_label_with_no_numbers_between_rows_of_numbers_is_a_row_without_values_not_a_new_block():
+    """Resource 8648c7ab (2016) has rows whose numbers are all missing in the middle of a block; as a structure the label
+    "Незаконно производство ..." made a block of its own. Only the flat set of 2014-2015 puts a structure's name alone."""
+    d = json.loads(h.fixture(h.POLICE, h.D))
+    row = next(r for r in d["data"] if r[0] == "1.2.")
+    for i in range(2, len(row)):
+        row[i] = ""
+    sh = sheet.parse(json.dumps(d).encode())
+    assert len(sh.blocks) == 29 and sum(len(b.rows) for b in sh.blocks) == 2218
+    blank = next(r for r in sh.blocks[0].rows if r.code == "1.2.")
+    assert all(c[2] is None and not c[3] for c in blank.cells)
+    flat = sheet.parse(h.fixture(h.OLD, "ac9e3dae"), flat=True)
+    assert [b.structure for b in flat.blocks] == ["Благоевград", "Бургас", "Варна"]

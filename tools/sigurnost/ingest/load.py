@@ -75,10 +75,10 @@ def _write(c, uri, sha, sh, fam, tid):
         with cur.copy("COPY silver.col (resource_uri, sha256, col_no, label) FROM STDIN") as cp:
             for col_no, label in (sh.blocks[0].columns if sh.blocks else []):
                 cp.write_row((uri, sha, col_no, label))
-        with cur.copy("COPY silver.row (resource_uri, sha256, row_no, block_no, structure, code, label, text, marker, level, is_total) FROM STDIN") as cp:
+        with cur.copy("COPY silver.row (resource_uri, sha256, row_no, block_no, structure, code, label, text, marker, level, is_total, dup) FROM STDIN") as cp:
             for bn, b in enumerate(sh.blocks, 1):
                 for r in b.rows:
-                    cp.write_row((uri, sha, r.no, bn, b.structure, r.code, r.label, r.text, r.marker, r.level, r.total))
+                    cp.write_row((uri, sha, r.no, bn, b.structure, r.code, r.label, r.text, r.marker, r.level, r.total, r.dup))
         with cur.copy("COPY silver.cell (resource_uri, sha256, row_no, col_no, text, value, issue) FROM STDIN") as cp:
             for b in sh.blocks:
                 for r in b.rows:
@@ -115,8 +115,8 @@ def store(c, ds, res, got, now=None):
     prev = c.execute("SELECT sha256, kind, n_rows, n_cols FROM silver.resource WHERE resource_uri = %s AND is_current", (uri,)).fetchone()
     prev = dict(zip(("sha", "kind", "n_rows", "n_cols"), prev)) if prev else None
     try:
-        sh = sheet.parse(raw)
-        fam = templates.family_of(sh)
+        sh = sheet.parse(raw, flat=ds["kind"] == "crime-old")
+        fam = templates.family_of(sh, ds["kind"])
         tid = templates.template_id(sh, fam) if fam else None
     except (sheet.ShapeError, templates.TemplateError) as e:
         with c.transaction():
@@ -150,14 +150,15 @@ def store(c, ds, res, got, now=None):
     with c.transaction():
         c.execute("UPDATE silver.resource SET is_current = false WHERE resource_uri = %s AND is_current", (uri,))
         c.execute("""INSERT INTO silver.resource (resource_uri, sha256, set_uri, name, version, source_updated_at, path, bytes, read_at, kind,
-                     title, family, template, n_rows, n_cols, n_blocks, issues, note, status, is_current)
+                     title, family, template, n_rows, n_cols, n_blocks, issues, note, status, is_current, title_year)
                      VALUES (%(uri)s,%(sha)s,%(set_uri)s,%(name)s,%(version)s,%(updated)s,%(path)s,%(bytes)s,%(read_at)s,%(kind)s,
-                             %(title)s,%(fam)s,%(tid)s,%(n_rows)s,%(n_cols)s,%(n_blocks)s,%(issues)s,%(note)s,'built',true)
+                             %(title)s,%(fam)s,%(tid)s,%(n_rows)s,%(n_cols)s,%(n_blocks)s,%(issues)s,%(note)s,'built',true,%(title_year)s)
                      ON CONFLICT (resource_uri, sha256) DO UPDATE SET kind = EXCLUDED.kind, title = EXCLUDED.title, family = EXCLUDED.family,
                        template = EXCLUDED.template, n_rows = EXCLUDED.n_rows, n_cols = EXCLUDED.n_cols, n_blocks = EXCLUDED.n_blocks,
-                       issues = EXCLUDED.issues, note = EXCLUDED.note, status = 'built', is_current = true""",
+                       issues = EXCLUDED.issues, note = EXCLUDED.note, status = 'built', is_current = true, title_year = EXCLUDED.title_year""",
                   dict(meta, kind=sh.kind, title=sh.title or None, fam=fam, tid=tid, n_rows=n_rows if sh.kind == "table" else 0, n_cols=sh.n_cols,
-                       n_blocks=len(sh.blocks), issues=sh.issues, note=sh.note or None))
+                       n_blocks=len(sh.blocks), issues=sh.issues, title_year=sh.banner_year,
+                       note=(sh.note or "; ".join(sh.dropped + ["повторен ред: " + d for d in sh.dups]) or (f"заглавието е за {sh.banner_year} г., наборът е за {ds['year']} г." if sh.banner_year and ds["year"] and sh.banner_year != int(ds["year"]) else None))))
         if sh.kind == "table":
             _write(c, uri, sha, sh, fam, tid)
         if result == "new":
@@ -212,7 +213,7 @@ def silver_blocks(c, uri, sha):
     blocks, cur, key = [], None, None
     for rn, bn, structure, code, label, text, marker, level, total in c.execute(
             """SELECT row_no, block_no, structure, code, label, text, marker, level, is_total FROM silver.row
-               WHERE resource_uri = %s AND sha256 = %s ORDER BY row_no""", (uri, sha)):
+               WHERE resource_uri = %s AND sha256 = %s AND NOT dup ORDER BY row_no""", (uri, sha)):
         if bn != key:
             cur = sheet.Block(structure, "", cols, [], [], rn)
             blocks.append(cur)
