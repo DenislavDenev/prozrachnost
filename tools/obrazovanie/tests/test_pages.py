@@ -206,7 +206,7 @@ def test_matura_page_and_school_group_render(monkeypatch):
     monkeypatch.setattr(main, "matura_snapshot", lambda year, session, kind: dict(
         year=year, session=session, kind=kind, resource="1387affe", updated="2026-07-01",
         schools=976, results=3614, matched=974, unmatched=["2900001", "2900102"],
-        verification="code", anomalies={"suppressed_takers": 0},
+        verification="code", anomalies={"suppressed_takers": 0}, counted=True,
         subjects=[dict(subject="БЕЛ(ООП) З", schools=975, takers=41000,
                        mean=Decimal("4.12"), hidden=0, missing_grade=0)]))
     monkeypatch.setattr(main, "school_dzi", lambda code: [dict(year="2025/2026", session="may",
@@ -230,7 +230,7 @@ def test_matura_school_search_and_csv(monkeypatch):
     monkeypatch.setattr(main, "snapshot", sample_snapshot)
     monkeypatch.setattr(main, "matura_snapshot", lambda year, session, kind: dict(
         year=year, session=session, kind=kind, resource="test-resource", updated="2026-07-01",
-        verification="code", subjects=[dict(subject="БЕЛ(ООП) З", takers=None, hidden=1,
+        verification="code", counted=True, subjects=[dict(subject="БЕЛ(ООП) З", takers=None, hidden=1,
              schools=1, mean=None, missing_grade=0)]))
     seen = []
     def school_rows(resource, subject="", q="", page=1, limit=50, sort="name", **filters):
