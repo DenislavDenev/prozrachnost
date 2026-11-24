@@ -127,13 +127,19 @@ def main():
     survived = 0
     for name, path, old, new, tests in MUTATIONS:
         with tempfile.TemporaryDirectory() as tmp:
-            copy = Path(tmp) / "t"
-            shutil.copytree(ROOT, copy, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".data"))
+            # the copy keeps its place beside the foundation: the database tests build it from ../danni
+            copy = Path(tmp) / ROOT.name
+            for src_dir, dst in ((ROOT, copy), (ROOT.parent / "danni", Path(tmp) / "danni")):
+                shutil.copytree(src_dir, dst, ignore=shutil.ignore_patterns("__pycache__", ".pytest_cache", ".data"))
             f = copy / path
             src = f.read_text(encoding="utf-8")
             assert src.count(old) == 1, f"{name}: the code to break is not found once in {path}"
             f.write_text(src.replace(old, new), encoding="utf-8")
             r = pytest(copy, tests.split())
+            if "in rebuild" in r.stdout or "CalledProcessError" in r.stdout:
+                # the test database could not be built: that is a broken environment, not a caught mutation
+                print(f"the foundation was not built for {name}, no mutation counts:\n" + r.stdout[-3000:])
+                sys.exit(1)
             caught = r.returncode != 0
             survived += not caught
             print(f"{'caught  ' if caught else 'SURVIVED'} {name}: {r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr[-200:]}", flush=True)
