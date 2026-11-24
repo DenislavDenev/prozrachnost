@@ -750,3 +750,60 @@ def test_a_day_the_register_does_not_answer_for_does_not_stop_the_days_after_it(
     with pytest.raises(RuntimeError):
         T.read_changes(conn, 600, st := {}, today + dt.timedelta(days=20))
     assert len(asked) == T.CHANGES_DOWN and st["left"] == 14 - T.CHANGES_DOWN  # a portal that is down is not asked for every day
+
+
+def test_adopt_attaches_the_rows_again_after_a_deadlock(conn, monkeypatch):
+    import psycopg
+    from ingest import adopt
+    monkeypatch.setattr(adopt.time, "sleep", lambda s: None)
+    conn.execute("CREATE TEMP TABLE t (k int, load_id int)")
+    conn.execute("INSERT INTO t SELECT g, NULL FROM generate_series(1, 7) g")
+    monkeypatch.setattr(adopt, "ATTACH", 3)
+    real, calls = conn.execute, []
+
+    class Once:
+        def __getattr__(self, name):
+            return getattr(conn, name)
+
+        def execute(self, sql, *a):
+            if sql.startswith("UPDATE"):
+                calls.append(a[0][0])
+                if len(calls) == 2:
+                    raise psycopg.errors.DeadlockDetected("deadlock detected")
+            return real(sql, *a)
+    adopt._attach(Once(), st := {}, "t", "SELECT k FROM t ORDER BY 1", "UPDATE t SET load_id = 1 WHERE k = ANY(%s)")
+    assert st["t"] == 7 and conn.execute("SELECT count(*) FROM t WHERE load_id IS NULL").fetchone()[0] == 0
+    assert calls == [[1, 2, 3], [4, 5, 6], [4, 5, 6], [7]]        # the part that deadlocked is done again, by parts
+
+
+def test_a_day_without_entries_is_an_empty_list_but_one_empty_answer_is_not(monkeypatch):
+    import pytest
+    from ingest import registry as R
+    monkeypatch.setattr(R.time, "sleep", lambda s: None)
+    answers = []
+    monkeypatch.setattr(R, "get", lambda url, accept=None: answers.pop(0))
+    answers[:] = [b"", b"", b""]
+    assert R.changes("2026-11-22") == {"items": [], "has_more": False}        # the portal has nothing for a Sunday
+    answers[:] = [b"", b'[{"uic": "123456789", "date": "x", "companyFullName": "A OOD"}]']
+    assert R.changes("2026-11-23")["items"][0]["uic"] == "123456789"          # an empty answer once is asked again
+    answers[:] = [b"", b"<html>", b""]
+    with pytest.raises(RuntimeError):
+        R.changes("2026-11-24")                                               # not the list is still an error
+
+
+def test_the_public_figures_come_from_two_light_queries(monkeypatch):
+    from ingest import enrich
+    import json
+    monkeypatch.setattr(enrich.time, "sleep", lambda s: None)
+    asked = []
+
+    def get(url, **kw):
+        asked.append(url)
+        n = len(asked)
+        return json.dumps({"results": {"bindings": [
+            {"p": {"value": "http://www.wikidata.org/entity/Q1"}, "label": {"value": "Едно"}},
+            {"p": {"value": f"http://www.wikidata.org/entity/Q{n + 1}"}, "label": {"value": "Друго"}}]}}).encode()
+    monkeypatch.setattr(enrich, "get", get)
+    people = enrich.wikidata_people()
+    assert len(asked) == 2 and "UNION" not in "".join(asked)            # no query over the limit of the service
+    assert sorted(p["qid"] for p in people) == ["Q1", "Q2", "Q3"]       # one person in both is counted once
