@@ -173,3 +173,18 @@ def test_a_name_of_someone_who_is_not_an_mp_has_no_key(loaded):
         with pytest.raises(psycopg.errors.CheckViolation):
             with loaded.transaction():
                 loaded.execute(f"UPDATE {schema}.speech SET role = 'министър', profile = 5237 WHERE sitting = 11159 AND no = 3")
+
+
+def test_a_daily_step_compares_only_the_sittings_it_read(loaded):
+    """The step `sittings` reads the months from `since` on and publishes the large tables only for their sittings: a
+    change of an older sitting waits for a publication of the whole layer (people, recheck, build, a deploy)."""
+    import datetime as dt
+    from ingest import run
+    loaded.execute("UPDATE parlament.vote SET code = '-' WHERE sitting = 11174 AND item = 2 AND mp = 3839")      # 24.09.2026
+    loaded.execute("UPDATE parlament.speech SET text = 'друг текст' WHERE sitting = 11159 AND no = 3")          # 31.07.2026
+    assert run.publish(loaded, {"since": dt.date(2026, 9, 1)}) == []
+    one = lambda sql: loaded.execute(sql).fetchone()[0]   # noqa: E731
+    assert one("SELECT code FROM pub_parlament.vote WHERE sitting = 11174 AND item = 2 AND mp = 3839") == "-"
+    assert one("SELECT text FROM pub_parlament.speech WHERE sitting = 11159 AND no = 3") != "друг текст"
+    assert run.publish(loaded) == []
+    assert one("SELECT text FROM pub_parlament.speech WHERE sitting = 11159 AND no = 3") == "друг текст"

@@ -70,6 +70,8 @@ def wipe(c):
     c.execute("UPDATE ops.check_rule SET is_active = true WHERE tool = 'parlament'")
     for table in ("check_result", "change_log", "hold", "fetch", "load", "run"):
         c.execute(f"DELETE FROM ops.{table} WHERE tool = 'parlament'")
+    # a file no read names any more: the next test writes its raw files in a folder of its own
+    c.execute("DELETE FROM ops.raw_file x WHERE NOT EXISTS (SELECT FROM ops.fetch f WHERE f.raw_file_id = x.raw_file_id)")
 
 
 @pytest.fixture

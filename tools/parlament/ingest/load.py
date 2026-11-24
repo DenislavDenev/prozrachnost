@@ -100,6 +100,7 @@ def load(conn, stats_, first=None, get=None, today=None):
         last = last or today
         first = (last.year - (last.month == 1), 12 if last.month == 1 else last.month - 1)
     out, problems, touched = {}, [], set()
+    stats_["since"] = dt.date(*first, 1)   # the sittings of these months are the only ones this run can change
     for y, m in months(first, (today.year, today.month)):
         ref = f"month/{y}-{m:02d}"
         try:

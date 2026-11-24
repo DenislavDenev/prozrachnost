@@ -43,14 +43,21 @@ def month(text):
     return d.year, d.month
 
 
-def publish(conn):
+# The steps that change only the sittings of the months they read (sittings), or none (the rest of the daily ones),
+# publish the five large tables of the sittings (item, item_group, vote, line, speech) in a window: only the rows of the
+# sittings from `since` on are compared (db/publish: `-- window:`). The others compare the whole layer: people links the
+# speakers of every assembly, recheck and build rebuild every assembly, a deploy (check) may bring new group codes.
+WINDOWED = ("sittings", "roster", "absences", "bills", "pdfs")
+
+
+def publish(conn, window=None):
     """The quality rules; when every gating one holds, the serving layer follows. -> problems."""
     r = db.current()
     failed = pipeline.run_checks(conn, r)
     if failed:
         return failed
     with db.heavy():
-        return pipeline.publish(conn, r, ROOT).problems
+        return pipeline.publish(conn, r, ROOT, window=window).problems
 
 
 def step(name, a, conn, st):
@@ -82,7 +89,11 @@ def step(name, a, conn, st):
         move.parity(conn, db.current())
         return [f"сверката: {x}" for x in st["detail"]]
     problems = list(st.pop("problems", []))
-    return problems + publish(conn)
+    window = None
+    if name in WINDOWED:   # the sittings step says from which day it read; the others change no sitting
+        since = st.pop("since", None) if name == "sittings" else None
+        window = {"since": since or dt.date.today() + dt.timedelta(days=1)}
+    return problems + publish(conn, window)
 
 
 def main(argv=None):
