@@ -20,13 +20,16 @@ def same_as_clean(c):
 
 
 def test_each_day_is_published_in_its_window_and_the_layer_equals_the_clean_tables(c):
+    put(c, D0, fixture(D0))
     put(c, D1, fixture(D1))
     gold.build_missing(c)
     publish(c)
     same_as_clean(c)
     first = c.execute("SELECT max(publication_id) FROM pub.publication WHERE tool = 'pazar'").fetchone()[0]
-    # the next day closes some spans of the day before and opens its own: the window starts the day before it
+    # the next day closes some spans of the day before and opens its own: the window starts the day before it, and it
+    # holds the spans that began earlier in the month and end now
     put(c, D2, fixture(D2))
+    assert c.execute("SELECT count(*) FROM pazar.price_span WHERE from_day = %s AND to_day = %s", (D0, D1)).fetchone()[0] > 0
     gold.build_missing(c)
     from ingest import run as steps
     since = steps.since_of(D2)
