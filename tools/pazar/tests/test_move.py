@@ -128,8 +128,8 @@ def test_parity_is_clean_for_the_same_data_and_finds_a_changed_price(c):
     assert any(p.startswith("parity_spans_differ") for p in out["problems"])
     assert any(p.startswith("parity_spans_retail") for p in out["problems"])
     assert len(out["spans_differ"]) == 1 and out["spans_differ"][0][0] == "2026-09"
-    # a day the old database holds as held and the new one built
-    c.execute("""CREATE OR REPLACE VIEW old_silver.day AS SELECT day, CASE WHEN day = '2026-09-30' THEN 'held' ELSE status END AS status,
+    # a day the old database holds as held and the new one built (the days are compared up to the last built in both)
+    c.execute("""CREATE OR REPLACE VIEW old_silver.day AS SELECT day, CASE WHEN day = '2026-09-29' THEN 'held' ELSE status END AS status,
                  load_id, zip_sha256, zip_path, zip_bytes, files, chains, stores, records, valid, dups, bad, blank, spans_opened, spans_closed,
                  anomalies, note, built_at, build_secs FROM pazar.day""")
-    assert any(p.startswith("parity_days_differ") and "2026-09-30" in p for p in compare(c)["problems"])
+    assert any(p.startswith("parity_days_differ") and "2026-09-29" in p for p in compare(c)["problems"])
