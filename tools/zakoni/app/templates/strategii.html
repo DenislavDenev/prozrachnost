@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import exports, opts %}
+{% block title %}Стратегически документи{% endblock %}
+{% block main %}
+<h1>Стратегически документи</h1>
+<p class="lede"><b>{{ total | num }} {{ 'документ' if total == 1 else 'документа' }}</b> по избраните условия{% if f.valid_on %}, действащи на {{ f.valid_on | date }}{% endif %}{% if rows|length < total %}; на страницата са най-новите {{ rows|length }}, всички са в CSV и JSON{% endif %}.</p>
+<details class="explain"><summary>С прости думи</summary><p>Стратегиите, програмите и плановете са документите, с които държавата, областите и общините си поставят цели за години напред. Например общинският план за развитие. Таблицата показва кой орган ги е приел, на каква дата и докога важат. Датата „без край“ значи, че срокът не е посочен. Законодателните инициативи и тук, и в източника са същият списък, затова не са отделен раздел.</p></details>
+<form class="ctl filters" method="get" action="/strategii">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Търси в заглавията" aria-label="Търсене в заглавията">
+  <label>Ниво <select name="level"><option value="">всички</option>{{ opts(flt.levels, f.level) }}</select></label>
+  <label>Вид <select name="type"><option value="">всички</option>{{ opts(flt.types, f.type) }}</select></label>
+  <label>Година на приемане <select name="year"><option value="">всички</option>{{ opts(flt.years, f.year) }}</select></label>
+  <label>Действащи на ден <input type="date" name="na" value="{{ f.valid_on.isoformat() if f.valid_on }}"></label>
+  <button class="btn" type="submit">Покажи</button><a class="l" href="/strategii">Изчисти</a>
+</form>
+<section class="p"><div class="ph"><h2>Документи</h2><div class="src">{{ exports('/strategii', query) }}</div></div>
+  <div class="scroll"><table class="sortable" id="strat-table"><thead><tr><th>Приет</th><th>Заглавие</th><th>Ниво</th><th>Област на политика</th><th>Орган, приел документа</th><th>Важи до</th></tr></thead><tbody>
+  {% for s in rows %}<tr><td data-v="{{ s.accepted.isoformat() if s.accepted }}">{{ s.accepted | date if s.accepted else 'няма данни' }}</td><td>{{ s.name | truncate(220) }}{% if s.act_pris_id %} <a class="l" href="/aktove/{{ s.act_pris_id }}">акт на МС</a>{% endif %}</td><td>{{ s.level or 'няма данни' }}</td><td>{{ s.policy_area or 'няма данни' }}</td><td>{{ s.authority or 'няма данни' }}</td><td data-v="{{ s.expires.isoformat() if s.expires }}">{{ s.expires | date if s.expires else 'без посочен край' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="mut">Няма документи по избраните условия.</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src">АМС · <a href="{{ source_url }}" rel="noopener">набор „Справки от Портала за обществени консултации“</a> · лиценз CC-BY</div></section>
+{% endblock %}

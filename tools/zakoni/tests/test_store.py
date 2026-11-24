@@ -340,3 +340,26 @@ def test_a_write_that_loses_a_record_is_caught_by_the_count_after_it(conn, arch,
     monkeypatch.setattr(store, "apply", lossy)
     problems, _, _ = build(conn)
     assert any("неуспешно" in p and "след записа са" in p for p in problems)
+
+
+def test_a_gazette_year_that_cannot_be_right_and_a_relation_to_itself_stay_out_of_gold(conn, arch):
+    """Both were in the real register on 02.10.2026 (act 68303: year "1019", act 19160: 2003 for 2005, act 76245 related to itself)."""
+    from ingest import gold
+
+    def bad(d):
+        for r in d[1:]:
+            if r["pris_id"] == 170203:
+                r["state_gazette_year"] = "1019"
+            if r["pris_id"] == 171000:
+                r["related"] = [{"relation_type": "Изменен от", "pris_id": 171000, "act_type": "Решение", "act_name": "самият акт"}]
+        return d
+
+    edit(arch, PRIS, bad)
+    build(conn)
+    gold.build(conn, {}, 1)
+    assert conn.execute("SELECT gazette_number, gazette_year FROM gold.act WHERE pris_id = 170203").fetchone() == (None, None)
+    assert conn.execute("SELECT gazette_year_raw, gazette_year FROM silver.pris_act WHERE pris_id = 170203 AND valid_to IS NULL").fetchone() == ("1019", 1019)   # the original stays
+    assert count(conn, "SELECT count(*) FROM gold.act_relation WHERE pris_id = related_pris_id") == 0
+    u = conn.execute("SELECT tbl, field FROM gold.unmatched WHERE key IN ('170203', '171000') AND field IN ('gazette', 'related_pris_id') ORDER BY tbl").fetchall()
+    assert u == [("act", "gazette"), ("act_relation", "related_pris_id")]
+    assert conn.execute("SELECT gazette_number, gazette_year FROM gold.act WHERE pris_id = 170973").fetchone() == (84, 2026)     # a right one is kept
