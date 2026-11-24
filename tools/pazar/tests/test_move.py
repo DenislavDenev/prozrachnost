@@ -127,14 +127,20 @@ def test_parity_is_clean_for_the_same_data_and_finds_a_changed_price(c):
     assert out["parity_spans"][0] == out["parity_spans"][1] > 0
     assert c.execute("""SELECT count(*), count(*) FILTER (WHERE ok) FROM ops.check_latest
                         WHERE tool = 'pazar' AND kind = 'parity' AND checked_at IS NOT NULL""").fetchone()[0] >= 15
-    # one price of one span differs in the old database: its month and chain are named, the rest stays equal
+    # one span has another category in the old database: no count or sum sees it, the hash of the spans does, and names
+    # its month and chain; the rest stays equal
+    c.execute("""CREATE OR REPLACE VIEW old_silver.price_span AS
+                 SELECT store_id, product_id, from_day, to_day, retail, promo,
+                        category + CASE WHEN store_id = 1 AND product_id = 1 THEN 1 ELSE 0 END AS category, flags FROM pazar.price_span""")
+    out = compare(c)
+    assert any(p.startswith("parity_spans_differ") for p in out["problems"])
+    assert not any(p.startswith("parity_spans_retail") for p in out["problems"])
+    assert len(out["spans_differ"]) == 1 and out["spans_differ"][0][0] == "2026-09"
+    # and a price that differs is in the sum as well
     c.execute("""CREATE OR REPLACE VIEW old_silver.price_span AS
                  SELECT store_id, product_id, from_day, to_day, retail + CASE WHEN store_id = 1 AND product_id = 1 THEN 1 ELSE 0 END AS retail,
                         promo, category, flags FROM pazar.price_span""")
-    out = compare(c)
-    assert any(p.startswith("parity_spans_differ") for p in out["problems"])
-    assert any(p.startswith("parity_spans_retail") for p in out["problems"])
-    assert len(out["spans_differ"]) == 1 and out["spans_differ"][0][0] == "2026-09"
+    assert any(p.startswith("parity_spans_retail") for p in compare(c)["problems"])
     # a day the old database holds as held and the new one built (the days are compared up to the last built in both)
     c.execute("""CREATE OR REPLACE VIEW old_silver.day AS SELECT day, CASE WHEN day = '2026-09-29' THEN 'held' ELSE status END AS status,
                  load_id, zip_sha256, zip_path, zip_bytes, files, chains, stores, records, valid, dups, bad, blank, spans_opened, spans_closed,
