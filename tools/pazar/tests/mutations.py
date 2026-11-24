@@ -51,7 +51,7 @@ CASES = [
      "tests/test_move.py::test_a_replay_builds_a_small_day_that_a_nightly_build_would_hold"),
 
     ("ingest/build.py", "if rewritten or later:", "if False:", "tests/test_store.py::test_an_older_day_arriving_late_rebuilds_the_month_in_order"),
-    ("ingest/build.py", "c.execute(\"DELETE FROM pazar.day WHERE day = %s AND status = 'held'\", (day,))", "pass",
+    ("ingest/build.py", "            log(c, r, day, None, None, sha, \"confirmed\", now)", "            pass",
      "tests/test_store.py::test_a_held_day_confirmed_after_a_later_day_is_built_into_the_month"),
     # the daily observations
     ("db/build/20_category_day.sql", "AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL", "AND cd.day = %(d)s AND cd.filed",
