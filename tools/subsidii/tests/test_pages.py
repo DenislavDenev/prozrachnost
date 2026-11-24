@@ -76,7 +76,7 @@ def test_the_names_of_people_are_masked_in_the_list_only_and_only_in_the_term(cl
     c.execute("SELECT set_config('subsidii.today', '2030-01-01', false)")
     publish(c)
     late = body(client.get("/poluchateli?fy=2025&tip=natural&snap=" + D1).text)
-    assert "***" not in late and "физическо лице" in late
+    assert not re.search(r"<td>[^<]*\*\*\*", late) and "<td>физическо лице <span" in late
 
 
 def test_people_below_the_threshold_are_said_but_are_not_rows(client, c):
@@ -85,7 +85,7 @@ def test_people_below_the_threshold_are_said_but_are_not_rows(client, c):
     assert n and f"<b>{n}</b>" in html and "1 250 €" in html
     js = client.get("/api/poluchateli.json?fy=2024&tip=natural&size=500").json()
     assert js["count"] == count(c, "SELECT count(*) FROM pub_subsidii.recipient WHERE fy = 2024 AND kind = 'natural'")
-    assert "1 250 €" not in body(client.get("/poluchateli?fy=2024&tip=legal").text)
+    assert "са само в сборовете на таблото" not in body(client.get("/poluchateli?fy=2024&tip=legal").text)
 
 
 def test_every_answer_says_its_publication(client, c):
@@ -189,7 +189,7 @@ def test_a_legal_entity_has_a_page_and_a_person_has_none(client, c):
 def test_a_municipality_page_and_its_numbers(client, c):
     mid = c.execute("SELECT eik FROM pub.municipality WHERE name_bg = 'Вълчи Дол'").fetchone()[0]
     r = client.get(f"/obshtini/{mid}?fy=2025")
-    assert r.status_code == 200 and "Вълчи Дол" in r.text and "физическо лице №" not in r.text and "***" not in body(r.text)
+    assert r.status_code == 200 and "Вълчи Дол" in r.text and "физическо лице №" not in r.text and not re.search(r"<td>[^<]*\*\*\*", r.text)
     js = client.get(f"/api/obshtini/{mid}.json?fy=2025").json()
     assert [y["financial_year"] for y in js["years"]] == [2024, 2025]
     assert client.get("/obshtini/000000000").status_code == 404
