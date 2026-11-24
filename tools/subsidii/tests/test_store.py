@@ -53,6 +53,7 @@ def test_a_file_is_stored_as_the_file_says(c):
     assert row[:6] == ("built", 346, 42, 304, 3, "cp1251") and row[7] == len(raw)
     assert str(row[6]) == str(parse.parse(raw).stats["total"]["total"])
     assert (rep["rows"], rep["added"], rep["removed"]) == (346, 346, 0)
+    assert count(c, "SELECT count(*) FROM subsidii_src.line") == 0          # the work table is empty after the file
 
 
 def test_the_year_is_the_financial_year_from_16_10_to_15_10(c):
@@ -176,6 +177,7 @@ def test_a_failed_check_writes_nothing(c):
     rows[1][parse.TOTAL_T] = "3810450.33"
     state, rep = put(c, 2024, D1, csv_of(rows))
     assert state == "invalid" and "ОБЩО" in rep["error"]
+    assert count(c, "SELECT count(*) FROM subsidii_src.line") == 0
     assert count(c, "SELECT count(*) FROM subsidii_src.holder") == 0 and count(c, "SELECT count(*) FROM subsidii_src.payment") == 0
     assert c.execute("SELECT status FROM subsidii.snapshot WHERE fy = 2024").fetchone()[0] == "invalid"
     assert count(c, "SELECT count(*) FROM ops.change_log WHERE tool = 'subsidii' AND cause = 'invalid'") == 1

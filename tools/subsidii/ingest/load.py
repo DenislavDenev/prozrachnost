@@ -126,7 +126,15 @@ def stage(c, fy, day, raw, archive_rows=None):
 
 def apply(c, r, fy, day, raw, sha, path, raw_file_id=None, now=None, archive_rows=None):
     """The file of `day` into the landing zone through pipeline.load. Returns (Loaded, report).
-    Raises parse.ShapeError or Mismatch, and then nothing is written."""
+    Raises parse.ShapeError or Mismatch, and then nothing is written. The work table is emptied afterwards whatever
+    happened: it holds one file only while it loads (left full it kept 450 MB of a file of 420 000 lines)."""
+    try:
+        return _apply(c, r, fy, day, raw, sha, path, raw_file_id, now, archive_rows)
+    finally:
+        c.execute("TRUNCATE subsidii_src.line")
+
+
+def _apply(c, r, fy, day, raw, sha, path, raw_file_id, now, archive_rows):
     t0 = time.monotonic()
     stats = stage(c, fy, day, raw, archive_rows)
     rows = {str(fy): summary(stats, sha)}
