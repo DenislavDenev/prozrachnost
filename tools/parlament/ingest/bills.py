@@ -62,8 +62,8 @@ def load(conn, stats_, first=None, get=None, today=None):
             continue
         state(conn, ref, status="ok", error=None, last_ok="now", rows=len(listed))
         ids.update(i for i, _, _ in listed)
-    current = conn.execute("SELECT max(no) FROM live.assembly WHERE api_id IS NOT NULL").fetchone()[0]
-    ids.update(i for i, in conn.execute("""SELECT id FROM live.bill WHERE assembly = %s AND adopted IS NULL AND NOT withdrawn
+    current = conn.execute("SELECT max(no) FROM parlament.assembly WHERE api_id IS NOT NULL").fetchone()[0]
+    ids.update(i for i, in conn.execute("""SELECT id FROM parlament.bill WHERE assembly = %s AND adopted IS NULL AND NOT withdrawn
                                           AND read_at < now() - %s ORDER BY read_at LIMIT %s""", (current, REOPEN_AFTER, REOPEN_MAX)))
     for bid in sorted(ids):
         try:
@@ -90,9 +90,9 @@ def bill(conn, bid, get):
         raise parse.ShapeError(f"asked for bill {bid}, got {b['id']}")
     with conn.transaction():
         sha = save_raw(conn, ref, f"bill-{bid}.json", raw)
-        old = conn.execute("SELECT sha, (SELECT count(*) FROM live.bill_step WHERE bill = %s) FROM live.bill WHERE id = %s", (bid, bid)).fetchone()
+        old = conn.execute("SELECT sha, (SELECT count(*) FROM parlament.bill_step WHERE bill = %s) FROM parlament.bill WHERE id = %s", (bid, bid)).fetchone()
         if old and old[0] == sha:
-            conn.execute("UPDATE live.bill SET read_at = now() WHERE id = %s", (bid,))
+            conn.execute("UPDATE parlament.bill SET read_at = now() WHERE id = %s", (bid,))
             state(conn, ref, status="ok", error=None, last_ok="now")
             return "unchanged"
         if old and len(b["steps"]) < old[1] and hold(conn, ref, sha, len(b["steps"]), old[1], len(b["steps"])):
@@ -100,7 +100,7 @@ def bill(conn, bid, get):
             return "held"
         if old:
             db.log_change(conn, SOURCE, ref, "steps", old[1], len(b["steps"]), "rewritten")
-        conn.execute("""INSERT INTO live.bill (id, sign, date, title, final_title, assembly, session, withdrawn, adopted, dv_issue, dv_year,
+        conn.execute("""INSERT INTO parlament.bill (id, sign, date, title, final_title, assembly, session, withdrawn, adopted, dv_issue, dv_year,
                                                government, sha, read_at)
                         VALUES (%(id)s, %(sign)s, %(date)s, %(title)s, %(final)s, %(assembly)s, %(session)s, %(withdrawn)s, %(adopted)s,
                                 %(dv_issue)s, %(dv_year)s, %(government)s, %(sha)s, now())
@@ -110,40 +110,40 @@ def bill(conn, bid, get):
                           dv_year = EXCLUDED.dv_year, government = EXCLUDED.government, sha = EXCLUDED.sha, read_at = now()""",
                      {**b, "sha": sha})
         for table in ("bill_sponsor", "bill_committee", "bill_step"):
-            conn.execute(f"DELETE FROM live.{table} WHERE bill = %s", (bid,))
+            conn.execute(f"DELETE FROM parlament.{table} WHERE bill = %s", (bid,))
         for i, (pid, name) in enumerate(b["sponsors"]):
-            conn.execute("INSERT INTO live.bill_sponsor VALUES (%s,%s,%s,%s)", (bid, i, pid, name))
+            conn.execute("INSERT INTO parlament.bill_sponsor VALUES (%s,%s,%s,%s)", (bid, i, pid, name))
         for cid, name, role in b["committees"]:
-            conn.execute("INSERT INTO live.bill_committee VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING", (bid, cid, name, role))
+            conn.execute("INSERT INTO parlament.bill_committee VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING", (bid, cid, name, role))
         for s in b["steps"]:
-            conn.execute("INSERT INTO live.bill_step VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            conn.execute("INSERT INTO parlament.bill_step VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                          (bid, s["id"], s["date"], s["sitting"], s["committee"], s["committee_name"], s["what"], s["stage"]))
         state(conn, ref, status="ok", error=None, last_ok="now", last_change="now", rows=len(b["steps"]))
     return "stored"
 
 
 def link(conn, ids=None):
-    """live.bill_item: the votes of each hall step's sitting (by its number, else its day) whose topic has the bill's
+    """parlament.bill_item: the votes of each hall step's sitting (by its number, else its day) whose topic has the bill's
     key; the reading is the step's, else the topic's. -> the number of links."""
     where, args = ("WHERE b.id = ANY(%s)", [ids]) if ids is not None else ("", [])
-    steps = conn.execute(f"""SELECT DISTINCT b.id, b.title, st.stage, s.id FROM live.bill b
-                             JOIN live.bill_step st ON st.bill = b.id AND st.stage LIKE 'зала%%'
-                             JOIN live.sitting s ON s.id = st.sitting OR (st.sitting IS NULL AND s.date = st.date)
+    steps = conn.execute(f"""SELECT DISTINCT b.id, b.title, st.stage, s.id FROM parlament.bill b
+                             JOIN parlament.bill_step st ON st.bill = b.id AND st.stage LIKE 'зала%%'
+                             JOIN parlament.sitting s ON s.id = st.sitting OR (st.sitting IS NULL AND s.date = st.date)
                              {where}""", args).fetchall()
     items = {}
     n = 0
     with conn.transaction():
         if ids is not None:
-            conn.execute("DELETE FROM live.bill_item WHERE bill = ANY(%s)", (ids,))
+            conn.execute("DELETE FROM parlament.bill_item WHERE bill = ANY(%s)", (ids,))
         else:
-            conn.execute("DELETE FROM live.bill_item")
+            conn.execute("DELETE FROM parlament.bill_item")
         for bid, title, stage, sid in steps:
             if sid not in items:
-                items[sid] = conn.execute("SELECT no, topic FROM live.item WHERE sitting = %s AND kind = 'vote'", (sid,)).fetchall()
+                items[sid] = conn.execute("SELECT no, topic FROM parlament.item WHERE sitting = %s AND kind = 'vote'", (sid,)).fetchall()
             k = key(title)
             step_reading = next((r for w, r in READING.items() if w in (stage or "")), None)
             for no, topic in items[sid]:
                 if key(topic) == k:
-                    n += conn.execute("INSERT INTO live.bill_item VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                    n += conn.execute("INSERT INTO parlament.bill_item VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                                       (bid, sid, no, reading(topic) or step_reading)).rowcount
     return n
