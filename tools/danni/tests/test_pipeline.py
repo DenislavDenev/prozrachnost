@@ -408,3 +408,34 @@ def test_the_change_log_takes_the_causes_of_tender_and_search_by_trigrams_is_the
     with pytest.raises(psycopg.errors.CheckViolation):   # the list stays closed: a typo is not a cause
         conn.execute("INSERT INTO ops.change_log (tool, source, ref, cause) VALUES ('tender', 'tr', '1', 'rotated')")
     assert conn.execute("SELECT similarity('ОБЩИНА БАНСКО', 'ОБЩИНА БАНСКА') > 0.5").fetchone()[0]
+
+
+def test_a_window_compares_and_changes_only_the_rows_inside_it(demo, tmp_path):
+    """A table that grows by day is compared only where its file's window holds; without a window, whole."""
+    demo.execute('CREATE SCHEMA demo; CREATE TABLE demo.price (day date, k text, v integer)')
+    demo.execute('CREATE SCHEMA pub_demo; CREATE TABLE pub_demo.price (day date, k text, v integer, PRIMARY KEY (day, k))')
+    demo.execute("INSERT INTO core.dataset_table VALUES ('pub_demo', 'price', 'danni.ekatte')")
+    (tmp_path / 'db' / 'publish').mkdir(parents=True)
+    (tmp_path / 'db' / 'publish' / '01_pub_demo.price.sql').write_text(
+        "-- window: day >= %(since)s\nSELECT day, k, v FROM demo.price WHERE k NOT LIKE 'x%%'\n", encoding='utf-8')
+    d = [dt.date(2026, 11, n) for n in (1, 2, 3, 4)]
+    demo.execute('INSERT INTO demo.price VALUES (%s,%s,1), (%s,%s,1), (%s,%s,1)', (d[0], 'a', d[1], 'a', d[2], 'a'))
+
+    def publish(window=None):
+        with pipeline.run(demo, 'demo', 'list') as r:
+            return pipeline.publish(demo, r, tmp_path, window=window)
+
+    def served():
+        return demo.execute('SELECT day, v FROM pub_demo.price ORDER BY day').fetchall()
+
+    assert publish().changes == {'pub_demo.price': {'added': 3, 'removed': 0}}
+    # the first day changes and the second leaves, both before the window; the third changes and a fourth comes in it
+    demo.execute("UPDATE demo.price SET v = 2 WHERE day IN (%s, %s)", (d[0], d[2]))
+    demo.execute('DELETE FROM demo.price WHERE day = %s', (d[1],))
+    demo.execute("INSERT INTO demo.price VALUES (%s, 'a', 1)", (d[3],))
+    inside = publish({'since': d[2]})
+    assert inside.changes == {'pub_demo.price': {'added': 2, 'removed': 1}} and inside.publication_id
+    assert served() == [(d[0], 1), (d[1], 1), (d[2], 2), (d[3], 1)]
+    # without a window the whole table is compared again
+    assert publish().changes == {'pub_demo.price': {'added': 1, 'removed': 2}}
+    assert served() == [(d[0], 2), (d[2], 2), (d[3], 1)]
