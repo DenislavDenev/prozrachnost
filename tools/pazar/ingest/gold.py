@@ -41,6 +41,8 @@ def build_day(c, day):
     c.execute("SELECT pazar.ensure_month(%s)", (day,))
     with c.transaction(), psycopg.ClientCursor(c) as cur:
         cur.execute("SET LOCAL work_mem = '256MB'")
+        # no parallel workers: each would take its own work_mem, and the database shares 4 GB with everything else
+        cur.execute("SET LOCAL max_parallel_workers_per_gather = 0")
         cur.execute(_sql("20_category_day.sql"), dict(d=day, ms=ms, pms=pms, p30=p30, rate=config.BGN_PER_EUR))
         rows = c.execute("SELECT count(*) FROM pazar.category_day WHERE day = %s", (day,)).fetchone()[0]
         secs = round(time.monotonic() - t0, 1)
