@@ -12,6 +12,12 @@ def complete(conn, r):
         from ingest import store
         store.load_full(conn, r, full, 'details', pipeline.utcnow(), 1)
     run.finish(conn, r)
+    trim(conn)
+
+
+def trim(conn):
+    """One document per report: the same choices, a few files instead of sixty (each is a commit on a slow server)."""
+    conn.execute('DELETE FROM sobstvenost.report_document WHERE position > 1')
 
 
 def test_selects_only_actual_latest_annual_year(conn):
@@ -52,6 +58,7 @@ def test_attachment_versions_and_unknown_formats(conn):
         assert conn.execute('SELECT count(*) FROM sobstvenost.attachment').fetchone()[0] == 2 * (n + 1)
         assert conn.execute("SELECT count(DISTINCT sha256) FROM sobstvenost.attachment").fetchone()[0] == 2
         run.finish(conn, r)
+        trim(conn)
     assert conn.execute("SELECT status FROM pub_sobstvenost.source_state WHERE source = 'ncr' AND scope = 'pdfs'").fetchone()[0] == 'ok'
     # a file of an unknown format is refused for its attachment; the pass goes on and is not complete
     body['value'] = b'<html>Error</html>'
