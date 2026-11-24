@@ -48,6 +48,8 @@ CASES = [
     ("ingest/build.py", "source[day] = (raw, sha, path)", "source = {day: (raw, sha, path)}",
      "tests/test_store.py::test_a_rewritten_day_rebuilds_the_whole_month_from_the_archive"),
     ("ingest/build.py", "if rewritten or later:", "if False:", "tests/test_store.py::test_an_older_day_arriving_late_rebuilds_the_month_in_order"),
+    ("ingest/build.py", "c.execute(\"DELETE FROM silver.day WHERE day = %s AND status = 'held'\", (day,))", "pass",
+     "tests/test_store.py::test_a_held_day_confirmed_after_a_later_day_is_built_into_the_month"),
     # gold
     ("db/gold/20_category_day.sql", "AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL", "AND cd.day = %(d)s AND cd.filed",
      "tests/test_gold.py::test_a_chain_has_its_own_figures_and_a_copy_of_another_chain_has_none"),
