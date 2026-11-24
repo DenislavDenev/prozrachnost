@@ -38,7 +38,10 @@ def test_road_conditions_sum_as_sqlite_does():
     if sqlite3.sqlite_version_info < (3, 43):
         pytest.skip('SQLite before 3.43 sums plainly')
     assert main.sqlite_sum(values) == db.execute('SELECT sum(x) FROM t').fetchone()[0]
-    assert main.sqlite_sum(values) != sum(values)
+    plain = 0.0
+    for v in values:   # left to right, as a plain loop adds (sum() itself compensates since Python 3.12)
+        plain += v
+    assert main.sqlite_sum(values) != plain
 
 
 @pytest.fixture

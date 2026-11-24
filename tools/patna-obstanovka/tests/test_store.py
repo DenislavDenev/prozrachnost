@@ -41,6 +41,7 @@ def test_current_reads_every_source_and_publishes(conn):
     assert run.freshness(conn, 'current') == []
     # the same answers again: nothing new is written; only the time of the last good read moves, as /api/status
     # has always shown it
+    conn.execute("UPDATE ops.load SET loaded_at = loaded_at - interval '1 minute' WHERE tool = %s", (TOOL,))
     again = run.perform(conn, 'current', get=getter(answers()))
     assert again['stats']['unchanged'] == 5
     assert conn.execute('SELECT changes FROM pub.publication WHERE publication_id = %s',
