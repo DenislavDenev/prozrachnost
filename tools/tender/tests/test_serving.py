@@ -271,3 +271,12 @@ def test_a_buyer_whose_number_has_a_slash_has_a_page(conn):
     assert one(conn, "SELECT count(*) FROM pub_tender.buyer WHERE eik = %s", odd) == 1
     assert get(f"/buyers/{odd}")[0] == 200
     assert get("/buyers/000000000/1")[0] == 404
+
+
+def test_the_list_of_payments_reads_an_index_in_its_order(conn):
+    fill(conn)
+    with conn.transaction():
+        conn.execute("SET LOCAL enable_seqscan = off")
+        plan = "\n".join(r[0] for r in conn.execute("""EXPLAIN SELECT settlement_date FROM pub_tender.payment p
+            ORDER BY p.settlement_date DESC NULLS LAST, p.resource_uri, p.row_no LIMIT 50"""))
+    assert "payment_list_idx" in plan and "Sort" not in plan        # the order of the page, without sorting the table
