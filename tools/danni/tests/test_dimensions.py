@@ -1,7 +1,9 @@
 import csv
 import io
 import json
+import os
 import shutil
+import time
 import zipfile
 from pathlib import Path
 
@@ -13,6 +15,8 @@ from pipeline import ShapeError
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / 'tests' / 'fixtures' / 'ekatte.zip'   # the real archive of НСИ, downloaded on 29.09.2026
+# the real archive of 24.11.2026 from Наблюдател, cut down to the five files the parser reads, their bytes unchanged
+PARTIAL = ROOT / 'tests' / 'fixtures' / 'ekatte-2026-11-24-partial.zip'
 
 
 def one(conn, sql, *a):
@@ -151,6 +155,56 @@ def test_a_new_municipality_without_eik_stops_the_step(conn, archive, tmp_path):
         step(conn, archive, tmp_path)
     assert one(conn, 'SELECT count(*) FROM core.municipality') == 265
     assert one(conn, "SELECT status FROM ops.run WHERE tool = 'danni' ORDER BY run_id DESC LIMIT 1") == 'failed'
+
+
+def age(path, days):
+    """Наблюдател wrote the file `days` ago."""
+    t = time.time() - days * 86400
+    os.utime(path, (t, t))
+
+
+def test_settlements_cut_short_at_the_source_are_a_partial_archive():
+    # the real archive of 24.11.2026: ek_atte.json is one settlement and the footer, the other files are whole
+    d = zipfile.ZipFile(PARTIAL)
+    assert len(json.loads(d.read('ek_atte.json'))) == 2 and len(json.loads(d.read('ek_obst.json'))) == 266
+    with pytest.raises(ekatte.Partial, match='ek_atte.json: 1 реда, очаквани поне 5000'):
+        ekatte.parse(PARTIAL.read_bytes())
+
+
+def test_a_newer_archive_cut_short_is_passed_over_and_the_source_turns_stale(conn, archive, tmp_path):
+    whole = archive / 'ekatte' / '2026-09-29.002862bf0655.zip'
+    age(whole, 4)
+    shutil.copy(PARTIAL, archive / 'ekatte' / '2026-11-24.8d96ef52ca20.zip')
+    assert set(step(conn, archive, tmp_path).values()) == {'loaded'}
+    assert [one(conn, f'SELECT count(*) FROM core.{t}') for t in ('municipality', 'settlement')] == [265, 5256]
+    stats = one(conn, "SELECT stats FROM ops.run WHERE step = 'place' ORDER BY run_id DESC LIMIT 1")
+    assert (stats['file'], stats['passed_over']) == (whole.name, ['2026-11-24.8d96ef52ca20.zip'])
+    rejected = conn.execute('''SELECT f.path, l.reason FROM ops.load l JOIN ops.raw_file f USING (raw_file_id)
+        WHERE l.status = 'rejected' ''').fetchall()
+    assert len(rejected) == 1 and rejected[0][0].endswith('2026-11-24.8d96ef52ca20.zip')
+    assert rejected[0][1].startswith('ek_atte.json: 1 реда')
+    # the load carries the time of the read, not of the step: four days is past the three of the source
+    assert [p for p in pipeline.freshness(conn, 'danni') if p.startswith('ЕКАТТЕ от архива на Наблюдател: последно успешно четене')]
+    # the next run passes over the same file without rejecting it again
+    assert set(step(conn, archive, tmp_path).values()) == {'unchanged'}
+    assert one(conn, "SELECT count(*) FROM ops.load WHERE status = 'rejected'") == 1
+
+
+def test_only_partial_archives_stop_the_step(conn, archive, tmp_path):
+    (archive / 'ekatte' / '2026-09-29.002862bf0655.zip').unlink()
+    shutil.copy(PARTIAL, archive / 'ekatte' / '2026-11-24.8d96ef52ca20.zip')
+    with pytest.raises(ShapeError, match='Няма пълен архив на ЕКАТТЕ'):
+        step(conn, archive, tmp_path)
+    assert one(conn, 'SELECT count(*) FROM core.settlement') == 0
+
+
+def test_a_fault_other_than_a_cut_file_stops_the_step(conn, archive, tmp_path):
+    # a changed format is not passed over: the parser has to learn it first
+    changed = rezip(lambda n, rows: [{**rows[0], 'new_field': 1}] + rows[1:] if n == 'ek_atte.json' else rows)
+    (archive / 'ekatte' / '2026-10-02.eeeeeeeeeeee.zip').write_bytes(changed)
+    with pytest.raises(ShapeError, match='променена схема'):
+        step(conn, archive, tmp_path)
+    assert one(conn, 'SELECT count(*) FROM core.settlement') == 0
 
 
 def test_org_from_tender_keeps_only_valid_eik(conn, dsn):

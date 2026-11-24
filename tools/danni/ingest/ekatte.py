@@ -29,8 +29,15 @@ MINIMUM = {'ek_reg1.json': 2, 'ek_reg2.json': 6, 'ek_obl.json': 28, 'ek_obst.jso
 INTEGERS = {'kind', 'category', 'altitude', 'document'}
 
 
+class Partial(ShapeError):
+    """A file of the archive has fewer rows than the country has. НСИ at times publishes the archive with
+    ek_atte.json cut to one settlement and the footer (13 of the 45 daily reads from 28.09 to 24.11.2026, the first
+    on 15.10); the other files are whole."""
+
+
 def parse(raw):
-    """{file name: {key: row}} for the five files. Raises ShapeError on anything unexpected."""
+    """{file name: {key: row}} for the five files. Raises Partial when a file is cut short at the source and
+    ShapeError on anything else unexpected."""
     try:
         z = zipfile.ZipFile(io.BytesIO(raw))
         loaded = {name: json.loads(z.read(name)) for name in FILES}
@@ -57,7 +64,7 @@ def parse(raw):
                 raise ShapeError(f'{name}: дублиран ключ {row[key]!r}')
             rows[row[key]] = {k: row.get(k) for k in keep}
         if len(rows) < MINIMUM[name]:
-            raise ShapeError(f'{name}: {len(rows)} реда, очаквани поне {MINIMUM[name]}')
+            raise Partial(f'{name}: {len(rows)} реда, очаквани поне {MINIMUM[name]} (непълен файл при източника)')
         out[name] = rows
     municipalities, oblasts = out['ek_obst.json'], out['ek_obl.json']
     for r in out['ek_atte.json'].values():
