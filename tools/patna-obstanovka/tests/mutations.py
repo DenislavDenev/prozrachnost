@@ -45,7 +45,10 @@ CASES = [
      "    for table in ():", 'tests/test_store.py::test_a_short_answer_is_held_and_the_map_keeps_the_full_one'),
     ('plain-sum', 'app/main.py', "    return total + error\n", "    return total\n",
      'tests/test_pages.py::test_road_conditions_sum_as_sqlite_does'),
-    ('crash-row-lost', 'ingest/sources.py', "    if len(rows) + skipped != total:", "    if False:",
+    ('crash-row-lost', 'ingest/sources.py', "        except (TypeError, ValueError, KeyError, AttributeError):
+            skipped += 1",
+     "        except (TypeError, ValueError, KeyError, AttributeError):
+            pass",
      'tests/test_sources.py::test_every_row_of_the_crash_file_is_a_crash_or_left_out'),
 ]
 
