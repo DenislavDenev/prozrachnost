@@ -363,3 +363,84 @@ kind = "not-a-person"
 shown_as = "full"
 decided_on = 2026-11-11
 basis = "the audited or inspected body, an organisation; a sole trader and a text with a personal number, an e-mail or a phone is replaced in the serving layer"
+
+# Държавна собственост (the move into the shared database, 24.11.2026). The members of boards of public enterprises
+# are people in a public role (PERSONS.md: Собственост, public-money, full name in the role). The concessionaire of the
+# National Concession Register is shown only when it is a legal entity; that line is a default taken in the move.
+
+[[person]]
+column = "sobstvenost_src.profile.board_original"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a member of a body of management or control of a public enterprise (АППК publishes them in that role): full name in that role, on the page of the enterprise only; no link between enterprises by name (PERSONS.md, decision 2 of 10.11.2026)"
+
+[[person]]
+column = "sobstvenost_src.board_entry.member_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a member of a body of management or control of a public enterprise (АППК publishes them in that role): full name in that role, on the page of the enterprise only; no link between enterprises by name (PERSONS.md, decision 2 of 10.11.2026)"
+
+[[person]]
+column = "sobstvenost_src.board_entry.entry"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a member of a body of management or control of a public enterprise (АППК publishes them in that role): full name in that role, on the page of the enterprise only; no link between enterprises by name (PERSONS.md, decision 2 of 10.11.2026)"
+
+[[person]]
+column = "pub_sobstvenost.board_entry.member_name"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a member of a body of management or control of a public enterprise (АППК publishes them in that role): full name in that role, on the page of the enterprise only; no link between enterprises by name (PERSONS.md, decision 2 of 10.11.2026)"
+
+[[person]]
+column = "pub_sobstvenost.board_entry.entry"
+kind = "public-money"
+shown_as = "full"
+decided_on = 2026-11-10
+basis = "a member of a body of management or control of a public enterprise (АППК publishes them in that role): full name in that role, on the page of the enterprise only; no link between enterprises by name (PERSONS.md, decision 2 of 10.11.2026)"
+
+[[person]]
+column = "sobstvenost_src.enterprise.owner"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the owner after the percentage of state participation in the APPK catalogue: a holding, a ministry or a state; not a person"
+
+[[person]]
+column = "sobstvenost.enterprise.owner"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the owner after the percentage of state participation in the APPK catalogue: a holding, a ministry or a state; not a person"
+
+[[person]]
+column = "pub_sobstvenost.enterprise.owner"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "the owner after the percentage of state participation in the APPK catalogue: a holding, a ministry or a state; not a person"
+
+[[person]]
+column = "sobstvenost_src.notice.concessionaire_name"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the concessionaire as the National Concession Register writes it: a company, a municipality, a sole trader, a registered farmer or now and then a person; kept on the ingest side, a name that is not of a legal entity is replaced in the serving layer (sobstvenost.notice.concessionaire_is_person)"
+
+[[person]]
+column = "sobstvenost.notice.concessionaire_name"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the concessionaire as the National Concession Register writes it: a company, a municipality, a sole trader, a registered farmer or now and then a person; kept on the ingest side, a name that is not of a legal entity is replaced in the serving layer (sobstvenost.notice.concessionaire_is_person)"
+
+[[person]]
+column = "pub_sobstvenost.notice.concessionaire_name"
+kind = "not-a-person"
+shown_as = "full"
+decided_on = 2026-11-24
+basis = "only the name of a legal entity: the name of a sole trader, a registered farmer or a person is replaced (publish rule no_person_concessionaire_published); a default of 24.11.2026 the owner may overrule"

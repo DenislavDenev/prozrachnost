@@ -1,33 +1,63 @@
 import pytest
-from ingest import documents,store,progress,run,parse
 
-def metadata(conn):
-    for source in ['appk','ncr']:store.state(conn,source,'details','ok',rows=1)
-    reports=[dict(id=str(year),appk_id='105',kind=kind,year=year,documents=[dict(id=str(year),url='https://example.invalid/'+str(year),title='Original')]) for year,kind in [(2024,'annual'),(2025,'annual'),(2026,'quarterly')]]
-    store.apply(conn,'appk','reports:105',reports,3)
+from ingest import documents, parse, pipeline, run
+
+from . import seed
+
+
+def complete(conn, r):
+    """The catalogues and a complete pass over the profiles and the concessions, then the clean tables."""
+    seed.load_all(conn, r)
+    for source, full in (('appk', 'appk-full'), ('ncr', 'ncr-full')):
+        from ingest import store
+        store.load_full(conn, r, full, 'details', pipeline.utcnow(), 1)
+    run.finish(conn, r)
+
 
 def test_selects_only_actual_latest_annual_year(conn):
-    metadata(conn)
-    rows=documents.selected(conn,'appk')
-    assert len(rows)==1 and rows[0]['year']==2025
-    assert rows[0]['id']=='105:2025:2025'
-    store.state(conn,'appk','details','partial',rows=1)
-    with pytest.raises(parse.ShapeError,match='complete'):documents.selected(conn,'appk')
+    with pipeline.run(conn, 'sobstvenost', 'refresh') as r:
+        seed.load_all(conn, r)
+        run.finish(conn, r)
+        with pytest.raises(parse.ShapeError, match='complete'):
+            documents.selected(conn, 'appk')
+        complete(conn, r)
+    rows = documents.selected(conn, 'appk')
+    assert rows and {x['year'] for x in rows} == {2025} and {x['appk_id'] for x in rows} == {'105'}
+    assert all(x['id'].startswith('105:annual:') for x in rows)
+    assert len(rows) == conn.execute("""SELECT count(DISTINCT d.document_id || r.record_id) FROM sobstvenost.report r
+        JOIN sobstvenost.report_document d USING (appk_id, record_id) WHERE r.kind = 'annual'""").fetchone()[0]
+    files = documents.selected(conn, 'ncr')
+    assert [x['ncr_id'] for x in files] == [seed.CONCESSION]
 
-def test_attachment_original_versions_do_not_rewrite_report(conn,tmp_path,monkeypatch):
-    metadata(conn);monkeypatch.setattr(progress,'DATA',tmp_path);monkeypatch.setattr(store,'DATA',tmp_path)
+
+def test_attachment_versions_and_unknown_formats(conn):
+    with pipeline.run(conn, 'sobstvenost', 'refresh') as r:
+        complete(conn, r)
+    body = {'value': b'%PDF-1.7\noriginal\n%%EOF'}
+
     class Client:
-        raws={};body=b'%PDF-1.7\noriginal\n%%EOF'
-        def get(self,url,data=None):return self.body
-    client=Client();before=conn.execute('SELECT count(*) FROM ops.version').fetchone()[0]
-    documents.archive(conn,client,run.archive)
-    documents.archive(conn,client,run.archive)
-    assert conn.execute('SELECT count(*) FROM ops.document_file').fetchone()[0]==1
-    client.body=b'%PDF-1.7\nchanged\n%%EOF';documents.archive(conn,client,run.archive)
-    assert conn.execute('SELECT count(*) FROM ops.document_file').fetchone()[0]==2
-    assert conn.execute('SELECT count(*) FROM ops.version').fetchone()[0]==before
-    assert conn.execute('SELECT count(*) FROM ops.raw_file').fetchone()[0]==2
-    assert conn.execute("SELECT count(*) FROM ops.raw_read WHERE mode='live' AND method='GET'").fetchone()[0]==3
-    documents.archive(conn,client,run.archive,resume=True)
-    assert conn.execute("SELECT count(*) FROM ops.raw_read WHERE mode='archive_reuse'").fetchone()[0]==1
-    with pytest.raises(parse.ShapeError):documents.media_type(b'<html>Error</html>')
+        deadline = None
+
+        def get(self, url, data=None):
+            return body['value']
+    with pipeline.run(conn, 'sobstvenost', 'pdfs') as r:
+        fetch = run.fetcher(conn, r, Client())
+        results, problems = documents.archive(conn, r, lambda s, u: fetch(s, u, keep=True))
+        assert problems == [] and results['ncr'] == dict(completed=1, total=1)
+        n = results['appk']['total']
+        documents.archive(conn, r, lambda s, u: fetch(s, u, keep=True))
+        assert conn.execute('SELECT count(*) FROM sobstvenost.attachment').fetchone()[0] == n + 1
+        body['value'] = b'%PDF-1.7\nchanged\n%%EOF'
+        documents.archive(conn, r, lambda s, u: fetch(s, u, keep=True))
+        assert conn.execute('SELECT count(*) FROM sobstvenost.attachment').fetchone()[0] == 2 * (n + 1)
+        assert conn.execute("SELECT count(DISTINCT sha256) FROM sobstvenost.attachment").fetchone()[0] == 2
+        run.finish(conn, r)
+    assert conn.execute("SELECT status FROM pub_sobstvenost.source_state WHERE source = 'ncr' AND scope = 'pdfs'").fetchone()[0] == 'ok'
+    # a file of an unknown format is refused for its attachment; the pass goes on and is not complete
+    body['value'] = b'<html>Error</html>'
+    with pipeline.run(conn, 'sobstvenost', 'pdfs') as r:
+        results, problems = documents.archive(conn, r, lambda s, u: fetch(s, u, keep=True))
+    assert problems and 'непознат формат' in problems[0]
+    assert conn.execute("""SELECT count(*) FROM ops.load WHERE tool = 'sobstvenost' AND source = 'appk-files' AND ref = '#full'""").fetchone()[0] == 3
+    with pytest.raises(parse.ShapeError):
+        documents.media_type(b'<html>Error</html>')

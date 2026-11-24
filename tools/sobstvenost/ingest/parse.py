@@ -6,7 +6,7 @@ from bs4 import BeautifulSoup
 
 APPK = 'https://reports.appk.government.bg'
 NCR = 'https://ncr.government.bg'
-class ShapeError(ValueError): pass
+from .pipeline import ShapeError   # one error for an answer of the wrong shape, the parser's and the shared module's
 
 def soup(raw):
     if not raw or not raw.strip(): raise ShapeError('empty response')
@@ -161,7 +161,9 @@ def assigned_notice(raw):
     if '9.5. Основно място на изпълнение на концесията:' in value:
         location=value.split('9.5. Основно място на изпълнение на концесията:',1)[1].split('9.6.',1)[0]
         term=re.search(r'9.7.1.*?\(месецa\):\s*(\d+)\s*месеца',value)
-    elif value.startswith('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА') and '7.3. Местонахождение на обекта на концесията:' in value:
+    # the current information of a concession, or the notice of a beach concession under art. 8r of the Black Sea Coast
+    # Act (read 02.10.2026): the same sections 7.3 and 7.5
+    elif value.startswith(('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА','ОБЯВЛЕНИЕ ЗА ВЪЗЛОЖЕНА КОНЦЕСИЯ по чл. 8р')) and '7.3. Местонахождение на обекта на концесията:' in value:
         location=value.split('7.3. Местонахождение на обекта на концесията:',1)[1].split('7.4.',1)[0]
         term=re.search(r'7.5. Конкретен срок на концесията:\s*(\d+)\s*месеца',value)
     elif value.startswith(('АКТУАЛНА ИНФОРМАЦИЯ ЗА КОНЦЕСИЯТА','ФОРМУЛЯР ЗА ОТКРИВАНЕ НА ПАРТИДА НА КОНЦЕСИЯ ЗА ДОБИВ НА ПОДЗЕМНИ БОГАТСТВА, ПРЕДОСТАВЕНА ПО РЕДА НА ЗАКОНА ЗА ПОДЗЕМНИТЕ БОГАТСТВА')) and '5.4. Местонахождение на находището:' in value:

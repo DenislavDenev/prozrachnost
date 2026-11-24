@@ -1,74 +1,103 @@
-import csv,io,os
-from fastapi.testclient import TestClient
-from ingest import db,store,parse
-from app.main import app
+"""The pages, rendered from the serving layer of a real publication."""
+import csv
+import io
+
 from app import queries as Q
-from .test_sources import P
+from ingest import parse, pipeline, run, store
 
-def seed(conn,monkeypatch):
-    # Connection.info omits credentials; retain the exact guarded test DSN for TCP CI.
-    monkeypatch.setattr(db,'connect',lambda **kw: __import__('psycopg').connect(os.environ['SOBSTVENOST_TEST_DSN'],**kw))
-    companies=parse.companies((P/'appk-companies-1.html').read_bytes())[0]
-    store.apply(conn,'appk','catalogue',companies,len(companies))
-    detail=parse.profile((P/'appk-105.html').read_bytes());detail.update(id='105',source_url=companies[1]['source_url'])
-    store.apply(conn,'appk','profile:105',[detail],1)
-    report=parse.report((P/'appk-annual-9848.html').read_bytes(),parse.APPK+'/Public/Public/CompanyDetailsAnnualReport/9848')
-    store.apply(conn,'appk','reports:105',[report],1)
-    concessions=parse.concessions((P/'ncr-search-1.html').read_bytes())[0]
-    store.apply(conn,'ncr','catalogue',concessions,len(concessions))
-    store.apply(conn,'ncr','profile:'+concessions[0]['id'],[dict(id=concessions[0]['id'],documents=[],notices=[dict(source_url='https://ncr.government.bg/Preview/AssignedConcession/example',municipality_names=['Симеоновград','Бяла'],location_places=[dict(oblast='Хасково',municipality='Симеоновград')],concessionaire_eik='208499411',concessionaire_name='МЛ МОНТАЖИ ООД',location_original='Област: Хасково, Община: Симеоновград',term_months=300)])],1)
+from . import seed
 
-def test_all_pages_profiles_feedback(conn,monkeypatch):
-    seed(conn,monkeypatch);client=TestClient(app)
-    for url in ['/','/?view=concessions','/predpriyatiya','/predpriyatiya/id/105','/predpriyatiya/831646048','/koncesii','/koncesii/f0648cf4-8c12-4cf8-9c57-4f739e9b6396','/karta','/sources','/how','/rights']:
-        response=client.get(url)
-        assert response.status_code==200,url+' '+response.text[:400]
-        assert 'Обратна връзка' in response.text and 'Подкрепи проекта' in response.text
-    assert client.get('/predpriyatiya/831646049').status_code==404
-    assert client.get('/export-map.csv?l=invalid').status_code==400
-    assert 'companies/831646048' in client.get('/predpriyatiya/id/105').text
-    assert 'не дати на назначение' in client.get('/predpriyatiya/id/105').text
 
-def test_filters_summary_csv_match(conn,monkeypatch):
-    seed(conn,monkeypatch);client=TestClient(app)
-    params=dict(participation='direct',q='АВТО',status='Активно')
-    rows=list(csv.DictReader(io.StringIO(client.get('/export-enterprises.csv',params=params).text.lstrip('\ufeff'))))
-    assert len(rows)==1 and rows[0]['id']=='105'
-    assert '1 предприятия' in client.get('/predpriyatiya',params=params).text
-    assert '1 предприятия' in client.get('/',params=params).text
-    direct=list(csv.DictReader(io.StringIO(client.get('/export-enterprises.csv?participation=direct').text.lstrip('\ufeff'))))
-    assert len(direct)==2
-    missing=next(r for r in csv.DictReader(io.StringIO(client.get('/export-enterprises.csv').text.lstrip('\ufeff'))) if r['id']=='309')
-    assert missing['share_pct']==''
+def publish(conn, pages=None, places=None):
+    pages = pages or seed.answers()
+    if places is not None:
+        pages[seed.NOTICE] = pages[seed.NOTICE].replace('Област: Пазарджик, Община: Пазарджик'.encode(), places.encode())
+    with pipeline.run(conn, 'sobstvenost', 'refresh') as r:
+        seed.load_all(conn, r, pages)
+        assert run.finish(conn, r) == []
+    Q._cache.clear()
+    return r.stats['publication']
 
-def test_map_verified_dedup_ambiguous_and_filter(conn,monkeypatch):
-    seed(conn,monkeypatch)
-    data=Q.mapdata()
-    assert data['mapped']==1 and data['unmatched']==1
-    assert sum(r['v'] or 0 for r in data['items'])==1
-    assert all(r['v'] is None for r in data['items'] if r['name']=='Бяла')
-    country=Q.mapdata('darzhava')
-    assert country['bg']==1 and country['items'][0]['v']==1
-    none=Q.mapdata(kind='Държавна',q='does-not-exist')
-    assert none['count']==0 and none['bg'] is None
+
+def test_all_pages_answer_with_their_publication(conn, site):
+    pid = publish(conn)
+    for url in ['/', '/?view=concessions', '/predpriyatiya', '/predpriyatiya/id/105', '/predpriyatiya/831646048', '/koncesii',
+                '/koncesii/' + seed.CONCESSION, '/karta', '/api/karta.json', '/export-map.csv', '/export-enterprises.csv',
+                '/export-concessions.csv', '/sources', '/how', '/rights', '/healthz']:
+        response = site.get(url)
+        assert response.status_code == 200, url + ' ' + response.text[:400]
+        assert response.headers['X-Publication'] == str(pid), url
+        if url.endswith(('.csv', '.json')) or url == '/healthz':
+            continue
+        assert 'Обратна връзка' in response.text and 'Подкрепи проекта' in response.text, url
+    assert site.get('/predpriyatiya/831646049').status_code == 404
+    assert site.get('/export-map.csv?l=invalid').status_code == 400
+    page = site.get('/predpriyatiya/id/105').text
+    assert 'companies/831646048' in page and 'не дати на назначение' in page
+    assert 'Иван Атанасов Кунев' in page        # the board in its public role
+    version = conn.execute("SELECT sha256 FROM pub_sobstvenost.report_version WHERE appk_id = '105' LIMIT 1").fetchone()[0]
+    assert version in page
+    concession = site.get('/koncesii/' + seed.CONCESSION).text
+    assert 'КАРИЕРИ ПАЗАРДЖИК' in concession and '180 месеца' in concession
+
+
+def test_filters_summary_csv_match(conn, site):
+    publish(conn)
+    params = dict(participation='direct', q='АВТО', status='Активно')
+    rows = list(csv.DictReader(io.StringIO(site.get('/export-enterprises.csv', params=params).text.lstrip('﻿'))))
+    assert len(rows) == 1 and rows[0]['id'] == '105'
+    assert '1 предприятия' in site.get('/predpriyatiya', params=params).text
+    assert '1 предприятия' in site.get('/', params=params).text
+    direct = list(csv.DictReader(io.StringIO(site.get('/export-enterprises.csv?participation=direct').text.lstrip('﻿'))))
+    assert len(direct) == 2
+    missing = next(r for r in csv.DictReader(io.StringIO(site.get('/export-enterprises.csv').text.lstrip('﻿'))) if r['id'] == '309')
+    assert missing['share_pct'] == ''
+
+
+def test_map_verified_dedup_ambiguous_and_filter(conn, site):
+    # Бяла is a municipality in two oblasti: without its oblast in the notice it is not placed
+    publish(conn, places='Област: Пазарджик, Община: Пазарджик, Община: Бяла')
+    data = Q.mapdata()
+    assert data['mapped'] == 1 and data['unmatched'] == 1
+    assert sum(r['v'] or 0 for r in data['items']) == 1
+    assert all(r['v'] is None for r in data['items'] if r['name'] == 'Бяла')
+    country = Q.mapdata('darzhava')
+    assert country['bg'] == 1 and country['items'][0]['v'] == 1
+    none = Q.mapdata(kind='Държавна', q='does-not-exist')
+    assert none['count'] == 0 and none['bg'] is None
     assert all(r['v'] is None for r in none['items'])
-    assert Q.mapdata(subject='does-not-exist')['mapped']==0
-    assert Q.mapdata(subject='Концесия за услуги')['filters']['subject']=='Концесия за услуги'
+    assert Q.mapdata(subject='does-not-exist')['mapped'] == 0
+    assert Q.mapdata(subject='Концесия за услуги')['filters']['subject'] == 'Концесия за услуги'
+
+
+def test_multi_municipality_same_national_concession(conn, site):
+    publish(conn, places='Област: Пазарджик, Община: Пазарджик, Област: Пазарджик, Община: Велинград')
+    municipalities = Q.mapdata()
+    assert sum(r['v'] or 0 for r in municipalities['items']) == 2
+    country = Q.mapdata('darzhava')
+    assert country['bg'] == 1 and country['items'][0]['v'] == 1
+    assert Q.mapdata('oblasti')['items'][0]['v'] == 1
+
 
 def test_csv_never_executes_source_formula():
-    output=Q.csv_response([dict(name='=HYPERLINK("danger")',zero=0,missing=None)],['name','zero','missing'])
-    row=next(csv.DictReader(io.StringIO(output.lstrip('\ufeff'))))
-    assert row['name'].startswith("'=") and row['zero']=='0' and row['missing']==''
+    output = Q.csv_response([dict(name='=HYPERLINK("danger")', zero=0, missing=None)], ['name', 'zero', 'missing'])
+    row = next(csv.DictReader(io.StringIO(output.lstrip('﻿'))))
+    assert row['name'].startswith("'=") and row['zero'] == '0' and row['missing'] == ''
 
-def test_multi_municipality_same_national_concession(conn,monkeypatch):
-    seed(conn,monkeypatch)
-    id='f0648cf4-8c12-4cf8-9c57-4f739e9b6396'
-    row=Q.profiles('ncr')[id]
-    row['notices'][0]['municipality_names']=['Симеоновград','Хасково']
-    row['notices'][0]['location_places']=[dict(oblast='Хасково',municipality=name) for name in ['Симеоновград','Хасково']]
-    store.apply(conn,'ncr','profile:'+id,[row],1)
-    municipalities=Q.mapdata()
-    assert sum(r['v'] or 0 for r in municipalities['items'])==2
-    country=Q.mapdata('darzhava')
-    assert country['bg']==1 and country['items'][0]['v']==1
-    assert Q.mapdata('oblasti')['items'][0]['v']==1
+
+def test_the_records_the_pages_read_are_the_parser_records(conn, site):
+    """The serving layer gives back each record exactly as the parser made it (the pages of the old database showed
+    the parser's records), so the move changes no page."""
+    publish(conn)
+    rows, _ = seed.enterprises()
+    assert Q.records('appk', 'catalogue') == sorted(rows, key=lambda x: x['id'])
+    pages = seed.answers()
+    profile, reports = run.read_enterprise(seed.fetch_from(pages), dict(id='105', source_url=seed.PROFILE))
+    shown = Q.profiles('appk')['105']
+    assert {k: v for k, v in shown.items() if k != 'board'} == {k: v for k, v in profile.items() if k not in ('board', 'board_original')}
+    assert shown['board'] == profile['board']
+    assert Q.current()['reports']['105'] == sorted(reports, key=lambda x: x['id'])
+    concession = run.read_concession(seed.fetch_from(pages), next(x for x in seed.concessions()[0] if x['id'] == seed.CONCESSION))
+    assert Q.profiles('ncr')[seed.CONCESSION] == concession
+    assert store.version(Q.profiles('ncr')[seed.CONCESSION]) == store.version(concession)
+    assert parse.APPK in Q.records('appk', 'catalogue')[0]['source_url']
