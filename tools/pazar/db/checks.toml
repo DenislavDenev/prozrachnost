@@ -1,0 +1,224 @@
+# The quality rules of Пазар. Each query returns one row: expected, actual. They run after every step that builds and
+# at every freshness check. The check of a day against its own file (the spans give back exactly the valid rows of
+# the CSV, chain by chain) is made while the day is built, before anything is written: `day_matches_file`.
+
+[[check]]
+name = "day_matches_file"
+title_bg = "Денят, прочетен обратно от интервалите, е точно валидните редове на файла"
+kind = "reconcile"
+
+[[check]]
+name = "days_add_up"
+title_bg = "Построени дни, в които записите не са валидни + повторени + невалидни"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.day WHERE status = 'built' AND records <> valid + dups + bad"
+
+[[check]]
+name = "chain_days_add_up"
+title_bg = "Построени дни, в които валидните редове не са сборът по вериги"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.day d WHERE d.status = 'built' AND d.valid <> (SELECT coalesce(sum(c.valid), 0) FROM pazar.chain_day c WHERE c.day = d.day)"
+
+[[check]]
+name = "day_matches_landing"
+title_bg = "Построени дни, в които валидните редове не са колкото във файловете на приетия ZIP"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.day d WHERE d.status = 'built' AND d.valid <> (SELECT coalesce(sum(f.valid), 0) FROM pazar_src.file f WHERE f.load_id = d.load_id)"
+
+[[check]]
+name = "spans_within_a_month"
+title_bg = "Интервали, които минават през края на месеца си"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.price_span WHERE to_day IS NOT NULL AND to_day >= date_trunc('month', current_date - 62) AND date_trunc('month', to_day) <> date_trunc('month', from_day)"
+
+[[check]]
+name = "day_built_recently"
+title_bg = "Дни след последния построен ден, които вече трябваше да са построени"
+kind = "drop"
+sql = "SELECT 0, greatest(0, (current_date - CASE WHEN extract(hour FROM now() AT TIME ZONE 'UTC') < 7 THEN 2 ELSE 1 END) - coalesce(max(day), date '2025-10-15')) FROM pazar.day WHERE status = 'built'"
+
+[[check]]
+name = "archive_has_new_days"
+title_bg = "Дни, с които най-новият файл в архива изостава над 3 дни"
+kind = "drop"
+sql = "SELECT 0, greatest(0, current_date - 3 - coalesce(max(ref)::date, date '2025-10-15')) FROM ops.fetch WHERE tool = 'nablyudatel' AND source = 'kolkostruva'"
+
+[[check]]
+name = "no_invalid_recent_day"
+title_bg = "Невалидни дни през последните 10 дни"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.day WHERE status = 'invalid' AND day >= current_date - 10"
+
+[[check]]
+name = "bad_rows_recent"
+title_bg = "Дни през последните 3 дни с над 1% невалидни редове"
+kind = "drop"
+sql = "SELECT 0, count(*) FROM pazar.day WHERE status = 'built' AND day >= current_date - 3 AND records > 0 AND bad * 100 > records"
+
+[[check]]
+name = "observations_built"
+title_bg = "Построени дни от последните 5 дни без дневни наблюдения"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM pazar.day d WHERE d.status = 'built' AND d.day >= current_date - 5 AND NOT EXISTS (SELECT 1 FROM pazar.aggregate_day g WHERE g.day = d.day)"
+
+[[check]]
+name = "fuel_has_new_weeks"
+title_bg = "Дни, с които последната седмица в бюлетина за горивата изостава над 21 дни"
+kind = "drop"
+sql = "SELECT 0, greatest(0, current_date - 21 - coalesce(max(week), date '2005-01-03')) FROM pazar.fuel_week"
+
+[[check]]
+name = "stores_without_settlement"
+title_bg = "Обекти, чието място не е населено място в ЕКАТТЕ (не са на картата; на 1 000 обекта)"
+kind = "unmatched"
+tolerance = 150
+gating = false
+sql = "SELECT 0, coalesce(round(1000.0 * count(*) FILTER (WHERE settlement_ekatte IS NULL) / nullif(count(*), 0)), 0) FROM pazar.store"
+
+# Judged inside the transaction of a publication, against the new content of the serving layer.
+# One that fails rolls the publication back: the pages keep the version they had.
+[[check]]
+name = "published_days"
+title_bg = "Публикуваните дни са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.day), (SELECT count(*) FROM pub_pazar.day)"
+
+[[check]]
+name = "published_chain_days"
+title_bg = "Публикуваните файлове на вериги по дни са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.chain_day), (SELECT count(*) FROM pub_pazar.chain_day)"
+
+[[check]]
+name = "published_spans_last_month"
+title_bg = "Публикуваните интервали от месеца на последния построен ден са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.price_span WHERE from_day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built')), (SELECT count(*) FROM pub_pazar.price_span WHERE from_day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built'))"
+
+[[check]]
+name = "published_open_spans_last_month"
+title_bg = "Публикуваните отворени интервали от месеца на последния построен ден са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.price_span WHERE to_day IS NULL AND from_day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built')), (SELECT count(*) FROM pub_pazar.price_span WHERE to_day IS NULL AND from_day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built'))"
+
+[[check]]
+name = "published_observations_last_month"
+title_bg = "Публикуваните дневни наблюдения от месеца на последния построен ден са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.category_day WHERE day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built')), (SELECT count(*) FROM pub_pazar.category_day WHERE day >= (SELECT date_trunc('month', coalesce(max(day), current_date))::date FROM pazar.day WHERE status = 'built'))"
+
+[[check]]
+name = "published_observation_days"
+title_bg = "Дните с публикувани дневни наблюдения са колкото в чистата таблица"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM pazar.aggregate_day), (SELECT count(*) FROM pub_pazar.aggregate_day)"
+
+# The move from the tool's own database to the shared one: the step `parity` records these. They do not gate:
+# an explained difference stays in the record and in the report of the step, not in the daily freshness.
+[[check]]
+name = "parity_days"
+title_bg = "Дни: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_days_differ"
+title_bg = "Дни с различен статус, файл или брой записи"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_valid_rows"
+title_bg = "Валидни редове в построените дни: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_chain_days"
+title_bg = "Файлове на вериги по дни: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_chain_days_differ"
+title_bg = "Файлове на вериги по дни с различно поле"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_spans"
+title_bg = "Интервали на цените: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_spans_retail"
+title_bg = "Сбор на цените на дребно в интервалите: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_spans_differ"
+title_bg = "Месеци и вериги с различни интервали (брой, сборове или съдържание)"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_observations"
+title_bg = "Дневни наблюдения по категория и място: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_observation_days_differ"
+title_bg = "Дни с различни дневни наблюдения, обекти по общини или промоции"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_chains"
+title_bg = "Вериги: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_chains_differ"
+title_bg = "Вериги с различна проверка на ЕИК"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_stores"
+title_bg = "Обекти: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_stores_differ"
+title_bg = "Обекти с различен код по ЕКАТТЕ или район"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_products"
+title_bg = "Продукти: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_products_differ"
+title_bg = "Продукти с различно поле (не се съди: само ключът)"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_fuel"
+title_bg = "Цени на горивата: старата база срещу общата"
+kind = "parity"
+gating = false
+
+[[check]]
+name = "parity_fuel_differ"
+title_bg = "Цени на горивата с различна стойност"
+kind = "parity"
+gating = false

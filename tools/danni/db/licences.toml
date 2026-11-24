@@ -174,3 +174,15 @@ dataset = "kontrol.archive"
 checked_on = 2026-11-11
 display = true
 note = "derived from the three datasets of Контрол (the state of each read, the versions, the documents); follows them"
+
+[[licence]]
+dataset = "pazar.kolkostruva"
+checked_on = 2026-10-02
+display = true
+note = "Колко струва of КЗП: no licence stated; shown with its source, not handed out until КЗП answers in writing (the letter is the owner's)"
+
+[[licence]]
+dataset = "pazar.fuel"
+checked_on = 2026-10-02
+display = true
+note = "Weekly Oil Bulletin of the European Commission, reuse under the Commission's legal notice (CC BY 4.0); shown, no API view yet"

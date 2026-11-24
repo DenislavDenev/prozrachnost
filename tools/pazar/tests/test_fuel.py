@@ -6,8 +6,9 @@ from pathlib import Path
 import openpyxl
 import pytest
 
-from ingest import checks, config, fuel
+from ingest import config, fuel, pipeline
 from ingest.parse import ShapeError
+from tests.helpers import run
 
 RAW = (Path(__file__).parent / "fixtures" / "oil-bulletin-history-cut.xlsx").read_bytes()
 NOW = dt.datetime(2026, 10, 2, 12, 0, tzinfo=dt.timezone.utc)
@@ -54,49 +55,51 @@ def test_a_missing_column_or_sheet_or_a_bad_price_stops_the_import():
         fuel.parse(b"<html>404</html>")
 
 
+def store(c, raw, now=None):
+    with run(c, "fuel") as r:
+        return fuel.store(c, r, raw, now=now)
+
+
 def test_store_is_idempotent_and_keeps_the_raw_file(c, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
-    r = fuel.store(c, RAW, now=NOW)
-    assert r["state"] == "stored" and r["new"] == 6 * 3 * 3 and r["newest"] == "2026-09-28"
-    again = fuel.store(c, RAW, now=NOW)
-    assert again["new"] == 0 and again["changed"] == 0
-    assert c.execute("SELECT count(*) FROM ops.change_log").fetchone()[0] == 0
-    assert len(list((tmp_path / "raw" / "oil-bulletin").glob("*.xlsx"))) == 1
-    assert c.execute("SELECT count(*) FROM gold.fuel_week WHERE geo = 'BG' AND fuel = 'euro95' AND week = '2026-09-28' AND with_tax_eur_l = 1.6748").fetchone()[0] == 1
+    r = store(c, RAW, now=NOW)
+    assert r["state"] == "loaded" and r["rows"] == 6 * 3 * 3 and r["newest"] == "2026-09-28"
+    assert store(c, RAW, now=NOW)["state"] == "unchanged"
+    assert [x[0] for x in c.execute("SELECT cause FROM ops.change_log WHERE tool = 'pazar'")] == ["new-record"]
+    assert len(list((tmp_path / "raw" / "oil-bulletin").glob("*/*"))) == 1
+    assert c.execute("SELECT count(*) FROM pazar.fuel_week WHERE geo = 'BG' AND fuel = 'euro95' AND week = '2026-09-28' AND with_tax_eur_l = 1.6748").fetchone()[0] == 1
 
 
 def test_a_changed_value_is_logged_and_a_smaller_answer_is_held(c, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
-    fuel.store(c, RAW, now=NOW)
+    store(c, RAW, now=NOW)
 
     def bump(wb):
         ws = wb["Prices with taxes"]
         col = [x.value for x in ws[1]].index("BG_price_with_tax_diesel") + 1
         ws.cell(row=5, column=col).value = 2000.0
-    r = fuel.store(c, altered(bump), now=NOW + dt.timedelta(days=7))
-    assert r["changed"] == 1
-    assert c.execute("SELECT cause, ref FROM ops.change_log").fetchone() == ("rewritten", "2026-09-21/BG/diesel")
+    assert store(c, altered(bump), now=NOW + dt.timedelta(days=7))["state"] == "loaded"
+    assert c.execute("SELECT cause, field FROM ops.change_log WHERE tool = 'pazar' AND cause = 'rewritten'").fetchall() == [
+        ("rewritten", "2026-09-21/BG/diesel/with_tax")]
 
     def cut(wb):
         for ws in wb.worksheets:
             ws.delete_rows(5, 3)          # three weeks fewer
     small = altered(cut)
-    assert fuel.store(c, small, now=NOW + dt.timedelta(days=8))["state"] == "held"
-    assert fuel.store(c, small, now=NOW + dt.timedelta(days=8, hours=2))["state"] == "held"
-    assert c.execute("SELECT count(DISTINCT week) FROM silver.fuel_week").fetchone()[0] == 6        # nothing was replaced
-    assert fuel.store(c, small, now=NOW + dt.timedelta(days=9, hours=1))["state"] == "stored"      # the same answer a day later
-    assert c.execute("SELECT count(*) FROM ops.held").fetchone()[0] == 0
+    assert store(c, small, now=NOW + dt.timedelta(days=8))["state"] == "held"
+    assert store(c, small, now=NOW + dt.timedelta(days=8, hours=2))["state"] == "held"
+    assert c.execute("SELECT count(DISTINCT week) FROM pazar.fuel_week").fetchone()[0] == 6        # nothing was replaced
+    assert store(c, small, now=NOW + dt.timedelta(days=9, hours=1))["state"] == "confirmed"      # the same answer a day later
+    assert c.execute("SELECT count(DISTINCT week) FROM pazar.fuel_week").fetchone()[0] == 3
+    assert c.execute("SELECT count(*) FROM ops.hold WHERE tool = 'pazar'").fetchone()[0] == 0
 
 
 def test_freshness_wants_a_recent_read_and_a_recent_week(c, tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
-    assert any("горивата" in p for p in fuel_problems(c))
-    fuel.store(c, RAW, now=NOW)
-    assert not any("горивата" in p for p in fuel_problems(c, NOW))
-    assert any("горивата" in p for p in fuel_problems(c, NOW + dt.timedelta(days=12)))
-
-
-def fuel_problems(c, now=NOW):
-    # freshness needs a built day to talk about; the fuel part is checked on its own
-    c.execute("INSERT INTO silver.day (day, status, zip_sha256, zip_path, zip_bytes) VALUES ('2026-10-01', 'built', 'x', 'x', 1) ON CONFLICT DO NOTHING")
-    return checks.freshness(c, today=now.date(), now=now, st={"seen": {"2026-10-01": {}}, "last_ok": "2026-10-02T05:40:00Z"})
+    title = "Бюлетинът за горивата на ЕК"
+    assert any(p.startswith(title) for p in pipeline.freshness(c, "pazar"))      # never read
+    store(c, RAW)
+    assert not any(p.startswith(title) for p in pipeline.freshness(c, "pazar"))  # read now
+    with run(c, "check") as r:
+        late = pipeline.run_checks(c, r, kinds=["drop"])
+    assert any("горивата" in p for p in late)        # the newest week of the cut fixture is from September 2026

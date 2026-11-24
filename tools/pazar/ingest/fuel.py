@@ -5,11 +5,10 @@ a second read at least a day later gives the same file. Prices are in EUR per 10
 The NRA files of average prices from fiscal receipts are not read here: see docs/sources.md.
 """
 import datetime as dt
-import hashlib
 import io
 import urllib.request
 
-from . import config
+from . import config, pipeline
 from .parse import ShapeError
 
 URL = "https://energy.ec.europa.eu/document/download/906e60ca-8b6a-44e7-8589-652854d2fd3f_en"
@@ -70,43 +69,43 @@ def ws_rows(ws):
     return [list(r) for r in ws.iter_rows(min_row=1, max_row=None, values_only=True)]
 
 
-def store(c, raw, now=None):
-    """Raw file by sha256, silver.fuel_week upserted, changes in ops.change_log. Returns the report."""
-    now = now or dt.datetime.now(dt.timezone.utc)
-    sha = hashlib.sha256(raw).hexdigest()
-    rows = parse(raw)
-    path = config.DATA / "raw" / "oil-bulletin" / f"{now:%Y-%m-%d}.{sha[:12]}.xlsx"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists():
-        path.write_bytes(raw)
-    c.execute("INSERT INTO ops.raw_file (source, ref, path, sha256, bytes) VALUES ('oil-bulletin', 'history', %s, %s, %s) ON CONFLICT DO NOTHING",
-              (str(path), sha, len(raw)))
-    have = {(w, g, f): (a, b) for w, g, f, a, b in c.execute("SELECT week, geo, fuel, with_tax, wo_tax FROM silver.fuel_week")}
-    new = {(w, g, f): (a, b) for w, g, f, a, b in rows}
-    gone = [k for k in have if k not in new]
-    changed = [k for k in new if k in have and tuple(map(_f, have[k])) != tuple(map(_f, new[k]))]
-    if (gone or len(new) < len(have)) and have:
-        held = c.execute("SELECT sha256, first_seen FROM ops.held WHERE ref = 'oil-bulletin'").fetchone()
-        if not (held and held[0] == sha and now - held[1] >= dt.timedelta(days=1)):
-            if not held or held[0] != sha:
-                c.execute("""INSERT INTO ops.held (ref, sha256, first_seen, reason) VALUES ('oil-bulletin', %s, %s, %s)
-                             ON CONFLICT (ref) DO UPDATE SET sha256 = EXCLUDED.sha256, first_seen = EXCLUDED.first_seen, reason = EXCLUDED.reason""",
-                          (sha, now, f"по-малко стойности: {len(new)} срещу {len(have)}, изчезнали {len(gone)}"))
-                c.execute("INSERT INTO ops.change_log (source, ref, field, old, new, cause) VALUES ('oil-bulletin', 'history', NULL, NULL, %s, 'held')", (sha,))
-            return {"state": "held", "rows": len(have), "problems": []}
-    with c.transaction():
-        for k in changed:
-            c.execute("INSERT INTO ops.change_log (source, ref, field, old, new, cause) VALUES ('oil-bulletin', %s, 'price', %s, %s, 'rewritten')",
-                      (f"{k[0]}/{k[1]}/{k[2]}", str(have[k]), str(new[k])))
-        added = [k for k in new if k not in have]
-        with c.cursor() as cur:
-            cur.executemany("""INSERT INTO silver.fuel_week (week, geo, fuel, with_tax, wo_tax, source_sha256) VALUES (%s, %s, %s, %s, %s, %s)
-                               ON CONFLICT (week, geo, fuel) DO UPDATE SET with_tax = EXCLUDED.with_tax, wo_tax = EXCLUDED.wo_tax, source_sha256 = EXCLUDED.source_sha256""",
-                            [(w, g, f, a, b, sha) for (w, g, f), (a, b) in new.items()])
-        c.execute("DELETE FROM ops.held WHERE ref = 'oil-bulletin'")
-        c.execute("""INSERT INTO silver.fuel_read (read_at, sha256, weeks, newest) VALUES (%s, %s, %s, %s)""",
-                  (now, sha, len({k[0] for k in new}), max(k[0] for k in new)))
-    return {"state": "stored", "new": len(added), "changed": len(changed), "newest": str(max(k[0] for k in new)), "problems": []}
+SOURCE = "oil-bulletin"
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def rows_of(raw):
+    """{week/geo/fuel: prices} as the shared module compares two reads."""
+    return {f"{w}/{g}/{f}": {"with_tax": _f(a), "wo_tax": _f(b)} for w, g, f, a, b in parse(raw)}
+
+
+def write(c, load_id, rows):
+    with c.cursor() as cur:
+        cur.executemany("INSERT INTO pazar_src.fuel_week (load_id, week, geo, fuel, with_tax, wo_tax) VALUES (%s, %s, %s, %s, %s, %s)",
+                        [(load_id, *k.split("/"), v["with_tax"], v["wo_tax"]) for k, v in rows.items()])
+
+
+def current(c, load_id):
+    return {f"{w}/{g}/{f}": {"with_tax": _f(a), "wo_tax": _f(b)} for w, g, f, a, b in
+            c.execute("SELECT week, geo, fuel, with_tax, wo_tax FROM pazar_src.fuel_week WHERE load_id = %s", (load_id,))}
+
+
+def store(c, r, raw, now=None, path=None):
+    """The bulletin as one load of the shared module: the raw file once by sha256, a smaller bulletin (fewer weeks, a value
+    that vanished) held until the same file is read again a day later, every change in ops.change_log. `path` is a file
+    already kept (the replay of the files read before the move); otherwise the answer is stored under its sha256."""
+    try:
+        rows = rows_of(raw)
+    except ShapeError as e:
+        f = pipeline.save_raw(c, r, SOURCE, URL, raw, config.DATA / "raw" / SOURCE, name="oil-bulletin.xlsx", media_type=XLSX, fetched_at=now)
+        pipeline.reject(c, r, SOURCE, "history", e, f.raw_file_id, now=now)
+        return {"state": "invalid", "problems": [f"Бюлетинът за горивата: {e}"]}
+    if path:
+        f, _ = pipeline.register_raw(c, r, SOURCE, URL, path, media_type=XLSX, fetched_at=now)
+    else:
+        f = pipeline.save_raw(c, r, SOURCE, URL, raw, config.DATA / "raw" / SOURCE, name="oil-bulletin.xlsx", media_type=XLSX, fetched_at=now)
+    done = pipeline.load(c, r, SOURCE, "history", rows, write, raw_file_id=f.raw_file_id, current=current, now=now)
+    newest = max(k.split("/")[0] for k in rows)
+    return {"state": done.status, "rows": len(rows), "newest": newest, "problems": []}
 
 
 def _f(v):
