@@ -1,20 +1,12 @@
-import psycopg
+"""The connection to the shared database and the migrations of the tool (through the shared module)."""
+from . import config, pipeline
 
-from . import config
 
-
-def connect(**kw):
-    return psycopg.connect(config.DSN, **kw)
+def connect(dsn=None):
+    """Autocommit, as the shared module expects: every write is in an explicit transaction."""
+    return pipeline.connect(dsn or config.DSN)
 
 
 def migrate(c):
-    c.execute("CREATE TABLE IF NOT EXISTS public.schema_migrations (name text PRIMARY KEY)")
-    c.commit()
-    done = {r[0] for r in c.execute("SELECT name FROM public.schema_migrations")}
-    for f in sorted((config.ROOT / "db/migrations").glob("*.sql")):
-        if f.name in done:
-            continue
-        with c.transaction():
-            c.execute(f.read_text(encoding="utf-8"))
-            c.execute("INSERT INTO public.schema_migrations VALUES (%s)", (f.name,))
-    c.commit()
+    pipeline.require_core(c, "0011")
+    return pipeline.migrate(c, config.TOOL, config.ROOT)

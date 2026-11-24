@@ -1,5 +1,6 @@
 import csv
 import datetime as dt
+from email.utils import format_datetime
 import io
 import json
 import os
@@ -12,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
 
-from ingest import checks, config, db
+from ingest import config
 from . import feedback, help as H, queries as Q
 
 ROOT = Path(__file__).resolve().parent
@@ -20,6 +21,26 @@ app = FastAPI(title="Пазар", docs_url=None, redoc_url=None)
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", Path(os.environ.get("PAZAR_FEEDBACK", str(config.DATA / "feedback"))), "Пазар"))
 t = Jinja2Templates(directory=ROOT / "templates")
+
+
+@app.middleware("http")
+async def one_snapshot(request: Request, call_next):
+    """Every answer built from the data is read in one snapshot of the serving layer and says which publication it is
+    of. A cache in front of the site keeps an answer until this number moves; it moves only when the content does."""
+    if request.url.path.startswith(("/static/", "/feedback")) or request.url.path == "/favicon.svg":
+        return await call_next(request)
+    with Q.snapshot() as c:
+        publication = Q.version(c)
+        token = Q.CURRENT.set(c)
+        try:
+            response = await call_next(request)
+        finally:
+            Q.CURRENT.reset(token)
+    if publication:
+        response.headers["X-Publication"] = str(publication[0])
+        response.headers["ETag"] = f'W/"pub-{publication[0]}"'
+        response.headers["Last-Modified"] = format_datetime(publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    return response
 MENU = [("Табло", "/"), ("Карта", "/karta"), ("Продукти", "/produkti"), ("Категории", "/kategorii"), ("Вериги", "/verigi"),
         ("Моята кошница", "/koshnica"), ("Промоции", "/promocii"), ("Горива", "/goriva"), ("Проверка", "/proverka"), ("Източници", "/sources")]
 
@@ -90,8 +111,7 @@ def scope(k=None, c=None, d=None):
 
 @app.get("/healthz")
 def health():
-    with db.connect() as c:
-        c.execute("SELECT 1")
+    Q.q("SELECT 1 FROM pub_pazar.day LIMIT 1")
     return {"ok": True}
 
 
@@ -356,15 +376,12 @@ def verification(request: Request):
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
-    with db.connect() as c:
-        problems = checks.freshness(c)
-    return render(request, "sources.html", nav="Източници", s=Q.sources(), problems=problems)
+    return render(request, "sources.html", nav="Източници", s=Q.sources(), problems=Q.problems())
 
 
 @app.get("/sources.json")
 def sources_json():
-    with db.connect() as c:
-        problems = checks.freshness(c)
+    problems = Q.problems()
     s = Q.sources()
     return serial(dict(tool="pazar", problems=problems, days=[dict(status=r[0], n=r[1], first=r[2], last=r[3]) for r in s["days"]],
                        datasets=[dict(id="pazar.prices", title="Колко струва: цени на дребно по обект и ден", channel="file", licence=None, licence_note="не е посочен; чака писмен отговор на КЗП",

@@ -52,7 +52,7 @@ def expected(raw, scope="country", key="", rate=1.0):
 
 def rows(c, day, scope, key=""):
     return {r[0]: r[1:] for r in c.execute("""SELECT category, n_prices, min_eur, median_eur, max_eur, promo_prices, median_effective_eur
-                                              FROM gold.category_day WHERE day = %s AND scope = %s AND key = %s""", (day, scope, key))}
+                                              FROM pazar.category_day WHERE day = %s AND scope = %s AND key = %s""", (day, scope, key))}
 
 
 def close(a, b):
@@ -75,14 +75,14 @@ def test_a_chain_has_its_own_figures_and_a_copy_of_another_chain_has_none(g):
     # the Billa file of 30.09 repeats the file of Nove Farm: nothing for Billa, and the pharmacy rows are counted once
     assert not rows(g, D2, "chain", "130007884")
     assert rows(g, D2, "chain", "203105528")
-    assert g.execute("SELECT count(*) FROM gold.category_day WHERE day = %s AND scope = 'chain' AND key = '130007884'", (D2,)).fetchone()[0] == 0
+    assert g.execute("SELECT count(*) FROM pazar.category_day WHERE day = %s AND scope = 'chain' AND key = '130007884'", (D2,)).fetchone()[0] == 0
 
 
 def test_anomalies_are_out_of_the_figures_but_stay_in_silver(g):
     build(g, "2026-09-26")
     # the stray category 1972047017 of Zhanet is in silver and in no category of gold
-    assert g.execute("SELECT count(*) FROM silver.price_span WHERE category = 1972047017").fetchone()[0] > 0
-    assert g.execute("SELECT count(*) FROM gold.category_day WHERE category > 101 OR category < 1").fetchone()[0] == 0
+    assert g.execute("SELECT count(*) FROM pazar.price_span WHERE category = 1972047017").fetchone()[0] > 0
+    assert g.execute("SELECT count(*) FROM pazar.category_day WHERE category > 101 OR category < 1").fetchone()[0] == 0
     assert expected(fixture("2026-09-26")) and {k: v[0] for k, v in rows(g, "2026-09-26", "country").items()} == {k: v[0] for k, v in expected(fixture("2026-09-26")).items()}
 
 
@@ -110,9 +110,9 @@ def test_a_price_in_leva_is_shown_in_euro(g):
 
 def test_the_online_shop_is_in_the_country_and_the_chain_but_not_on_a_municipality(g):
     build(g, D2)
-    assert g.execute("SELECT national_price FROM gold.chain WHERE eik = %s", (EBAG,)).fetchone() == (True,)
-    assert g.execute("SELECT count(*) FROM gold.category_day WHERE day = %s AND scope = 'chain' AND key = %s", (D2, EBAG)).fetchone()[0] > 0
-    n_sofia = g.execute("""SELECT sum(n_prices) FROM gold.category_day WHERE day = %s AND scope = 'municipality' AND key = '000696327'""", (D2,)).fetchone()[0]
+    assert g.execute("SELECT national_price FROM pazar.chain WHERE eik = %s", (EBAG,)).fetchone() == (True,)
+    assert g.execute("SELECT count(*) FROM pazar.category_day WHERE day = %s AND scope = 'chain' AND key = %s", (D2, EBAG)).fetchone()[0] > 0
+    n_sofia = g.execute("""SELECT sum(n_prices) FROM pazar.category_day WHERE day = %s AND scope = 'municipality' AND key = '000696327'""", (D2,)).fetchone()[0]
     all_sofia = sum(1 for f in parse.parse_day(fixture(D2)).files if f.eik and not f.copy_of for r in f.rows
                     if r.ekatte == "68134" and not r.flags & 29 and 1 <= (r.category or 0) <= 101 and f.eik != EBAG)
     assert n_sofia == all_sofia          # Sofia without the online shop
@@ -120,12 +120,12 @@ def test_the_online_shop_is_in_the_country_and_the_chain_but_not_on_a_municipali
 
 def test_municipality_and_oblast_come_from_the_ekatte_of_the_store(g):
     build(g, D2)
-    muni = g.execute("SELECT municipality_id, oblast FROM gold.store s WHERE place_raw = '27382' LIMIT 1").fetchone()
+    muni = g.execute("SELECT p.municipality_id, p.nuts3 FROM pazar.store_place p JOIN pazar.store s USING (store_id) WHERE s.place_raw = '27382' LIMIT 1").fetchone()
     assert muni is not None and muni[0] is not None
-    assert g.execute("SELECT name_bg FROM gold.municipality WHERE id = %s", (muni[0],)).fetchone()[0]
+    assert g.execute("SELECT name_bg FROM core.municipality WHERE eik = %s", (muni[0],)).fetchone()[0]
     # Bjala Slatina (07702) is a place of the register
-    assert g.execute("SELECT municipality_id FROM gold.place WHERE ekatte = '07702'").fetchone() is not None
-    assert g.execute("SELECT count(*) FROM gold.category_day WHERE scope = 'oblast'").fetchone()[0] > 0
+    assert g.execute("SELECT municipality_code FROM core.settlement WHERE ekatte = '07702'").fetchone() is not None
+    assert g.execute("SELECT count(*) FROM pazar.category_day WHERE scope = 'oblast'").fetchone()[0] > 0
 
 
 def test_the_price_index_matches_the_recomputation_from_two_days(g):
@@ -144,47 +144,47 @@ def test_the_price_index_matches_the_recomputation_from_two_days(g):
     a, b = table(fixture(D1)), table(fixture(D2))
     matched = [k for k in b if k in a]
     want_ln = sum(math.log(b[k] / a[k]) for k in matched)
-    row = g.execute("SELECT sum(matched), sum(changed), sum(sum_ln) FROM gold.category_day WHERE day = %s AND scope = 'country'", (D2,)).fetchone()
+    row = g.execute("SELECT sum(matched), sum(changed), sum(sum_ln) FROM pazar.category_day WHERE day = %s AND scope = 'country'", (D2,)).fetchone()
     assert row[0] == len(matched)
     assert row[1] == sum(1 for k in matched if a[k] != b[k])
     assert abs(float(row[2]) - want_ln) < 1e-4
     # the first day has no earlier price to compare with
-    assert g.execute("SELECT sum(matched) FROM gold.category_day WHERE day = %s", (D1,)).fetchone()[0] == 0
+    assert g.execute("SELECT sum(matched) FROM pazar.category_day WHERE day = %s", (D1,)).fetchone()[0] == 0
 
 
 def test_the_index_across_the_month_boundary_and_across_the_euro(g):
     build(g, D2, "2026-10-01")
-    assert g.execute("SELECT sum(matched) FROM gold.category_day WHERE day = '2026-10-01' AND scope = 'country'").fetchone()[0] > 0
+    assert g.execute("SELECT sum(matched) FROM pazar.category_day WHERE day = '2026-10-01' AND scope = 'country'").fetchone()[0] > 0
     # a day whose chains all moved from leva to euro: prices fell by the rate in the file, not in the shop
     put(g, OLD, fixture(OLD))
     put(g, "2025-10-17", derive(OLD, scale=config.BGN_PER_EUR))
     gold.build_missing(g)
-    row = g.execute("SELECT sum(matched), sum(changed), sum(sum_ln) FROM gold.category_day WHERE day = '2025-10-17' AND scope = 'country'").fetchone()
+    row = g.execute("SELECT sum(matched), sum(changed), sum(sum_ln) FROM pazar.category_day WHERE day = '2025-10-17' AND scope = 'country'").fetchone()
     assert row[0] > 100 and abs(float(row[2]) / row[0]) < 0.001      # no change of price: the currency is converted away
 
 
 def test_gold_is_rebuilt_from_silver_with_the_same_numbers(g):
     build(g, D1, D2)
-    first = g.execute("SELECT * FROM gold.category_day ORDER BY day, scope, key, category").fetchall()
+    first = g.execute("SELECT * FROM pazar.category_day ORDER BY day, scope, key, category").fetchall()
     gold.build_missing(g, rebuild=True)
-    assert g.execute("SELECT * FROM gold.category_day ORDER BY day, scope, key, category").fetchall() == first
+    assert g.execute("SELECT * FROM pazar.category_day ORDER BY day, scope, key, category").fetchall() == first
 
 
 def test_gold_follows_a_rewritten_day(g):
     build(g, D1)
-    before = g.execute("SELECT count(*) FROM gold.category_day WHERE day = %s", (D1,)).fetchone()[0]
+    before = g.execute("SELECT count(*) FROM pazar.category_day WHERE day = %s", (D1,)).fetchone()[0]
     put(g, D1, derive(D1, drop={"131129282"}))
     gold.build_missing(g)
-    after = g.execute("SELECT count(*) FROM gold.category_day WHERE day = %s", (D1,)).fetchone()[0]
+    after = g.execute("SELECT count(*) FROM pazar.category_day WHERE day = %s", (D1,)).fetchone()[0]
     assert after < before and not rows(g, D1, "chain", "131129282")
 
 
 def test_the_reference_tables_are_whole(g):
-    assert g.execute("SELECT count(*) FROM gold.category").fetchone()[0] == 101
-    assert g.execute("SELECT name_bg FROM gold.category WHERE code = 6").fetchone()[0].startswith("Прясно мляко")
-    assert g.execute("SELECT count(*) FROM gold.municipality").fetchone()[0] == 265
-    assert g.execute("SELECT count(DISTINCT municipality_id) FROM gold.place").fetchone()[0] == 265
-    assert g.execute("SELECT count(*) FROM gold.place").fetchone()[0] > 5000
+    assert g.execute("SELECT count(*) FROM pazar.category").fetchone()[0] == 101
+    assert g.execute("SELECT name_bg FROM pazar.category WHERE code = 6").fetchone()[0].startswith("Прясно мляко")
+    assert g.execute("SELECT count(*) FROM core.municipality").fetchone()[0] == 265      # the places are the shared ones
+    assert g.execute("SELECT count(DISTINCT municipality_code) FROM core.settlement").fetchone()[0] == 265
+    assert g.execute("SELECT count(*) FROM core.settlement").fetchone()[0] > 5000
 
 
 def one_chain_day(prices):
@@ -202,7 +202,7 @@ def test_a_promotion_is_real_only_below_the_shops_own_earlier_price(g):
                                          "C": (2.00, 1.99),      # under 1% below the old price
                                          "D": (2.00, 2.00)}))    # not a promotion at all
     gold.build_missing(g)
-    row = g.execute("SELECT n_promos, n_real, n_none, n_raised, n_nohistory, window_days, avg_real FROM gold.promo_day WHERE day = '2026-09-29' AND chain_eik = %s", (LIDL,)).fetchone()
+    row = g.execute("SELECT n_promos, n_real, n_none, n_raised, n_nohistory, window_days, avg_real FROM pazar.promo_day WHERE day = '2026-09-29' AND chain_eik = %s", (LIDL,)).fetchone()
     assert row[:6] == (3, 1, 2, 1, 0, 1)
     assert abs(float(row[6]) - (0.25 + 0.0 + 0.005) / 3) < 1e-4      # the average discount against the earlier price, over all three
-    assert g.execute("SELECT count(*) FROM gold.promo_day WHERE day = '2026-09-28'").fetchone()[0] == 0
+    assert g.execute("SELECT count(*) FROM pazar.promo_day WHERE day = '2026-09-28'").fetchone()[0] == 0

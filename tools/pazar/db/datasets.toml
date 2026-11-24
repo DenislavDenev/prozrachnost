@@ -1,0 +1,51 @@
+# The datasets and sources of Пазар. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml. The prices of
+# "Колко струва" have no stated licence: they are shown with their source and stay out of the API until КЗП answers.
+# The monthly partitions of pub_pazar.price_span and pub_pazar.category_day are registered by pub_pazar.ensure_month().
+
+[[dataset]]
+dataset = "pazar.kolkostruva"
+title_bg = "Колко струва: цени на дребно по обект и ден"
+description_bg = "Цените, които търговските вериги подават всеки ден до КЗП по чл. 55б ЗВЕРБ: по обект и продукт, с промоционалната цена. Пазят се като интервали (един ред, докато цената е същата) и като дневни наблюдения по категория и място."
+source_org = "Комисия за защита на потребителите"
+source_url = "https://kolkostruva.bg/opendata"
+channel = "file"
+licence = "не е посочен"
+cadence = "всеки ден"
+tables = ["pazar_src.file", "pazar_src.bad_row", "pazar_src.day_row", "pazar.chain", "pazar.store", "pazar.product", "pazar.day",
+          "pazar.chain_day", "pazar.price_span", "pazar.category", "pazar.category_day", "pazar.municipality_day", "pazar.promo_day",
+          "pazar.aggregate_day", "pub_pazar.category", "pub_pazar.chain", "pub_pazar.store", "pub_pazar.product", "pub_pazar.day",
+          "pub_pazar.chain_day", "pub_pazar.price_span", "pub_pazar.category_day", "pub_pazar.municipality_day", "pub_pazar.promo_day",
+          "pub_pazar.aggregate_day", "pub_pazar.source_state", "pub_pazar.hold", "pub_pazar.run", "pub_pazar.problem"]
+
+[[dataset]]
+dataset = "pazar.fuel"
+title_bg = "Седмичен бюлетин на петрола на Европейската комисия"
+description_bg = "Средните цени на бензина, дизела и пропан-бутана с и без данъци за България, ЕС и еврозоната, по седмици от 2005 г."
+source_org = "Европейска комисия, ГД Енергетика"
+source_url = "https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
+channel = "file"
+licence = "CC BY 4.0 (правна бележка на Комисията)"
+licence_url = "https://commission.europa.eu/legal-notice_en"
+cadence = "всяка седмица"
+tables = ["pazar_src.fuel_week", "pub_pazar.fuel_week"]
+
+[[source]]
+source = "kolkostruva"
+title_bg = "Колко струва (от архива на Наблюдател)"
+url = "https://kolkostruva.bg/opendata"
+channel = "file"
+dataset = "pazar.kolkostruva"
+cadence = "всеки ден, файлът на деня D около 22:00 UTC на D; строи се в 05:55 UTC на D+1"
+stale_after = "36 hours"
+landing = "transient"
+
+[[source]]
+source = "oil-bulletin"
+title_bg = "Бюлетинът за горивата на ЕК"
+url = "https://energy.ec.europa.eu/document/download/906e60ca-8b6a-44e7-8589-652854d2fd3f_en"
+channel = "file"
+dataset = "pazar.fuel"
+cadence = "в понеделник"
+stale_after = "9 days"
+hold_alert_after = "8 days"
