@@ -119,5 +119,5 @@ def test_every_answer_says_its_publication_and_the_web_reads_only_the_serving_la
     assert r.status_code == 200 and r.headers["X-Publication"].isdigit() and r.headers["ETag"] == f'W/"pub-{r.headers["X-Publication"]}"'
     src = (config.ROOT / "app" / "queries.py").read_text(encoding="utf-8")
     import re
-    schemas = set(re.findall(r"(pub\w*|sigurnost\w*|ops|core|silver|gold)\.[a-z_]+", src))
+    schemas = set(re.findall(r"\b(pub\w*|sigurnost\w*|ops|core|silver|gold)\.[a-z_]+", src))
     assert schemas <= {"pub", "pub_sigurnost"}, schemas
