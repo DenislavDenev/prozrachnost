@@ -11,6 +11,7 @@ the serving layer (pub.*): the places and the catalogue of the datasets.
 """
 import argparse
 import csv
+import datetime as dt
 import io
 import tomllib
 
@@ -24,6 +25,8 @@ from .config import ARCHIVE, DSN, RAW, ROOT, TENDER_DSN, TENDER_SCHEMA, TOOL
 
 EKATTE_TABLE = {'ek_reg1.json': 'ekatte_region', 'ek_reg2.json': 'ekatte_region', 'ek_obl.json': 'ekatte_oblast',
                 'ek_obst.json': 'ekatte_municipality', 'ek_atte.json': 'ekatte_settlement'}
+# archives tried, newest first, when the newest is cut short at the source; two weeks of daily reads
+LOOKBACK = 14
 REF_COLUMNS = ('municipality_code', 'eik', 'name_bg', 'name_en', 'drawn_as_eik')
 ORG_COLUMNS = ('eik', 'name', 'legal_form', 'seat', 'registered_on', 'register_status', 'is_public_body', 'is_buyer')
 
@@ -78,11 +81,37 @@ def build(conn, name):
         conn.execute((ROOT / 'db' / 'build' / f'{name}.sql').read_text(encoding='utf-8'))
 
 
-def newest_ekatte(archive):
-    files = sorted((archive / 'ekatte').glob('*.zip'))
+def ekatte_files(archive):
+    """The archives of EKATTE, newest first, at most LOOKBACK of them."""
+    files = sorted((archive / 'ekatte').glob('*.zip'), reverse=True)
     if not files:
         raise ShapeError('В архива няма файл на ЕКАТТЕ')
-    return files[-1]
+    return files[:LOOKBACK]
+
+
+def read_at(path):
+    """The time Наблюдател read the file: it writes each file once, when it reads it."""
+    return dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc)
+
+
+def newest_whole_ekatte(conn, r, archive):
+    """The newest archive whose files are whole. A newer one that НСИ published cut short is rejected (once) and
+    passed over; any other fault stops the step. Returns (raw file, read time, parsed rows, the names passed over)."""
+    passed = []
+    for path in ekatte_files(archive):
+        at = read_at(path)
+        file, raw = pipeline.register_raw(conn, r, 'ekatte', path.name, path, media_type='application/zip', fetched_at=at)
+        try:
+            return file, at, ekatte.parse(raw), passed
+        except ShapeError as e:
+            if not conn.execute('''SELECT 1 FROM ops.load WHERE tool = %s AND source = 'ekatte' AND raw_file_id = %s
+                    AND status = 'rejected' ''', (r.tool, file.raw_file_id)).fetchone():
+                pipeline.reject(conn, r, 'ekatte', 'archive', e, file.raw_file_id, now=at)
+            if not isinstance(e, ekatte.Partial):
+                raise
+            passed.append(path.name)
+            last = e
+    raise ShapeError(f'Няма пълен архив на ЕКАТТЕ сред последните {len(passed)}: {last}')
 
 
 def municipality_ref(raw):
@@ -100,14 +129,9 @@ def municipality_ref(raw):
 
 
 def place(conn, r, archive=ARCHIVE, raw_dir=RAW):
-    """EKATTE and the reference of the municipalities into the landing zone, then core.*"""
-    path = newest_ekatte(archive)
-    file, raw = pipeline.register_raw(conn, r, 'ekatte', path.name, path, media_type='application/zip')
-    try:
-        parsed = ekatte.parse(raw)
-    except ShapeError as e:
-        pipeline.reject(conn, r, 'ekatte', 'archive', e, file.raw_file_id)
-        raise
+    """EKATTE and the reference of the municipalities into the landing zone, then core.*
+    Every load of EKATTE carries the time of its read, so a source that stays cut short turns stale."""
+    file, at, parsed, passed = newest_whole_ekatte(conn, r, archive)
     ref_raw = (ROOT / 'db' / 'ref' / 'municipality.csv').read_bytes()
     ref = municipality_ref(ref_raw)
     unknown = sorted(parsed['ek_obst.json'].keys() ^ ref.keys())
@@ -117,14 +141,14 @@ def place(conn, r, archive=ARCHIVE, raw_dir=RAW):
     for name, rows in parsed.items():
         cols = ekatte.FILES[name][3]
         result[name] = pipeline.load(conn, r, 'ekatte', name, rows, writer(EKATTE_TABLE[name], cols),
-                                     raw_file_id=file.raw_file_id, current=reader(EKATTE_TABLE[name], cols)).status
+                                     raw_file_id=file.raw_file_id, current=reader(EKATTE_TABLE[name], cols), now=at).status
     ref_file = pipeline.save_raw(conn, r, 'municipality-ref', 'municipality.csv', ref_raw, raw_dir, name='municipality.csv',
                                  media_type='text/csv')
     result['municipality.csv'] = pipeline.load(conn, r, 'municipality-ref', 'municipality.csv', ref,
                                                writer('municipality_ref', REF_COLUMNS), raw_file_id=ref_file.raw_file_id,
                                                current=reader('municipality_ref', REF_COLUMNS)).status
     build(conn, 'place')
-    r.stats.update(file=path.name, loads=result)
+    r.stats.update(file=file.path.name, passed_over=passed, loads=result)
     return result
 
 

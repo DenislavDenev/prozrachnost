@@ -1,5 +1,17 @@
 [
   {
+    "uri": "ffa356b9-75e9-418f-88f9-762b8685cb68",
+    "year": "2025/2026",
+    "session": "august",
+    "kind": "mandatory",
+    "header_rows": 1,
+    "width": 40,
+    "header_sha": "0be65257f1ca6b123f2326e836361366ae15319cf967b5a8ba0f95ed68d3f03d",
+    "count_first": false,
+    "code_col": 4,
+    "grades_only": true
+  },
+  {
     "uri": "036f7fed-dfdc-480b-9400-41bfa64022d6",
     "year": "2025/2026",
     "session": "may",
