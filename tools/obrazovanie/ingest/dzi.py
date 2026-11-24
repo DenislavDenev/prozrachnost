@@ -16,27 +16,40 @@ LAYOUTS = {row["uri"]: row for row in json.loads(
     (Path(__file__).parent / "dzi_layouts.json").read_text(encoding="utf-8"))}
 
 
-def dzi_catalog(raw: bytes) -> list[Resource]:
+@dataclass(frozen=True)
+class DziCatalog:
+    resources: list[Resource]   # the resources with an observed layout, checked against it
+    new: list[Resource]         # listed by the source, no observed layout yet: not read, reported
+    gone: list[str]             # observed layouts the source no longer lists: what is stored stays, reported
+
+
+def dzi_catalog(raw: bytes) -> DziCatalog:
+    """Check the whole listing; tell a new or a vanished resource apart instead of refusing every resource."""
     value = _payload(raw, "DZI catalog")
     rows = value.get("resources")
-    if (set(value) != {"success", "resources", "total_records"} or not isinstance(rows, list)
+    if (set(value) != {"success", "resources", "total_records"} or not isinstance(rows, list) or not rows
             or type(value["total_records"]) is not int or len(rows) != value["total_records"]
-            or any(not isinstance(row, dict) for row in rows)
-            or {row.get("uri") for row in rows} != LAYOUTS.keys()
-            or len(rows) != len(LAYOUTS)):
+            or any(not isinstance(row, dict) or not isinstance(row.get("uri"), str) for row in rows)
+            or len({row["uri"] for row in rows}) != len(rows)):
         raise ShapeError("Incomplete or changed DZI resource catalog")
-    result = []
+    known, new = [], []
     for row in rows:
-        layout = LAYOUTS[row["uri"]]
         name, updated = row.get("name"), row.get("updated_at")
-        if (row.get("dataset_uri") != DZI_DATASET or not isinstance(name, str)
-                or not isinstance(updated, str) or not updated
-                or ("август-септември" in name) != (layout["session"] == "august")
+        if (row.get("dataset_uri") != DZI_DATASET or not isinstance(name, str) or not name
+                or not isinstance(updated, str) or not updated):
+            raise ShapeError("Changed DZI resource metadata")
+        layout = LAYOUTS.get(row["uri"])
+        if layout is None:
+            new.append(Resource(row["uri"], "", name, updated))
+            continue
+        if (("август-септември" in name) != (layout["session"] == "august")
                 or ("по желание на ученика" in name) != (layout["kind"] == "optional")
                 or (layout["year"] not in name and layout["year"][-4:] not in name)):
             raise ShapeError("Changed DZI resource metadata")
-        result.append(Resource(row["uri"], layout["year"], name, updated))
-    return sorted(result, key=lambda item: (item.year, item.uri))
+        known.append(Resource(row["uri"], layout["year"], name, updated))
+    gone = sorted(LAYOUTS.keys() - {row["uri"] for row in rows})
+    return DziCatalog(sorted(known, key=lambda item: (item.year, item.uri)),
+                      sorted(new, key=lambda item: item.uri), gone)
 
 
 @dataclass(frozen=True)
@@ -97,12 +110,22 @@ def _single_subject(first, second, count_first):
     return left
 
 
+def _columns(layout):
+    """The first column of each subject: a pair of count and grade, or the grade alone (August 2025/2026)."""
+    return range(5, layout["width"], 1 if layout.get("grades_only") else 2)
+
+
 def _subjects(headers, layout):
     subjects = []
     first = headers[0]
     carry = ""
-    for col in range(5, layout["width"], 2):
-        if layout["header_rows"] == 1:
+    for col in _columns(layout):
+        if layout.get("grades_only"):
+            subject = _clean(first[col])
+            if not subject.startswith("Ср.усп. ") or not subject.removeprefix("Ср.усп. "):
+                raise ShapeError("Unknown DZI grade column")
+            subject = subject.removeprefix("Ср.усп. ")
+        elif layout["header_rows"] == 1:
             subject = _single_subject(_clean(first[col]), _clean(first[col + 1]), layout["count_first"])
         elif layout["header_rows"] == 2:
             if (_clean(first[col]), _clean(first[col + 1])) != ("Брой", "Ср.успех"):
@@ -174,7 +197,14 @@ def parse_dzi(raw: bytes, resource_uri: str) -> DziTable:
         else:
             aggregates += 1
             code = None
-        for subject, col in zip(subjects, range(5, width, 2)):
+        for subject, col in zip(subjects, _columns(layout)):
+            if layout.get("grades_only"):
+                # The source gives no count: "0" is a subject nobody of the school sat, not a grade.
+                score_raw = row[col].strip()
+                if score_raw not in {"", "0", "0,00", "0.00"}:
+                    results.append(DziResult(number, code, school, oblast, municipality, town, subject,
+                                             None, _grade(score_raw, number, col), is_school))
+                continue
             count_raw, score_raw = (row[col:col+2] if layout["count_first"] else
                                     (row[col+1], row[col]))
             count_raw, score_raw = count_raw.strip(), score_raw.strip()
