@@ -1,115 +1,160 @@
-"""Writing a parsed answer into the silver tables (STANDARD 1А.4-6, 3А).
+"""Writing a parsed answer of one resource into the landing zone zakoni_src, through the shared module (pipeline.load).
 
-apply() puts the rows of one resource into the versioned tables:
-  - a new record is a new row; a changed record closes its row (valid_to) and opens a new one: the old stays, and each
-    difference, field by field, is a line in ops.change_log (the first read of a resource is not a change and is not logged);
-  - an answer that lacks records we hold is `held`: nothing is written until a read at least a day later gives the same file;
-    then it is `confirmed` and the missing records are closed (never deleted) and logged as `removed`;
-  - the same answer again changes nothing and logs nothing.
-Everything of one answer is written in one transaction.
+A resource is a file of up to 300 MB that the source replaces whole. The shared module decides, as for every tool:
+  - the same content as the current load writes nothing (`unchanged`);
+  - an answer that lacks a record of the current load is `held` until a read at least a day later gives the same
+    content (`confirmed`); nothing is replaced in between;
+  - otherwise the answer is a new load and replaces the current one (`loaded`).
+It decides on one hash per record (the record with its institutions, terms, relations, files ...), not on the rows
+themselves: the rows of ПРИС are 330 MB in memory and the module would hold them twice more. The rows go straight from
+the parser into the landing tables (COPY).
+
+What this module adds to the shared one:
+  - the field by field change log of each record against the load it replaces (ops.change_log, ref '<table>/<key>'):
+    a new record, a changed field, a record that left; the children of a new record are not logged one by one. The first
+    load of a resource is one line (the shared module writes it), not one per record;
+  - when a record was first seen and last changed, carried from load to load (first_seen_at, changed_at);
+  - the landing policy `latest`: the rows of the replaced load leave the landing zone in the same transaction. Its
+    ledger line stays, and so does its file in the archive.
 """
-import datetime as dt
 import hashlib
 import json
 
-from . import db
-from .schema import PARENT, TABLES
+from . import pipeline
+from .config import TOOL
+from .schema import TABLES
 
-CONFIRM_AFTER = dt.timedelta(days=1)
-META = ("id", "valid_from", "valid_to", "row_sha", "raw_sha256")
 SOURCE = "egov"
+STATUS = {"loaded": "stored", "confirmed": "stored", "unchanged": "unchanged", "held": "held"}
 
 
-def row_sha(row, cols):
-    return hashlib.sha1(json.dumps([row[c] for c in cols], default=str, ensure_ascii=False).encode()).hexdigest()
+def keystr(row, cols):
+    return "/".join(str(row[c]) for c in cols)
 
 
-def _scope(table, origin):
-    """Which current rows of a shared table belong to this resource (the two ПРИС resources share the tables)."""
-    if origin is None:
-        return "TRUE", ()
-    if table == "pris_act":
-        return "c.origin = %s", (origin,)
-    return "c.pris_id IN (SELECT pris_id FROM silver.pris_act WHERE origin = %s)", (origin,)
+def _dump(values):
+    return json.dumps(values, default=str, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def _stage(conn, table, rows):
-    key, data = TABLES[table]
-    cols = [*key, *data]
-    conn.execute(f"CREATE TEMP TABLE n_{table} ON COMMIT DROP AS SELECT {', '.join(cols)}, row_sha FROM silver.{table} WITH NO DATA")
-    with conn.cursor().copy(f"COPY n_{table} ({', '.join(cols)}, row_sha) FROM STDIN") as cp:
-        for r in rows:
-            cp.write_row([*(r[c] for c in cols), row_sha(r, data)])
-    conn.execute(f"CREATE INDEX ON n_{table} ({', '.join(key)})")
-    conn.execute(f"ANALYZE n_{table}")
-
-
-def apply(conn, ref, sha, parsed, tables, origin=None, now=None):
-    """Write one parsed answer. `tables` = the silver tables of the resource, the parent table first.
-    -> 'stored' | 'unchanged' | 'held'."""
-    now = now or dt.datetime.now(dt.timezone.utc)
+def digests(parsed, tables):
+    """{key: {'sha': hash}} for every parent record: its data columns and the rows of its children, in their order."""
     parent = tables[0]
-    with conn.transaction():
-        for t in tables:
-            _stage(conn, t, parsed.tables.get(t, []))
-        sc, sa = _scope(parent, origin)
-        had = conn.execute(f"SELECT EXISTS (SELECT 1 FROM silver.{parent} c WHERE c.valid_to IS NULL AND {sc})", sa).fetchone()[0]
-        pkey = TABLES[parent][0]
-        eq = " AND ".join(f"c.{k} = n.{k}" for k in pkey)
-        removed = conn.execute(f"""SELECT count(*) FROM silver.{parent} c WHERE c.valid_to IS NULL AND {sc}
-                                   AND NOT EXISTS (SELECT 1 FROM n_{parent} n WHERE {eq})""", sa).fetchone()[0]
-        held = conn.execute("SELECT sha256, first_at <= %s - %s FROM ops.held WHERE source = %s AND ref = %s",
-                            (now, CONFIRM_AFTER, SOURCE, ref)).fetchone()
-        n_new = len(parsed.tables.get(parent, []))
-        if removed:
-            if not held or held[0] != sha:
-                conn.execute("""INSERT INTO ops.held (source, ref, sha256, rows, first_at) VALUES (%s,%s,%s,%s,%s)
-                                ON CONFLICT (source, ref) DO UPDATE SET sha256 = EXCLUDED.sha256, rows = EXCLUDED.rows, first_at = EXCLUDED.first_at""",
-                             (SOURCE, ref, sha, n_new, now))
-                db.log_change(conn, SOURCE, ref, "rows", None, n_new, "held")
-                db.state(conn, SOURCE, ref, status="held", error=f"{removed} записа от пазените ги няма в новия отговор")
-                return "held"
-            if not held[1]:
-                return "held"
-            db.log_change(conn, SOURCE, ref, "rows", None, n_new, "confirmed")
-        if held:
-            conn.execute("DELETE FROM ops.held WHERE source = %s AND ref = %s", (SOURCE, ref))
-        # the children of a parent that is new in this answer are not logged one by one
-        changes = 0
-        for t in tables:
-            changes += _write(conn, t, sha, origin, now, log=had, parent_new=None if t == parent else parent)
-        return "stored" if changes else "unchanged"
+    pkey, pdata = TABLES[parent]
+    h = {}
+    for row in parsed.tables.get(parent, []):
+        h[keystr(row, pkey)] = hashlib.sha256(_dump([row[c] for c in pdata]))
+    for t in tables[1:]:
+        key, data = TABLES[t]
+        for row in parsed.tables.get(t, []):
+            h[keystr(row, pkey)].update(t.encode() + _dump([row[c] for c in (*key[len(pkey):], *data)]))
+    return {k: {"sha": v.hexdigest()} for k, v in h.items()}
 
 
-def _write(conn, table, sha, origin, now, log, parent_new):
-    key, data = TABLES[table]
-    sc, sa = _scope(table, origin)
-    eq = " AND ".join(f"c.{k} = n.{k}" for k in key)
-    refx = f"concat_ws('/', '{table}', {', '.join(f'n.{k}' for k in key)})"
-    refc = f"concat_ws('/', '{table}', {', '.join(f'c.{k}' for k in key)})"
-    pk = [k for k in key if k != "ord"]
-    skip_new_parents = ""
-    if parent_new:
-        pq = " AND ".join(f"p.{k} = n.{k}" for k in pk)
-        skip_new_parents = f" AND EXISTS (SELECT 1 FROM silver.{parent_new} p WHERE {pq} AND p.valid_from < %s)"
-    if log:
-        # a new record (a child of a parent that is new in this answer is not logged one by one)
-        conn.execute(f"""INSERT INTO ops.change_log (source, ref, field, old, new, cause)
-                         SELECT %s, {refx}, NULL, NULL, NULL, 'new-record' FROM n_{table} n
-                         WHERE NOT EXISTS (SELECT 1 FROM silver.{table} c WHERE c.valid_to IS NULL AND {eq}){skip_new_parents}""",
-                     (SOURCE, *([now] if parent_new else [])))
-        conn.execute(f"""INSERT INTO ops.change_log (source, ref, field, old, new, cause)
-                         SELECT %s, {refc}, o.key, left(o.value, 2000), left(w.value, 2000), 'rewritten'
-                         FROM silver.{table} c JOIN n_{table} n ON {eq} AND c.valid_to IS NULL AND c.row_sha <> n.row_sha,
-                              LATERAL jsonb_each_text(to_jsonb(c)) o JOIN LATERAL jsonb_each_text(to_jsonb(n)) w ON w.key = o.key
-                         WHERE o.value IS DISTINCT FROM w.value AND o.key <> ALL(%s)""", (SOURCE, list(META)))
-        conn.execute(f"""INSERT INTO ops.change_log (source, ref, field, old, new, cause)
-                         SELECT %s, {refc}, NULL, NULL, NULL, 'removed' FROM silver.{table} c
-                         WHERE c.valid_to IS NULL AND {sc} AND NOT EXISTS (SELECT 1 FROM n_{table} n WHERE {eq})""", (SOURCE, *sa))
-    closed = conn.execute(f"""UPDATE silver.{table} c SET valid_to = %s WHERE c.valid_to IS NULL AND {sc}
-                              AND NOT EXISTS (SELECT 1 FROM n_{table} n WHERE {eq} AND n.row_sha = c.row_sha)""", (now, *sa)).rowcount
-    cols = ", ".join([*key, *data])
-    opened = conn.execute(f"""INSERT INTO silver.{table} ({cols}, valid_from, row_sha, raw_sha256)
-                              SELECT {', '.join(f'n.{c}' for c in [*key, *data])}, %s, n.row_sha, %s FROM n_{table} n
-                              WHERE NOT EXISTS (SELECT 1 FROM silver.{table} c WHERE c.valid_to IS NULL AND {eq})""", (now, sha)).rowcount
-    return closed + opened
+def current(parent):
+    """The records of a load as digests() gives them: what the shared module compares a new answer with."""
+    pkey = TABLES[parent][0]
+
+    def read(conn, load_id):
+        return {"/".join(str(x) for x in r[:-1]): {"sha": r[-1]} for r in conn.execute(
+            f"SELECT {', '.join(pkey)}, record_sha FROM zakoni_src.{parent} WHERE load_id = %s", (load_id,))}
+    return read
+
+
+def previous(conn, ref, load_id):
+    """The load this one replaces: the newest earlier accepted load of the resource (its rows are still in the landing zone)."""
+    row = conn.execute("""SELECT load_id FROM ops.load WHERE tool = %s AND source = %s AND ref = %s AND load_id < %s
+                          AND status IN ('loaded', 'confirmed') ORDER BY load_id DESC LIMIT 1""", (TOOL, SOURCE, ref, load_id)).fetchone()
+    return row[0] if row else None
+
+
+def writer(r, parsed, tables, ref, now):
+    parent = tables[0]
+    pkey = TABLES[parent][0]
+
+    def write(conn, load_id, rows):
+        prev = previous(conn, ref, load_id)
+        seen = {}
+        if prev:
+            seen = {"/".join(str(x) for x in x[:-3]): x[-3:] for x in conn.execute(
+                f"SELECT {', '.join(pkey)}, record_sha, first_seen_at, changed_at FROM zakoni_src.{parent} WHERE load_id = %s", (prev,))}
+        for t in tables:
+            key, data = TABLES[t]
+            cols = [*key, *data]
+            meta = ["record_sha", "first_seen_at", "changed_at"] if t == parent else []
+            with conn.cursor().copy(f"COPY zakoni_src.{t} (load_id, {', '.join(cols + meta)}) FROM STDIN") as cp:
+                for row in parsed.tables.get(t, []):
+                    vals = [load_id, *(row[c] for c in cols)]
+                    if meta:
+                        k = keystr(row, key)
+                        sha = rows[k]["sha"]
+                        old = seen.get(k)
+                        vals += [sha, old[1] if old else now, old[2] if old and old[0] == sha else now]
+                    cp.write_row(vals)
+        if prev:
+            log_fields(conn, r, tables, load_id, prev, now)
+            for t in tables:      # landing policy `latest`
+                conn.execute(f"DELETE FROM zakoni_src.{t} WHERE load_id = %s", (prev,))
+    return write
+
+
+def log_fields(conn, r, tables, new, old, now):
+    """Each difference between two loads of a resource, table by table, as the old silver layer logged it."""
+    parent = tables[0]
+    pkey = TABLES[parent][0]
+    args = dict(now=now, tool=TOOL, source=SOURCE, run=r.run_id, new=new, old=old)
+    for t in tables:
+        key, data = TABLES[t]
+        eq = " AND ".join(f"o.{k} = n.{k}" for k in key)
+        peq = " AND ".join(f"p.{k} = n.{k}" for k in pkey)
+        ref_n = f"concat_ws('/', '{t}', {', '.join(f'n.{k}' for k in key)})"
+        ref_o = f"concat_ws('/', '{t}', {', '.join(f'o.{k}' for k in key)})"
+        head = "INSERT INTO ops.change_log (detected_at, tool, source, ref, field, old, new, cause, run_id) "
+        # a new record; the children of a record that is new itself are not logged one by one
+        child = "" if t == parent else f" AND EXISTS (SELECT 1 FROM zakoni_src.{parent} p WHERE p.load_id = %(old)s AND {peq})"
+        conn.execute(head + f"""SELECT %(now)s, %(tool)s, %(source)s, {ref_n}, NULL, NULL, NULL, 'new-record', %(run)s
+            FROM zakoni_src.{t} n WHERE n.load_id = %(new)s
+            AND NOT EXISTS (SELECT 1 FROM zakoni_src.{t} o WHERE o.load_id = %(old)s AND {eq}){child}""", args)
+        conn.execute(head + f"""SELECT %(now)s, %(tool)s, %(source)s, {ref_o}, x.key, left(x.value, 2000), left(y.value, 2000), 'rewritten', %(run)s
+            FROM zakoni_src.{t} o JOIN zakoni_src.{t} n ON n.load_id = %(new)s AND {eq}
+            CROSS JOIN LATERAL jsonb_each_text(jsonb_build_object({', '.join(f"'{c}', o.{c}" for c in data)})) x
+            JOIN LATERAL jsonb_each_text(jsonb_build_object({', '.join(f"'{c}', n.{c}" for c in data)})) y ON y.key = x.key
+            WHERE o.load_id = %(old)s AND ROW({', '.join(f'o.{c}' for c in data)}) IS DISTINCT FROM ROW({', '.join(f'n.{c}' for c in data)})
+              AND x.value IS DISTINCT FROM y.value""", args)
+        conn.execute(head + f"""SELECT %(now)s, %(tool)s, %(source)s, {ref_o}, NULL, NULL, NULL, 'removed', %(run)s
+            FROM zakoni_src.{t} o WHERE o.load_id = %(old)s
+            AND NOT EXISTS (SELECT 1 FROM zakoni_src.{t} n WHERE n.load_id = %(new)s AND {eq})""", args)
+
+
+def apply(conn, r, ref, parsed, tables, raw_file_id, now, hold_when=None):
+    """Load one parsed answer. -> the shared module's Loaded (status loaded | confirmed | unchanged | held)."""
+    rows = digests(parsed, tables)
+    return pipeline.load(conn, r, SOURCE, ref, rows, writer(r, parsed, tables, ref, now), raw_file_id=raw_file_id,
+                         current=current(tables[0]), now=now, hold_when=hold_when)
+
+
+def same_file(conn, r, ref, parent, raw_file_id, now):
+    """The answer is the very file of the current load: its content is the current content, nothing is parsed again.
+    A line in the ledger says the source was read (`unchanged`). -> Loaded, or None when there is no such load."""
+    cur = conn.execute("""SELECT load_id, content_sha256 FROM ops.load WHERE tool = %s AND source = %s AND ref = %s
+                          AND is_current AND raw_file_id = %s""", (TOOL, SOURCE, ref, raw_file_id)).fetchone()
+    if not cur:
+        return None
+    rows = current(parent)(conn, cur[0])
+    if pipeline.content_hash(rows) != cur[1]:     # the records are hashed another way since (a new version of the code)
+        return None
+    return pipeline.load(conn, r, SOURCE, ref, rows, lambda *a: None, raw_file_id=raw_file_id, now=now)
+
+
+def held_count(conn, ref, parent):
+    """How many records of the resource the landing zone holds now (the current load)."""
+    return conn.execute(f"""SELECT count(*) FROM zakoni_src.{parent} WHERE load_id =
+        (SELECT load_id FROM ops.load WHERE tool = %s AND source = %s AND ref = %s AND is_current)""", (TOOL, SOURCE, ref)).fetchone()[0]
+
+
+def state(conn, ref, at=None, **kw):
+    """Upsert zakoni.source_state; a value 'now' means the time of the read (`at`)."""
+    cols = ["last_read", *kw]
+    vals = ["COALESCE(%s::timestamptz, now())", *("COALESCE(%s::timestamptz, now())" if v == "now" else "%s" for v in kw.values())]
+    args = [at, *(at if v == "now" else v for v in kw.values())]
+    conn.execute(f"""INSERT INTO zakoni.source_state (ref, {', '.join(cols)}) VALUES (%s, {', '.join(vals)})
+                     ON CONFLICT (ref) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in cols)}""", (ref, *args))

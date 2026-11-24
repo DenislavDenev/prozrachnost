@@ -216,3 +216,9 @@ dataset = "sobstvenost.archive"
 checked_on = 2026-11-24
 display = true
 note = "derived from the two datasets of Собственост (the state of each read, the versions of profiles and reports, the archived files by sha256); follows them"
+
+[[licence]]
+dataset = "zakoni.amc"
+checked_on = 2026-10-02
+distribute = true
+note = "data.egov.bg, terms of use 2 (CC-BY) on the dataset of the Council of Ministers Administration (Справки от Портала за обществени консултации), read from the portal; the author to name: Администрация на Министерския съвет"
