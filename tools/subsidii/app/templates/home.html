@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, filters, src, eur with context %}
+{% block title %}Табло{% endblock %}
+{% block main %}
+<h1>Земеделски субсидии и помощи</h1>
+<p class="lede">{% if tot.total is none %}За {{ s.fy_row.label_bg|lower }} няма данни в избрания обхват.{% else %}
+  {{ s.fy_row.label_bg }}, справка към {{ s.snap|date }}: ДФЗ е изплатил {% if s.eur(tot.total) is not none %}<b>{{ s.eur(tot.total)|money }}</b>{% else %}<b>{{ tot.total|num }}</b> (валутата още не е потвърдена, няма евро){% endif %}
+  по <b>{{ tot.recipients|num }}</b> {{ 'получателски ред' if tot.recipients == 1 else 'получателски реда' }}{% if s.oblast or s.obshtina %} в избраното място{% endif %}.
+  {% if conc %}Най-големите 1% от редовете получават <b>{{ conc.share|pct }}</b> от парите.{% endif %}{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Това са плащанията по справката на Държавен фонд „Земеделие“ за избраната финансова година, която тече от 16 октомври до 15 октомври. Парите идват от три места: ЕФГЗ, ЕЗФРСР и националния бюджет. {{ help('efgz', 'ЕФГЗ') }}</p>
+  <p>„Ред“ е получател в една община, не човек: един човек или фирма може да е в няколко реда, а двама души с едно име в една община са два реда. Затова не пишем „колко души получават“. {{ help('recipient_row', 'получателски ред') }} Сумите до 2025 г. са в лева в справката и са превърнати в евро по 1,95583.</p>
+  <p>Пример: ако в справката за една община има 1000 реда и първите 10 са получили 300 от общо 1000, топ 1% получава 30%. Обобщението не се събира с частите си: сумата на получателя е редът „ОБЩО“, а мерките са разбивка на плащанията. {{ help('row_total', 'ред ОБЩО и плащания') }}</p></details>
+{{ filters("/", s, years, tip=True, fond=False) }}
+<div class="grid">
+  <section class="p s6"><h2>По финансови години и фондове</h2><div class="sub">€ · за избраните място и вид получател{% if s.fond %}{% endif %}</div>
+    <div class="chart-bars" id="year-chart" role="img" aria-label="Изплатено по финансови години и фондове"></div>
+    <script id="year-data" type="application/json">{{ series|tojson }}</script>
+    <div class="src">{{ source_name }} · <a href="/sources">набор и четене</a> · <a href="/export-tablo.csv?{{ qs }}">CSV</a> · <a href="/api/tablo.json?{{ qs }}">JSON</a></div></section>
+  <section class="p s6"><h2>По фондове, {{ s.fy }}</h2><div class="sub">{{ s.snap|date }}</div>
+    <div class="scroll"><table class="sortable" id="funds"><thead><tr><th>Фонд</th><th class="n">Изплатено, €</th><th class="n">Дял</th></tr></thead><tbody>
+    {% for f in funds %}<tr class="{{ 'sum' if f.code == 'total' }}"><td>{{ f.name }} {% if f.code != 'total' %}{{ help(f.code, f.name) }}{% else %}{{ help('total', 'общо') }}{% endif %}</td><td class="n" data-v="{{ f.eur if f.eur is not none else '' }}">{{ eur(f.eur, s) }}</td>
+      <td class="n">{% if f.eur is not none and funds[-1].eur %}{{ (f.eur / funds[-1].eur)|pct }}{% else %}<span class="mut">няма данни</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    <p class="mut">ЕФГЗ + ЕЗФРСР + национален бюджет = общо, по редовете ОБЩО на справката.</p></section>
+</div>
+<div class="grid">
+  <section class="p s6"><h2>По вид на получателя</h2><div class="sub">редове и €{% if s.fond %}{% endif %}</div>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Вид {{ help('kind', 'вид на получателя') }}</th><th class="n">Редове</th><th class="n">Изплатено, €</th></tr></thead><tbody>
+    {% for k in kinds_split %}<tr><td>{{ kind_names[k.kind] }}</td><td class="n">{{ k.recipients|num }}</td><td class="n" data-v="{{ s.eur(k.total) if s.eur(k.total) is not none else '' }}">{{ eur(s.eur(k.total), s) }}</td></tr>{% endfor %}</tbody></table></div>
+    <p class="mut">Редовете са получател в община, не хора. Имената на физически лица и еднолични търговци се виждат само в списъка и само две години след края на финансовата година {{ help('names', 'имена на физически лица') }}.</p></section>
+  <section class="p s6"><h2>Най-големите фирми</h2><div class="sub">юридически лица, по име {{ help('org', 'фирма по име') }}</div>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Фирма</th><th class="n">Редове</th><th class="n">Изплатено, €</th></tr></thead><tbody>
+    {% for r in top %}<tr><td><a href="/poluchateli/{{ r.org_id }}">{{ r.name_bg }}</a></td><td class="n">{{ r.rows }}</td><td class="n" data-v="{{ r.total_eur if r.total_eur is not none else '' }}">{{ eur(r.total_eur, s) }}</td></tr>{% else %}<tr><td colspan="3" class="mut">няма данни</td></tr>{% endfor %}</tbody></table></div>
+    <div class="src"><a href="/poluchateli?{{ qs }}&amp;tip=legal">Всички получатели</a></div></section>
+</div>
+<section class="p"><h2>Най-големите мерки</h2><div class="sub">сума на плащанията по мярка, €</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Код {{ help('code', 'код на мярката') }}</th><th>Мярка</th><th class="n">Плащания</th><th class="n">Изплатено, €</th></tr></thead><tbody>
+  {% for m in measures %}<tr><td>{{ m.code }}</td><td>{{ m.name }}</td><td class="n">{{ m.payments|num }}</td><td class="n" data-v="{{ m.total_eur if m.total_eur is not none else '' }}">{{ eur(m.total_eur, s) }}</td></tr>{% endfor %}</tbody></table></div>
+  <div class="src"><a href="/merki?{{ qs }}">Всички мерки</a> · <a href="/sravnenie">Сравнение между години и дати</a> {{ help('compare', 'сравнение между години') }}</div></section>
+{% endblock %}
+{% block scripts %}{% endblock %}

@@ -222,3 +222,46 @@ dataset = "zakoni.amc"
 checked_on = 2026-10-02
 distribute = true
 note = "data.egov.bg, terms of use 2 (CC-BY) on the dataset of the Council of Ministers Administration (Справки от Портала за обществени консултации), read from the portal; the author to name: Администрация на Министерския съвет"
+
+# Парламент (the move into the shared database, 13.11.2026). LICENCES.md: parliament.bg states no licence on the pages
+# read; public information of a state body: shown with a link to the source, not handed out until the review by chapter
+# four of ЗДОИ.
+
+[[licence]]
+dataset = "parlament.votes"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.people"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.stenograms"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.bills"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.reads"
+checked_on = 2026-11-13
+display = true
+note = "derived from the reads of parliament.bg (the time and the result of each read); follows the datasets of Парламент"
+
+# Субсидии и помощи (the move into the shared database, 24.11.2026). The report of ДФЗ states no licence; it is published
+# by Regulation (EU) 2021/2116, art. 98. subsidii.dfz, the landing zone with the names, is not listed: it is never shown.
+
+[[licence]]
+dataset = "subsidii.paid"
+checked_on = 2026-10-02
+display = true
+note = "the report of a state body (ДФЗ) published by Regulation (EU) 2021/2116, art. 98, no licence stated: shown with a link to the source, not handed out; natural persons masked above the threshold of the source and only summed below it"

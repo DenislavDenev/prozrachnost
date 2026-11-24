@@ -458,3 +458,195 @@ kind = "not-a-person"
 shown_as = "full"
 decided_on = 2026-11-24
 basis = "the kind of institution that accepted a strategic document (Министерски съвет, общински съвет ...), as the source gives it"
+
+# Парламент (the move into the shared database, 13.11.2026). Every name is of a member of parliament or of an
+# official in the plenary, as the Assembly's own files name them. The serving layer keeps the Assembly's number of
+# an MP's profile, which is the source's identifier; a person who is not an MP has none.
+
+[[person]]
+column = "parlament.mp.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.mp.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "parlament.mp_stat.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.mp_stat.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament, named by the Assembly's own roll call, list or profile in that role (decision 1); public office"
+
+[[person]]
+column = "parlament.roster.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of the current assembly (decision 1); public office; not in the serving layer"
+
+[[person]]
+column = "parlament.profile.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the profile of a member of parliament on parliament.bg, with the Assembly's number of the profile (decision 1); public office; no date or place of birth, phone, e-mail or photo is kept"
+
+[[person]]
+column = "pub_parlament.profile.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the profile of a member of parliament on parliament.bg, with the Assembly's number of the profile (decision 1); public office"
+
+[[person]]
+column = "parlament.absence.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of official absences (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.absence.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of official absences (decision 1); public office"
+
+[[person]]
+column = "parlament.penalty.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of penalties by the chair (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.penalty.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "a member of parliament on the Assembly's list of penalties by the chair (decision 1); public office"
+
+[[person]]
+column = "parlament.penalty.by_name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the chair of the sitting who imposed the penalty, as the Assembly's list names them (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.penalty.by_name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the chair of the sitting who imposed the penalty, as the Assembly's list names them (decision 1); public office"
+
+[[person]]
+column = "parlament.bill_sponsor.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the sponsor of a bill as the Assembly lists them: a member of parliament or the Council of Ministers (decision 1); public office"
+
+[[person]]
+column = "pub_parlament.bill_sponsor.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "the sponsor of a bill as the Assembly lists them: a member of parliament or the Council of Ministers (decision 1); public office"
+
+[[person]]
+column = "parlament.speech.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "who has the floor in the plenary, as the official stenogram names them: a member of parliament, or an official given the floor in that role (minister, president, ombudsman, prosecutor general; checked 13.11.2026 on 924 450 speeches). Only a speech of an MP has a profile; anyone else gets no key (constraint speech_profile_only_mp_ck). A name inside the text of a speech is not caught"
+
+[[person]]
+column = "pub_parlament.speech.name"
+kind = "public-office"
+shown_as = "full"
+decided_on = 2026-11-13
+basis = "who has the floor in the plenary, as the official stenogram names them: a member of parliament, or an official given the floor in that role (minister, president, ombudsman, prosecutor general; checked 13.11.2026 on 924 450 speeches). Only a speech of an MP has a profile; anyone else gets no key (constraint speech_profile_only_mp_ck). A name inside the text of a speech is not caught"
+
+# Субсидии и помощи (24.11.2026). ДФЗ publishes the recipients of agricultural payments by Regulation (EU) 2021/2116,
+# art. 98: legal entities and, above 1 250 euro in a year, natural persons by name, for two years. Decision 3 (the
+# donors) applies: the threshold of the source itself is the line. A natural person or a sole trader above it is a
+# row with a masked name until two years after the year; at it or below only in sums. Legal entities by their name.
+# A sole trader carries the name of its owner, so it is treated as a natural person, as the tool always did.
+
+[[person]]
+column = "subsidii_src.beneficiary.name"
+kind = "registered"
+shown_as = "masked"
+decided_on = 2026-11-24
+basis = "the first name of a natural person or the name of an entity, as ДФЗ publishes it (Regulation (EU) 2021/2116, art. 98); a person is shown masked above 1 250 euro in a year and only summed below; an entity in full"
+
+[[person]]
+column = "subsidii_src.beneficiary.surname"
+kind = "registered"
+shown_as = "masked"
+decided_on = 2026-11-24
+basis = "the last name of a natural person as ДФЗ publishes it; never shown, the mask keeps only the first name"
+
+[[person]]
+column = "subsidii_src.payment.name_variant"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the name on a payment row when it differs from its block (a dash lost in the source); kept for the fidelity of the landing zone, never shown"
+
+[[person]]
+column = "subsidii_src.payment.surname_variant"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the last name on a payment row when it differs from its block; never shown"
+
+[[person]]
+column = "subsidii_src.line.name"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the work table of one file under load, emptied for every file; never shown"
+
+[[person]]
+column = "subsidii_src.line.surname"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the work table of one file under load; never shown"
+
+[[person]]
+column = "subsidii_src.line.o_name"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the work table of one file under load; never shown"
+
+[[person]]
+column = "subsidii_src.line.o_surname"
+kind = "registered"
+shown_as = "absent"
+decided_on = 2026-11-24
+basis = "the work table of one file under load; never shown"
+
+[[person]]
+column = "pub_subsidii.recipient.person_masked"
+kind = "registered"
+shown_as = "masked"
+decided_on = 2026-11-24
+basis = "a natural person or a sole trader with more than 1 250 euro in a year, the threshold under which ДФЗ itself publishes no name: the first name and ***, until two years after the year; at or below the threshold only in pub_subsidii.below_threshold"

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, filters, src, eur with context %}
+{% block title %}Фондове и мерки{% endblock %}
+{% block main %}
+<h1>Фондове и мерки</h1>
+<p class="lede">{{ s.fy_row.label_bg }}, справка към {{ s.snap|date }}: <b>{{ rows|length }}</b> {{ 'мярка' if rows|length == 1 else 'мерки' }} с плащания в избрания обхват{% if tot.total is not none and s.eur(tot.total) is not none %}; общо по редовете ОБЩО <b>{{ s.eur(tot.total)|money }}</b>{% endif %}.</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Всяко плащане в справката е по някаква мярка (интервенция) и идва от един или повече фондове: ЕФГЗ {{ help('efgz', 'ЕФГЗ') }}, ЕЗФРСР {{ help('ezfrs', 'ЕЗФРСР') }} и национален бюджет {{ help('nb', 'национален бюджет') }}. При мерките за селските райони европейският дял и националният са в един и същи ред.</p>
+  <p>Тук сборът на плащанията по мерки може да е малко по-различен от сбора на редовете ОБЩО, защото в самия оригинал няколко плащания са изброени два пъти, но са преброени веднъж. Показваме и двете и не ги смесваме; разликите са в „Източници“. {{ help('row_total', 'ред ОБЩО и плащания') }} Мерките се менят от година на година: сравнението между години е в „Сравнение“.</p></details>
+{{ filters("/merki", s, years, tip=True, fond=True) }}
+<section class="p"><h2>Плащания по мерки</h2><div class="sub">€ · сума на плащанията, не на редовете ОБЩО</div>
+  <div class="tools"><input type="search" placeholder="Търси в таблицата" aria-label="Търси в таблицата на мерките" data-filter="merki"></div>
+  <div class="scroll"><table class="sortable" id="merki"><thead><tr><th>Код {{ help('code', 'код на мярката') }}</th><th>Мярка</th><th>Специфична цел</th><th class="n">Плащания</th><th class="n">ЕФГЗ, €</th><th class="n">ЕЗФРСР, €</th><th class="n">Нац. бюджет, €</th><th class="n">Общо, €</th></tr></thead><tbody>
+  {% for m in rows %}<tr><td>{{ m.code }}</td><td>{{ m.name }}</td><td>{{ m.objective }}</td><td class="n">{{ m.payments|num }}</td>
+    {% for k in ['efgz', 'ezfrs', 'nb', 'total'] %}<td class="n" data-v="{{ m[k + '_eur'] if m[k + '_eur'] is not none else '' }}">{{ eur(m[k + '_eur'], s) }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="8" class="mut">няма данни в избрания обхват</td></tr>{% endfor %}</tbody></table></div>
+  {{ src("/export-merki.csv?" ~ qs, "/api/merki.json?" ~ qs) }}</section>
+<p class="mut">Търсенето в таблицата скрива само редовете на таблицата; числата горе остават за целия избран обхват.</p>
+{% endblock %}
