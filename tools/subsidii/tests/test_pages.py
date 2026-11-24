@@ -1,4 +1,5 @@
-"""The pages as rendered pages, the CSV and the JSON of the same scope, the rule for names, the map. Runs against subsidii_test."""
+"""The pages as rendered pages, the CSV and the JSON of the same scope, the rule for names, the map, the version of every
+answer. The pages read the serving layer only. Runs against subsidii_test."""
 import csv
 import io
 import re
@@ -6,8 +7,8 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from ingest import gold, load, names
-from tests.helpers import derive, fixture, put
+from ingest import names
+from tests.helpers import built, count, derive, fixture, population, publish
 
 D1, D2 = "2026-09-28", "2026-10-05"
 
@@ -16,14 +17,10 @@ D1, D2 = "2026-09-28", "2026-10-05"
 def client(c):
     from app import main, queries
     queries._REF = None
-    for fy, day, raw in [(2024, D1, fixture(2024)), (2025, D1, fixture(2025)), (2025, D2, derive(2025, drop={6}))]:
-        assert put(c, fy, day, raw)[0] == "built"
-    load.load_units(c)
-    out = gold.build_missing(c)
-    assert not out["problems"], out
-    ids = [r[0] for r in c.execute("SELECT id FROM gold.municipality")]
-    for mid in ids:
-        c.execute("INSERT INTO silver.population VALUES (%s, 'permanent', '2025-12-15', 10000, '/x', now()), (%s, 'permanent', '2024-12-31', 9000, '/x', now())", (mid, mid))
+    built(c, (2024, D1, fixture(2024)), (2025, D1, fixture(2025)), (2025, D2, derive(2025, drop={6})))
+    publish(c)
+    population(c, "2025-12-15", 10000)
+    population(c, "2024-12-31", 9000)
     yield TestClient(main.app)
     c.execute("SELECT set_config('subsidii.today', '', false)")
 
@@ -52,7 +49,7 @@ def test_the_header_the_footer_and_the_menu(client):
 
 def test_the_numbers_on_the_dashboard_are_the_gold_numbers(client, c):
     html = client.get("/?fy=2025&snap=" + D1).text
-    total = c.execute("SELECT total FROM gold.summary WHERE fy = 2025 AND snap_day = %s AND scope = 'all'", (D1,)).fetchone()[0]
+    total = c.execute("SELECT total FROM pub_subsidii.summary WHERE fy = 2025 AND snap_day = %s AND scope = 'all'", (D1,)).fetchone()[0]
     from app.main import money
     from decimal import Decimal
     assert money(total / Decimal('1.95583')) in html
@@ -68,39 +65,38 @@ def test_the_snapshot_is_a_parameter_and_any_day_resolves_to_the_read_before_it(
     assert client.get("/api/tablo.json?fy=2025&snap=2020-01-01").json()["snapshot"] == D2       # before the first read: the default, not a guess
 
 
-def test_the_names_of_people_are_in_the_list_only_and_only_in_the_term(client, c):
+def test_the_names_of_people_are_masked_in_the_list_only_and_only_in_the_term(client, c):
     inside = client.get("/poluchateli?fy=2025&tip=natural&snap=" + D1).text
-    assert "физическо лице №4 ФЛ" in inside
-    with today("2030-01-01"):
-        late = client.get("/poluchateli?fy=2025&tip=natural&snap=" + D1).text
-        assert "физическо лице №4" not in late and "физическо лице" in late
+    assert "физическо ***" in inside and "физическо лице №" not in inside and " ФЛ" not in inside
+    c.execute("SELECT set_config('subsidii.today', '2030-01-01', false)")
+    publish(c)
+    late = client.get("/poluchateli?fy=2025&tip=natural&snap=" + D1).text
+    assert "***" not in late and "физическо лице" in late
 
 
-class today:
-    """The date of the rule for names, set on every connection the application opens while the block runs."""
-    def __init__(self, day):
-        self.day = day
+def test_people_below_the_threshold_are_said_but_are_not_rows(client, c):
+    html = client.get("/poluchateli?fy=2024&tip=natural").text
+    n = count(c, "SELECT sum(recipients) FROM pub_subsidii.below_threshold WHERE fy = 2024 AND kind = 'natural'")
+    assert n and f"<b>{n}</b>" in html and "1 250 €" in html
+    js = client.get("/api/poluchateli.json?fy=2024&tip=natural&size=500").json()
+    assert js["count"] == count(c, "SELECT count(*) FROM pub_subsidii.recipient WHERE fy = 2024 AND kind = 'natural'")
+    assert "1 250 €" not in client.get("/poluchateli?fy=2024&tip=legal").text
 
-    def __enter__(self):
-        from ingest import db
-        self.orig = db.connect
-        real, day = self.orig, self.day
 
-        def connect(**kw):
-            conn = real(**kw)
-            conn.execute("SELECT set_config('subsidii.today', %s, false)", (day,))
-            return conn
-        db.connect = connect
-
-    def __exit__(self, *a):
-        from ingest import db
-        db.connect = self.orig
+def test_every_answer_says_its_publication(client, c):
+    first = client.get("/api/tablo.json")
+    n = count(c, "SELECT max(publication_id) FROM pub.publication")
+    assert first.headers["X-Publication"] == str(n) and first.headers["ETag"] == f'W/"pub-{n}"' and "GMT" in first.headers["Last-Modified"]
+    assert client.get("/healthz").json() == {"ok": True, "publication": n}
+    c.execute("SELECT set_config('subsidii.today', '2030-01-01', false)")
+    publish(c)
+    assert client.get("/").headers["X-Publication"] == str(count(c, "SELECT max(publication_id) FROM pub.publication")) != str(n)
 
 
 def test_an_export_has_no_name_of_a_person_and_the_json_neither(client):
     for path in ["/export-poluchateli.csv?fy=2024&tip=natural", "/export-poluchateli.csv?fy=2025", "/api/poluchateli.json?fy=2025&size=500", "/api/poluchateli.json?fy=2024&tip=sole_trader"]:
         text = client.get(path).text
-        assert "физическо лице №" not in text and "ЕТ Образец" not in text, path
+        assert "физическо лице №" not in text and "ЕТ Образец" not in text and "***" not in text, path
     rows = rows_csv(client.get("/export-poluchateli.csv?fy=2025"))
     assert {r["recipient"] for r in rows if r["kind"] == "natural"} == {"физическо лице"}
     assert all(r["org_id"] == "" for r in rows if r["kind"] != "legal")
@@ -128,7 +124,7 @@ def test_the_page_the_csv_and_the_json_have_one_scope(client):
 
 
 def test_the_oblast_limits_the_municipality_and_a_foreign_municipality_is_dropped(client, c):
-    vidin = c.execute("SELECT id FROM gold.municipality WHERE oblast = 'Видин' LIMIT 1").fetchone()[0]
+    vidin = c.execute("SELECT m.eik FROM pub.municipality m JOIN pub.oblast o USING (oblast_code) WHERE o.label_bg = 'Видин' LIMIT 1").fetchone()[0]
     assert client.get(f"/api/poluchateli.json?fy=2025&oblast=Видин&obshtina={vidin}").json()["filters"]["obshtina"] == vidin
     f = client.get(f"/api/poluchateli.json?fy=2025&oblast=Русе&obshtina={vidin}").json()["filters"]
     assert f["oblast"] == "Русе" and "obshtina" not in f
@@ -159,11 +155,11 @@ def test_per_inhabitant_needs_the_inhabitants_and_says_their_date(client, c):
     item = next(i for i in d["items"] if i["v"] is not None)
     plain = client.get("/api/karta.json?l=obshtini&fy=2025").json()
     assert abs(item["v"] - next(i["v"] for i in plain["items"] if i["code"] == item["code"]) / 9000) < 0.01
-    c.execute("TRUNCATE silver.population")
+    c.execute("TRUNCATE pub_naselenie.population")
     gone = client.get("/api/karta.json?l=obshtini&fy=2025&per=resident").json()
     assert gone["shown"] == 0 and gone["population_date"] is None            # without the inhabitants nothing per inhabitant is shown
     # FY2024 ended 15.10.2024: the inhabitants of 31.12.2024 are the first after it, and that is said
-    c.execute("INSERT INTO silver.population SELECT id, 'permanent', '2024-12-31', 9000, '/x', now() FROM gold.municipality")
+    population(c, "2024-12-31", 9000)
     assert client.get("/api/karta.json?l=obshtini&fy=2024&per=resident").json()["population_late"] is True
 
 
@@ -176,19 +172,19 @@ def test_the_map_page_and_its_csv_have_the_same_numbers(client):
 
 
 def test_a_legal_entity_has_a_page_and_a_person_has_none(client, c):
-    oid = c.execute("SELECT org_id FROM gold.org WHERE name_bg LIKE 'БГ Агро Земеделска%%'").fetchone()[0]
+    oid = c.execute("SELECT org_id FROM pub_subsidii.org WHERE name_bg LIKE 'БГ Агро Земеделска%%'").fetchone()[0]
     r = client.get(f"/poluchateli/{oid}")
     assert r.status_code == 200 and "не е доказателство за една и съща фирма" in r.text
     assert "Вълчи Дол" in r.text and len(rows_csv(client.get(f"/export-poluchatel/{oid}.csv"))) >= 2
     assert client.get("/poluchateli/" + names.org_id("физическо лице")).status_code == 404
-    person = c.execute("SELECT holder_id FROM gold.recipient WHERE kind = 'natural' LIMIT 1").fetchone()[0]
+    person = c.execute("SELECT holder_id FROM pub_subsidii.recipient WHERE kind = 'natural' LIMIT 1").fetchone()[0]
     assert client.get(f"/poluchateli/{person}").status_code == 404
 
 
 def test_a_municipality_page_and_its_numbers(client, c):
-    mid = c.execute("SELECT id FROM gold.municipality WHERE name_bg = 'Вълчи Дол'").fetchone()[0]
+    mid = c.execute("SELECT eik FROM pub.municipality WHERE name_bg = 'Вълчи Дол'").fetchone()[0]
     r = client.get(f"/obshtini/{mid}?fy=2025")
-    assert r.status_code == 200 and "Вълчи Дол" in r.text and "физическо лице №" not in r.text
+    assert r.status_code == 200 and "Вълчи Дол" in r.text and "физическо лице №" not in r.text and "***" not in r.text
     js = client.get(f"/api/obshtini/{mid}.json?fy=2025").json()
     assert [y["financial_year"] for y in js["years"]] == [2024, 2025]
     assert client.get("/obshtini/000000000").status_code == 404
@@ -211,13 +207,14 @@ def test_the_sources_page_tells_the_files_the_differences_and_the_licence(client
     assert "399 911,64" in html.replace(" ", " ")
     j = client.get("/sources.json").json()
     ds = j["datasets"][0]
-    assert ds["id"] == "subsidii.paid" and ds["licence"] is None and ds["distributed"] is False and ds["channel"] == "file"
+    assert ds["id"] == "subsidii.paid" and ds["licence"] == "не е посочен" and ds["distributed"] is False and ds["channel"] == "file"
+    assert "1 250 €" in ds["personal_data"]
     assert {y["fy"] for y in j["years"]} == {2024, 2025} and len(j["snapshots"]) == 3
     assert all(s["status"] == "built" for s in j["snapshots"])
 
 
 def test_missing_is_not_zero_on_the_pages(client, c):
-    c.execute("UPDATE gold.fiscal_year SET eur_per_unit = NULL, currency = NULL WHERE fy = 2025")
+    c.execute("UPDATE pub_subsidii.fiscal_year SET eur_per_unit = NULL, currency = NULL WHERE fy = 2025")
     html = client.get("/poluchateli?fy=2025").text
     assert "няма данни" in html
     rows = rows_csv(client.get("/export-poluchateli.csv?fy=2025"))

@@ -10,22 +10,22 @@
   <dt>Защо не по-висок канал</dt><dd>{{ s.dataset.why_not_higher }}</dd>
   <dt>Лиценз</dt><dd>{{ s.dataset.licence or 'не е посочен' }}. {{ s.dataset.licence_note }}</dd>
   <dt>Ритъм</dt><dd>{{ s.dataset.cadence }}; праг за „остаряло“ 8 дни.</dd>
-  <dt>Лични данни</dt><dd>{{ s.dataset.personal_data }}</dd></dl>
+  <dt>Лични данни</dt><dd>{{ s.dataset.personal_data_bg }}</dd></dl>
   <p class="mut">Справката се чете веднъж седмично от архива на Наблюдател; нашият инструмент не праща заявки към ДФЗ.</p></section>
 <section class="p"><h2>Финансови години</h2>
-  <div class="scroll"><table class="sortable"><thead><tr><th>Година</th><th>Първа справка</th><th>Последна справка</th><th>Валута на оригинала</th><th>В справката на ДФЗ</th><th>Имената на лица се виждат до</th></tr></thead><tbody>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Година</th><th>Първа справка</th><th>Последна справка</th><th>Валута на оригинала</th><th>В справката на ДФЗ</th><th>Маската на имената на лица се вижда до</th></tr></thead><tbody>
   {% for y in s.years %}<tr><td>{{ y.label_bg }}</td><td>{{ y.first_snap|date }}</td><td>{{ y.last_snap|date }}</td><td>{{ y.currency or 'не е потвърдена' }}{% if y.unit_evidence %}<details><summary>Доказателство</summary>{{ y.unit_evidence }}</details>{% endif %}</td>
     <td>{% if y.in_form %}да{% else %}не, от {{ y.gone_at|date }} (пазим я){% endif %}</td><td>{{ y.names_until|date }}</td></tr>{% endfor %}</tbody></table></div></section>
 <section class="p"><h2>Прочетени файлове и сверка</h2>
   <div class="scroll"><table class="sortable" id="snapshots"><thead><tr><th>Година</th><th>Файл от</th><th>Състояние</th><th class="n">Редове</th><th class="n">Получателски редове</th><th class="n">Плащания</th><th class="n">Общо (ОБЩО), оригинал</th><th class="n">Разлики в оригинала</th><th>sha256</th></tr></thead><tbody>
   {% for r in s.snapshots %}<tr><td>{{ r.fy }}</td><td>{{ r.day|date }}</td><td>{{ {'built': 'наред', 'held': 'задържан до второ четене', 'invalid': 'невалиден отговор'}.get(r.status, r.status) }}{% if r.note %}<details><summary>Причина</summary>{{ r.note }}</details>{% endif %}</td>
     <td class="n">{{ r.rows_file|num }}</td><td class="n">{{ r.holders|num }}</td><td class="n">{{ r.payments|num }}</td><td class="n">{{ r.total_all|num(2) }}</td><td class="n">{{ r.block_diffs if r.block_diffs is not none else '' }}</td><td><code>{{ r.sha256[:12] }}</code></td></tr>{% endfor %}</tbody></table></div>
-  <p class="mut">Сверка при всеки файл: редовете са равни на броя на архива; във всеки ред ОБЩО ЕЗФРСР + НБ е равно на „ЕЗФРС и НБ“, а ЕФГЗ + „ЕЗФРС и НБ“ на „Обща сума“; плащанията на получателя са равни на реда му ОБЩО, освен в посочените по-долу случаи на самия оригинал; сборът в златото е равен на сбора на файла до стотинка. Разлика означава, че файлът не се публикува.</p></section>
+  <p class="mut">Сверка при всеки файл: редовете са равни на броя на архива; във всеки ред ОБЩО ЕЗФРСР + НБ е равно на „ЕЗФРС и НБ“, а ЕФГЗ + „ЕЗФРС и НБ“ на „Обща сума“; плащанията на получателя са равни на реда му ОБЩО, освен в посочените по-долу случаи на самия оригинал; сборовете по общини са равни на сбора на файла до стотинка. Разлика означава, че файлът не се публикува.</p></section>
 <section class="p"><h2>Разлики в самата справка</h2>
   <p>В {{ s.diff_counts|sum(attribute='blocks') }} случая плащанията на един получател не се събират до неговия ред ОБЩО (в оригинала същото плащане е изброено два пъти и е преброено веднъж). Числата не се поправят; показваме реда ОБЩО като сума на получателя, а плащанията като разбивка по мерки.</p>
   <div class="scroll"><table class="sortable"><thead><tr><th>Година</th><th>Файл от</th><th>Получател</th><th>Община</th><th>Фонд</th><th class="n">ОБЩО</th><th class="n">Сбор на плащанията</th></tr></thead><tbody>
   {% for d in s.diffs %}<tr><td>{{ d.fy }}</td><td>{{ d.day|date }}</td><td>{{ d.name_export }}</td><td>{{ d.obshtina }}</td><td>{{ d.fund }}</td><td class="n">{{ d.stated|num(2) }}</td><td class="n">{{ d.summed|num(2) }}</td></tr>{% else %}<tr><td colspan="7" class="mut">няма</td></tr>{% endfor %}</tbody></table></div></section>
-<section class="p"><h2>Жители</h2><p>За „на жител“: население по постоянен адрес от инструмента „Население“ (ГРАО), копие към {{ s.population.day|date }} за {{ s.population.municipalities }} общини, прочетено {{ s.population.read_at|date }}.</p></section>
+<section class="p"><h2>Жители</h2><p>За „на жител“: население по постоянен адрес от инструмента „Население“ (ГРАО), към {{ s.population.day|date }} за {{ s.population.municipalities }} общини, както ги публикува „Население“.</p></section>
 {% if s.unmatched %}<section class="p warning"><h2>Общини, които не намерихме в списъка</h2>{% for u in s.unmatched %}<p>{{ u.key }}: {{ u.n }} реда ({{ u.reason }})</p>{% endfor %}</section>{% endif %}
 {% if s.held %}<section class="p warning"><h2>Задържани файлове</h2>{% for h in s.held %}<p>{{ h.ref }} от {{ h.first_seen|date }}: {{ h.reason }}</p>{% endfor %}</section>{% endif %}
 <section class="p"><h2>Последни промени</h2><div class="scroll"><table class="sortable"><thead><tr><th>Кога</th><th>Година/дата</th><th>Поле</th><th>Преди</th><th>След</th><th>Причина</th></tr></thead><tbody>

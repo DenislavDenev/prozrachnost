@@ -1,0 +1,81 @@
+# The datasets, the source and the indicators of Субсидии и помощи (read into core.dataset, ops.source, core.indicator by
+# migrate). Whether a dataset may be shown or distributed is not set here: tools/danni/db/licences.toml decides.
+#
+# Two datasets, because the names are only on the ingest side: subsidii.dfz is the landing zone with the names as ДФЗ
+# publishes them (personal_data = names: never in the serving layer or the API); subsidii.paid is everything built from
+# it, where a natural person is a masked name above the threshold of the source and only a sum below it.
+
+[[dataset]]
+dataset = "subsidii.dfz"
+title_bg = "Справката на ДФЗ „Изплатени субсидии“, както е публикувана"
+description_bg = "Редовете на справката с имената на получателите, по финансови години (16.10 до 15.10), като интервали по дните, в които архивът на Наблюдател е прочел файла на годината. Само в приемната зона."
+source_org = "Държавен фонд „Земеделие“"
+source_url = "https://seu.dfz.bg/seu/f?p=727:8110:::NO"
+channel = "file"
+licence = "не е посочен"
+personal_data = "names"
+cadence = "седмично, понеделник; нова финансова година след 15.10"
+tables = ["subsidii_src.beneficiary", "subsidii_src.measure", "subsidii_src.holder", "subsidii_src.payment", "subsidii_src.block_diff", "subsidii_src.line"]
+
+[[dataset]]
+dataset = "subsidii.paid"
+title_bg = "Изплатени земеделски субсидии и помощи по финансови години"
+description_bg = "За всеки получател в община: сумите по фондове (ЕФГЗ, ЕЗФРСР, национален бюджет), по общини, мерки и видове получатели, за всеки прочит на справката. Юридическите лица са с наименованието си; физическите лица и едноличните търговци над прага на ДФЗ (1 250 € за година) са с маска „Иван ***“ до две години след края на годината, под прага само в сборовете. Финансовата година е 16.10 до 15.10 и носи името на годината, в която завършва."
+source_org = "Държавен фонд „Земеделие“"
+source_url = "https://seu.dfz.bg/seu/f?p=727:8110:::NO"
+channel = "file"
+licence = "не е посочен"
+personal_data = "public-role"
+cadence = "седмично, понеделник; нова финансова година след 15.10"
+tables = ["subsidii.source_year", "subsidii.snapshot", "subsidii.fiscal_year", "subsidii.measure", "subsidii.org", "subsidii.beneficiary",
+          "subsidii.place_match", "subsidii.meta", "subsidii.build", "subsidii.summary", "subsidii.municipality_fy", "subsidii.payment_agg",
+          "subsidii.observation", "subsidii.unmatched",
+          "pub_subsidii.fiscal_year", "pub_subsidii.snapshot", "pub_subsidii.build", "pub_subsidii.measure", "pub_subsidii.org",
+          "pub_subsidii.recipient", "pub_subsidii.below_threshold", "pub_subsidii.municipality_fy", "pub_subsidii.payment_agg",
+          "pub_subsidii.summary", "pub_subsidii.concentration", "pub_subsidii.org_measure", "pub_subsidii.block_diff",
+          "pub_subsidii.unmatched", "pub_subsidii.change", "pub_subsidii.health"]
+
+# The archive of Наблюдател reads the report every Monday at 00:30 UTC and this tool builds at 03:20 UTC; the newest file
+# of each year is looked at on every run, so a good run is never older than a week. A held file can be confirmed only
+# by the next weekly read.
+[[source]]
+source = "dfz"
+title_bg = "ДФЗ: изплатени субсидии (от архива на Наблюдател)"
+url = "https://seu.dfz.bg/seu/f?p=727:8110:::NO"
+channel = "file"
+dataset = "subsidii.dfz"
+cadence = "седмично, понеделник"
+stale_after = "8 days"
+hold_alert_after = "8 days"
+
+[[indicator]]
+indicator_code = "subsidii.paid.efgz"
+dataset = "subsidii.paid"
+title_bg = "Изплатено от ЕФГЗ"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сумата в колоната „ЕФГЗ - Общо“ на редовете ОБЩО за общината и финансовата година, превърната в евро по 1,95583, ако е в лева."
+
+[[indicator]]
+indicator_code = "subsidii.paid.ezfrs"
+dataset = "subsidii.paid"
+title_bg = "Изплатено от ЕЗФРСР"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сумата в колоната „ЕЗФРС - Общо“ (само европейският дял)."
+
+[[indicator]]
+indicator_code = "subsidii.paid.nb"
+dataset = "subsidii.paid"
+title_bg = "Изплатено от националния бюджет"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сумата в колоната „НБ - Общо“: националната част от плащанията (в същия ред като европейския дял при мерките за селските райони) и изцяло националните помощи."
+
+[[indicator]]
+indicator_code = "subsidii.paid.total"
+dataset = "subsidii.paid"
+title_bg = "Изплатено общо"
+unit_code = "EUR"
+kind = "flow"
+definition_bg = "Сумата в колоната „Обща сума“: ЕФГЗ плюс ЕЗФРСР и национален бюджет."

@@ -5,10 +5,11 @@ import io
 import json
 from pathlib import Path
 
-from ingest import archive, build, parse
+from ingest import archive, build, config, gold, load, parse, pipeline
 
 FIX = Path(__file__).parent / "fixtures" / "dfz"
 ARCH = {}     # what the archive would hold: {(fy, day): (raw, sha, path)}
+RUN = None    # the run the loads of a test belong to (conftest sets it)
 
 
 def fixture(fy):
@@ -48,13 +49,14 @@ def derive(fy, drop=(), edit=None, keep=None):
     return csv_of(out)
 
 
-def put(c, fy, day, raw, now=None, st=None, archive_rows=None):
-    """The file as the archive would hold it, through the same policy the step uses."""
+def put(c, fy, day, raw, now=None, archive_rows=None):
+    """The file as the archive would hold it, through the same policy the step uses. `now` is when the archive read it."""
     day = dt.date.fromisoformat(day) if isinstance(day, str) else day
     sha = hashlib.sha256(raw).hexdigest()
     snap = archive.Snap(fy, day, sha[:12], f"dfz/{fy}/{day}.{sha[:12]}.csv")
     ARCH[(fy, day)] = (raw, sha, f"/archive/{snap.rel}")
-    return build.build_one(c, snap, raw, sha, ARCH[(fy, day)][2], st=st, now=now, archive_rows=archive_rows, snaps=archive_snaps(), reader=lambda s: ARCH[(s.fy, s.day)])
+    return build.build_one(c, RUN, snap, raw, sha, ARCH[(fy, day)][2], now=now or pipeline.utcnow(), archive_rows=archive_rows,
+                           snaps=archive_snaps(), idx={}, reader=lambda s: (*ARCH[(s.fy, s.day)], None))
 
 
 def archive_snaps():
@@ -62,6 +64,25 @@ def archive_snaps():
     for (fy, day), (raw, sha, path) in sorted(ARCH.items()):
         out.setdefault(fy, []).append(archive.Snap(fy, day, sha[:12], path.removeprefix("/archive/")))
     return out
+
+
+def built(c, *files):
+    """Files written, their aggregates built: what the step dfz does before the rules and the publication."""
+    for fy, day, raw in files:
+        assert put(c, fy, day, raw)[0] == "built"
+    load.load_units(c)
+    out = gold.build_missing(c)
+    assert not out["problems"], out
+    return out
+
+
+def publish(c):
+    """The rules and the publication, as the steps end."""
+    problems = pipeline.run_checks(c, RUN)
+    assert not problems, problems
+    done = pipeline.publish(c, RUN, config.ROOT)
+    assert not done.problems, done.problems
+    return done
 
 
 def archive_dir(tmp_path, files, last_ok="2026-10-02T00:40:00Z", form=(2024, 2025)):
@@ -88,3 +109,9 @@ def rows_count(files, fy):
 
 def count(c, sql, *a):
     return c.execute(sql, a).fetchone()[0]
+
+
+def population(c, day, persons=10000):
+    """The registrations of every municipality on `day`, as Население publishes them (pub_naselenie)."""
+    c.execute("""INSERT INTO pub_naselenie.population (as_of, table_kind, municipality_code, permanent, current, both_here)
+                 SELECT %s, 'monthly', municipality_code, %s, %s, 0 FROM pub.municipality ON CONFLICT DO NOTHING""", (day, persons, persons))

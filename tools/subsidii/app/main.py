@@ -5,6 +5,7 @@ import io
 import json
 import os
 from decimal import Decimal
+from email.utils import format_datetime
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -15,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from markupsafe import Markup
 
-from ingest import checks, config, db
+from ingest import config
 from . import feedback, help as H, queries as Q
 
 ROOT = Path(__file__).resolve().parent
@@ -24,6 +25,26 @@ app = FastAPI(title="Субсидии и помощи", docs_url=None, redoc_url
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 app.include_router(feedback.router("DenislavDenev/prozrachnost", Path(os.environ.get("SUBSIDII_FEEDBACK", str(config.DATA / "feedback"))), "Субсидии и помощи"))
 t = Jinja2Templates(directory=ROOT / "templates")
+
+
+@app.middleware("http")
+async def one_snapshot(request: Request, call_next):
+    """Every request reads one snapshot of the serving layer, and its answer says which publication that is: a cache in
+    front of the site keeps an answer until the number moves, and it moves only when the published content does."""
+    if request.url.path.startswith("/static"):
+        return await call_next(request)
+    with Q.snapshot() as c:
+        token = Q.CONN.set(c)
+        try:
+            v = Q.version()
+            response = await call_next(request)
+        finally:
+            Q.CONN.reset(token)
+    if v:
+        response.headers["X-Publication"] = str(v["publication_id"])
+        response.headers["ETag"] = 'W/"pub-%s"' % v["publication_id"]
+        response.headers["Last-Modified"] = format_datetime(v["published_at"].astimezone(dt.timezone.utc), usegmt=True)
+    return response
 MENU = [("Табло", "/"), ("Карта", "/karta"), ("Фондове и мерки", "/merki"), ("Получатели", "/poluchateli"), ("Общини", "/obshtini"),
         ("Сравнение", "/sravnenie"), ("Източници", "/sources")]
 SOURCE_NAME = "ДФЗ, справка „Изплатени субсидии“"
@@ -128,9 +149,8 @@ async def http_error(request: Request, exc: StarletteHTTPException):
 
 @app.get("/healthz")
 def health():
-    with db.connect() as c:
-        c.execute("SELECT 1")
-    return {"ok": True}
+    v = Q.version()
+    return {"ok": True, "publication": v and v["publication_id"]}
 
 
 @app.get("/favicon.svg")
@@ -452,15 +472,13 @@ def sravnenie_csv(a_fy: str = None, a_snap: str = None, b_fy: str = None, b_snap
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources(request: Request):
-    with db.connect() as c:
-        problems = checks.freshness(c)
+    problems = Q.problems()
     return render(request, "sources.html", nav="Източници", s=Q.sources(), problems=problems)
 
 
 @app.get("/sources.json")
 def sources_json():
-    with db.connect() as c:
-        problems = checks.freshness(c)
+    problems = Q.problems()
     s = Q.sources()
     ds = s["dataset"]
     return serial(dict(tool="subsidii", problems=problems, years=[dict(fy=y["fy"], label=y["label_bg"], currency=y["currency"], in_form=y["in_form"], gone_at=y["gone_at"], first_snapshot=y["first_snap"],
@@ -468,7 +486,7 @@ def sources_json():
                        snapshots=[dict(fy=r["fy"], day=r["day"], status=r["status"], rows=r["rows_file"], recipient_rows=r["holders"], payments=r["payments"], total=r["total_all"],
                                        differences_in_source=r["block_diffs"], sha256=r["sha256"]) for r in s["snapshots"]],
                        datasets=[dict(id=ds["id"], title=ds["title_bg"], channel=ds["channel"], why_not_higher=ds["why_not_higher"], licence=ds["licence"], licence_note=ds["licence_note"],
-                                      distributed=ds["distributed"], cadence=ds["cadence"], personal_data=ds["personal_data"], source_url=ds["source_url"],
+                                      distributed=ds["distributed"], cadence=ds["cadence"], personal_data=ds["personal_data_bg"], source_url=ds["source_url"],
                                       coverage_from=str(min((y["first_snap"] for y in s["years"] if y["first_snap"]), default="")) or None)],
                        residents=dict(date=s["population"]["day"], municipalities=s["population"]["municipalities"])))
 

@@ -244,3 +244,12 @@ dataset = "parlament.reads"
 checked_on = 2026-11-13
 display = true
 note = "derived from the reads of parliament.bg (the time and the result of each read); follows the datasets of Парламент"
+
+# Субсидии и помощи (the move into the shared database, 24.11.2026). The report of ДФЗ states no licence; it is published
+# by Regulation (EU) 2021/2116, art. 98. subsidii.dfz, the landing zone with the names, is not listed: it is never shown.
+
+[[licence]]
+dataset = "subsidii.paid"
+checked_on = 2026-10-02
+display = true
+note = "the report of a state body (ДФЗ) published by Regulation (EU) 2021/2116, art. 98, no licence stated: shown with a link to the source, not handed out; natural persons masked above the threshold of the source and only summed below it"
