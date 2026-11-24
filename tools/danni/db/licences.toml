@@ -198,3 +198,21 @@ dataset = "sigurnost.bulletin"
 checked_on = 2026-10-02
 display = true
 note = "the list of the monthly bulletin on data.egov.bg (CC0): only the names, months and links are kept; the PDF files on mvr.bg are not read"
+
+[[licence]]
+dataset = "sobstvenost.appk"
+checked_on = 2026-10-02
+display = true
+note = "the register of public enterprises of АППК, '© Агенция за публичните предприятия и контрол. Всички права запазени.', no free licence: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "sobstvenost.ncr"
+checked_on = 2026-10-02
+display = true
+note = "the National Concession Register, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "sobstvenost.archive"
+checked_on = 2026-11-24
+display = true
+note = "derived from the two datasets of Собственост (the state of each read, the versions of profiles and reports, the archived files by sha256); follows them"

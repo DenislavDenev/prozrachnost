@@ -36,18 +36,23 @@ def test_actual_legacy_mining_notice():
     assert opened['concessionaire_eik']=='110550933' and opened['term_months']==420
     assert 'Срок' not in opened['location_original']
 
-def test_resume_rejects_corrupted_original(tmp_path):
-    import hashlib
-    from ingest.run import archive
-    original=tmp_path/'original';original.write_bytes(b'changed')
-    class Result:
-        def fetchone(self):return (str(original),hashlib.sha256(b'original').hexdigest(),8)
-    class Conn:
-        def execute(self,*args):return Result()
-    class Client:
-        raws={}
-    with pytest.raises(parse.ShapeError,match='Corrupted original'):
-        archive(Conn(),Client(),'appk','https://example.test',resume=True)
+def test_beach_notice_under_black_sea_coast_act():
+    # concession 398 of the register stopped the read of 02.10.2026: a form the parser did not know
+    row=parse.assigned_notice((P/'ncr-beach-8r.html').read_bytes())
+    assert row['location_places']==[dict(oblast='Добрич',municipality='Шабла')]
+    assert row['concessionaire_eik']=='131376610' and row['concessionaire_name']=='Орхи ЕООД' and row['term_months']==180
+    with pytest.raises(parse.ShapeError):parse.assigned_notice('<html><body>ОБЯВЛЕНИЕ ЗА НЕЩО ДРУГО 7.3. Местонахождение на обекта на концесията: Област: А, Община: Б 7.4.</body></html>'.encode())
+
+def test_a_concessionaire_who_is_not_a_legal_entity():
+    from ingest.privacy import is_person
+    # names as the register wrote them (read 02.10.2026)
+    for name in ['ЕТ "Веси-Веселка Капитанска"','ЕТ"Михаил Калайджиев"','ЗП  "Иван Димитров Иванов"','ЗП АЛИ ХАЛИЛ МЕХМЕДАЛИ','Марин Василев Стефанов']:
+        assert is_person(name),name
+    for name in ['"АЛБЕНА" АД','"ДЖИ ЕМ АЙ ПЛЕЙС"ЕООД','„Орхи“ ЕООД','ЕСКАНА АД, гр. Варна','"ПРОУЧВАНЕ И ДОБИВ НА НЕФТ И ГАЗ" ЕАД гр. ПЛЕВЕН','КОЛОВАГ АД','Община Бургас']:
+        assert not is_person(name),name
+    # a sole trader stays a person even when the name of its firm carries a word of a company form (example, not read)
+    assert is_person('ЕТ "СТРОЙ АД - Иван Петров"') and is_person('ЗП ООД-ОВ ПЕТЪР')
+    assert not is_person(None) and not is_person('')
 from ingest import parse,store
 P=Path(__file__).parent/'fixtures'
 

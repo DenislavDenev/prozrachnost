@@ -22,15 +22,27 @@ def test_deadline_does_not_start_request_that_crosses_budget(monkeypatch):
     with pytest.raises(progress.BudgetReached):deadline.require(90)
     deadline.require(10)
 
-def test_real_job_budget_is_pending_without_full_success(conn,tmp_path,monkeypatch,capsys):
-    import os,sys,psycopg
-    from ingest import run,db,store
-    monkeypatch.setattr(progress,'DATA',tmp_path)
-    monkeypatch.setattr(db,'connect',lambda **kw:psycopg.connect(os.environ['SOBSTVENOST_TEST_DSN'],**kw))
-    store.apply(conn,'appk','catalogue',[dict(id='105',source_url='https://example.invalid/profile')],1)
-    monkeypatch.setattr(sys,'argv',['run','--step','appk-details','--budget-seconds','1'])
-    assert run.main()==0
-    assert json.loads(capsys.readouterr().out)['pending'] is True
-    assert conn.execute("SELECT status,last_success FROM ops.source_state WHERE scope='details'").fetchone()==('partial',None)
-    assert conn.execute('SELECT status,error FROM ops.job_run').fetchone()==('ok',None)
-    assert progress.pending('appk','details')
+def test_real_job_budget_is_pending_without_full_success(conn, dsn, monkeypatch, capsys):
+    from ingest import pipeline, run, store
+    from . import seed
+    monkeypatch.setattr(run, 'DSN', dsn)
+    rows, manifest = seed.enterprises()
+    with pipeline.run(conn, 'sobstvenost', 'appk') as r:
+        store.load_catalogue(conn, r, 'appk', 'catalogue', rows, manifest)
+    # one second is less than any request needs: nothing is read, the pass waits for the next run
+    assert run.main(['--step', 'appk-details', '--budget-seconds', '1']) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])['pending'] is True
+    assert conn.execute("SELECT status, error FROM ops.run WHERE tool = 'sobstvenost' AND step = 'appk-details'").fetchone() == ('ok', None)
+    assert progress.pending('appk', 'details')
+    assert conn.execute("SELECT count(*) FROM ops.load WHERE tool = 'sobstvenost' AND source = 'appk-full'").fetchone()[0] == 0
+    assert any('профили: partial' in p for p in run.freshness(conn))
+
+
+def test_safe_budget_never_runs_into_the_day_windows():
+    import datetime as dt
+    from ingest.run import safe_budget
+    at = lambda h, m: dt.datetime(2026, 11, 29, h, m, tzinfo=dt.timezone.utc)
+    assert safe_budget(19800, at(0, 15)) == 19800
+    assert safe_budget(None, at(5, 0)) == 45 * 60
+    assert safe_budget(19800, at(6, 0)) == 0 and safe_budget(19800, at(18, 0)) == 0
+    assert safe_budget(19800, at(22, 30)) == 19800

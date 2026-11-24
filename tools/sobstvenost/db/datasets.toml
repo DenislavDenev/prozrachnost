@@ -1,0 +1,117 @@
+# The datasets and sources of Държавна собственост. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# АППК states "All rights reserved" and the NCR states no licence (private docs/plans/LICENCES.md): shown with a link
+# to the source, not handed out.
+
+[[dataset]]
+dataset = "sobstvenost.appk"
+title_bg = "Регистър на публичните предприятия (АППК)"
+description_bg = "Каталогът на публичните предприятия и на министерствата, профилът на всяко предприятие (ЕИК, правна форма, принципал, категория, членове на органите на управление и контрол) и метаданните на годишните и тримесечните му отчети с документите им. Финансовите числа не се извличат."
+source_org = "Агенция за публичните предприятия и контрол"
+source_url = "https://reports.appk.government.bg/Public/Public/Companies"
+channel = "html"
+licence = "© Агенция за публичните предприятия и контрол. Всички права запазени."
+personal_data = "public-role"
+cadence = "всяка седмица"
+tables = ["pub_sobstvenost.enterprise", "pub_sobstvenost.profile", "pub_sobstvenost.board_entry", "pub_sobstvenost.report",
+          "pub_sobstvenost.report_document",
+          "sobstvenost.enterprise", "sobstvenost.ministry", "sobstvenost.profile", "sobstvenost.report", "sobstvenost.report_document",
+          "sobstvenost_src.enterprise", "sobstvenost_src.ministry", "sobstvenost_src.profile", "sobstvenost_src.board_entry",
+          "sobstvenost_src.report", "sobstvenost_src.report_document"]
+
+[[dataset]]
+dataset = "sobstvenost.ncr"
+title_bg = "Национален концесионен регистър"
+description_bg = "Партидите на концесиите (вид, предмет, концедент, статус) и прочетените им обявления за възложена концесия: концесионер, срок и място на изпълнение, както са написани. Името на концесионер, който не е юридическо лице, не се преиздава."
+source_org = "Национален концесионен регистър"
+source_url = "https://ncr.government.bg/Concessions"
+channel = "html"
+licence = "Не е установен свободен лиценз"
+cadence = "всяка седмица"
+tables = ["pub_sobstvenost.concession", "pub_sobstvenost.concession_profile", "pub_sobstvenost.concession_document",
+          "pub_sobstvenost.notice", "pub_sobstvenost.notice_place", "pub_sobstvenost.notice_municipality",
+          "sobstvenost.concession", "sobstvenost.concession_profile", "sobstvenost.concession_document", "sobstvenost.notice",
+          "sobstvenost.notice_place", "sobstvenost.notice_municipality",
+          "sobstvenost_src.concession", "sobstvenost_src.concession_profile", "sobstvenost_src.concession_document",
+          "sobstvenost_src.notice", "sobstvenost_src.notice_place", "sobstvenost_src.notice_municipality"]
+
+[[dataset]]
+dataset = "sobstvenost.archive"
+title_bg = "Архивът на Държавна собственост: прочитите, версиите и файловете"
+description_bg = "Кога и как е прочетен всеки каталог, всяка версия на профил и на отчет (така се пази бордът по наблюдение) и архивираните оригинални файлове по sha256. Следва двата набора, от които е."
+source_org = "Прозрачност"
+channel = "derived"
+licence = "Не е установен свободен лиценз"
+personal_data = "public-role"
+cadence = "с всеки прочит"
+tables = ["pub_sobstvenost.profile_version", "pub_sobstvenost.report_version", "pub_sobstvenost.report_version_document",
+          "pub_sobstvenost.attachment", "pub_sobstvenost.source_state",
+          "sobstvenost_src.read", "sobstvenost_src.full_read", "sobstvenost_src.attachment"]
+
+[[source]]
+source = "appk"
+title_bg = "АППК, каталогът на предприятията и министерствата"
+url = "https://reports.appk.government.bg/Public/Public/Companies"
+channel = "html"
+dataset = "sobstvenost.appk"
+cadence = "неделя 00:15 UTC"
+stale_after = "9 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "ncr"
+title_bg = "НКР, търсенето на всички партиди"
+url = "https://ncr.government.bg/Concessions"
+channel = "html"
+dataset = "sobstvenost.ncr"
+cadence = "неделя 00:15 UTC"
+stale_after = "9 days"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "appk-details"
+title_bg = "АППК, профил и отчети на едно предприятие"
+url = "https://reports.appk.government.bg/Public/Public/Companies"
+channel = "html"
+dataset = "sobstvenost.appk"
+cadence = "с пълния прочит"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "ncr-details"
+title_bg = "НКР, партида с документите и обявленията"
+url = "https://ncr.government.bg/Concessions"
+channel = "html"
+dataset = "sobstvenost.ncr"
+cadence = "с пълния прочит"
+hold_alert_after = "8 days"
+
+[[source]]
+source = "appk-full"
+title_bg = "АППК, пълен прочит на профилите и отчетите"
+channel = "derived"
+dataset = "sobstvenost.archive"
+cadence = "неделя 00:15 UTC, с бюджет от време"
+stale_after = "9 days"
+
+[[source]]
+source = "ncr-full"
+title_bg = "НКР, пълен прочит на партидите и обявленията"
+channel = "derived"
+dataset = "sobstvenost.archive"
+cadence = "неделя 00:15 UTC, с бюджет от време"
+stale_after = "9 days"
+
+[[source]]
+source = "appk-files"
+title_bg = "АППК, файловете на последния годишен отчет"
+channel = "document"
+dataset = "sobstvenost.archive"
+cadence = "8-о число 00:15 UTC, продължава всяка нощ"
+
+[[source]]
+source = "ncr-files"
+title_bg = "НКР, файловете на партидите"
+channel = "document"
+dataset = "sobstvenost.archive"
+cadence = "8-о число 00:15 UTC, продължава всяка нощ"

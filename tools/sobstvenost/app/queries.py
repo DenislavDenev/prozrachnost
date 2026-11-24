@@ -1,27 +1,177 @@
-import csv,io,datetime as dt
-from collections import Counter,defaultdict
-from pathlib import Path
-from urllib.parse import urlencode
-from psycopg.rows import dict_row
-from ingest import db
-from ingest.config import ROOT
+"""What the pages read: the serving layer only (pub_sobstvenost.* and pub.*). Not the clean tables, not the landing
+zone, not the ledger: the web role has no right to them.
 
-REF=list(csv.DictReader((ROOT/'db/ref/municipality.csv').open(encoding='utf-8')))
+One request is one snapshot: every query of a request sees the same publication, never a mix. The tables of a
+publication are turned into the records the pages have always used (one dict per enterprise, report, concession,
+profile and version, as the parser gave them), once per publication, and shared by the requests that show it."""
+import contextlib
+import contextvars
+import csv
+import datetime as dt
+import io
+import threading
+from collections import Counter, defaultdict
+from urllib.parse import urlencode
+
+import psycopg
+
+from ingest.config import DSN
+
 LEVELS=[('obshtini','Общини'),('oblasti','Области'),('rayoni','Райони'),('makrorayoni','Макрорайони'),('darzhava','Държава')]
 NUTS=dict(obshtini=4,oblasti=3,rayoni=2,makrorayoni=1,darzhava=0)
 REGIONS={'BG31':'Северозападен','BG32':'Северен централен','BG33':'Североизточен','BG34':'Югоизточен','BG41':'Югозападен','BG42':'Южен централен','BG3':'Северна и Югоизточна България','BG4':'Югозападна и Южна централна България'}
 
-def records(source,scope):
-    with db.connect() as c:return [r[0] for r in c.execute('SELECT payload FROM live.record WHERE source=%s AND scope=%s AND gone_at IS NULL ORDER BY ref',(source,scope))]
+_lock = threading.Lock()
+_cache = {}
+_state = contextvars.ContextVar('state', default=None)
+
+
+@contextlib.contextmanager
+def snapshot():
+    """A read-only connection whose every statement sees the database as of its first one."""
+    with psycopg.connect(DSN) as c:
+        c.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+        c.read_only = True
+        yield c
+
+
+def version(c):
+    """(number, time) of the publication this snapshot shows; None before the first one."""
+    return c.execute("SELECT publication_id, published_at FROM pub.publication WHERE tool = 'sobstvenost' "
+                     'ORDER BY publication_id DESC LIMIT 1').fetchone()
+
+
+def _dicts(c, sql, params=()):
+    cur = c.execute(sql, params)
+    names = [d.name for d in cur.description]
+    return [dict(zip(names, v)) for v in cur.fetchall()]
+
+
+def _text(v):
+    """A value as the parser gave it: the published percentage and the dates as text."""
+    if v is None:
+        return None
+    if isinstance(v, dt.date) and not isinstance(v, dt.datetime):
+        return v.isoformat()
+    return str(v)
+
+
+def build(c):
+    """Every record of the publication as the pages read it."""
+    catalogue = {}
+    catalogue['appk'] = [dict(id=x['appk_id'], name=x['name'], status=x['status'], source_url=x['source_url'],
+                              source_warning=x['source_warning'], share_pct=_text(x['share_pct']), owner=x['owner'],
+                              share_text=x['share_text'], participation=x['participation'])
+                         for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.enterprise ORDER BY appk_id COLLATE "C"')]
+    catalogue['ncr'] = [dict({k: x[k] for k in ('reg_number', 'status', 'procedure_status', 'name', 'kind', 'subject', 'area_extent',
+                                                 'conceder', 'related_id', 'related_reg', 'source_url')},
+                             id=x['concession_id'], municipalities=[], concessionaire_eik=None)
+                        for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.concession ORDER BY concession_id COLLATE "C"')]
+    profiles = {'appk': {}, 'ncr': {}}
+    for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.profile ORDER BY appk_id COLLATE "C"'):
+        profiles['appk'][x['appk_id']] = dict({k: v for k, v in x.items() if k not in ('appk_id', 'report_count')},
+                                              id=x['appk_id'], reports=x['report_count'])
+    boards = defaultdict(list)
+    for b in _dicts(c, 'SELECT * FROM pub_sobstvenost.board_entry ORDER BY appk_id, sha256, position'):
+        boards[(b['appk_id'], b['sha256'])].append(dict(name=b['member_name'], country=b['country']) if b['entry'] is None
+                                                   else dict(original=b['entry'], verbatim=True))
+    versions = defaultdict(list)
+    for v in _dicts(c, 'SELECT * FROM pub_sobstvenost.profile_version ORDER BY observed_at, sha256 COLLATE "C"'):
+        versions[v['appk_id']].append(dict(payload=dict(board=boards[(v['appk_id'], v['sha256'])], board_format=v['board_format']),
+                                           observed_at=v['observed_at'], sha256=v['sha256']))
+    for appk_id, p in profiles['appk'].items():
+        if versions[appk_id]:
+            p['board'] = versions[appk_id][-1]['payload']['board']
+    documents = defaultdict(list)
+    for d in _dicts(c, 'SELECT * FROM pub_sobstvenost.report_document ORDER BY appk_id, record_id, position'):
+        documents[(d['appk_id'], d['record_id'])].append(dict(id=d['document_id'], title=d['title'], url=d['url']))
+    reports = defaultdict(list)
+    for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.report ORDER BY appk_id, record_id COLLATE "C"'):
+        reports[x['appk_id']].append(dict(id=x['record_id'], report_id=x['report_id'], kind=x['kind'], year=x['year'],
+                                          quarter=x['quarter'], filed_on=_text(x['filed_on']), title=x['title'],
+                                          documents=documents[(x['appk_id'], x['record_id'])], source_url=x['source_url'],
+                                          financials=None, appk_id=x['appk_id']))
+    vdocs = defaultdict(list)
+    for d in _dicts(c, 'SELECT * FROM pub_sobstvenost.report_version_document ORDER BY appk_id, record_id, sha256, position'):
+        vdocs[(d['appk_id'], d['record_id'], d['sha256'])].append(dict(id=d['document_id'], title=d['title'], url=d['url']))
+    report_versions = defaultdict(list)
+    for v in _dicts(c, 'SELECT * FROM pub_sobstvenost.report_version ORDER BY observed_at DESC, record_id COLLATE "C", sha256 COLLATE "C"'):
+        report_versions[v['appk_id']].append(dict(
+            payload=dict(id=v['record_id'], report_id=v['report_id'], kind=v['kind'], year=v['year'],
+                         documents=vdocs[(v['appk_id'], v['record_id'], v['sha256'])]),
+            observed_at=v['observed_at'], sha256=v['sha256']))
+    places, names, notices, cdocs = defaultdict(list), defaultdict(list), defaultdict(list), defaultdict(list)
+    for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.notice_place ORDER BY concession_id, notice_position, position'):
+        places[(x['concession_id'], x['notice_position'])].append(dict(oblast=x['oblast'], municipality=x['municipality']))
+    for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.notice_municipality ORDER BY concession_id, notice_position, position'):
+        names[(x['concession_id'], x['notice_position'])].append(x['name'])
+    for n in _dicts(c, 'SELECT * FROM pub_sobstvenost.notice ORDER BY concession_id, position'):
+        key = (n['concession_id'], n['position'])
+        notices[n['concession_id']].append(dict(municipality_names=names[key], location_places=places[key],
+                                                location_original=n['location_original'], concessionaire_eik=n['concessionaire_eik'],
+                                                concessionaire_name=n['concessionaire_name'], term_months=n['term_months'],
+                                                financials=None, source_url=n['source_url']))
+    for d in _dicts(c, 'SELECT * FROM pub_sobstvenost.concession_document ORDER BY concession_id, position'):
+        cdocs[d['concession_id']].append(dict(url=d['url'], title=d['title']))
+    for x in _dicts(c, 'SELECT * FROM pub_sobstvenost.concession_profile ORDER BY concession_id COLLATE "C"'):
+        cid = x['concession_id']
+        profiles['ncr'][cid] = dict(documents=cdocs[cid], notices=notices[cid], id=cid, source_url=x['source_url'])
+    archives = defaultdict(lambda: defaultdict(list))
+    for a in _dicts(c, 'SELECT * FROM pub_sobstvenost.attachment ORDER BY first_seen DESC, sha256'):
+        owner = a['appk_id'] if a['source'] == 'appk' else a['concession_id']
+        archives[(a['source'], owner)][a['url']].append(dict(url=a['url'], sha256=a['sha256'], media_type=a['media_type'],
+                                                             first_seen=a['first_seen']))
+    saved = _dicts(c, 'SELECT * FROM pub_sobstvenost.source_state ORDER BY source, scope')
+    states = [s for s in saved if s['scope'] != 'read_profiles'] + [s for s in saved if s['scope'] == 'read_profiles']
+    return dict(catalogue=catalogue, profiles=profiles, versions=versions, reports=reports, report_versions=report_versions,
+                archives=archives, states=states, places=_places(c))
+
+
+def _places(c):
+    """The 265 municipalities of the shared serving layer: the ЕИК of the municipality (the code of its contour), its
+    name, the oblast and the codes of the oblast, region and macro-region."""
+    return [dict(id=r[0], name_bg=r[1], oblast=r[2], nuts3=r[3], nuts2=r[4], nuts1=r[5]) for r in c.execute(
+        '''SELECT m.eik, m.name_bg, o.label_bg, o.nuts3_code, n3.parent_code, n2.parent_code
+           FROM pub.municipality m JOIN pub.oblast o USING (oblast_code)
+           JOIN pub.nuts n3 ON n3.nuts_code = o.nuts3_code JOIN pub.nuts n2 ON n2.nuts_code = n3.parent_code
+           WHERE NOT m.is_gone ORDER BY m.municipality_code''')]
+
+
+def load(c):
+    """The records of the publication this snapshot shows, built once per publication."""
+    v = version(c)
+    key = v[0] if v else None
+    with _lock:
+        if _cache.get('key', -1) != key or 'data' not in _cache:
+            _cache.update(key=key, data=build(c))
+        return v, _cache['data']
+
+
+def use(c, state):
+    return _state.set(dict(state, conn=c))
+
+
+def current():
+    """The state of this request; outside a request (a test, a script) the publication of a fresh snapshot."""
+    state = _state.get()
+    if state is None:
+        with snapshot() as c:
+            state = load(c)[1]
+    return state
+
+
+def records(source, scope):
+    if scope != 'catalogue':
+        raise ValueError('only the catalogues are lists of records')
+    return current()['catalogue'][source]
+
+
 def states():
-    with db.connect(row_factory=dict_row) as c:
-        result=c.execute("SELECT * FROM ops.source_state WHERE scope NOT LIKE 'profile:%%' AND scope NOT LIKE 'reports:%%' ORDER BY source,scope").fetchall()
-        for source in ('appk','ncr'):
-            row=c.execute("SELECT count(*) AS rows,max(last_success) AS last_success,max(last_read) AS last_read FROM ops.source_state WHERE source=%s AND scope LIKE 'profile:%%' AND status='ok'",(source,)).fetchone()
-            if row['rows']:result.append(dict(row,source=source,scope='read_profiles',status='partial',error='Това е броят на отделно прочетените профили. Пълното наваксване има отделен статус.'))
-        return result
+    return current()['states']
+
+
 def profiles(source):
-    with db.connect() as c:return {r[0]:r[1] for r in c.execute("SELECT ref,payload FROM live.record WHERE source=%s AND scope LIKE 'profile:%%' AND gone_at IS NULL",(source,))}
+    return current()['profiles'][source]
 
 def enterprises(principal='',participation='',status='',q='',sort='name',direction='asc'):
     details=profiles('appk');rows=[];catalogue=records('appk','catalogue')
@@ -59,19 +209,12 @@ def enterprise(id):
     row=next((r for r in records('appk','catalogue') if r['id']==id),None)
     if row is None:return None
     allprofiles=profiles('appk');detail=allprofiles.get(id)
-    with db.connect(row_factory=dict_row) as c:
-        versions=c.execute("SELECT payload,observed_at,sha256 FROM ops.version WHERE source='appk' AND scope=%s ORDER BY observed_at",('profile:'+id,)).fetchall()
-        report_versions=c.execute("SELECT payload,observed_at,sha256 FROM ops.version WHERE source='appk' AND scope=%s ORDER BY observed_at DESC",('reports:'+id,)).fetchall()
+    state=current()
     link_eik=detail.get('eik') if detail and detail.get('eik') and sum(p.get('eik')==detail['eik'] for p in allprofiles.values())==1 else None
-    return dict(row=row,detail=detail,link_eik=link_eik,reports=records('appk','reports:'+id),versions=versions,report_versions=report_versions,archives=document_versions('appk',id))
+    return dict(row=row,detail=detail,link_eik=link_eik,reports=state['reports'].get(id,[]),versions=state['versions'].get(id,[]),report_versions=state['report_versions'].get(id,[]),archives=document_versions('appk',id))
 
 def document_versions(source,id):
-    key='appk_id' if source=='appk' else 'ncr_id'
-    with db.connect(row_factory=dict_row) as c:
-        rows=c.execute('SELECT url,sha256,media_type,first_seen FROM ops.document_file WHERE source=%s AND metadata->>%s=%s ORDER BY first_seen DESC',(source,key,id)).fetchall()
-    result=defaultdict(list)
-    for row in rows:result[row['url']].append(row)
-    return result
+    return current()['archives'].get((source,id),{})
 
 def concession(id):
     row=next((r for r in records('ncr','catalogue') if r['id']==id),None)
@@ -79,7 +222,7 @@ def concession(id):
     return dict(row=row,detail=profiles('ncr').get(id))
 
 def csv_response(rows,fields):
-    out=io.StringIO();out.write('\ufeff');writer=csv.DictWriter(out,fields,extrasaction='ignore');writer.writeheader()
+    out=io.StringIO();out.write('﻿');writer=csv.DictWriter(out,fields,extrasaction='ignore');writer.writeheader()
     for row in rows:
         result={k:('; '.join(row[k]) if isinstance(row.get(k),list) else row.get(k)) for k in fields}
         # Spreadsheet formulas from source-controlled text must never execute.
@@ -90,6 +233,7 @@ def csv_response(rows,fields):
 def mapdata(l='obshtini',kind='',status='',conceder='',q='',subject='',municipality=''):
     if l not in NUTS:raise ValueError('invalid map level')
     d=concessions(kind=kind,status=status,conceder=conceder,q=q,subject=subject,municipality=municipality)
+    REF=current()['places']
     byname=defaultdict(list)
     for ref in REF:byname[ref['name_bg'].casefold()].append(ref)
     members=defaultdict(set);mapped=set();unmatched=set()

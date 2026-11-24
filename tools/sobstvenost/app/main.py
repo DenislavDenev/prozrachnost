@@ -1,17 +1,38 @@
-import os,json,hashlib
+import contextlib,datetime as dt,os,json,hashlib
+from email.utils import format_datetime
 from pathlib import Path
 from fastapi import FastAPI,Request,HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse,Response,JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup
-from ingest import db
 from ingest.config import DATA
 from . import queries as Q,feedback
 
 ROOT=Path(__file__).parent
 ASSET_VERSION=hashlib.sha256(b''.join((ROOT/'static'/name).read_bytes() for name in ('app.css','app.js','karta.js','state-help.js'))).hexdigest()[:12]
 app=FastAPI(title='Държавна собственост',docs_url=None,redoc_url=None)
+
+DATA_FREE=('/static/','/favicon.svg','/feedback','/podkrepi')
+def _open(stack):
+    c=stack.enter_context(Q.snapshot());v,state=Q.load(c);return c,v,state
+
+@app.middleware('http')
+async def publication(request:Request,call_next):
+    """Every answer built from the data is read in one snapshot of the serving layer and says which publication it
+    is of. A cache in front of the site keeps an answer until this number moves; it moves only with the content."""
+    if request.url.path.startswith(DATA_FREE) or request.method!='GET':return await call_next(request)
+    with contextlib.ExitStack() as stack:
+        c,v,state=await run_in_threadpool(_open,stack)
+        token=Q.use(c,state)
+        try:response=await call_next(request)
+        finally:Q._state.reset(token)
+    if v:
+        response.headers['X-Publication']=str(v[0]);response.headers['ETag']=f'W/"pub-{v[0]}"'
+        response.headers['Last-Modified']=format_datetime(v[1].astimezone(dt.timezone.utc),usegmt=True)
+    return response
+
 app.mount('/static',StaticFiles(directory=ROOT/'static'),name='static')
 app.include_router(feedback.router('DenislavDenev/prozrachnost',Path(os.environ.get('SOBSTVENOST_FEEDBACK',str(DATA/'feedback'))),'Държавна собственост'))
 t=Jinja2Templates(directory=ROOT/'templates')
@@ -25,7 +46,7 @@ def serial(data):return JSONResponse(json.loads(json.dumps(data,default=str,ensu
 
 @app.get('/healthz')
 def health():
-    with db.connect() as c:c.execute('SELECT 1')
+    Q.current()['conn'].execute('SELECT 1')
     return dict(ok=True)
 @app.get('/favicon.svg')
 def icon():return Response((ROOT/'static/favicon.svg').read_text(),media_type='image/svg+xml')

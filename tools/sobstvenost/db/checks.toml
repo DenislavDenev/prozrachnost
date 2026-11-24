@@ -1,0 +1,141 @@
+# The quality rules of Държавна собственост: rows in ops.check_rule, results in ops.check_result.
+# A rule returns one row: (expected, actual); it holds when |actual - expected| <= tolerance.
+# The reader keeps the rules of one read (every page of a catalogue, the counters of the source, no duplicate id):
+# a read that breaks them is refused before anything is written.
+
+[[check]]
+name = "appk_active_count"
+title_bg = "Активните предприятия в действащия прочит са колкото брояча на началната страница на АППК"
+kind = "reconcile"
+dataset = "sobstvenost.appk"
+sql = """SELECT r.source_count, (SELECT count(*) FROM sobstvenost_src.enterprise e WHERE e.load_id = r.load_id AND e.status = 'Активно')
+  FROM sobstvenost_src.read r JOIN ops.load l USING (load_id)
+  WHERE l.tool = 'sobstvenost' AND l.source = 'appk' AND l.ref = 'catalogue' AND l.is_current
+  UNION ALL SELECT 0, 0 LIMIT 1"""
+
+[[check]]
+name = "appk_active_ministries"
+title_bg = "Активните министерства в действащия прочит са колкото брояча на началната страница на АППК"
+kind = "reconcile"
+dataset = "sobstvenost.appk"
+sql = """SELECT r.source_count, (SELECT count(*) FROM sobstvenost_src.ministry m WHERE m.load_id = r.load_id AND m.status = 'Активно')
+  FROM sobstvenost_src.read r JOIN ops.load l USING (load_id)
+  WHERE l.tool = 'sobstvenost' AND l.source = 'appk' AND l.ref = 'ministries' AND l.is_current
+  UNION ALL SELECT 0, 0 LIMIT 1"""
+
+[[check]]
+name = "ncr_source_count"
+title_bg = "Партидите в действащия прочит на НКР са колкото „Общо“ в търсенето"
+kind = "reconcile"
+dataset = "sobstvenost.ncr"
+sql = """SELECT r.source_count, (SELECT count(*) FROM sobstvenost_src.concession c WHERE c.load_id = r.load_id)
+  FROM sobstvenost_src.read r JOIN ops.load l USING (load_id)
+  WHERE l.tool = 'sobstvenost' AND l.source = 'ncr' AND l.ref = 'catalogue' AND l.is_current
+  UNION ALL SELECT 0, 0 LIMIT 1"""
+
+[[check]]
+name = "read_row_count"
+title_bg = "Всеки действащ прочит на каталог има толкова записа, колкото е преброил четецът"
+kind = "reconcile"
+sql = """SELECT 0, count(*) FROM sobstvenost_src.read r JOIN ops.load l USING (load_id)
+  WHERE l.tool = 'sobstvenost' AND l.is_current AND r.row_count <> (
+    (SELECT count(*) FROM sobstvenost_src.enterprise x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM sobstvenost_src.ministry x WHERE x.load_id = r.load_id) +
+    (SELECT count(*) FROM sobstvenost_src.concession x WHERE x.load_id = r.load_id))"""
+
+[[check]]
+name = "every_record_built"
+title_bg = "Всеки запис от действащите прочити е в точно един ред на чистите таблици"
+kind = "reconcile"
+sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'sobstvenost' AND is_current)
+  SELECT (SELECT count(*) FROM sobstvenost_src.enterprise JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.ministry JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.concession JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.profile JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.report JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.concession_profile JOIN cur USING (load_id))
+       + (SELECT count(*) FROM sobstvenost_src.notice JOIN cur USING (load_id)),
+         (SELECT count(*) FROM sobstvenost.enterprise) + (SELECT count(*) FROM sobstvenost.ministry)
+       + (SELECT count(*) FROM sobstvenost.concession) + (SELECT count(*) FROM sobstvenost.profile)
+       + (SELECT count(*) FROM sobstvenost.report) + (SELECT count(*) FROM sobstvenost.concession_profile)
+       + (SELECT count(*) FROM sobstvenost.notice)"""
+
+[[check]]
+name = "landing_keeps_the_record"
+title_bg = "Записът, възстановен от колоните на приемната зона, е същият като прочетения (sha256)"
+kind = "reconcile"
+
+[[check]]
+name = "concessionaire_person_flagged"
+title_bg = "Концесионер без белег на юридическо лице е отбелязан като лице, чието име не се преиздава"
+kind = "parser"
+sql = """SELECT 0, count(*) FROM sobstvenost.notice
+  WHERE concessionaire_name IS NOT NULL AND NOT concessionaire_is_person
+    AND concessionaire_name ~ '^\\s*(ЕТ|ЗП)([^А-Яа-я]|$)'"""
+
+[[check]]
+name = "org_unmatched"
+title_bg = "ЕИК от източника, който го няма в общия списък на организациите (остава без връзка)"
+kind = "unmatched"
+gating = false
+sql = """SELECT 0, (SELECT count(*) FROM sobstvenost.profile WHERE eik IS NOT NULL AND org_eik IS NULL)
+  + (SELECT count(*) FROM sobstvenost.notice WHERE concessionaire_eik IS NOT NULL AND org_eik IS NULL)"""
+
+[[check]]
+name = "records_not_fewer"
+title_bg = "Предприятията и партидите в чистите таблици не са по-малко от публикуваните (колко по-малко)"
+kind = "drop"
+gating = false
+sql = """WITH n(pub, clean) AS (SELECT
+    (SELECT count(*) FROM pub_sobstvenost.enterprise) + (SELECT count(*) FROM pub_sobstvenost.concession),
+    (SELECT count(*) FROM sobstvenost.enterprise) + (SELECT count(*) FROM sobstvenost.concession))
+  SELECT 0, GREATEST(pub - clean, 0) FROM n"""
+
+# the serving layer, judged inside the transaction of the publication
+
+[[check]]
+name = "pub_complete"
+title_bg = "Слоят за показване има всеки ред на чистите таблици"
+kind = "publish"
+sql = """SELECT (SELECT count(*) FROM sobstvenost.enterprise) + (SELECT count(*) FROM sobstvenost.profile)
+       + (SELECT count(*) FROM sobstvenost.report) + (SELECT count(*) FROM sobstvenost.report_document)
+       + (SELECT count(*) FROM sobstvenost.concession) + (SELECT count(*) FROM sobstvenost.concession_profile)
+       + (SELECT count(*) FROM sobstvenost.notice) + (SELECT count(*) FROM sobstvenost.board_entry),
+         (SELECT count(*) FROM pub_sobstvenost.enterprise) + (SELECT count(*) FROM pub_sobstvenost.profile)
+       + (SELECT count(*) FROM pub_sobstvenost.report) + (SELECT count(*) FROM pub_sobstvenost.report_document)
+       + (SELECT count(*) FROM pub_sobstvenost.concession) + (SELECT count(*) FROM pub_sobstvenost.concession_profile)
+       + (SELECT count(*) FROM pub_sobstvenost.notice) + (SELECT count(*) FROM pub_sobstvenost.board_entry)"""
+
+[[check]]
+name = "no_person_concessionaire_published"
+title_bg = "Името на концесионер, който не е юридическо лице, не е в слоя за показване"
+kind = "publish"
+sql = """SELECT 0, count(*) FROM sobstvenost.notice c JOIN pub_sobstvenost.notice p USING (concession_id, position)
+  WHERE c.concessionaire_is_person AND p.concessionaire_name IS DISTINCT FROM 'Физическо лице или едноличен търговец: името не се преиздава'"""
+
+# the move from the old database (step parity, 24.11.2026)
+
+[[check]]
+name = "parity_records"
+title_bg = "Сверка със старата база: действащи записи по обхват"
+kind = "parity"
+
+[[check]]
+name = "parity_records_differ"
+title_bg = "Сверка със старата база: действащи записи с различен sha256"
+kind = "parity"
+
+[[check]]
+name = "parity_versions"
+title_bg = "Сверка със старата база: версии на записите (обхват, запис, sha256, час)"
+kind = "parity"
+
+[[check]]
+name = "parity_documents"
+title_bg = "Сверка със старата база: архивирани файлове (запис, sha256)"
+kind = "parity"
+
+[[check]]
+name = "parity_sources"
+title_bg = "Сверка със старата база: обхвати с еднакво състояние, брой и последен успех"
+kind = "parity"
