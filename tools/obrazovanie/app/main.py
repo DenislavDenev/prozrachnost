@@ -183,7 +183,10 @@ def matura_snapshot(year, session="may", kind="mandatory"):
         """, (row[0],))]
     return dict(year=year, session=session, kind=kind, resource=row[0], updated=row[1][:10],
                 source_rows=row[2], schools=row[3], verification=row[4], results=row[5],
-                matched=row[6], unmatched=row[7], anomalies=row[8], subjects=subjects)
+                matched=row[6], unmatched=row[7], anomalies=row[8], subjects=subjects,
+                # August 2025/2026 gives the grades alone: no count in the whole table, not a hidden one
+                counted=bool(row[8]["suppressed_takers"]) or any(
+                    item["takers"] is not None or item["hidden"] == 0 for item in subjects))
 
 
 def school_dzi(code):
