@@ -50,6 +50,8 @@ def test_a_concessionaire_who_is_not_a_legal_entity():
         assert is_person(name),name
     for name in ['"АЛБЕНА" АД','"ДЖИ ЕМ АЙ ПЛЕЙС"ЕООД','„Орхи“ ЕООД','ЕСКАНА АД, гр. Варна','"ПРОУЧВАНЕ И ДОБИВ НА НЕФТ И ГАЗ" ЕАД гр. ПЛЕВЕН','КОЛОВАГ АД','Община Бургас']:
         assert not is_person(name),name
+    # a sole trader stays a person even when the name of its firm carries a word of a company form (example, not read)
+    assert is_person('ЕТ "СТРОЙ АД - Иван Петров"') and is_person('ЗП ООД-ОВ ПЕТЪР')
     assert not is_person(None) and not is_person('')
 from ingest import parse,store
 P=Path(__file__).parent/'fixtures'
