@@ -1,10 +1,11 @@
-"""Silver into gold: the table that stands for (year, family), its rows and observations, and the checks that let it out.
+"""The landing zone into the clean tables: the table that stands for (year, family), its rows and observations, and the
+reconciliations that let it in.
 
-For a year and a family the candidates are the current, built tables of the sets of that year. Two versions of one year
-(2019 has two sets) are not both used: the fuller one (more rows) is, and the difference is written to the log of changes.
-The table is published only when its gating checks are equal; otherwise the previous gold stays and the difference is a
-problem. Rows whose structure the list does not know go to gold.unmatched and stop the publication of a family that is
-read by structure.
+For a year and a family the candidates are the current tables of the sets of that year. Two versions of one year (2019
+has two sets) are not both used: the fuller one (more rows) is, and the note of the table says so. The table is taken
+only when its gating reconciliations are equal; otherwise the previous one stays and the difference is a problem. Rows
+whose structure the list does not know go to sigurnost.unmatched and stop the tables that are read by structure. The
+serving layer follows by a publication at the end of the step (db/publish/*.sql).
 """
 import csv
 import datetime as dt
@@ -20,27 +21,35 @@ def _key(s):
 
 
 def load_reference(c):
-    c.execute("TRUNCATE gold.structure_alias")
+    """The structures (an oblast is keyed by its NUTS 3 code in core.nuts), their spellings, the families and the
+    indicators, from db/ref. One transaction."""
+    with c.transaction():
+        _load_reference(c)
+
+
+def _load_reference(c):
+    c.execute("DELETE FROM sigurnost.structure_alias")
     with open(config.ROOT / "db/ref/structure.csv", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
-            c.execute("""INSERT INTO gold.structure (code, name, kind, oblast, sort) VALUES (%s,%s,%s,%s,%s)
-                         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, oblast = EXCLUDED.oblast, sort = EXCLUDED.sort""",
-                      (r["code"], r["name"], r["kind"], r["oblast"] or None, int(r["sort"])))
+            c.execute("""INSERT INTO sigurnost.structure (code, name, kind, oblast, nuts_code, sort) VALUES (%s,%s,%s,%s,%s,%s)
+                         ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, kind = EXCLUDED.kind, oblast = EXCLUDED.oblast,
+                           nuts_code = EXCLUDED.nuts_code, sort = EXCLUDED.sort""",
+                      (r["code"], r["name"], r["kind"], r["oblast"] or None, r["code"] if r["kind"] == "oblast" else None, int(r["sort"])))
             for a in r["aliases"].split("|"):
-                c.execute("INSERT INTO gold.structure_alias (alias, code) VALUES (%s,%s) ON CONFLICT DO NOTHING", (_key(a), r["code"]))
+                c.execute("INSERT INTO sigurnost.structure_alias (alias, code) VALUES (%s,%s) ON CONFLICT DO NOTHING", (_key(a), r["code"]))
     for i, fam in enumerate(FAMILY_ORDER, 1):
-        c.execute("INSERT INTO gold.family (code, title, sort) VALUES (%s,%s,%s) ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, sort = EXCLUDED.sort",
+        c.execute("INSERT INTO sigurnost.family (code, title, sort) VALUES (%s,%s,%s) ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, sort = EXCLUDED.sort",
                   (fam, templates.FAMILIES[fam], i))
     with open(config.ROOT / "db/ref/indicators.csv", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
-            c.execute("""INSERT INTO gold.indicator (code, title, unit, kind, definition, example, formula, sort) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            c.execute("""INSERT INTO sigurnost.indicator (code, title, unit, kind, definition, example, formula, sort) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                          ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title, unit = EXCLUDED.unit, kind = EXCLUDED.kind,
                          definition = EXCLUDED.definition, example = EXCLUDED.example, formula = EXCLUDED.formula, sort = EXCLUDED.sort""",
                       (r["code"], r["title"], r["unit"], r["kind"], r["definition"], r["example"] or None, r["formula"] or None, int(r["sort"])))
 
 
 def alias_map():
-    """{normalised name: structure code} from db/ref/structure.csv (the same list gold.structure_alias is loaded from)."""
+    """{normalised name: structure code} from db/ref/structure.csv (the same list sigurnost.structure_alias is loaded from)."""
     out = {}
     with open(config.ROOT / "db/ref/structure.csv", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f):
@@ -60,10 +69,11 @@ def candidates(c, year, fam):
 
 
 def _candidates(c, year, fam):
+    """(resource_uri, raw sha256, set_uri, template, rows, issues, set updated, load_id) of the current tables, fullest first."""
     return c.execute(
-        """SELECT r.resource_uri, r.sha256, r.set_uri, r.template, r.n_rows, r.issues, d.source_updated
-           FROM silver.resource r JOIN silver.dataset d USING (set_uri)
-           WHERE d.year = %s AND d.kind = 'police' AND r.family = %s AND r.is_current AND r.status = 'built'
+        """SELECT r.resource_uri, r.raw_sha256, r.set_uri, r.template, r.n_rows, r.issues, d.source_updated, r.load_id
+           FROM sigurnost_src.current_resource r JOIN sigurnost.dataset d USING (set_uri)
+           WHERE d.year = %s AND d.kind = 'police' AND r.family = %s AND r.kind = 'table'
              AND (r.title_year IS NULL OR r.title_year = d.year)
            ORDER BY r.n_rows DESC, d.source_updated DESC NULLS LAST, r.resource_uri""", (year, fam)).fetchall()
 
@@ -84,7 +94,7 @@ def _parents(rows):
 
 def _results_for(c, year, picked, resolve):
     """The Results of all the families that are picked for the year (each is (uri, sha, ...))."""
-    blocks = {fam: load.silver_blocks(c, p[0], p[1]) for fam, p in picked.items()}
+    blocks = {fam: load.blocks_of(c, p[7]) for fam, p in picked.items()}
     res = {fam: [] for fam in picked}
     for fam, bl in blocks.items():
         res[fam].append(checks.clearance_formula(bl, fam))
@@ -111,7 +121,7 @@ def build(c, years=None, rebuild=False):
     """Builds gold for the years that have tables. Returns a report: published, held (with the differences), unchanged."""
     resolve = resolver(c)
     rep = {"published": [], "held": [], "unchanged": [], "problems": []}
-    all_years = [r[0] for r in c.execute("SELECT DISTINCT d.year FROM silver.dataset d WHERE d.kind = 'police' AND d.year IS NOT NULL ORDER BY 1")]
+    all_years = [r[0] for r in c.execute("SELECT DISTINCT d.year FROM sigurnost.dataset d WHERE d.kind = 'police' AND d.year IS NOT NULL ORDER BY 1")]
     for year in years or all_years:
         picked, notes = {}, {}
         for fam in FAMILY_ORDER:
@@ -119,15 +129,12 @@ def build(c, years=None, rebuild=False):
             if not cand:
                 continue
             picked[fam] = cand[0]
-            if len(cand) > 1:
+            if len(cand) > 1:      # the note of the table says it; the choice is made again from the tables at every build
                 notes[fam] = f"{len(cand)} версии на годината: взета е по-пълната ({cand[0][4]} реда); другата има {cand[1][4]}"
-                ref = f"{year}/{fam}"
-                if not c.execute("SELECT 1 FROM ops.change_log WHERE source = 'egov' AND ref = %s AND cause = 'duplicate' AND new = %s", (ref, f"{cand[0][4]}")).fetchone():
-                    load._log(c, ref, "rows", str(cand[1][4]), str(cand[0][4]), "duplicate")
         if not picked:
             continue
-        have = {r[0]: (r[1], r[2]) for r in c.execute("SELECT family, resource_uri, sha256 FROM gold.source_table WHERE year = %s", (year,))}
-        if not rebuild and all(have.get(f) == (p[0], p[1]) for f, p in picked.items()) and len(have) == len(picked):
+        have = {r[0]: r[1] for r in c.execute("SELECT family, load_id FROM sigurnost.source_table WHERE year = %s", (year,))}
+        if not rebuild and all(have.get(f) == p[7] for f, p in picked.items()) and len(have) == len(picked):
             rep["unchanged"].append(year)
             continue
         blocks, res = _results_for(c, year, picked, resolve)
@@ -139,10 +146,13 @@ def build(c, years=None, rebuild=False):
         if "types" in stop and "structures" in picked:
             stop.add("structures")
         for fam, p in picked.items():
-            for r in res[fam]:
-                c.execute("""INSERT INTO gold.check_result (year, family, check_id, scope, expected, got, diff, status, gating, detail, resource_uri, sha256)
-                             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                          (year, fam, r.check_id, r.scope, r.expected, r.got, r.diff, r.status, r.gating, r.detail, p[0], p[1]))
+            with c.transaction():       # the reconciliations of the table checked now replace those of the one checked before
+                c.execute("DELETE FROM sigurnost.reconciliation WHERE year = %s AND family = %s", (year, fam))
+                c.cursor().executemany(
+                    """INSERT INTO sigurnost.reconciliation (year, family, n, check_id, scope, expected, got, diff, status, gating, detail,
+                         resource_uri, raw_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    [(year, fam, n, r.check_id, r.scope, r.expected, r.got, r.diff, r.status, r.gating, r.detail, p[0], p[1])
+                     for n, r in enumerate(res[fam], 1)])
             if fam in stop:
                 msg = "; ".join(f"{r.check_id} {r.scope}: очаквано {r.expected}, получено {r.got}" for r in bad[fam][:3]) or "сверка с друга таблица на годината"
                 rep["held"].append({"year": year, "family": fam, "resource": p[0], "why": msg})
@@ -154,15 +164,14 @@ def build(c, years=None, rebuild=False):
 
 
 def _publish(c, year, fam, p, blocks, resolve, note):
-    uri, sha, set_uri, tid, n_rows, issues, _ = p
+    uri, sha, set_uri, tid, n_rows, issues, _, load_id = p
     inds = templates.indicators(fam, blocks[0].columns)
     start, end = dt.date(year, 1, 1), dt.date(year, 12, 31)
     with c.transaction():
-        for t in ("gold.observation", "gold.crime_row", "gold.unmatched"):
+        for t in ("sigurnost.observation", "sigurnost.crime_row", "sigurnost.unmatched", "sigurnost.source_table"):
             c.execute(f"DELETE FROM {t} WHERE year = %s AND family = %s", (year, fam))
-        c.execute("DELETE FROM gold.source_table WHERE year = %s AND family = %s", (year, fam))
-        c.execute("""INSERT INTO gold.source_table (year, family, resource_uri, sha256, set_uri, template, n_rows, issues, note)
-                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (year, fam, uri, sha, set_uri, tid, n_rows, issues, note))
+        c.execute("""INSERT INTO sigurnost.source_table (year, family, load_id, resource_uri, raw_sha256, set_uri, template, n_rows, issues, note)
+                     VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", (year, fam, load_id, uri, sha, set_uri, tid, n_rows, issues, note))
         rows_out, obs_out = [], []
         for b in blocks:
             parents = _parents(b.rows)
@@ -173,7 +182,7 @@ def _publish(c, year, fam, p, blocks, resolve, note):
                 else:
                     code = block_code
                 if code is None:
-                    c.execute("INSERT INTO gold.unmatched (year, family, name, reason, resource_uri) VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                    c.execute("INSERT INTO sigurnost.unmatched (year, family, name, reason, resource_uri) VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
                               (year, fam, r.text if fam == "structures" else b.structure, "структурата не е в списъка", uri))
                     continue
                 rows_out.append((year, fam, code, r.no, r.code, r.text, r.level, parents[r.no] if fam != "structures" else None, r.total))
@@ -182,8 +191,8 @@ def _publish(c, year, fam, p, blocks, resolve, note):
                     if ind is not None:
                         obs_out.append((year, fam, code, r.no, ind, start, end, value, text, tid, uri, sha))
         with c.cursor() as cur:
-            cur.executemany("""INSERT INTO gold.crime_row (year, family, structure_code, row_no, code, text, level, parent_row_no, is_total)
+            cur.executemany("""INSERT INTO sigurnost.crime_row (year, family, structure_code, row_no, code, text, level, parent_row_no, is_total)
                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""", rows_out)
-            cur.executemany("""INSERT INTO gold.observation (year, family, structure_code, row_no, indicator, period_start, period_end, value, value_text,
-                               template, resource_uri, raw_sha256) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            cur.executemany("""INSERT INTO sigurnost.observation (year, family, structure_code, row_no, indicator, period_kind, period_start, period_end,
+                               value, value_text, template, resource_uri, raw_sha256) VALUES (%s,%s,%s,%s,%s,'year',%s,%s,%s,%s,%s,%s,%s)""",
                             [(y, f, s, n, i, ps, pe, v, t, tp, u, h) for (y, f, s, n, i, ps, pe, v, t, tp, u, h) in obs_out])

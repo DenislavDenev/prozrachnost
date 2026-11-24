@@ -1,0 +1,50 @@
+# The datasets and sources of Сигурност. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or distributed is decided only in tools/danni/db/licences.toml.
+# The terms of each set of the Ministry of the Interior (CC0, CC BY or not stated) are in db/ref/datasets.csv and on /sources.
+
+[[dataset]]
+dataset = "sigurnost.police"
+title_bg = "Полицейска статистика на МВР"
+description_bg = "Регистрираните и разкритите престъпления по видове и по структури на МВР (областните дирекции и главните дирекции), по години от 2016, както МВР ги публикува в data.egov.bg. Регистрирано не е същото като извършено."
+source_org = "Министерство на вътрешните работи"
+source_url = "https://data.egov.bg/organisation/profile/113"
+channel = "api"
+licence = "по набора в data.egov.bg: CC0, CC BY или не е посочен"
+cadence = "годишно"
+tables = ["sigurnost_src.list_entry", "sigurnost_src.resource", "sigurnost_src.col", "sigurnost_src.row", "sigurnost_src.cell",
+          "sigurnost.dataset", "sigurnost.structure", "sigurnost.structure_alias", "sigurnost.family", "sigurnost.indicator",
+          "sigurnost.source_table", "sigurnost.crime_row", "sigurnost.observation", "sigurnost.unmatched", "sigurnost.reconciliation",
+          "sigurnost.state_note",
+          "pub_sigurnost.structure", "pub_sigurnost.indicator", "pub_sigurnost.dataset", "pub_sigurnost.source_table",
+          "pub_sigurnost.crime_row", "pub_sigurnost.observation", "pub_sigurnost.reconciliation", "pub_sigurnost.unmatched",
+          "pub_sigurnost.resource_note", "pub_sigurnost.held", "pub_sigurnost.change", "pub_sigurnost.state_note"]
+
+[[dataset]]
+dataset = "sigurnost.bulletin"
+title_bg = "Ежемесечен бюлетин за състоянието на престъпността"
+description_bg = "Връзките към месечните бюлетини на МВР (PDF на mvr.bg) с месеца на всеки. Файловете не се отварят и не се пазят."
+source_org = "Министерство на вътрешните работи"
+source_url = "https://data.egov.bg/data/view/32cdf912-38b5-4e58-bfc0-70df0b02a36b"
+channel = "api"
+licence = "CC0"
+cadence = "месечно"
+tables = ["sigurnost.link", "pub_sigurnost.link"]
+
+[[source]]
+source = "egov-list"
+title_bg = "Списъците на наборите на МВР в архива на Наблюдател"
+url = "https://data.egov.bg/organisation/profile/113"
+channel = "api"
+dataset = "sigurnost.police"
+cadence = "всеки ден от архива"
+stale_after = "50 hours"
+hold_alert_after = "2 days"
+
+[[source]]
+source = "egov"
+title_bg = "Таблиците на МВР в архива на Наблюдател"
+url = "https://data.egov.bg/organisation/profile/113"
+channel = "api"
+dataset = "sigurnost.police"
+cadence = "годишно"
+hold_alert_after = "2 days"
