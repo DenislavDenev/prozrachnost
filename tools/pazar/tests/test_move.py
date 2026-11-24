@@ -70,6 +70,7 @@ def test_two_prices_of_one_shop_and_code_on_one_day_are_both_served(c):
             x = next(r for r in rows if r.code == "0001292")
             rows.append(parse.Row(x.place_raw, x.ekatte, x.district, x.store, x.code, x.name, x.category, x.retail + 100, x.promo, 0))
         files[f.member] = csv_of(rows)
+    put(c, D0, fixture(D0))            # the same shop and product had a span from an earlier day
     put(c, D1, make_zip(files))
     two = c.execute("""SELECT count(*) FROM pazar.price_span s JOIN pazar.product p USING (product_id)
                        WHERE p.code = '0001292' AND s.flags & 8 > 0""").fetchone()[0]
@@ -77,6 +78,9 @@ def test_two_prices_of_one_shop_and_code_on_one_day_are_both_served(c):
     publish(c)
     same_as_clean(c)
     assert c.execute("SELECT max(seq) FROM pub_pazar.price_span").fetchone()[0] >= 2
+    # the numbers count the spans of one shop, product and first day: 1 to n in each, whatever came before
+    assert c.execute("""SELECT count(*) FROM (SELECT store_id, product_id, from_day, min(seq) lo, max(seq) hi, count(*) n
+                        FROM pub_pazar.price_span GROUP BY 1, 2, 3) g WHERE lo <> 1 OR hi <> n""").fetchone()[0] == 0
 
 
 def test_a_failed_data_rule_stops_the_publication(c):
