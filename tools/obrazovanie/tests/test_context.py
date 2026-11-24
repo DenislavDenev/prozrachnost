@@ -27,6 +27,24 @@ def test_latest_real_national_counts_and_source_anomaly():
     assert sum(r.grades[14] + r.grades[15] for r in rows) == 65
 
 
+def test_2026_source_gap_is_known_only_for_its_year_and_size():
+    """The 2026/2027 resources carry 2 pupils and 1/3 of a group more in the total than in the parts, for the schools
+    for pupils with impaired hearing; that is accepted for that year and that size only."""
+    pupils, classes = ((FIX / "pupils-context-2026.json").read_bytes(), (FIX / "classes-context-2026.json").read_bytes())
+    rows = parse_context(pupils, classes, "2026/2027")
+    assert len(rows) == 15
+    hearing = next(r for r in rows if r.kind == "за обучение и подкрепа на ученици с увреден слух")
+    assert hearing.reported_pupils == sum(hearing.grades.values()) + hearing.preschool + 2
+    for year in ("2025/2026", "2027/2028"):
+        with pytest.raises(ShapeError, match="do not reconcile"):
+            parse_context(pupils, classes, year)
+    payload = json.loads(pupils)
+    row = next(r for r in payload["data"] if r["DSTName"].strip() == hearing.kind)
+    row["br_stds"] += 1
+    with pytest.raises(ShapeError, match="do not reconcile"):
+        parse_context(json.dumps(payload).encode(), classes, "2026/2027")
+
+
 def test_changed_columns_or_totals_stop_context_import():
     pupils, classes = inputs()
     payload = json.loads(pupils)
