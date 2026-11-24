@@ -93,6 +93,10 @@ def parity(conn, r, old_dsn=OLD_DSN):
     with _old(old_dsn) as o:
         # the landing zone against the current rows of the old silver, every column the parser gives
         for t, (key, data) in TABLES.items():
+            # a column the parser learned after the move (impact_contract.price_eur, 24.11.2026) is not in the old silver
+            had = {x[0] for x in o.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'silver' "
+                                           "AND table_name = %s", (t,))}
+            data = [c for c in data if c in had]
             cols = ", ".join([*key, f"md5(ROW({', '.join(data)})::text)"])
             old = _rows(o, f"SELECT {cols} FROM silver.{t} WHERE valid_to IS NULL")
             new = _rows(conn, f"""SELECT {cols} FROM zakoni_src.{t}

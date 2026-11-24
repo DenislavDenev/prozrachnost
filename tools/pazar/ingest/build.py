@@ -13,7 +13,7 @@ import datetime as dt
 import zipfile
 import io
 
-from . import archive, config, load, parse, pipeline
+from . import archive, config, load, memory, parse, pipeline
 
 SOURCE = "kolkostruva"
 
@@ -185,9 +185,10 @@ def rebuild_month(c, r, ms, parsed=None):
 
 def catch_up(c, r, first=None, last=None, now=None, st=None, limit_secs=None, replay=False):
     """Every archived day in [first, last] that is not built from its newest file, in order. A built day is not read
-    again. The next file is read and parsed in a second thread while the database works on the current one."""
+    again. One day is in memory at a time (a parsed day is several hundred MB), and a day starts only when the server
+    has config.MIN_FREE_MB free: otherwise the step waits, and stops (to go on at the next run) when the memory does
+    not come back. The shared database lives on the same server, and a process that takes its memory kills it."""
     import time
-    from concurrent.futures import ThreadPoolExecutor
     st = st or archive.state()
     t0 = time.monotonic()
     rep = {"built": 0, "unchanged": 0, "held": 0, "invalid": 0, "rebuilt": 0, "days": [], "problems": []}
@@ -200,42 +201,38 @@ def catch_up(c, r, first=None, last=None, now=None, st=None, limit_secs=None, re
             rep["unchanged"] += 1
             continue
         todo.append(k)
-
-    def load_day(k):
-        raw, sha, path = archive.read(k, st)
+    for k in todo:
+        day = d(k)
+        if limit_secs and time.monotonic() - t0 > limit_secs:
+            rep["stopped"] = "бюджетът от време свърши при " + k
+            break
+        if not memory.wait(config.MIN_FREE_MB):
+            rep["stopped"] = f"под {config.MIN_FREE_MB} MB свободна памет при {k}"
+            break
         try:
-            return raw, sha, path, parse.parse_day(raw)
+            raw, sha, path = archive.read(k, st)
+        except archive.ArchiveError as e:
+            rep["problems"].append(f"{k}: {e}")
+            continue
+        try:
+            parsed = parse.parse_day(raw)
         except parse.ShapeError:            # build_one parses again, marks the day invalid and says why
-            return raw, sha, path, None
-
-    with ThreadPoolExecutor(1) as pool:
-        ahead = pool.submit(load_day, todo[0]) if todo else None
-        for i, k in enumerate(todo):
-            day = d(k)
-            if limit_secs and time.monotonic() - t0 > limit_secs:
-                rep["stopped"] = "бюджетът от време свърши при " + k
-                break
-            try:
-                raw, sha, path, parsed = ahead.result()
-            except archive.ArchiveError as e:
-                rep["problems"].append(f"{k}: {e}")
-                ahead = pool.submit(load_day, todo[i + 1]) if i + 1 < len(todo) else None
-                continue
-            ahead = pool.submit(load_day, todo[i + 1]) if i + 1 < len(todo) else None
-            raw_file_id = archive.raw_file(c, r, day, sha, path)
-            try:
-                state, rp = build_one(c, r, day, raw, sha, path, raw_file_id, now=now, replay=replay, parsed=parsed)
-            except load.Mismatch as e:
-                with c.transaction():
-                    mark_day(c, day, "invalid", sha, path, len(raw), str(e))
-                    pipeline.reject(c, r, SOURCE, str(day), e, raw_file_id, now=now)
-                state, rp = "invalid", {"day": k, "error": str(e)}
-            rep[state] += 1
-            rep.setdefault("changed_from", k)
-            rep["changed_from"] = min(rep["changed_from"], k)
-            rep["days"].append(rp if state in ("held", "invalid") else {kk: rp[kk] for kk in ("day", "valid", "bad", "chains", "secs") if kk in rp} | {"state": state, "day": k})
-            if state == "invalid":
-                rep["problems"].append(f"{k}: невалиден ден: {rp.get('error')}")
-            if state == "rebuilt":
-                rep["changed_from"] = min(rep["changed_from"], k[:8] + "01")
+            parsed = None
+        raw_file_id = archive.raw_file(c, r, day, sha, path)
+        try:
+            state, rp = build_one(c, r, day, raw, sha, path, raw_file_id, now=now, replay=replay, parsed=parsed)
+        except load.Mismatch as e:
+            with c.transaction():
+                mark_day(c, day, "invalid", sha, path, len(raw), str(e))
+                pipeline.reject(c, r, SOURCE, str(day), e, raw_file_id, now=now)
+            state, rp = "invalid", {"day": k, "error": str(e)}
+        del raw, parsed
+        rep[state] += 1
+        rep.setdefault("changed_from", k)
+        rep["changed_from"] = min(rep["changed_from"], k)
+        rep["days"].append(rp if state in ("held", "invalid") else {kk: rp[kk] for kk in ("day", "valid", "bad", "chains", "secs") if kk in rp} | {"state": state, "day": k})
+        if state == "invalid":
+            rep["problems"].append(f"{k}: невалиден ден: {rp.get('error')}")
+        if state == "rebuilt":
+            rep["changed_from"] = min(rep["changed_from"], k[:8] + "01")
     return rep

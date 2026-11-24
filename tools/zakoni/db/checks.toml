@@ -157,6 +157,16 @@ sql = """SELECT 0, CASE WHEN count(*) FILTER (WHERE municipality_code IS NULL AN
                        THEN count(*) FILTER (WHERE municipality_code IS NULL AND institution_name IS NOT NULL) ELSE 0 END
   FROM zakoni.consultation WHERE level = 'Общинско'"""
 
+[[check]]
+name = "impact_eur_is_the_fixed_rate"
+title_bg = "Цената в евро на договор, както я дава източникът, е цената в лева по фиксирания курс 1,95583 (до стотинка)"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+sql = """SELECT 0, count(*) FROM zakoni_src.impact_contract
+  WHERE load_id IN (SELECT load_id FROM ops.load WHERE tool = 'zakoni' AND is_current)
+    AND price_eur IS NOT NULL AND (price_bgn IS NULL OR abs(price_eur - round(price_bgn / 1.95583, 2)) > 0.01)"""
+
 # ---------------------------------------------------------------- the publication (inside its transaction, against the new content)
 
 [[check]]

@@ -260,6 +260,8 @@ def _subs(out, key, subs, parent, counter):
 # ---------------------------------------------------------------- contracts for impact assessments
 IMPACT = {"eik": (S, N), "date_contract": (S, N), "price": (S, N), "active": (B,), "institution_id": (I,),
           "institution_name": (S,), "executor": (S,), "contract_subject": (S,), "services_description": (S,)}
+# from version 5 (12.11.2026) the report also gives the price in euro, the source's own conversion
+IMPACT_EUR = {**IMPACT, "price_eur": (S, N)}
 _ORG = re.compile(r"ООД|ЕООД|\bАД\b|ЕАД|ДЗЗД|\bЕТ\b|\bСД\b|\bКД\b|[Дд]ружество|[Фф]ондация|[Сс]дружение|[Уу]ниверситет|"
                   r"[Ии]нститут|[Сс]индикат|[Аа]съциация|[Аа]генция|[Цц]ентър|[Фф]онд\b|[Кк]онфедерация|[Кк]амара|[Аа]кадемия", re.U)
 
@@ -283,30 +285,38 @@ def eik_valid(e):
     return len(d) == 9 or ctrl(d[8:12], (2, 7, 3, 5), (4, 9, 5, 7)) == d[12]
 
 
+def money(value, where):
+    try:
+        return None if value is None else Decimal(value)
+    except InvalidOperation:
+        raise ShapeError(f"{where} {value!r}") from None
+
+
 def impact(records):
     it = iter(records)
-    legend(it, IMPACT, "eik", "ЕИК", "Оценка на въздействието")
+    head = next(it, None)
+    # the legend says which of the two known shapes the answer has; every record must then have exactly its fields
+    spec = IMPACT_EUR if isinstance(head, dict) and "price_eur" in head else IMPACT
+    legend(iter([] if head is None else [head]), spec, "eik", "ЕИК", "Оценка на въздействието")
     out = Parsed()
     seen = {}
     dropped = 0
     for rec in it:
-        check(rec, IMPACT, "Оценка на въздействието")
+        check(rec, spec, "Оценка на въздействието")
         out.count += 1
         eik = rec["eik"].strip() if rec["eik"] else None
         if eik and not re.fullmatch(r"\d{9}|\d{13}", eik):
             eik, dropped = None, dropped + 1          # a 10-digit number can be an ЕГН: it is not kept at all
         name = one_line(rec["executor"])
         kind = "юридическо лице" if eik or _ORG.search(name or "") else "физическо лице"
-        try:
-            price = None if rec["price"] is None else Decimal(rec["price"])
-        except InvalidOperation:
-            raise ShapeError(f"Оценка на въздействието: цена {rec['price']!r}") from None
+        price = money(rec["price"], "Оценка на въздействието: цена")
+        price_eur = money(rec.get("price_eur"), "Оценка на въздействието: цена в евро")
         subject, desc = plain(rec["contract_subject"]), plain(rec["services_description"])
         base = hashlib.sha1("|".join(str(x) for x in (rec["institution_id"], rec["date_contract"], rec["price"], eik, name, subject)).encode()).hexdigest()[:16]
         n = seen[base] = seen.get(base, 0) + 1
         out.add("impact_contract", dict(
             ic_key=base if n == 1 else f"{base}-{n}", institution_id=rec["institution_id"], institution_name=rec["institution_name"],
-            contract_date=odate(rec["date_contract"], "дата на договор"), price_bgn=price, eik=eik,
+            contract_date=odate(rec["date_contract"], "дата на договор"), price_bgn=price, price_eur=price_eur, eik=eik,
             executor=name if kind == "юридическо лице" else None, executor_kind=kind, subject=subject, description=desc,
             active=rec["active"]))
     out.notes["dropped_ids"] = dropped

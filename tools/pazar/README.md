@@ -32,7 +32,8 @@ publish | check | freshness | report | sample`. `build` строи всеки н
 Тежките стъпки вървят под общото заключване `/run/lock/prozrachnost-heavy.lock` (виж частното репо).
 
 **Настройки.** `PAZAR_DSN` (по подразбиране `dbname=prozrachnost`), `PAZAR_OLD_DSN` (старата база, само за `parity`),
-`PAZAR_DATA`, `PAZAR_ARCHIVE` (по подразбиране `/srv/prozrachnost/nablyudatel`), `PAZAR_FEEDBACK`, `HUB_URL`.
+`PAZAR_DATA`, `PAZAR_ARCHIVE` (по подразбиране `/srv/prozrachnost/nablyudatel`), `PAZAR_MIN_FREE_MB` (по подразбиране 900: ден се
+строи само с толкова свободна памет на сървъра; стъпката чака до 30 минути и спира), `PAZAR_FEEDBACK`, `HUB_URL`.
 Уеб: `uvicorn app.main:app --port 8023`. Страниците четат само `pub_pazar` и `pub`, в една моментна снимка на заявка;
 всеки отговор носи `X-Publication`, `ETag` и `Last-Modified`.
 

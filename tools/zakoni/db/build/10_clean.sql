@@ -94,7 +94,7 @@ LEFT JOIN (SELECT doc_key, count(*) AS n FROM zakoni_src.strategy_file WHERE loa
 
 INSERT INTO zakoni.impact_contract (ic_key, institution_id, institution_name, contract_date, price_bgn, price_eur, eik, executor,
                                     executor_kind, subject, description, source, source_url, raw_sha256)
-SELECT i.ic_key, i.institution_id, i.institution_name, i.contract_date, i.price_bgn, round(i.price_bgn / 1.95583, 2), i.eik,
+SELECT i.ic_key, i.institution_id, i.institution_name, i.contract_date, i.price_bgn, coalesce(i.price_eur, round(i.price_bgn / 1.95583, 2)), i.eik,
        i.executor, i.executor_kind, i.subject, i.description, 'data.egov.bg, АМС',
        'https://data.egov.bg/data/view/18da0fff-79b2-45c6-a9af-1509df96261b', f.sha256
 FROM zakoni_src.impact_contract i
