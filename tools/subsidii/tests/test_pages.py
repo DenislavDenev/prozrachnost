@@ -160,6 +160,11 @@ def test_per_inhabitant_needs_the_inhabitants_and_says_their_date(client, c):
     item = next(i for i in d["items"] if i["v"] is not None)
     plain = client.get("/api/karta.json?l=obshtini&fy=2025").json()
     assert abs(item["v"] - next(i["v"] for i in plain["items"] if i["code"] == item["code"]) / 9000) < 0.01
+    # an area is per inhabitant only when the inhabitants of every municipality in it are known
+    c.execute("""DELETE FROM pub_naselenie.population WHERE as_of = '2024-12-31' AND municipality_code =
+                 (SELECT min(municipality_code) FROM pub.municipality WHERE oblast_code = 'VID')""")
+    ob = {i["code"]: i["v"] for i in client.get("/api/karta.json?l=oblasti&fy=2025&per=resident").json()["items"]}
+    assert ob["BG311"] is None and any(v is not None for k, v in ob.items() if k != "BG311")
     c.execute("TRUNCATE pub_naselenie.population")
     gone = client.get("/api/karta.json?l=obshtini&fy=2025&per=resident").json()
     assert gone["shown"] == 0 and gone["population_date"] is None            # without the inhabitants nothing per inhabitant is shown
