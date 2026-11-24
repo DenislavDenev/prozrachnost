@@ -378,3 +378,12 @@ def test_a_year_without_a_confirmed_currency_is_a_problem_not_a_guess(c, tmp_pat
     build.catch_up(c, helpers.RUN, root=root)
     now = dt.datetime(2026, 10, 20, 8, tzinfo=dt.timezone.utc)
     assert any("валутата на справката не е потвърдена" in p for p in checks.freshness(c, today=now.date(), now=now, root=root))
+
+
+def test_the_weekly_card_has_the_shape_the_workflow_reads(c, tmp_path):
+    root = archive_dir(tmp_path, {(2024, "2026-09-28"): fixture(2024)})
+    build.catch_up(c, helpers.RUN, root=root)
+    s = checks.summary(c)
+    assert s["tool"] == "Субсидии и помощи" and s["counts"]["ФГ 2024: получателски редове"] == 42
+    assert isinstance(s["changes"], int) and isinstance(s["held"], int) and set(s["last_ok"]) == {"ДФЗ (архив)", "изграждане"}
+    assert isinstance(s["problems"], list)

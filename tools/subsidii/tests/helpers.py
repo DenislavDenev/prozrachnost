@@ -113,5 +113,7 @@ def count(c, sql, *a):
 
 def population(c, day, persons=10000):
     """The registrations of every municipality on `day`, as Население publishes them (pub_naselenie)."""
+    c.execute("""INSERT INTO pub_naselenie.snapshot (as_of, table_kind, url) VALUES (%s, 'monthly', 'https://www.grao.bg/tna/t41ob.txt')
+                 ON CONFLICT DO NOTHING""", (day,))
     c.execute("""INSERT INTO pub_naselenie.population (as_of, table_kind, municipality_code, permanent, current, both_here)
                  SELECT %s, 'monthly', municipality_code, %s, %s, 0 FROM pub.municipality ON CONFLICT DO NOTHING""", (day, persons, persons))
