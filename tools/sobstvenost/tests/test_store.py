@@ -12,7 +12,7 @@ T = dt.datetime(2026, 10, 2, 1, 6, 40, tzinfo=dt.timezone.utc)
 
 
 def count(conn, sql, *params):
-    return conn.execute(sql, params).fetchone()[0]
+    return conn.execute(sql, params or None).fetchone()[0]
 
 
 def test_catalogue_unchanged_changes_and_versions(conn):
