@@ -91,7 +91,8 @@ def replay(conn, r, old_dsn=OLD_DSN, old_live="live", old_ops="ops"):
 
 def ledger(old, conn, r, old_ops):
     """The old ledger into ops: the runs (marked from_old_database in their params), the change log, the raw files (once per sha256, in place; each old row is
-    a read in ops.fetch with its ref and time), the holds. A raw file not on disk with its size is counted."""
+    a read in ops.fetch with its ref and time), the holds. Whether every file is on disk with its size is checked by
+    parity, outside this transaction: on a busy disk a stat costs up to two seconds."""
     runs = old.execute(f"""SELECT step, started_at, finished_at, status, code_sha, inputs, stats, error
                            FROM {old_ops}.job_run ORDER BY id""").fetchall()
     with conn.cursor() as cur:
@@ -106,7 +107,6 @@ def ledger(old, conn, r, old_ops):
                            VALUES (%s, 'parlament', %s, %s, %s, %s, %s, %s)""", changes)
     r.stats["changes"] = len(changes)
     files = old.execute(f"SELECT source, ref, path, sha256, bytes, fetched_at FROM {old_ops}.raw_file ORDER BY id").fetchall()
-    missing = 0
     for i in range(0, len(files), BATCH):
         part = files[i:i + BATCH]
         with conn.cursor() as cur:
@@ -115,12 +115,7 @@ def ledger(old, conn, r, old_ops):
             cur.executemany("""INSERT INTO ops.fetch (run_id, tool, source, ref, raw_file_id, fetched_at)
                                SELECT %s, 'parlament', %s, %s, raw_file_id, %s FROM ops.raw_file WHERE sha256 = %s""",
                             [(r.run_id, source, ref, at, sha) for source, ref, _, sha, _, at in part])
-        for _, _, path, _, size, _ in part:
-            try:
-                missing += os.stat(path).st_size != size
-            except OSError:
-                missing += 1
-    r.stats.update(raw_files=len(files), raw_missing=missing)
+    r.stats["raw_files"] = len(files)
     held = old.execute(f"SELECT source, ref, sha256, rows, first_at FROM {old_ops}.held").fetchall()
     with conn.cursor() as cur:
         cur.executemany("""INSERT INTO ops.hold (tool, source, ref, content_sha256, rows, reason, first_at)
@@ -164,8 +159,31 @@ BY_ASSEMBLY = {   # (name, SQL on a schema {s}): numbers by assembly, compared o
 }
 
 
+def on_disk(conn, r):
+    """Every raw file the replay registered is on disk with its size: one listing per folder, in its own order.
+    -> (files, present)."""
+    files = conn.execute("""SELECT DISTINCT x.path, x.bytes FROM ops.fetch f JOIN ops.raw_file x USING (raw_file_id)
+        WHERE f.tool = 'parlament' AND f.run_id = (SELECT max(run_id) FROM ops.run WHERE tool = 'parlament' AND step = 'replay' AND status = 'ok')""").fetchall()
+    by_folder = {}
+    for path, size in files:
+        folder, _, name = path.rpartition("/")
+        by_folder.setdefault(folder, {})[name] = size
+    present = 0
+    for folder, names in by_folder.items():
+        try:
+            with os.scandir(folder) as it:
+                for e in it:
+                    if e.name in names and e.stat(follow_symlinks=False).st_size == names[e.name]:
+                        present += 1
+        except OSError:
+            pass
+    pipeline.record_check(conn, r, "parity_raw_on_disk", len(files), present)
+    r.stats["raw_on_disk"] = [len(files), present]
+    return len(files), present
+
+
 def parity(conn, r, old_dsn=OLD_DSN, old_live="live", old_ops="ops"):
-    """The old database against the clean tables and the serving layer, table by table."""
+    """The old database against the clean tables and the serving layer, table by table; the raw files on disk."""
     old = _old(old_dsn)
     differ, detail = 0, []
     try:
@@ -205,5 +223,9 @@ def parity(conn, r, old_dsn=OLD_DSN, old_live="live", old_ops="ops"):
         old.execute("COMMIT")
     finally:
         old.close()
+    files, present = on_disk(conn, r)
+    if files != present:
+        differ += 1
+        detail.append(f"сурови файлове: {files - present} от {files} не са на диска с размера си")
     pipeline.record_check(conn, r, "parity_differ", 0, differ, "; ".join(detail)[:2000] or None)
     r.stats.update(differ=differ, detail=detail)

@@ -57,15 +57,16 @@ def test_the_old_database_is_replayed_built_and_proved_equal(conn):
         move.replay(conn, db.current(), old_dsn=DSN, old_ops="old_ops")
         assert run.publish(conn) == []
     assert {t: st["rows"][t] for t, _ in move.TABLES} == {t: before[t] for t, _ in move.TABLES} and st["rows"]["vote"] == 4080
-    assert st["runs"] == 2 and st["held"] == 1 and st["raw_missing"] == 0 and st["raw_files"] > 0
+    assert st["runs"] == 2 and st["held"] == 1 and st["raw_files"] > 0
     # the lines and the statistics are not copied: they are built from the votes, and come out the same
     assert st["built"] == {"line": before["line"], "mp_stat": before["mp_stat"]} and before["line"] > 0
     with db.job("parity", conn=conn) as (_, st):
         move.parity(conn, db.current(), old_dsn=DSN, old_ops="old_ops")
     assert st["differ"] == 0, st["detail"]
     assert all(a == b for a, b in st["rows"].values()) and st["rows"]["vote"] == [4080, 4080]
+    assert st["raw_on_disk"][0] > 0 and st["raw_on_disk"][0] == st["raw_on_disk"][1]
     ok = dict(conn.execute("""SELECT name, ok FROM ops.check_result WHERE tool = 'parlament' AND name LIKE 'parity%'"""))
-    assert ok["parity_differ"] and ok["parity_pub_speech_rows"] and len(ok) == 55 - 9
+    assert ok["parity_differ"] and ok["parity_pub_speech_rows"] and len(ok) == 56 - 9
     # a second replay is refused: the move is done once
     with db.job("replay", conn=conn):
         with pytest.raises(RuntimeError, match="веднъж"):
@@ -87,12 +88,14 @@ def test_parity_finds_a_changed_vote_a_missing_speech_and_a_changed_result(conn)
     conn.execute("UPDATE live.vote SET code = '-' WHERE sitting = 11174 AND item = 2 AND mp = 3839")
     conn.execute("DELETE FROM pub_parlament.speech WHERE sitting = 11159 AND no = 3")
     conn.execute("UPDATE parlament.item SET yes = yes + 1 WHERE sitting = 11174 AND no = 2")
+    gone = conn.execute("SELECT x.path FROM ops.raw_file x JOIN ops.fetch f USING (raw_file_id) WHERE f.tool = 'parlament' LIMIT 1").fetchone()[0]
+    Path(gone).unlink()
     with db.job("parity", conn=conn) as (_, st):
         move.parity(conn, db.current(), old_dsn=DSN, old_ops="old_ops")
     found = " | ".join(st["detail"])
     assert "vote: 4080 / 4080 реда, съдържанието различно" in found and "pub_vote:" in found
     assert "pub_speech:" in found and "speeches по събрание" in found
-    assert "item:" in found and "pub_item:" not in found
+    assert "item:" in found and "pub_item:" not in found and "сурови файлове: 1 от" in found
     assert not dict(conn.execute("SELECT name, ok FROM ops.check_result WHERE tool = 'parlament' AND name = 'parity_differ'"))["parity_differ"]
 
 

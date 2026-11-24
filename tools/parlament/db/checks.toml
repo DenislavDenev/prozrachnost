@@ -332,6 +332,12 @@ kind = "parity"
 gating = false
 
 [[check]]
+name = "parity_raw_on_disk"
+title_bg = "Суровите файлове от старата база, които са на диска с размера си"
+kind = "parity"
+gating = false
+
+[[check]]
 name = "parity_differ"
 title_bg = "Таблици и събрания, в които старата и общата база се различават по брой или по съдържание"
 kind = "parity"
