@@ -1,0 +1,1 @@
+SELECT concession_id, source_url FROM sobstvenost.concession_profile
