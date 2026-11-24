@@ -14,25 +14,31 @@ WIKIDATA = "https://query.wikidata.org/sparql"
 GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
 GDELT_PAUSE = 6  # GDELT asks for no more than one request every ~5 seconds
 
-# Bulgarian citizens who hold or held a public position, or are politicians, with a Bulgarian label.
+# Bulgarian citizens who hold or held a public position, or are politicians, with a Bulgarian label. Two queries:
+# the union of both ran about 90 s, over the 60 s the service allows, and from 15.11.2026 it failed and was throttled
+# (429); each half runs 12-30 s (24.11.2026).
+WHO = ("?p wdt:P39 ?pos.", "?p wdt:P106 wd:Q82955.")
 SPARQL = """
-SELECT ?p ?label ?desc ?img WHERE {
-  ?p wdt:P31 wd:Q5; wdt:P27 wd:Q219.
-  { ?p wdt:P39 ?pos } UNION { ?p wdt:P106 wd:Q82955 }
+SELECT DISTINCT ?p ?label ?desc ?img WHERE {{
+  ?p wdt:P27 wd:Q219. {who} ?p wdt:P31 wd:Q5.
   ?p rdfs:label ?label. FILTER(LANG(?label) = "bg")
-  OPTIONAL { ?p schema:description ?desc. FILTER(LANG(?desc) = "bg") }
-  OPTIONAL { ?p wdt:P18 ?img }
-}"""
+  OPTIONAL {{ ?p schema:description ?desc. FILTER(LANG(?desc) = "bg") }}
+  OPTIONAL {{ ?p wdt:P18 ?img }}
+}}"""
+WIKIDATA_PAUSE = 10
 
 
 def wikidata_people():
-    url = WIKIDATA + "?" + urllib.parse.urlencode({"query": SPARQL, "format": "json"})
-    data = json.loads(get(url, accept="application/sparql-results+json", timeout=150, retries=2, delay=30))  # ~90 s query
     out = {}
-    for b in data["results"]["bindings"]:
-        qid = b["p"]["value"].rsplit("/", 1)[-1]
-        out[qid] = {"qid": qid, "label": b["label"]["value"], "desc": b.get("desc", {}).get("value"),
-                    "img": b.get("img", {}).get("value")}
+    for i, who in enumerate(WHO):
+        if i:
+            time.sleep(WIKIDATA_PAUSE)
+        url = WIKIDATA + "?" + urllib.parse.urlencode({"query": SPARQL.format(who=who), "format": "json"})
+        data = json.loads(get(url, accept="application/sparql-results+json", timeout=90, retries=3, delay=60))
+        for b in data["results"]["bindings"]:
+            qid = b["p"]["value"].rsplit("/", 1)[-1]
+            out[qid] = {"qid": qid, "label": b["label"]["value"], "desc": b.get("desc", {}).get("value"),
+                        "img": b.get("img", {}).get("value")}
     return list(out.values())
 
 

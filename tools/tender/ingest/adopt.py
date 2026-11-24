@@ -22,12 +22,35 @@ import gzip
 import hashlib
 import json
 import datetime as dt
+import time
 import zlib
+
+import psycopg
 
 from . import build, db, eop, eop_offers, fx, pipeline, registry as R, sebra, tr_worker
 from .config import RAW_TR, TOOL
 
 BATCH = 500   # resources per transaction
+ATTACH = 500  # keys per transaction when the rows get the number of their load
+TRIES = 5     # a reader beside the step writes the same tables: a deadlock is tried again
+
+
+def _attach(conn, stats, key, pick, update):
+    """The landed rows get the number of their load, a few keys per transaction. One statement over every row
+    deadlocked with the register reader (24.11.2026) and the whole run was lost; a deadlock now costs one part."""
+    keys = [r[0] for r in conn.execute(pick).fetchall()]
+    n = 0
+    for i in range(0, len(keys), ATTACH):
+        for attempt in range(TRIES):
+            try:
+                with conn.transaction():
+                    n += conn.execute(update, (keys[i:i + ATTACH],)).rowcount
+                break
+            except psycopg.errors.DeadlockDetected:
+                if attempt == TRIES - 1:
+                    raise
+                time.sleep(2 + attempt * 3)
+    stats[key] = n
 
 
 def _mine(ref, part):
@@ -122,11 +145,15 @@ def partidas(conn, stats, part=None):
     if again:   # no kept answer to stand behind the rows: read again soon, after what someone waits for
         stats["tr_missing_raw"] = len(again)
         conn.execute("UPDATE tender_src.tr_queue SET status = 'pending', next_at = now(), attempts = 0, why = 'rotate' WHERE eik = ANY(%s) AND status = 'done'", (again,))
-    stats["tr_roles"] = conn.execute("""UPDATE tender_src.tr_role x SET load_id = d.load_id FROM tender_src.tr_deed d
-        WHERE d.eik = x.eik AND d.load_id IS NOT NULL AND x.load_id IS NULL""").rowcount
-    stats["tr_persons"] = conn.execute("""UPDATE tender_src.tr_person p SET load_id = x.load_id
-        FROM (SELECT holder_id, max(load_id) load_id FROM tender_src.tr_role WHERE load_id IS NOT NULL GROUP BY 1) x
-        WHERE x.holder_id = p.indent AND p.load_id IS NULL""").rowcount
+    _attach(conn, stats, "tr_roles", """SELECT DISTINCT x.eik FROM tender_src.tr_role x JOIN tender_src.tr_deed d USING (eik)
+        WHERE d.load_id IS NOT NULL AND x.load_id IS NULL ORDER BY 1""",
+            """UPDATE tender_src.tr_role x SET load_id = d.load_id FROM tender_src.tr_deed d
+        WHERE d.eik = x.eik AND x.eik = ANY(%s) AND d.load_id IS NOT NULL AND x.load_id IS NULL""")
+    _attach(conn, stats, "tr_persons", """SELECT DISTINCT p.indent FROM tender_src.tr_person p JOIN tender_src.tr_role x ON x.holder_id = p.indent
+        WHERE p.load_id IS NULL AND x.load_id IS NOT NULL ORDER BY 1""",
+            """UPDATE tender_src.tr_person p SET load_id = x.load_id
+        FROM (SELECT holder_id, max(load_id) load_id FROM tender_src.tr_role WHERE load_id IS NOT NULL AND holder_id = ANY(%s) GROUP BY 1) x
+        WHERE x.holder_id = p.indent AND p.load_id IS NULL""")
 
 
 OFFER_TABLES = ("offer", "lot", "contract_lot", "announcement", "detail", "publication", "appeal", "document")
@@ -163,8 +190,11 @@ def procedures(conn, stats, part=None):
         stats["offers_missing_raw"] = len(again)
         conn.execute("UPDATE tender_src.eopsvc_queue SET status = 'pending', reason = 'refresh', next_at = now(), attempts = 0 WHERE tender_id = ANY(%s)", (again,))
     for t in OFFER_TABLES:
-        stats[f"offers_{t}"] = conn.execute(f"""UPDATE tender_src.eopsvc_{t} x SET load_id = l.load_id FROM ops.load l
-            WHERE l.tool = 'tender' AND l.source = 'offers' AND l.is_current AND l.ref = x.tender_id::text AND x.load_id IS NULL""").rowcount
+        _attach(conn, stats, f"offers_{t}", f"""SELECT DISTINCT x.tender_id FROM tender_src.eopsvc_{t} x JOIN ops.load l
+            ON l.tool = 'tender' AND l.source = 'offers' AND l.is_current AND l.ref = x.tender_id::text WHERE x.load_id IS NULL ORDER BY 1""",
+                f"""UPDATE tender_src.eopsvc_{t} x SET load_id = l.load_id FROM ops.load l
+            WHERE l.tool = 'tender' AND l.source = 'offers' AND l.is_current AND l.ref = x.tender_id::text
+              AND x.tender_id = ANY(%s) AND x.load_id IS NULL""")
 
 
 def run(conn, stats, what=("eop", "sebra", "ecb", "tr", "offers"), part=None):

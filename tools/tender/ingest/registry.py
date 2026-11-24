@@ -389,9 +389,17 @@ def changes(day, page=1, page_size=25):
     end = dt.datetime.combine(d, dt.time(23, 59, 59, 999000), tz).isoformat(timespec="milliseconds")
     q = {"dateFrom": start, "dateTo": end, "page": page, "pageSize": page_size}
     url = f"{TR_PORTAL_ENTRIES}?{urllib.parse.urlencode(q)}"
+    empty = 0
     for attempt in range(3):   # the portal at times answers 200 with a page that is not the list (08 and 09.11.2026)
         try:
-            raw = json.loads(get(url, accept="application/json"))
+            body = get(url, accept="application/json")
+            if not body.strip():
+                empty += 1
+                if empty == 3:   # a day without entries (a Sunday: 01, 15 and 22.11.2026) is an empty answer, every time
+                    raw = []
+                    break
+                raise ValueError("empty")
+            raw = json.loads(body)
             if not isinstance(raw, list):
                 raise ValueError("not a list")
             break
