@@ -295,3 +295,46 @@ def test_a_rejected_last_read_is_a_problem_until_a_good_one(conn):
         assert any("отказано" in p for p in pipeline.run_checks(conn, r))
     assert any("отказано" in p for p in pipeline.freshness(conn, "obrazovanie"))
     assert json.dumps(pipeline.freshness(conn, "obrazovanie"), ensure_ascii=False)
+
+
+def test_dzi_step_names_a_new_and_a_vanished_resource_and_loads_the_rest(conn, monkeypatch, tmp_path):
+    """The catalog of 16.11.2026 listed a resource no layout knew and the whole step stopped. Now a new resource is
+    named and not read, a vanished one is named and keeps what is stored, and the others load."""
+    from ingest.dzi import DZI_DATASET
+    from ingest.sources import SCHOOLS_DATASET
+    monkeypatch.setattr(run, "RAW", tmp_path)
+    value = json.loads((FIX / "dzi-catalog.json").read_bytes())
+    old = next(x for x in value["resources"] if x["uri"].startswith("f1ae52dc"))
+    new = dict(old, uri="00000000-0000-0000-0000-000000000001", name="ДЗИ, сесия май-юни на учебна 2026/2027 година")
+    listing = {"success": True, "resources": [old, new], "total_records": 2}
+    answers = {DZI_DATASET: json.dumps(listing, ensure_ascii=False).encode(),
+               SCHOOLS_DATASET: (FIX / "school-catalog.json").read_bytes(),
+               old["uri"]: (FIX / "dzi-f1ae52dc.json").read_bytes()}
+
+    def post(method, payload):
+        return answers[payload["criteria"]["dataset_uri"] if method == "listResources" else payload["resource_uri"]]
+    (problems, checks, published) = step(conn, lambda r: run.refresh_dzi(conn, r, post), "dzi")
+    assert not published.problems and not any("отказано" in c for c in checks)
+    assert any("00000000" in p and "нов ресурс" in p for p in problems)
+    assert sum("липсва при източника" in p for p in problems) == 16
+    assert conn.execute("SELECT resource FROM pub_obrazovanie.dzi_publication").fetchall() == [(old["uri"],)]
+    causes = dict(conn.execute("""SELECT cause, count(*) FROM ops.change_log WHERE tool = 'obrazovanie' AND source = 'dzi'
+        AND field = 'resource' AND run_id = (SELECT max(run_id) FROM ops.run WHERE tool = 'obrazovanie') GROUP BY cause""").fetchall())
+    assert causes == {"new-record": 1, "gone": 16}
+    assert conn.execute("""SELECT count(*) FROM ops.load WHERE tool = 'obrazovanie' AND source = 'dzi'
+        AND status = 'rejected'""").fetchone()[0] == 0
+
+
+def test_grades_only_session_is_published_without_a_made_up_mean(conn):
+    uri = "ffa356b9-75e9-418f-88f9-762b8685cb68"
+    table = parse_dzi((FIX / "dzi-ffa356b9.json").read_bytes(), uri)
+    resource = Resource(uri, table.year, "ДЗИ август-септември", "2026-09-30 15:51:48")
+    step(conn, lambda r: store.load_dzi(conn, r, resource, "dzi-a", table))
+    view = main.matura_snapshot("2025/2026", "august", "mandatory")
+    assert view["results"] == len(table.results) and view["counted"] is False
+    assert all(s["takers"] is None and s["mean"] is None for s in view["subjects"])
+    page = TestClient(main.app).get("/matura/2025-2026?session=august&kind=mandatory")
+    assert page.status_code == 200 and "не е публикуван" in page.text and "скрит брой" not in page.text
+    assert sum(float(s) for (s,) in conn.execute(
+        "SELECT score FROM pub_obrazovanie.dzi_result WHERE resource = %s", (uri,))) == pytest.approx(
+        sum(float(x.score) for x in table.results))

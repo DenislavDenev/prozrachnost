@@ -190,7 +190,16 @@ def registers_by_year(raw):
 def refresh_dzi(conn, r, post=http.post):
     """Every observed DZI resource, keeping the session and the optional exams apart."""
     problems = []
-    resources = dzi_catalog(read_catalog(conn, r, post, DZI_DATASET))
+    listing = dzi_catalog(read_catalog(conn, r, post, DZI_DATASET))
+    resources = listing.resources
+    # A new resource is not read until its layout is observed and added; a vanished one keeps what is stored. Both
+    # are named in the change log and in the report, and neither stops the others.
+    for item in listing.new:
+        pipeline.log_change(conn, r, "dzi", item.uri, "resource", None, item.name, "new-record")
+        problems.append(f"Образование: ДЗИ {item.uri[:8]}: нов ресурс без познат формат, не е четен: {item.name}")
+    for uri in listing.gone:
+        pipeline.log_change(conn, r, "dzi", uri, "resource", uri, None, "gone")
+        problems.append(f"Образование: ДЗИ {uri[:8]}: липсва при източника, пазеното остава")
     registers = registers_by_year(read_catalog(conn, r, post, SCHOOLS_DATASET))
     cache = {}
     for resource in resources:
@@ -211,6 +220,8 @@ def refresh_dzi(conn, r, post=http.post):
         except Exception as e:
             fail(conn, r, problems, "dzi", resource.uri, e, file, f"ДЗИ {resource.uri[:8]}")
     r.stats["resources"] = len(resources)
+    r.stats["new_resources"] = len(listing.new)
+    r.stats["gone_resources"] = len(listing.gone)
     return problems
 
 

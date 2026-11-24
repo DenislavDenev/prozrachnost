@@ -43,6 +43,13 @@ MUTATIONS = [
      "tests/test_store.py::test_nvo7_year_lands_builds_and_publishes_once"),
     ("rejected-forgotten", "db/checks.toml", "WHERE status = 'rejected'\"", "WHERE false\"",
      "tests/test_store.py::test_a_rejected_last_read_is_a_problem_until_a_good_one"),
+    ("dzi-gone-unseen", "ingest/dzi.py", 'gone = sorted(LAYOUTS.keys() - {row["uri"] for row in rows})', "gone = []",
+     "tests/test_dzi.py::test_a_vanished_resource_is_named_and_the_others_stay"),
+    ("dzi-new-silent", "ingest/run.py", "    for item in listing.new:", "    for item in []:",
+     "tests/test_store.py::test_dzi_step_names_a_new_and_a_vanished_resource_and_loads_the_rest"),
+    ("dzi-no-count-is-zero", "ingest/dzi.py", "None, _grade(score_raw, number, col), is_school))",
+     "0, _grade(score_raw, number, col), is_school))",
+     "tests/test_dzi.py::test_grades_only_session_has_no_count_and_zero_is_no_result"),
 ]
 
 
