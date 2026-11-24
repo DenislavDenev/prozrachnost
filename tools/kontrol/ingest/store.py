@@ -102,9 +102,15 @@ def prepare(source, rows, manifest):
 
 
 def keyed(rows, manifest):
-    """{key: row} for pipeline.load(): every record under its source id, and the description of the read."""
+    """{key: row} for pipeline.load(): every record under its source id, and the description of the read.
+    The hashes of the raw answer are not content: an ASP.NET page of КЗК differs on every read (its state field), so
+    with them two reads of the same decisions would differ and a held read could never be confirmed. ops.fetch keeps
+    the raw files of each read."""
     out = {r['id']: r for r in rows}
-    out['#read'] = {k: v for k, v in manifest.items() if k != 'answer_sha256'}
+    read = {k: v for k, v in manifest.items() if k != 'answer_sha256'}
+    if 'source_discrepancies' in read:
+        read['source_discrepancies'] = [{k: v for k, v in d.items() if k != 'sha256'} for d in read['source_discrepancies']]
+    out['#read'] = read
     return out
 
 
@@ -113,8 +119,13 @@ def should_hold(old, new):
     return bool(lost(old, new))
 
 
+# notes about the read that the parser puts on a record: the pager note of КЗК stands on the first row of the last
+# results page and moves to another decision as the register grows, so its going empty loses nothing
+READ_NOTES = ('source_pager_discrepancy',)
+
+
 def lost(old, new):
-    a = {r['id']: r for r in old}
+    a = {r['id']: {k: v for k, v in r.items() if k not in READ_NOTES} for r in old}
     b = {r['id']: r for r in new}
 
     def loss(before, after):
