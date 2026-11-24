@@ -14,6 +14,7 @@ import datetime as dt
 import json
 import re
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from . import archive, config, pipeline, sheet, templates
 
@@ -22,6 +23,18 @@ OK = ("loaded", "confirmed", "unchanged")
 
 
 # ---------------------------------------------------------------- the lists of the sets
+
+PORTAL_ZONE = ZoneInfo("Europe/Sofia")
+
+
+def portal_time(v):
+    """A time of data.egov.bg: the portal writes local time without a zone ("2025-10-30 11:40:56" is 09:40:56 UTC in
+    winter), so the zone is said here, not left to the session of the database."""
+    if not v:
+        return None
+    t = v if isinstance(v, dt.datetime) else dt.datetime.fromisoformat(str(v))
+    return t if t.tzinfo else t.replace(tzinfo=PORTAL_ZONE)
+
 
 MONTHS = ["януари", "февруари", "март", "април", "май", "юни", "юли", "август", "септември", "октомври", "ноември", "декември"]
 
@@ -97,7 +110,7 @@ def sync_datasets(conn):
                                 VALUES (%s,%s,%s,%s,%s,%s,%s)
                                 ON CONFLICT (resource_uri) DO UPDATE SET set_uri = EXCLUDED.set_uri, name = EXCLUDED.name, url = EXCLUDED.url,
                                   period = EXCLUDED.period, source_updated_at = EXCLUDED.source_updated_at, list_load_id = EXCLUDED.list_load_id""",
-                             (u, d["set_uri"], e["name"], e["resource_url"], link_period(e["name"]), e["updated_at"] or None, lid))
+                             (u, d["set_uri"], e["name"], e["resource_url"], link_period(e["name"]), portal_time(e["updated_at"]), lid))
     return out
 
 
@@ -214,7 +227,7 @@ def store(conn, r, ds, res, got, now=None, reread=False):
         return "invalid"
     rows = table_rows(sh, fam, tid, ds["year"])
     meta = dict(uri=uri, set_uri=ds["set_uri"], sha=sha, name=res.get("name") or "", version=str(res.get("version") or ""),
-                updated=res.get("updated_at") or None, read_at=read_at)
+                updated=portal_time(res.get("updated_at")), read_at=read_at)
     done = pipeline.load(conn, r, SOURCE, uri, rows, writer(meta), raw_file_id=file.raw_file_id, current=read_table, now=now,
                          hold=dt.timedelta(hours=config.HOLD_AFTER_H), hold_when=smaller)
     if done.status == "loaded":

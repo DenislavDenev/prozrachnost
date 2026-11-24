@@ -422,3 +422,18 @@ def test_the_weekly_card_has_the_shape_n8n_reads(c, arch, capsys):
     card = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert card["tool"] == "Престъпност и пожари" and card["counts"]["таблици"] == 6 and card["counts"]["години"] == "2024-2024"
     assert isinstance(card["changes"], int) and card["held"] == 0 and card["problems"] == [] and card["last_ok"]["списъци (архив)"]
+
+
+def test_the_times_of_the_portal_are_local_time_of_sofia(c, arch):
+    """data.egov.bg writes "2025-10-30 11:40:56" without a zone; it is the time in Sofia, whatever the session of the database."""
+    from ingest import load
+    assert load.portal_time("2025-10-30 11:40:56") == dt.datetime(2025, 10, 30, 9, 40, 56, tzinfo=UTC)
+    assert load.portal_time("2025-07-01 12:00:00") == dt.datetime(2025, 7, 1, 9, 0, tzinfo=UTC)
+    assert load.portal_time("") is None and load.portal_time(dt.datetime(2025, 1, 1, tzinfo=UTC)) == dt.datetime(2025, 1, 1, tzinfo=UTC)
+    st = arch({h.POLICE: h.police_2024(), h.BULLETIN: None})
+    run(c, st)
+    listed = {e["uri"]: e for e in h.listing(h.BULLETIN)}
+    for uri, at in c.execute("SELECT resource_uri, source_updated_at FROM sigurnost.link"):
+        assert at == load.portal_time(listed[uri]["updated_at"])
+    stated = {e["uri"]: e for e in h.listing(h.POLICE)}[h.A]["updated_at"]
+    assert current(c, h.A, "source_updated_at") == load.portal_time(stated)
