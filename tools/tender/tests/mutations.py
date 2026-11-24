@@ -90,6 +90,8 @@ CASES = [
      'tests/test_changes.py::test_a_day_without_entries_is_an_empty_list_but_one_empty_answer_is_not'),
     ('public-figures-from-one-query', 'ingest/enrich.py', 'WHO = ("?p wdt:P39 ?pos.", "?p wdt:P106 wd:Q82955.")', 'WHO = ("?p wdt:P39 ?pos.",)',
      'tests/test_changes.py::test_the_public_figures_come_from_two_light_queries'),
+    ('payments-sorted-in-full', 'db/migrations/0004_payment_list.sql', "(settlement_date DESC NULLS LAST, resource_uri, row_no)", "(settlement_date)",
+     'tests/test_serving.py::test_the_list_of_payments_reads_an_index_in_its_order'),
     ('a-unit-names-the-company', 'db/derive/20_network.sql', "(ref IS DISTINCT FROM 'eik:' || substr(id, 3)), label, ref;", "label, ref;", PEOPLE),
     ('an-invented-key-to-core', 'db/derive/90_core.sql', "UPDATE company c SET org_eik = o.eik FROM core.org o WHERE o.eik = c.eik;",
      "UPDATE company c SET org_eik = c.eik WHERE c.eik ~ '^[0-9]{9}$';",
