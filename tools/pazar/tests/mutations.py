@@ -70,6 +70,12 @@ CASES = [
     ("db/build/20_category_day.sql", "n.promo <= p.prior * 0.99", "n.promo <= p.prior * 1.5", "tests/test_gold.py::test_a_promotion_is_real_only_below_the_shops_own_earlier_price"),
     ("db/build/20_category_day.sql", "ln(n.retail / (o.retail::numeric / 10000 / n.prev_rate))", "ln(n.retail / (o.retail::numeric / 10000))",
      "tests/test_gold.py::test_the_index_across_the_month_boundary_and_across_the_euro"),
+    ("db/migrations/0003_observation_plan.sql",
+     "  EXECUTE format('CREATE STATISTICS IF NOT EXISTS pazar.price_span_%s_flags ON ((flags & 29)) FROM pazar.price_span_%s', m, m);",
+     "  NULL;",
+     "tests/test_gold.py::test_a_month_of_spans_is_planned_with_its_share_of_rows_without_anomalies"),
+    ("db/migrations/0003_observation_plan.sql", "ON pazar.price_span (store_id, product_id, from_day);", "ON pazar.price_span (product_id, store_id);",
+     "tests/test_gold.py::test_the_earlier_price_of_a_shop_and_product_has_an_index"),
     # fuel
     ("ingest/fuel.py", "raw_file_id=f.raw_file_id, current=current, now=now)", "raw_file_id=f.raw_file_id, current=None, now=now)",
      "tests/test_fuel.py::test_a_changed_value_is_logged_and_a_smaller_answer_is_held"),
