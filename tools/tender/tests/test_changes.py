@@ -5,6 +5,7 @@ what someone waits for, the chain waits, runs once a day and says when a source 
 Runs only when TENDER_TEST_DSN points at a disposable database (it is wiped):
     TENDER_TEST_DSN=dbname=tender_test pytest tests/test_changes.py
 """
+import collections
 import datetime as dt
 import os
 
@@ -807,3 +808,44 @@ def test_the_public_figures_come_from_two_light_queries(monkeypatch):
     people = enrich.wikidata_people()
     assert len(asked) == 2 and "UNION" not in "".join(asked)            # no query over the limit of the service
     assert sorted(p["qid"] for p in people) == ["Q1", "Q2", "Q3"]       # one person in both is counted once
+
+
+def test_the_components_are_read_as_a_stream_and_match_the_plain_count(conn, monkeypatch):
+    import datetime as dt
+    from ingest import build as B_, networks
+    monkeypatch.setattr(networks, "STREAM", 2)          # several fetches even for a few edges
+    old, new = dt.date(2020, 1, 1), dt.date(2099, 1, 1)
+    edges = [("p:1", "c:1", "ownership", None), ("p:1", "c:2", "ownership", old), ("p:2", "c:2", "management", None),
+             ("c:3", "c:4", "ownership", new), ("p:3", "c:4", "management", old), ("p:4", "c:5", "other", None)]
+    with conn.transaction():
+        B_.start_stage(conn)
+        conn.execute("CREATE TABLE tender_stage.edge (holder text, company text, view text, valid_to date)")
+        conn.execute("CREATE TABLE tender_stage.node_contract (node text, contract_id text)")
+        conn.execute("""CREATE TABLE tender_stage.network_component (view text, mode text, node text, component bigint,
+                        PRIMARY KEY (view, mode, node))""")
+        conn.execute("""CREATE TABLE tender_stage.network_component_stats (view text, mode text, component bigint, nodes int,
+                        persons int, companies int, contracts int, amount_eur numeric)""")
+        with conn.cursor().copy("COPY tender_stage.edge FROM STDIN") as cp:
+            for e in edges:
+                cp.write_row(e)
+        named = []
+        real = conn.cursor
+        monkeypatch.setattr(conn, "cursor", lambda *a, **k: named.append(k.get("name")) or real(*a, **k))
+        stats = networks.components(conn)
+        monkeypatch.undo()
+        got = conn.execute("SELECT view, mode, node, component FROM tender_stage.network_component").fetchall()
+        B_.reset_stage(conn)
+    assert "network_edges" in named                    # the edges come through a cursor on the server
+    today = dt.date.today()
+    for view, kinds in networks.VIEWS.items():
+        for mode in ("current", "all_history"):
+            plain = networks.union_find([(h, c) for h, c, v, to in edges
+                                         if v in kinds and (mode == "all_history" or to is None or to > today)])
+            want = {frozenset(n for n in plain if plain[n] == r) for r in set(plain.values())}
+            mine = collections.defaultdict(set)
+            for v, m, node, comp in got:
+                if (v, m) == (view, mode):
+                    mine[comp].add(node)
+            assert {frozenset(x) for x in mine.values()} == want, (view, mode)
+            assert stats[f"{view}/{mode}"] == len(want)
+    assert len({c for _, _, _, c in got}) == sum(stats.values())   # no two components share a number

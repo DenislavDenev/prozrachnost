@@ -186,7 +186,7 @@ def step_normalize(conn, stats):
 def step_derive(conn, stats):
     """Run db/derive/NN_*.sql against the build schema (companies, networks, tags, search, what the pages show)."""
     from . import networks
-    with conn.transaction():
+    with memory_limit(), conn.transaction():   # the components are computed here, in this process
         for f in sorted(DERIVE.glob("[0-9][0-9]_*.sql")):
             conn.execute(f.read_text(encoding="utf-8"))
             if f.name.startswith("20_"):  # edges exist: compute components in Python

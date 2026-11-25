@@ -92,6 +92,8 @@ CASES = [
      'tests/test_changes.py::test_the_public_figures_come_from_two_light_queries'),
     ('payments-sorted-in-full', 'db/migrations/0004_payment_list.sql', "(settlement_date DESC NULLS LAST, resource_uri, row_no)", "(settlement_date)",
      'tests/test_serving.py::test_the_list_of_payments_reads_an_index_in_its_order'),
+    ('components-ignore-the-end-of-a-role', 'ingest/networks.py', "            current.append(to is None or to > today)\n", "            current.append(True)\n",
+     'tests/test_changes.py::test_the_components_are_read_as_a_stream_and_match_the_plain_count'),
     ('a-unit-names-the-company', 'db/derive/20_network.sql', "(ref IS DISTINCT FROM 'eik:' || substr(id, 3)), label, ref;", "label, ref;", PEOPLE),
     ('an-invented-key-to-core', 'db/derive/90_core.sql', "UPDATE company c SET org_eik = o.eik FROM core.org o WHERE o.eik = c.eik;",
      "UPDATE company c SET org_eik = c.eik WHERE c.eik ~ '^[0-9]{9}$';",
