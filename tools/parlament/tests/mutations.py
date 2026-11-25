@@ -119,8 +119,7 @@ MUTATIONS = [
      "    stats.rebuild(conn, voted)\n", "",
      f"{M}::test_the_old_database_is_replayed_built_and_proved_equal"),
     ("the assemblies filled by the deploy give way to the old ones", "ingest/move.py",
-     '            conn.execute("DELETE FROM parlament.assembly")
-', "",
+     '            conn.execute("DELETE FROM parlament.assembly")\n', "",
      f"{M}::test_the_old_database_is_replayed_built_and_proved_equal"),
     ("parity compares the content, not only the count", "ingest/move.py",
      "            if a != b:", "            if a[0] != b[0]:",
