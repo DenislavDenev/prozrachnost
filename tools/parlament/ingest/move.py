@@ -73,7 +73,7 @@ def replay(conn, r, old_dsn=OLD_DSN, old_live="live", old_ops="ops"):
     move is done once (a test database is emptied by its fixtures). The assemblies are the exception: the deploy's migrate
     fills them from db/ref/assemblies.csv, and the old database's, with the dates the API refined, take their place."""
     full = [t for t, _ in TABLES if t != "assembly"]
-    if conn.execute(" OR ".join(f"EXISTS (SELECT FROM parlament.{t})" for t in full)
+    if conn.execute("SELECT " + " OR ".join(f"EXISTS (SELECT FROM parlament.{t})" for t in full)
                     + " OR EXISTS (SELECT FROM parlament_src.read_state)").fetchone()[0]:
         raise RuntimeError("parlament вече има данни: replay се пуска веднъж, в празни таблици")
     conn.execute("SET synchronous_commit = off")
