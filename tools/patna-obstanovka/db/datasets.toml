@@ -1,0 +1,144 @@
+# The datasets and sources of Пътна обстановка. pipeline.sync_registry() loads this at `migrate`.
+# Whether a dataset may be shown or handed out is decided only in tools/danni/db/licences.toml.
+# The source names are the keys /api/status has always shown.
+
+[[dataset]]
+dataset = "patna-obstanovka.bgtoll"
+title_bg = "Измерен трафик и метеостанции по републиканските пътища"
+description_bg = "Брой превозни средства за 15 минути и за час по посока на точка, и температура, влажност и вятър от метеостанциите на БГТОЛ. Само текущото състояние; история не се пази."
+source_org = "Национално тол управление (БГТОЛ)"
+source_url = "https://bgtoll.bg/otvoreni-danni"
+channel = "site-json"
+licence = "CC BY 4.0 (Признаване на авторските права), посочен на страницата на всеки набор"
+licence_url = "https://creativecommons.org/licenses/by/4.0/"
+cadence = "на 15 минути"
+tables = ["pub_patna_obstanovka.traffic", "pub_patna_obstanovka.weather", "patna_obstanovka.station_bearing", "patna_obstanovka_src.toll_answer", "patna_obstanovka_src.traffic_reading", "patna_obstanovka_src.weather_reading"]
+
+[[dataset]]
+dataset = "patna-obstanovka.lima"
+title_bg = "Затворени пътища, затворени ленти и инциденти"
+description_bg = "Съобщенията на Агенция „Пътна инфраструктура“ в системата ЛИМА (DATEX II), с първата публикувана точка и периода на валидност."
+source_org = "Агенция „Пътна инфраструктура“"
+source_url = "https://datasheet.api.bg/"
+channel = "file"
+licence = "не е посочен"
+cadence = "на 15 минути"
+tables = ["pub_patna_obstanovka.event", "patna_obstanovka_src.lima_file", "patna_obstanovka_src.lima_event"]
+
+[[dataset]]
+dataset = "patna-obstanovka.risk"
+title_bg = "Оценка на пътния риск по участъци"
+description_bg = "Мрежовата оценка на безопасността на ДАБДП: ниво на риск и състояние на настилката по участъци, с референция 2023. Не е текущо състояние."
+source_org = "Държавна агенция „Безопасност на движението по пътищата“"
+source_url = "https://experience.arcgis.com/experience/eff259620af6487ab13892649421a87a"
+channel = "api"
+licence = "не е посочен"
+cadence = "месечно"
+tables = ["pub_patna_obstanovka.risk_section", "patna_obstanovka.risk_section", "patna_obstanovka_src.risk_layer", "patna_obstanovka_src.risk_section"]
+
+[[dataset]]
+dataset = "patna-obstanovka.crashes"
+title_bg = "Катастрофи от архива на МВР"
+description_bg = "Пътнотранспортните произшествия от 01.01.2024 с час, координати, вид, загинали и ранени, и свързването им с най-близкия оценен участък."
+source_org = "Министерство на вътрешните работи"
+source_url = "https://www.mvr.bg/PTPShapeResult/ptp.zip"
+channel = "file"
+licence = "не е посочен на mvr.bg"
+cadence = "всеки ден"
+tables = ["pub_patna_obstanovka.crash", "pub_patna_obstanovka.crash_match", "patna_obstanovka.crash", "patna_obstanovka.crash_match", "patna_obstanovka_src.crash_file", "patna_obstanovka_src.crash"]
+
+[[dataset]]
+dataset = "patna-obstanovka.status"
+title_bg = "Състояние на източниците на Пътна обстановка"
+description_bg = "Кога е последното успешно четене на всеки източник, колко реда е дало и каква е грешката на последното четене, ако е неуспешно."
+source_org = "Прозрачност"
+channel = "derived"
+licence = "CC BY 4.0"
+cadence = "на 15 минути"
+tables = ["pub_patna_obstanovka.source_state"]
+
+[[source]]
+source = "traffic"
+title_bg = "БГТОЛ · измерен трафик"
+url = "https://bgtoll.bg/index.php/traffic_passes/data"
+channel = "site-json"
+dataset = "patna-obstanovka.bgtoll"
+cadence = "на 15 минути"
+stale_after = "25 minutes"
+landing = "latest"
+hold_alert_after = "1 hour"
+
+[[source]]
+source = "weather"
+title_bg = "БГТОЛ · метеостанции"
+url = "https://bgtoll.bg/index.php/mto/data"
+channel = "site-json"
+dataset = "patna-obstanovka.bgtoll"
+cadence = "на 15 минути"
+stale_after = "25 minutes"
+landing = "latest"
+hold_alert_after = "1 hour"
+
+[[source]]
+source = "lima_r01"
+title_bg = "АПИ ЛИМА · затворени пътища"
+url = "https://datasheet.api.bg/?lang=bg&g=roadworks&c=r01"
+channel = "file"
+dataset = "patna-obstanovka.lima"
+cadence = "на 15 минути"
+stale_after = "25 minutes"
+landing = "latest"
+hold_alert_after = "1 hour"
+
+[[source]]
+source = "lima_r02"
+title_bg = "АПИ ЛИМА · затворени ленти"
+url = "https://datasheet.api.bg/?lang=bg&g=roadworks&c=r02"
+channel = "file"
+dataset = "patna-obstanovka.lima"
+cadence = "на 15 минути"
+stale_after = "25 minutes"
+landing = "latest"
+hold_alert_after = "1 hour"
+
+[[source]]
+source = "lima_d01"
+title_bg = "АПИ ЛИМА · инциденти"
+url = "https://datasheet.api.bg/?lang=bg&g=danger&c=d01"
+channel = "file"
+dataset = "patna-obstanovka.lima"
+cadence = "на 15 минути"
+stale_after = "25 minutes"
+landing = "latest"
+hold_alert_after = "1 hour"
+
+[[source]]
+source = "risk"
+title_bg = "ДАБДП · оценка на пътния риск"
+url = "https://services6.arcgis.com/GLbanbtRQ5XHYhZ4/arcgis/rest/services/Network_Wide_Road_Safety_Assessment/FeatureServer"
+channel = "api"
+dataset = "patna-obstanovka.risk"
+cadence = "месечно, на 1-во число"
+stale_after = "40 days"
+landing = "latest"
+hold_alert_after = "1 day"
+
+[[source]]
+source = "crashes"
+title_bg = "МВР · катастрофи"
+url = "https://www.mvr.bg/PTPShapeResult/ptp.zip"
+channel = "file"
+dataset = "patna-obstanovka.crashes"
+cadence = "два пъти на ден"
+stale_after = "3 days"
+landing = "latest"
+hold_alert_after = "1 day"
+
+[[source]]
+source = "matches"
+title_bg = "Свързани ПТП с пътни участъци"
+url = "https://www.mvr.bg/PTPShapeResult/ptp.zip"
+channel = "derived"
+dataset = "patna-obstanovka.crashes"
+cadence = "след всяко ново четене на катастрофите или на участъците"
+landing = "latest"
