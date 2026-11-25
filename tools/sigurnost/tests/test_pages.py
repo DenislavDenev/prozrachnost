@@ -76,6 +76,35 @@ def test_types_with_a_comparison_year_of_another_template_say_they_are_not_compa
     assert all(r["other_reg"] is None for r in rows)
 
 
+def copy_year(c, src, dst, template=None):
+    """The published tables of year `src` once more as year `dst`, optionally with another template."""
+    for t in ("source_table", "crime_row", "observation"):
+        cols = [r[0] for r in c.execute("""SELECT column_name FROM information_schema.columns
+                                            WHERE table_schema = 'pub_sigurnost' AND table_name = %s ORDER BY ordinal_position""", (t,))]
+        out = ["%(dst)s" if x == "year" else ("coalesce(%(tpl)s, template)" if x == "template" else x) for x in cols]
+        c.execute(f"INSERT INTO pub_sigurnost.{t} ({', '.join(cols)}) SELECT {', '.join(out)} FROM pub_sigurnost.{t} WHERE year = %(src)s",
+                  dict(src=src, dst=dst, tpl=template))
+
+
+def test_types_compared_with_a_year_of_another_template_render_with_no_data_not_a_server_error(client, c):
+    copy_year(c, 2024, 2023, template="other-1")
+    body = text(client.get("/vidove?y=2024&sr=2023"))
+    assert "Шаблонът на таблицата е сменен" in body
+    assert "няма данни" in body                                       # the other year and the difference, never a zero
+    body = text(client.get("/vidove?o=BG313&y=2024&sr=2023"))
+    assert "Шаблонът на таблицата е сменен" in body
+    rows = list(csv.DictReader(io.StringIO(text(client.get("/vidove.csv?y=2024&sr=2023")).lstrip("﻿"))))
+    assert rows and all(r["other_reg"] == "" and r["diff_reg"] == "" for r in rows)
+
+
+def test_types_compared_with_a_year_of_the_same_template_give_the_difference(client, c):
+    copy_year(c, 2024, 2023)
+    js = client.get("/vidove.json?y=2024&sr=2023").json()
+    assert js["compare_year"] == 2023 and js["note"] is None
+    assert js["rows"][0]["other_reg"] == 74709 and js["rows"][0]["diff_reg"] == 0
+    assert "Шаблонът" not in text(client.get("/vidove?y=2024&sr=2023"))
+
+
 def test_the_levels_are_indented_and_the_parts_are_not_added(client):
     body = text(client.get("/vidove?y=2024"))
     assert 'class="l1"' in body and 'class="l2"' in body and 'class="l3"' in body and 'class="l4"' in body
