@@ -102,6 +102,8 @@ CASES = [
     ("app/queries.py", "v = float(amount / p[\"persons\"]) if p and p[\"n\"] == nmembers and p[\"persons\"] else None", "v = float(amount / p[\"persons\"]) if p and p[\"persons\"] else None",
      "tests/test_pages.py::test_per_inhabitant_needs_the_inhabitants_and_says_their_date"),
     ("app/queries.py", "    if s.kind != \"legal\" and not text:\n", "    if False:\n", "tests/test_pages.py::test_people_below_the_threshold_are_said_but_are_not_rows"),
+    ("app/queries.py", "\n                     ORDER BY f.total DESC NULLS LAST, f.kind\"\"\"", "\"\"\"",
+     "tests/test_pages.py::test_the_kinds_of_a_municipality_come_biggest_first_whatever_the_order_on_disk"),
     ("app/main.py", "recipient=r[\"name_export\"]", "recipient=r[\"name_shown\"]", "tests/test_pages.py::test_an_export_has_no_name_of_a_person_and_the_json_neither"),
     ("app/main.py", "        response.headers[\"X-Publication\"] = str(v[\"publication_id\"])\n", "", "tests/test_pages.py::test_every_answer_says_its_publication"),
 ]
