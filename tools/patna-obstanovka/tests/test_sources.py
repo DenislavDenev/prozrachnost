@@ -134,3 +134,23 @@ def test_the_server_of_api_gets_a_pause_and_a_refused_connection_is_asked_again(
         monkeypatch.setattr(http.urllib.request, 'urlopen', lambda req, timeout: (_ for _ in ()).throw(
             urllib.error.HTTPError(req.full_url, 403, 'Forbidden', {}, None)))
         http.get('https://www.mvr.bg/PTPShapeResult/ptp.zip', sleep=clock.sleep)
+
+
+def test_the_read_every_15_minutes_does_not_load_the_geometry():
+    """It runs beside the heavy jobs without their lock and must stay under 100 MB: shapely, numpy and pyproj (about
+    20 MB) come only when a station of БГТОЛ is new or moved."""
+    import subprocess
+    import sys
+    code = '''import sys
+from ingest import run, derive
+class Conn:
+    def execute(self, *a):
+        return self
+    def fetchall(self):
+        return []
+assert derive.bearings_from_sections(Conn()) == 0
+print(sorted(m for m in ('shapely', 'numpy', 'pyproj') if m in sys.modules))'''
+    from pathlib import Path
+    out = subprocess.run([sys.executable, '-c', code], cwd=Path(__file__).resolve().parent.parent,
+                         capture_output=True, text=True, check=True).stdout
+    assert out.strip() == '[]'
