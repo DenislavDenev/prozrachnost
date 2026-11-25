@@ -16,9 +16,9 @@ def sample(c, day, seed, chains, n=6):
     out = []
     for eik in chains:
         rows = c.execute("""SELECT sc.name, sc.eik, st.name, st.place_raw, p.code, p.name, s.category, s.retail, s.promo, cd.currency, s.flags
-                            FROM silver.price_span s JOIN silver.store st USING (store_id) JOIN silver.product p USING (product_id)
-                            JOIN silver.chain sc ON sc.chain_id = st.chain_id
-                            JOIN silver.chain_day cd ON cd.chain_id = sc.chain_id AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL
+                            FROM pazar.price_span s JOIN pazar.store st USING (store_id) JOIN pazar.product p USING (product_id)
+                            JOIN pazar.chain sc ON sc.chain_id = st.chain_id
+                            JOIN pazar.chain_day cd ON cd.chain_id = sc.chain_id AND cd.day = %(d)s AND cd.filed AND cd.copy_of IS NULL
                             WHERE sc.eik = %(e)s AND s.from_day >= %(ms)s AND s.from_day <= %(d)s AND coalesce(s.to_day, 'infinity') >= %(d)s
                               AND (s.flags & 29) = 0 AND s.category BETWEEN 1 AND 101
                             ORDER BY md5(%(seed)s || st.store_id::text || ':' || p.product_id::text) LIMIT %(n)s""",
@@ -32,9 +32,9 @@ def sample(c, day, seed, chains, n=6):
 
 def our_price(c, day, eik, store, code):
     """(retail, promo, currency) of the row on `day`, as submitted, or None."""
-    r = c.execute("""SELECT s.retail, s.promo, cd.currency FROM silver.price_span s JOIN silver.store st USING (store_id)
-                     JOIN silver.product p USING (product_id) JOIN silver.chain sc ON sc.chain_id = st.chain_id
-                     JOIN silver.chain_day cd ON cd.chain_id = sc.chain_id AND cd.day = %(d)s AND cd.filed
+    r = c.execute("""SELECT s.retail, s.promo, cd.currency FROM pazar.price_span s JOIN pazar.store st USING (store_id)
+                     JOIN pazar.product p USING (product_id) JOIN pazar.chain sc ON sc.chain_id = st.chain_id
+                     JOIN pazar.chain_day cd ON cd.chain_id = sc.chain_id AND cd.day = %(d)s AND cd.filed
                      WHERE sc.eik = %(e)s AND st.name = %(s)s AND p.code = %(c)s AND s.from_day >= %(ms)s AND s.from_day <= %(d)s
                        AND coalesce(s.to_day, 'infinity') >= %(d)s ORDER BY s.retail LIMIT 1""",
                   dict(d=day, e=eik, s=store, c=code, ms=day.replace(day=1))).fetchone()

@@ -47,3 +47,14 @@ def read(day, st, root=None):
     if hashlib.sha256(raw).hexdigest() != sha:
         raise ArchiveError("Файлът в архива не съвпада с отчетения хеш: " + rel)
     return raw, sha, str(path)
+
+
+def raw_file(conn, r, day, sha, path, raw=None):
+    """The id of the archived file in the shared register ops.raw_file, where Наблюдател records every file it keeps.
+    A file it has not recorded (an archive older than the register, a test) is recorded here, without copying it."""
+    from . import pipeline
+    row = conn.execute("SELECT raw_file_id FROM ops.raw_file WHERE sha256 = %s", (sha,)).fetchone()
+    if row:
+        return row[0]
+    f, _ = pipeline.register_raw(conn, r, "kolkostruva", str(day), path, media_type="application/zip", expect_sha=sha)
+    return f.raw_file_id

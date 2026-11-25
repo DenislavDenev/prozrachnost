@@ -1,0 +1,43 @@
+# The dataset and the sources of Закони и решения (read into core.dataset and ops.source by migrate).
+# Whether the dataset may be shown or distributed is not set here: tools/danni/db/licences.toml decides it.
+
+[[dataset]]
+dataset = "zakoni.amc"
+title_bg = "Справки от Портала за обществени консултации"
+description_bg = "Наборът на Администрацията на Министерския съвет в data.egov.bg: регистърът на актовете на Министерския съвет (ПРИС, действащи и архив), обществените консултации със срока и мотива за кратък срок, стратегическите документи и договорите за оценка на въздействието. Без имената на коментиращите, лицата за контакт и изпълнителите физически лица."
+source_org = "Администрация на Министерския съвет, чрез data.egov.bg"
+source_url = "https://data.egov.bg/data/view/18da0fff-79b2-45c6-a9af-1509df96261b"
+channel = "api"
+licence = "CC-BY (условия 2 на data.egov.bg)"
+licence_url = "https://data.egov.bg/data/view/18da0fff-79b2-45c6-a9af-1509df96261b"
+personal_data = "none"
+cadence = "всеки ден от архива на Наблюдател"
+tables = ["zakoni_src.pris_act", "zakoni_src.pris_institution", "zakoni_src.pris_tag", "zakoni_src.pris_related",
+          "zakoni_src.consultation", "zakoni_src.consultation_file", "zakoni_src.strategy_doc", "zakoni_src.strategy_author",
+          "zakoni_src.strategy_file", "zakoni_src.strategy_sub", "zakoni_src.impact_contract", "zakoni_src.institution_municipality",
+          "zakoni.act", "zakoni.act_institution", "zakoni.act_relation", "zakoni.consultation", "zakoni.consultation_file",
+          "zakoni.strategy_doc", "zakoni.impact_contract", "zakoni.unmatched", "zakoni.source_state",
+          "pub_zakoni.act", "pub_zakoni.act_institution", "pub_zakoni.act_relation", "pub_zakoni.act_change",
+          "pub_zakoni.consultation", "pub_zakoni.consultation_file", "pub_zakoni.strategy_doc", "pub_zakoni.source_state",
+          "pub_zakoni.reconciliation"]
+
+# The archive reads the set every day at 02:50 UTC; a load carries the time of that read, so a source that is not
+# loaded for 3 days means the archive or this step stopped. A held answer is a problem after 2 days: the next daily
+# read can confirm it.
+[[source]]
+source = "egov"
+title_bg = "data.egov.bg: справките на Портала за обществени консултации (от архива на Наблюдател)"
+url = "https://data.egov.bg/data/view/18da0fff-79b2-45c6-a9af-1509df96261b"
+channel = "api"
+dataset = "zakoni.amc"
+cadence = "всеки ден в 04:30 UTC, след четенето на архива в 02:50"
+stale_after = "3 days"
+landing = "latest"
+hold_alert_after = "2 days"
+
+[[source]]
+source = "ref"
+title_bg = "Съответствие институция към община (db/ref/institution_municipality.csv)"
+channel = "file"
+dataset = "zakoni.amc"
+landing = "latest"

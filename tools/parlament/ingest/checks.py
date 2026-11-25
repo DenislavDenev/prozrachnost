@@ -18,8 +18,12 @@ HELD_TOO_LONG = 2
 LATE_STENO = 10
 
 
-def freshness(conn, today=None):
+def freshness(conn, today=None, serving=False):
+    """The lateness of the reads, from the ingest side (the step `freshness`) or from the serving layer (the page of the
+    sources, whose role reads nothing else)."""
     today = today or dt.date.today()
+    state, sitting, assembly = (("pub_parlament.read_state", "pub_parlament.sitting", "pub_parlament.assembly") if serving else
+                                ("parlament_src.read_state", "parlament.sitting", "parlament.assembly"))
     problems = []
     # a list by month: this month's, or on its first days the last one's (each lane reads the new month at its own hour)
     last = today.replace(day=1) - dt.timedelta(days=1)
@@ -28,28 +32,29 @@ def freshness(conn, today=None):
                              (["roster"], ROSTER_STALE, "списъкът на депутатите"),
                              (["absences"], LISTS_STALE, "официалните отсъствия"), (["penalties"], LISTS_STALE, "наказанията"),
                              ([f"bills/{m}" for m in months], LISTS_STALE, "законопроектите за месеца"),
-                             ([f"assembly/{current(conn)}"], PEOPLE_STALE, "профилите на депутатите")):
-        r = conn.execute("SELECT max(last_ok) FROM ops.source_state WHERE source = %s AND ref = ANY(%s)", (SOURCE, refs)).fetchone()
+                             ([f"assembly/{current(conn, assembly)}"], PEOPLE_STALE, "профилите на депутатите")):
+        r = conn.execute(f"SELECT max(last_ok) FROM {state} WHERE source = %s AND ref = ANY(%s)", (SOURCE, refs)).fetchone()
         if not r or not r[0] or r[0].date() < today - dt.timedelta(days=days):
             problems.append(f"Парламент: {what} не е четен успешно от {r[0].date() if r and r[0] else 'никога'}")
-    for sid, date, status, error in conn.execute("""
-            SELECT s.id, s.date, st.status, st.error FROM live.sitting s
-            LEFT JOIN ops.source_state st ON st.source = %s AND st.ref = 'sten/' || s.id
+    for sid, date, status, error in conn.execute(f"""
+            SELECT s.id, s.date, st.status, st.error FROM {sitting} s
+            LEFT JOIN {state} st ON st.source = %s AND st.ref = 'sten/' || s.id
             WHERE s.date BETWEEN %s AND %s AND (s.iv_sha IS NULL OR st.status NOT IN ('ok'))
             ORDER BY s.date""", (SOURCE, today - dt.timedelta(days=LATE_FILES + REPORT_FOR), today - dt.timedelta(days=LATE_FILES))):
         if status == "held":
             continue   # reported below when it waits too long
         problems.append(f"Парламент: заседание {date:%d.%m.%Y} ({sid}): " +
                         (f"{LATE_FILES} дни без поименно гласуване" if status in (None, "no-files", "no-votes") else f"{status}: {error}"))
-    for sid, date in conn.execute("""SELECT id, date FROM live.sitting WHERE steno_sha IS NULL AND date BETWEEN %s AND %s ORDER BY date""",
+    for sid, date in conn.execute(f"""SELECT id, date FROM {sitting} WHERE steno_sha IS NULL AND date BETWEEN %s AND %s ORDER BY date""",
                                   (today - dt.timedelta(days=LATE_STENO + REPORT_FOR), today - dt.timedelta(days=LATE_STENO))):
         problems.append(f"Парламент: заседание {date:%d.%m.%Y} ({sid}): {LATE_STENO} дни без стенограма")
-    for ref, first in conn.execute("SELECT ref, first_at FROM ops.held WHERE source = %s", (SOURCE,)):
-        if first.date() < today - dt.timedelta(days=HELD_TOO_LONG):
-            problems.append(f"Парламент: {ref} задържан от {first.date():%d.%m.%Y}")
+    if serving:   # on the ingest side the shared freshness reports a hold (ops.source.hold_alert_after, the same 2 days)
+        for ref, first in conn.execute(f"SELECT ref, held_since FROM {state} WHERE source = %s AND held_since IS NOT NULL", (SOURCE,)):
+            if first.date() < today - dt.timedelta(days=HELD_TOO_LONG):
+                problems.append(f"Парламент: {ref} задържан от {first.date():%d.%m.%Y}")
     return problems
 
 
-def current(conn):
-    r = conn.execute("SELECT max(no) FROM live.assembly WHERE api_id IS NOT NULL").fetchone()
+def current(conn, assembly="parlament.assembly"):
+    r = conn.execute(f"SELECT max(no) FROM {assembly} WHERE api_id IS NOT NULL").fetchone()
     return r[0] if r else None

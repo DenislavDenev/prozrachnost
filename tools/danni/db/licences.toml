@@ -176,6 +176,97 @@ display = true
 note = "derived from the three datasets of Контрол (the state of each read, the versions, the documents); follows them"
 
 [[licence]]
+dataset = "pazar.kolkostruva"
+checked_on = 2026-10-02
+display = true
+note = "Колко струва of КЗП: no licence stated; shown with its source, not handed out until КЗП answers in writing (the letter is the owner's)"
+
+[[licence]]
+dataset = "pazar.fuel"
+checked_on = 2026-10-02
+display = true
+note = "Weekly Oil Bulletin of the European Commission, reuse under the Commission's legal notice (CC BY 4.0); shown, no API view yet"
+
+[[licence]]
+dataset = "sigurnost.police"
+checked_on = 2026-10-02
+display = true
+note = "the sets of the Ministry of the Interior on data.egov.bg; each set states its own terms (CC0, CC BY or none, db/ref/datasets.csv of Сигурност): shown with a link to the source; not handed out until the API carries the terms of each set"
+
+[[licence]]
+dataset = "sigurnost.bulletin"
+checked_on = 2026-10-02
+display = true
+note = "the list of the monthly bulletin on data.egov.bg (CC0): only the names, months and links are kept; the PDF files on mvr.bg are not read"
+
+[[licence]]
+dataset = "sobstvenost.appk"
+checked_on = 2026-10-02
+display = true
+note = "the register of public enterprises of АППК, '© Агенция за публичните предприятия и контрол. Всички права запазени.', no free licence: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "sobstvenost.ncr"
+checked_on = 2026-10-02
+display = true
+note = "the National Concession Register, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "sobstvenost.archive"
+checked_on = 2026-11-24
+display = true
+note = "derived from the two datasets of Собственост (the state of each read, the versions of profiles and reports, the archived files by sha256); follows them"
+
+[[licence]]
+dataset = "zakoni.amc"
+checked_on = 2026-10-02
+distribute = true
+note = "data.egov.bg, terms of use 2 (CC-BY) on the dataset of the Council of Ministers Administration (Справки от Портала за обществени консултации), read from the portal; the author to name: Администрация на Министерския съвет"
+
+# Парламент (the move into the shared database, 13.11.2026). LICENCES.md: parliament.bg states no licence on the pages
+# read; public information of a state body: shown with a link to the source, not handed out until the review by chapter
+# four of ЗДОИ.
+
+[[licence]]
+dataset = "parlament.votes"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.people"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.stenograms"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.bills"
+checked_on = 2026-10-02
+display = true
+note = "public information of the National Assembly, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "parlament.reads"
+checked_on = 2026-11-13
+display = true
+note = "derived from the reads of parliament.bg (the time and the result of each read); follows the datasets of Парламент"
+
+# Субсидии и помощи (the move into the shared database, 24.11.2026). The report of ДФЗ states no licence; it is published
+# by Regulation (EU) 2021/2116, art. 98. subsidii.dfz, the landing zone with the names, is not listed: it is never shown.
+
+[[licence]]
+dataset = "subsidii.paid"
+checked_on = 2026-10-02
+display = true
+note = "the report of a state body (ДФЗ) published by Regulation (EU) 2021/2116, art. 98, no licence stated: shown with a link to the source, not handed out; natural persons masked above the threshold of the source and only summed below it"
+
+[[licence]]
 dataset = "patna-obstanovka.bgtoll"
 checked_on = 2026-11-24
 display = true

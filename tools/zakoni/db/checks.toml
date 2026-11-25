@@ -1,0 +1,389 @@
+# The quality rules of Закони и решения: rows in ops.check_rule, results in ops.check_result.
+# A rule returns one row: (expected, actual); it holds when |actual - expected| <= tolerance. A gating rule that fails
+# stops the publication: the pages keep the version they have. The rules without SQL are counted by the code
+# (pipeline.record_check): the parser and the load know the numbers of the file.
+# The rules of one file (the legend, the fields and their types, a repeated key) are in the parser: a file that breaks
+# them is refused before anything is written.
+
+# ---------------------------------------------------------------- the count of each loaded file against the landing zone
+
+[[check]]
+name = "records_pris_current"
+title_bg = "ПРИС, действащи: записите във файла са в приемната зона"
+kind = "reconcile"
+dataset = "zakoni.amc"
+
+[[check]]
+name = "records_pris_archive"
+title_bg = "ПРИС, архив: записите във файла са в приемната зона"
+kind = "reconcile"
+dataset = "zakoni.amc"
+
+[[check]]
+name = "records_consultation"
+title_bg = "Консултации: записите във файла са в приемната зона (повторените номера като един)"
+kind = "reconcile"
+dataset = "zakoni.amc"
+
+[[check]]
+name = "records_strategy"
+title_bg = "Стратегически документи: записите във файла са в приемната зона"
+kind = "reconcile"
+dataset = "zakoni.amc"
+
+[[check]]
+name = "records_impact"
+title_bg = "Договори за оценка на въздействието: записите във файла са в приемната зона"
+kind = "reconcile"
+dataset = "zakoni.amc"
+
+# ---------------------------------------------------------------- the other reports of the source (information: they do not stop)
+
+[[check]]
+name = "consultations_vs_institution_report"
+title_bg = "Справката по институции брои консултациите с посочена институция, без известната разлика в източника (db/ref/known_gaps.json)"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+
+[[check]]
+name = "short_term_vs_institution_report"
+title_bg = "Консултации със срок под 30 дни: справката по институции срещу нашето изчисление"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+
+[[check]]
+name = "consultations_vs_area_report"
+title_bg = "Справката по области на политика брои и консултации, които обединената справка няма"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+
+[[check]]
+name = "consultations_vs_standard_report"
+title_bg = "Стандартната справка съдържа и неактивни консултации; обединената само активните"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+
+[[check]]
+name = "strategy_docs_vs_standard_report"
+title_bg = "Стандартната справка за стратегическите документи има други записи от пълната"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+
+# ---------------------------------------------------------------- the clean tables
+
+[[check]]
+name = "every_record_built"
+title_bg = "Всеки запис от действащите четения е точно един ред в чистите таблици"
+kind = "reconcile"
+dataset = "zakoni.amc"
+sql = """WITH cur AS (SELECT load_id FROM ops.load WHERE tool = 'zakoni' AND is_current)
+  SELECT (SELECT count(*) FROM zakoni_src.pris_act JOIN cur USING (load_id)) + (SELECT count(*) FROM zakoni_src.consultation JOIN cur USING (load_id))
+       + (SELECT count(*) FROM zakoni_src.strategy_doc JOIN cur USING (load_id)) + (SELECT count(*) FROM zakoni_src.impact_contract JOIN cur USING (load_id)),
+         (SELECT count(*) FROM zakoni.act) + (SELECT count(*) FROM zakoni.consultation) + (SELECT count(*) FROM zakoni.strategy_doc)
+       + (SELECT count(*) FROM zakoni.impact_contract)"""
+
+[[check]]
+name = "consultation_closes_before_opens"
+title_bg = "Консултации, които приключват преди да са открити"
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = "SELECT 0, count(*) FROM zakoni.consultation WHERE closes < opened OR days < 1"
+
+[[check]]
+name = "date_in_the_future"
+title_bg = "Актове и консултации с дата в бъдещето"
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = """SELECT 0, (SELECT count(*) FROM zakoni.act WHERE accepted > current_date + 1)
+               + (SELECT count(*) FROM zakoni.consultation WHERE opened > current_date + 1)"""
+
+[[check]]
+name = "act_before_1944"
+title_bg = "Актове с дата преди 1944 г."
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = "SELECT 0, count(*) FROM zakoni.act WHERE accepted < DATE '1944-01-01'"
+
+[[check]]
+name = "act_without_type"
+title_bg = "Актове без вид"
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = "SELECT 0, count(*) FROM zakoni.act WHERE act_type = ''"
+
+[[check]]
+name = "gazette_year_out_of_range"
+title_bg = "Показана година на Държавен вестник извън 1944 до следващата година или повече от година преди акта"
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = """SELECT 0, count(*) FROM zakoni.act WHERE gazette_year IS NOT NULL
+  AND (gazette_year < 1944 OR gazette_year > extract(year FROM current_date) + 1 OR gazette_year < year - 1)"""
+
+[[check]]
+name = "relation_to_itself"
+title_bg = "Показана връзка на акт със себе си"
+kind = "fk"
+dataset = "zakoni.amc"
+sql = "SELECT 0, count(*) FROM zakoni.act_relation WHERE pris_id = related_pris_id"
+
+[[check]]
+name = "short_term_indicator"
+title_bg = "Индикаторът за кратък срок е само за срок под 30 дни, открит от 04.11.2016, и мотивът е посочен само с текст"
+kind = "not_null"
+dataset = "zakoni.amc"
+sql = """SELECT 0, count(*) FROM zakoni.consultation
+  WHERE (short_term_applies AND (days >= 30 OR opened < DATE '2016-11-04')) OR (reason_given AND short_term_reason IS NULL)"""
+
+[[check]]
+name = "institution_municipality_known"
+title_bg = "Всяка община в db/ref/institution_municipality.csv е община в core.municipality (по ЕИК)"
+kind = "fk"
+dataset = "zakoni.amc"
+sql = """SELECT 0, count(*) FROM zakoni_src.institution_municipality im
+  WHERE im.load_id IN (SELECT load_id FROM ops.load WHERE tool = 'zakoni' AND is_current)
+    AND NOT EXISTS (SELECT 1 FROM core.municipality m WHERE m.eik = im.municipality_eik)"""
+
+[[check]]
+name = "municipal_without_municipality"
+title_bg = "Общинските консултации без община са над 2%"
+kind = "unmatched"
+dataset = "zakoni.amc"
+sql = """SELECT 0, CASE WHEN count(*) FILTER (WHERE municipality_code IS NULL AND institution_name IS NOT NULL) > 0.02 * count(*)
+                       THEN count(*) FILTER (WHERE municipality_code IS NULL AND institution_name IS NOT NULL) ELSE 0 END
+  FROM zakoni.consultation WHERE level = 'Общинско'"""
+
+[[check]]
+name = "impact_eur_is_the_fixed_rate"
+title_bg = "Цената в евро на договор, както я дава източникът, е цената в лева по фиксирания курс 1,95583 (до стотинка)"
+kind = "reconcile"
+dataset = "zakoni.amc"
+gating = false
+sql = """SELECT 0, count(*) FROM zakoni_src.impact_contract
+  WHERE load_id IN (SELECT load_id FROM ops.load WHERE tool = 'zakoni' AND is_current)
+    AND price_eur IS NOT NULL AND (price_bgn IS NULL OR abs(price_eur - round(price_bgn / 1.95583, 2)) > 0.01)"""
+
+# ---------------------------------------------------------------- the publication (inside its transaction, against the new content)
+
+[[check]]
+name = "published_rows"
+title_bg = "Публикуваните актове, връзки, консултации, документи на консултациите и стратегически документи не са колкото в чистите таблици"
+kind = "publish"
+dataset = "zakoni.amc"
+sql = """SELECT (SELECT count(*) FROM zakoni.act) + (SELECT count(*) FROM zakoni.consultation) + (SELECT count(*) FROM zakoni.consultation_file)
+              + (SELECT count(*) FROM zakoni.strategy_doc) + (SELECT count(*) FROM zakoni.act_relation),
+         (SELECT count(*) FROM pub_zakoni.act) + (SELECT count(*) FROM pub_zakoni.consultation) + (SELECT count(*) FROM pub_zakoni.consultation_file)
+              + (SELECT count(*) FROM pub_zakoni.strategy_doc) + (SELECT count(*) FROM pub_zakoni.act_relation)"""
+
+[[check]]
+name = "published_municipality"
+title_bg = "Публикувана общинска консултация без община, която чистите таблици имат"
+kind = "publish"
+dataset = "zakoni.amc"
+sql = "SELECT (SELECT count(municipality_code) FROM zakoni.consultation), (SELECT count(municipality_id) FROM pub_zakoni.consultation)"
+
+# ---------------------------------------------------------------- the move from the old database (step parity, 24.11.2026)
+
+[[check]]
+name = "parity_src_pris_act"
+title_bg = "Сверка със старата база: актове от ПРИС в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_act_differ"
+title_bg = "Сверка със старата база: актове от ПРИС, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_institution"
+title_bg = "Сверка със старата база: институции на актовете в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_institution_differ"
+title_bg = "Сверка със старата база: институции на актовете, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_tag"
+title_bg = "Сверка със старата база: термини на актовете в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_tag_differ"
+title_bg = "Сверка със старата база: термини на актовете, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_related"
+title_bg = "Сверка със старата база: свързани актове в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_pris_related_differ"
+title_bg = "Сверка със старата база: свързани актове, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_consultation"
+title_bg = "Сверка със старата база: консултации в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_consultation_differ"
+title_bg = "Сверка със старата база: консултации, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_consultation_file"
+title_bg = "Сверка със старата база: документи на консултациите в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_consultation_file_differ"
+title_bg = "Сверка със старата база: документи на консултациите, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_doc"
+title_bg = "Сверка със старата база: стратегически документи в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_doc_differ"
+title_bg = "Сверка със старата база: стратегически документи, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_author"
+title_bg = "Сверка със старата база: изготвили стратегическите документи в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_author_differ"
+title_bg = "Сверка със старата база: изготвили стратегическите документи, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_file"
+title_bg = "Сверка със старата база: файлове на стратегическите документи в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_file_differ"
+title_bg = "Сверка със старата база: файлове на стратегическите документи, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_sub"
+title_bg = "Сверка със старата база: подчинени стратегически документи в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_strategy_sub_differ"
+title_bg = "Сверка със старата база: подчинени стратегически документи, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_src_impact_contract"
+title_bg = "Сверка със старата база: договори за оценка на въздействието в приемната зона срещу сребърния слой"
+kind = "parity"
+
+[[check]]
+name = "parity_src_impact_contract_differ"
+title_bg = "Сверка със старата база: договори за оценка на въздействието, различни редове в приемната зона"
+kind = "parity"
+
+[[check]]
+name = "parity_act"
+title_bg = "Сверка със старата база: актове"
+kind = "parity"
+
+[[check]]
+name = "parity_act_differ"
+title_bg = "Сверка със старата база: актове, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_act_institution"
+title_bg = "Сверка със старата база: институции на актовете"
+kind = "parity"
+
+[[check]]
+name = "parity_act_institution_differ"
+title_bg = "Сверка със старата база: институции на актовете, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_act_relation"
+title_bg = "Сверка със старата база: свързани актове"
+kind = "parity"
+
+[[check]]
+name = "parity_act_relation_differ"
+title_bg = "Сверка със старата база: свързани актове, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_consultation"
+title_bg = "Сверка със старата база: консултации"
+kind = "parity"
+
+[[check]]
+name = "parity_consultation_differ"
+title_bg = "Сверка със старата база: консултации, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_consultation_file"
+title_bg = "Сверка със старата база: документи на консултациите"
+kind = "parity"
+
+[[check]]
+name = "parity_consultation_file_differ"
+title_bg = "Сверка със старата база: документи на консултациите, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_strategy_doc"
+title_bg = "Сверка със старата база: стратегически документи"
+kind = "parity"
+
+[[check]]
+name = "parity_strategy_doc_differ"
+title_bg = "Сверка със старата база: стратегически документи, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_impact_contract"
+title_bg = "Сверка със старата база: договори за оценка на въздействието"
+kind = "parity"
+
+[[check]]
+name = "parity_impact_contract_differ"
+title_bg = "Сверка със старата база: договори за оценка на въздействието, различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_unmatched"
+title_bg = "Сверка със старата база: редове без ключ (по таблица и поле)"
+kind = "parity"
+
+[[check]]
+name = "parity_unmatched_differ"
+title_bg = "Сверка със старата база: редове без ключ (по таблица и поле), различни редове"
+kind = "parity"
+
+[[check]]
+name = "parity_periods"
+title_bg = "Сверка със старата база: бройки и сборове по година"
+kind = "parity"
+
+[[check]]
+name = "parity_periods_differ"
+title_bg = "Сверка със старата база: бройки и сборове по година, различни редове"
+kind = "parity"

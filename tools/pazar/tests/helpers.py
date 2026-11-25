@@ -1,11 +1,13 @@
+import contextlib
 import datetime as dt
 import hashlib
 import io
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
-from ingest import build, parse
+from ingest import archive, build, parse, pipeline
 
 FIX = Path(__file__).parent / "fixtures" / "kolkostruva"
 HEAD = "Населено място,Търговски обект,Наименование на продукта,Код на продукта,Категория,Цена на дребно,Цена в промоция\n"
@@ -56,14 +58,27 @@ def derive(name, drop=(), scale=None, only=None, edit=None):
     return make_zip(files)
 
 
-ARCH = {}     # what the archive would hold: {day: (raw, sha, path)}; a rebuild of a month reads from here
+ARCH = {}     # what the archive would hold: {day: (raw, sha, path)}
+ARCH_DIR = Path(tempfile.mkdtemp(prefix="pazar-archive-"))   # the files stay for the session: a month rebuild reads them
 
 
-def put(c, day, raw, now=None):
+@contextlib.contextmanager
+def run(c, step="build"):
+    """One run of a step of the tool, as the step script makes it."""
+    with pipeline.run(c, "pazar", step) as r:
+        yield r
+
+
+def put(c, day, raw, now=None, replay=False):
+    """The file of one day as the archive holds it, built through the same policy as the nightly step."""
     day = dt.date.fromisoformat(day) if isinstance(day, str) else day
     sha = hashlib.sha256(raw).hexdigest()
-    ARCH[day] = (raw, sha, f"/archive/{day}.{sha[:12]}.zip")
-    return build.build_one(c, day, raw, sha, ARCH[day][2], now=now, source=ARCH)
+    path = ARCH_DIR / f"{day}.{sha[:12]}.zip"
+    path.write_bytes(raw)
+    ARCH[day] = (raw, sha, str(path))
+    with run(c) as r:
+        rid = archive.raw_file(c, r, day, sha, str(path))
+        return build.build_one(c, r, day, raw, sha, str(path), rid, now=now, replay=replay)
 
 
 def archive_dir(tmp_path, days):
@@ -83,8 +98,8 @@ def archive_dir(tmp_path, days):
 def spans(c):
     """All spans with natural keys, sorted: the public face of the silver prices."""
     return c.execute("""SELECT ch.eik, st.place_raw, st.name, p.code, s.from_day, s.to_day, s.retail, s.promo, s.category, s.flags
-                        FROM silver.price_span s JOIN silver.store st USING (store_id) JOIN silver.product p USING (product_id)
-                        JOIN silver.chain ch ON ch.chain_id = st.chain_id
+                        FROM pazar.price_span s JOIN pazar.store st USING (store_id) JOIN pazar.product p USING (product_id)
+                        JOIN pazar.chain ch ON ch.chain_id = st.chain_id
                         ORDER BY 1, 2, 3, 4, 5, 7, 8""").fetchall()
 
 
@@ -92,9 +107,9 @@ def day_rows(c, day):
     """The rows the spans give back for one day, for the chains that filed it."""
     day = dt.date.fromisoformat(day) if isinstance(day, str) else day
     return set(c.execute("""SELECT ch.eik, st.place_raw, st.name, p.code, s.retail, s.promo, s.category
-                            FROM silver.price_span s JOIN silver.store st USING (store_id) JOIN silver.product p USING (product_id)
-                            JOIN silver.chain ch ON ch.chain_id = st.chain_id
-                            JOIN silver.chain_day cd ON cd.chain_id = ch.chain_id AND cd.day = %s AND cd.filed
+                            FROM pazar.price_span s JOIN pazar.store st USING (store_id) JOIN pazar.product p USING (product_id)
+                            JOIN pazar.chain ch ON ch.chain_id = st.chain_id
+                            JOIN pazar.chain_day cd ON cd.chain_id = ch.chain_id AND cd.day = %s AND cd.filed
                             WHERE s.from_day >= %s AND s.from_day <= %s AND coalesce(s.to_day, 'infinity') >= %s""",
                          (day, day.replace(day=1), day, day)).fetchall())
 
@@ -113,3 +128,17 @@ def csv_idents(raw):
     from ingest import load
     return {(f.eik, r.place_raw, r.store, r.code, r.retail, r.promo, r.category, r.flags & load.IDENT_MASK)
             for f in parse.parse_day(raw).files for r in f.rows}
+
+
+def run_(c, step="build"):
+    """A run of a step, open, for a test that calls one function of the policy (catch_up, rebuild_month) directly."""
+    rid = c.execute("INSERT INTO ops.run (tool, step) VALUES ('pazar', %s) RETURNING run_id", (step,)).fetchone()[0]
+    return pipeline.Run(c, "pazar", step, rid)
+
+
+def publish(c, since=None):
+    """The serving layer, as the end of a step publishes it: the large tables from `since` (None: everything)."""
+    from ingest import run as steps
+    with run(c, "publish") as r:
+        problems = steps.publish(c, r, since)
+    assert problems == [], problems

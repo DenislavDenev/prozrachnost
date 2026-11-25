@@ -82,5 +82,11 @@
     "original_sha256": "ecc63f0cafda2315f6c66dc717b9bcda3e6449987d1185bb165ae219de95a0ed",
     "fixture_sha256": "9e170507977cf95949138507fea5c3a11615267a629b5cd094f398588d469e1d",
     "cut": "Only source form title, legal-person identity, official location and term; all contact fields excluded."
+  },
+  {
+    "name": "ncr-beach-8r.html",
+    "original_sha256": "6db87ed5a8c934fbc4798eb1b4be8508dda2e2d002d48f9087e7139a0e172692",
+    "fixture_sha256": "c5e5098b1e042df966510ba5b58fecd0bc6ec40b5c85770a3e3c72ad4fae1784",
+    "cut": "Notice under art. 8r of the Black Sea Coast Act, read 02.10.2026 (concession 398 of the register): only the form title, the concession name, legal-person identity, official location and term; addresses, contacts, representatives and prose excluded."
   }
 ]

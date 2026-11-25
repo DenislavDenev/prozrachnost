@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, src, eur with context %}
+{% block title %}{{ o.name_bg }}{% endblock %}
+{% block main %}
+<h1>{{ o.name_bg }}</h1>
+<p class="lede">Юридическо лице, събрано по име във всички години и общини на справката на ДФЗ.
+  {% if o.years %}{% set y = o.years[-1] %}За {{ y.label|lower }} (справка към {{ y.snap|date }}) редовете ОБЩО са <b>{{ y.rows|length }}</b>, с общо <b>{{ eur(y.total.total_eur, none) if y.total.total_eur is not none else y.total.total|num ~ ' (валутата не е потвърдена)' }}</b>.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Справката на ДФЗ не дава ЕИК. Затова обединяваме редовете със същото име (без значение от интервали, кавички и главни букви), а това не е доказателство за една и съща фирма: две различни фирми с еднакво име биха се слели. {{ help('org', 'фирма по име') }}</p>
+  <p>Сумата на фирмата е редът ОБЩО; плащанията по мерки са разбивка и могат да се различават малко от нея. {{ help('row_total', 'ред ОБЩО и плащания') }}</p></details>
+{% for y in o.years|reverse %}
+<section class="p"><h2>{{ y.label }}</h2><div class="sub">справка към {{ y.snap|date }} · € · {% if y.currency %}оригиналът е в {{ y.currency }}{% else %}валутата не е потвърдена{% endif %}</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Област</th><th>Община</th><th class="n">ЕФГЗ, €</th><th class="n">ЕЗФРСР, €</th><th class="n">Нац. бюджет, €</th><th class="n">Общо, €</th></tr></thead><tbody>
+  {% for r in y.rows %}<tr><td>{{ r.oblast }}</td><td><a href="/obshtini/{{ r.municipality_id }}?fy={{ y.fy }}">{{ r.municipality }}</a></td>
+    {% for k in ['efgz', 'ezfrs', 'nb', 'total'] %}<td class="n" data-v="{{ r[k + '_eur'] if r[k + '_eur'] is not none else '' }}">{{ eur(r[k + '_eur'], none) }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  <tfoot><tr class="sum"><td colspan="2">Общо за годината</td>{% for k in ['efgz', 'ezfrs', 'nb', 'total'] %}<td class="n">{{ eur(y.total[k + '_eur'], none) }}</td>{% endfor %}</tr></tfoot></table></div>
+  <details><summary>Плащания по мерки ({{ y.payments|length }})</summary><div class="scroll"><table class="sortable"><thead><tr><th>Код</th><th>Мярка</th><th class="n">Плащания</th><th class="n">Общо, €</th></tr></thead><tbody>
+  {% for p in y.payments %}<tr><td>{{ p.code }}</td><td>{{ p.name }}</td><td class="n">{{ p.payments }}</td><td class="n" data-v="{{ p.total_eur if p.total_eur is not none else '' }}">{{ eur(p.total_eur, none) }}</td></tr>{% endfor %}</tbody></table></div></details>
+</section>
+{% endfor %}
+<div class="src">{{ source_name }} · <a href="/sources">набор и четене</a> · <a href="/export-poluchatel/{{ o.org_id }}.csv">CSV</a> · <a href="/api/poluchateli/{{ o.org_id }}.json">JSON</a></div>
+{% endblock %}

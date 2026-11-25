@@ -1,4 +1,5 @@
-"""Парламент: server-rendered pages over live.*; the hall (static/zala.js) and the MP's strip read /api."""
+"""Парламент: server-rendered pages over the serving layer pub_parlament.* (app/queries.py: one snapshot per request, the
+number of its publication in X-Publication); the hall (static/zala.js) and the MP's strip read /api."""
 import collections
 import csv
 import datetime as dt
@@ -8,7 +9,8 @@ import re
 import time
 from pathlib import Path
 
-import psycopg
+from email.utils import format_datetime
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
@@ -19,11 +21,10 @@ from markupsafe import Markup
 from ingest import checks, groups as gref
 from ingest.config import SITE
 
-from . import feedback
+from . import feedback, queries
 
 HERE = Path(__file__).parent
 ROOT = HERE.parent
-DSN = os.environ.get("PARLAMENT_DSN", "dbname=parlament")
 HUB_URL = os.environ.get("HUB_URL", "http://localhost:8001")
 ASSET_V = "2"
 
@@ -40,8 +41,26 @@ LINE = {"+": "за", "-": "не подкрепя"}   # a group's line: for, or n
 LIST_LIMIT = 400   # rows of the list of votes on the page; the CSV has all
 
 
+@app.middleware("http")
+async def publication_headers(request: Request, call_next):
+    """One request reads one snapshot of the serving layer, and its answer says which publication it is of. A cache
+    in front of the site keeps an answer until this number moves; it moves only when the published content does."""
+    snap = queries.Snapshot()
+    token = queries.current.set(snap)
+    try:
+        response = await call_next(request)
+    finally:
+        queries.current.reset(token)
+        snap.close()
+    if snap.publication:
+        response.headers["X-Publication"] = str(snap.publication[0])
+        response.headers["ETag"] = f'W/"pub-{snap.publication[0]}"'
+        response.headers["Last-Modified"] = format_datetime(snap.publication[1].astimezone(dt.timezone.utc), usegmt=True)
+    return response
+
+
 def q(sql, *args):
-    with psycopg.connect(DSN) as c:
+    with queries.connect() as c:
         return c.execute(sql, args).fetchall()
 
 
@@ -116,7 +135,7 @@ _assemblies = {"at": 0.0, "rows": {}}
 def assembly_rows():
     """{no: (name, API id, start, end)} of every assembly, read at most every 10 minutes."""
     if time.monotonic() - _assemblies["at"] > 600 or not _assemblies["rows"]:
-        _assemblies["rows"] = {n: (name, api, a, b) for n, name, api, a, b in q('SELECT no, name, api_id, start, "end" FROM live.assembly')}
+        _assemblies["rows"] = {n: (name, api, a, b) for n, name, api, a, b in q('SELECT no, name, api_id, start, "end" FROM pub_parlament.assembly')}
         _assemblies["at"] = time.monotonic()
     return _assemblies["rows"]
 
@@ -143,7 +162,7 @@ T.env.globals.update(aname=aname, sten_url=sten_url)
 
 
 def page(request, name, nav, **ctx):
-    r = one("SELECT max(last_ok) FROM ops.source_state WHERE ref LIKE 'month/%%'")
+    r = one("SELECT max(last_ok) FROM pub_parlament.read_state WHERE ref LIKE 'month/%%'")
     return T.TemplateResponse(request, name, {"nav": nav, "fresh": r[0] if r else None, **ctx})
 
 
@@ -152,7 +171,7 @@ def page(request, name, nav, **ctx):
 def assemblies():
     """[(no, first, last, sittings, votes)] of the assemblies with a roll call, the newest first."""
     return q("""SELECT s.assembly, min(s.date), max(s.date), count(DISTINCT s.id), count(*) FILTER (WHERE i.kind = 'vote')
-                FROM live.sitting s JOIN live.item i ON i.sitting = s.id GROUP BY 1 ORDER BY 1 DESC""")
+                FROM pub_parlament.sitting s JOIN pub_parlament.item i ON i.sitting = s.id GROUP BY 1 ORDER BY 1 DESC""")
 
 
 def pick_assembly(ns):
@@ -167,25 +186,25 @@ def pick_assembly(ns):
 
 def group_names(assembly):
     """{code: full name} of the groups of an assembly (db/ref/groups.csv; the code itself for one not there)."""
-    return {g: gref.info(g)[0] for g, in q("""SELECT DISTINCT g.grp FROM live.item_group g JOIN live.sitting s ON s.id = g.sitting
+    return {g: gref.info(g)[0] for g, in q("""SELECT DISTINCT g.grp FROM pub_parlament.item_group g JOIN pub_parlament.sitting s ON s.id = g.sitting
                                                  WHERE s.assembly = %s""", assembly)}
 
 
 def seats_now(assembly, day=None):
     """[(group, MPs)] at the assembly's latest registration (on or before `day`), in the Assembly's order."""
-    r = one("""SELECT i.sitting, i.no FROM live.item i JOIN live.sitting s ON s.id = i.sitting
+    r = one("""SELECT i.sitting, i.no FROM pub_parlament.item i JOIN pub_parlament.sitting s ON s.id = i.sitting
                WHERE s.assembly = %s AND i.kind = 'registration' AND s.date <= coalesce(%s, s.date)
                ORDER BY i.at DESC LIMIT 1""", assembly, day)
     if not r:
         return []
-    return q("""SELECT grp, listed FROM live.item_group WHERE sitting = %s AND no = %s AND listed > 0 ORDER BY listed DESC, grp""", *r)
+    return q("""SELECT grp, listed FROM pub_parlament.item_group WHERE sitting = %s AND no = %s AND listed > 0 ORDER BY listed DESC, grp""", *r)
 
 
 def vote_rows(where="", args=(), limit=None):
     return q(f"""SELECT i.sitting, i.no, i.at, i.topic, i.yes, i.no_, i.abstain, i.voted, s.assembly,
-                        (SELECT listed FROM live.item r WHERE r.sitting = i.sitting AND r.kind = 'registration' ORDER BY r.no LIMIT 1),
+                        (SELECT listed FROM pub_parlament.item r WHERE r.sitting = i.sitting AND r.kind = 'registration' ORDER BY r.no LIMIT 1),
                         i.mismatch
-                 FROM live.item i JOIN live.sitting s ON s.id = i.sitting
+                 FROM pub_parlament.item i JOIN pub_parlament.sitting s ON s.id = i.sitting
                  WHERE i.kind = 'vote' {where} ORDER BY i.at DESC, i.no DESC {f'LIMIT {int(limit)}' if limit else ''}""", *args)
 
 
@@ -214,14 +233,14 @@ def home(request: Request):
     ctx = {"ns": ns}
     if ns:
         a = next(x for x in assemblies() if x[0] == ns)
-        part = one("SELECT sum(voted), sum(votes) FROM live.mp_stat WHERE assembly = %s", ns)
+        part = one("SELECT sum(voted), sum(votes) FROM pub_parlament.mp_stat WHERE assembly = %s", ns)
         ctx.update(hist=one("""SELECT count(*), min(date), count(steno_sha), count(iv_sha), min(date) FILTER (WHERE iv_sha IS NOT NULL)
-                               FROM live.sitting"""),
+                               FROM pub_parlament.sitting"""),
                    first=a[1], last=a[2], sittings=a[3], votes=a[4], part=part, seats=seats_now(ns), names=group_names(ns),
                    latest=[as_vote(r) for r in vote_rows("AND s.assembly = %s", (ns,), 12)],
                    close=[as_vote(r) for r in q("""
                        SELECT i.sitting, i.no, i.at, i.topic, i.yes, i.no_, i.abstain, i.voted, s.assembly, NULL
-                       FROM live.item i JOIN live.sitting s ON s.id = i.sitting
+                       FROM pub_parlament.item i JOIN pub_parlament.sitting s ON s.id = i.sitting
                        WHERE i.kind = 'vote' AND s.assembly = %s AND i.voted >= 100
                        ORDER BY abs(i.yes - (i.voted - i.yes)), i.at DESC LIMIT 8""", ns)])
     return page(request, "home.html", "Табло", **ctx)
@@ -236,7 +255,7 @@ def votes_page(request: Request, ns: int | None = None):
         where += " AND i.topic ILIKE %s"
         args.append(f"%{q_}%")
     rows = [as_vote(r) for r in vote_rows(where, args, LIST_LIMIT + 1)] if ns else []
-    total = one(f"SELECT count(*) FROM live.item i JOIN live.sitting s ON s.id = i.sitting WHERE i.kind = 'vote' {where}", *args)[0] if ns else 0
+    total = one(f"SELECT count(*) FROM pub_parlament.item i JOIN pub_parlament.sitting s ON s.id = i.sitting WHERE i.kind = 'vote' {where}", *args)[0] if ns else 0
     return page(request, "votes.html", "Гласувания", ns=ns, q=q_, rows=rows[:LIST_LIMIT], total=total, all=assemblies(),
                 more=len(rows) > LIST_LIMIT)
 
@@ -251,22 +270,22 @@ def the_vote(sitting, no):
 @app.get("/glasuvane/{sitting}/{no}", response_class=HTMLResponse)
 def vote_page(request: Request, sitting: int, no: int):
     v = the_vote(sitting, no)
-    s = one("SELECT date, heading, iv, gv, note FROM live.sitting WHERE id = %s", sitting)
+    s = one("SELECT date, heading, iv, gv, note FROM pub_parlament.sitting WHERE id = %s", sitting)
     groups = q("""SELECT g.grp, g.yes, g.no_, g.abstain, g.voted, l.line, l.voters, l.with_line,
-                         (SELECT count(*) FROM live.vote x WHERE x.sitting = g.sitting AND x.item = g.no AND x.grp = g.grp)
-                  FROM live.item_group g LEFT JOIN live.line l ON l.sitting = g.sitting AND l.item = g.no AND l.grp = g.grp
+                         (SELECT count(*) FROM pub_parlament.vote x WHERE x.sitting = g.sitting AND x.item = g.no AND x.grp = g.grp)
+                  FROM pub_parlament.item_group g LEFT JOIN pub_parlament.line l ON l.sitting = g.sitting AND l.item = g.no AND l.grp = g.grp
                   WHERE g.sitting = %s AND g.no = %s ORDER BY g.voted DESC, g.grp""", sitting, no)
-    against = q("""SELECT v.mp, m.name, v.grp, v.code, l.line FROM live.vote v
-                   JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
-                   JOIN live.sitting s ON s.id = v.sitting JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
+    against = q("""SELECT v.mp, m.name, v.grp, v.code, l.line FROM pub_parlament.vote v
+                   JOIN pub_parlament.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
+                   JOIN pub_parlament.sitting s ON s.id = v.sitting JOIN pub_parlament.mp m ON m.assembly = s.assembly AND m.no = v.mp
                    WHERE v.sitting = %s AND v.item = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')
                    ORDER BY v.grp, m.name""", sitting, no)
-    nav = q("""SELECT no FROM live.item WHERE sitting = %s AND kind = 'vote' AND no IN (%s, %s) ORDER BY no""", sitting, no - 1, no + 1)
-    same_day = q("SELECT no, topic FROM live.item WHERE sitting = %s AND kind = 'vote' ORDER BY no", sitting)
-    of_bills = q("""SELECT b.id, b.sign, b.title, bi.reading FROM live.bill_item bi JOIN live.bill b ON b.id = bi.bill
+    nav = q("""SELECT no FROM pub_parlament.item WHERE sitting = %s AND kind = 'vote' AND no IN (%s, %s) ORDER BY no""", sitting, no - 1, no + 1)
+    same_day = q("SELECT no, topic FROM pub_parlament.item WHERE sitting = %s AND kind = 'vote' ORDER BY no", sitting)
+    of_bills = q("""SELECT b.id, b.sign, b.title, bi.reading FROM pub_parlament.bill_item bi JOIN pub_parlament.bill b ON b.id = bi.bill
                     WHERE bi.sitting = %s AND bi.item = %s ORDER BY b.id""", sitting, no)
-    seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
-                 JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
+    seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM pub_parlament.vote v JOIN pub_parlament.sitting s ON s.id = v.sitting
+                 JOIN pub_parlament.mp m ON m.assembly = s.assembly AND m.no = v.mp
                  WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""", sitting, no)
     rank = {g: i for i, (g, _) in enumerate(seats_at(sitting))}
     seats.sort(key=lambda r: (rank.get(r[2], len(rank)), r[2]))   # the groups in the Assembly's order, as in the hall
@@ -283,8 +302,8 @@ def vote_page(request: Request, sitting: int, no: int):
 def vote_api(sitting: int, no: int):
     """The hall: every MP of the vote with the group and the vote, and the groups in the Assembly's order."""
     v = the_vote(sitting, no)
-    seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
-                 JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp
+    seats = q("""SELECT v.mp, m.name, v.grp, v.code FROM pub_parlament.vote v JOIN pub_parlament.sitting s ON s.id = v.sitting
+                 JOIN pub_parlament.mp m ON m.assembly = s.assembly AND m.no = v.mp
                  WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""", sitting, no)
     order = [g for g, _ in seats_at(sitting)]
     order = order + sorted({s[2] for s in seats} - set(order))
@@ -296,8 +315,8 @@ def vote_api(sitting: int, no: int):
 
 
 def seats_at(sitting):
-    return q("""SELECT grp, listed FROM live.item_group WHERE sitting = %s AND no =
-                (SELECT min(no) FROM live.item WHERE sitting = %s AND kind = 'registration') ORDER BY listed DESC, grp""", sitting, sitting)
+    return q("""SELECT grp, listed FROM pub_parlament.item_group WHERE sitting = %s AND no =
+                (SELECT min(no) FROM pub_parlament.item WHERE sitting = %s AND kind = 'registration') ORDER BY listed DESC, grp""", sitting, sitting)
 
 
 @app.get("/api/zala/{assembly}.json")
@@ -313,7 +332,7 @@ def hall_api(assembly: int, date: dt.date | None = None):
 def mps_page(request: Request, ns: int | None = None):
     ns = pick_assembly(ns)
     rows = q("""SELECT mp, name, grp, votes, voted, with_line, against_line, regs, present, first, last, district
-                FROM live.mp_stat WHERE assembly = %s ORDER BY name""", ns) if ns else []
+                FROM pub_parlament.mp_stat WHERE assembly = %s ORDER BY name""", ns) if ns else []
     return page(request, "mps.html", "Депутати", ns=ns, rows=rows, all=assemblies(), names=group_names(ns) if ns else {},
                 current=ns == pick_assembly(None))
 
@@ -321,18 +340,18 @@ def mps_page(request: Request, ns: int | None = None):
 @app.get("/deputati/{ns}/{mp}", response_class=HTMLResponse)
 def mp_page(request: Request, ns: int, mp: int):
     s = one("""SELECT mp, name, grp, votes, voted, yes, no_, abstain, regs, present, with_line, against_line, first, last, district, profile
-               FROM live.mp_stat WHERE assembly = %s AND mp = %s""", ns, mp)
+               FROM pub_parlament.mp_stat WHERE assembly = %s AND mp = %s""", ns, mp)
     if not s:
         raise HTTPException(404)
-    groups = q("""SELECT v.grp, min(x.date), max(x.date) FROM live.vote v JOIN live.sitting x ON x.id = v.sitting
+    groups = q("""SELECT v.grp, min(x.date), max(x.date) FROM pub_parlament.vote v JOIN pub_parlament.sitting x ON x.id = v.sitting
                   WHERE x.assembly = %s AND v.mp = %s GROUP BY v.grp ORDER BY 2""", ns, mp)
-    against = q("""SELECT i.sitting, i.no, i.at, i.topic, v.code, l.line FROM live.vote v
-                   JOIN live.sitting x ON x.id = v.sitting JOIN live.item i ON i.sitting = v.sitting AND i.no = v.item
-                   JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
+    against = q("""SELECT i.sitting, i.no, i.at, i.topic, v.code, l.line FROM pub_parlament.vote v
+                   JOIN pub_parlament.sitting x ON x.id = v.sitting JOIN pub_parlament.item i ON i.sitting = v.sitting AND i.no = v.item
+                   JOIN pub_parlament.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
                    WHERE x.assembly = %s AND v.mp = %s AND l.line IS NOT NULL AND v.code IN ('+', '-', '=') AND (v.code = '+') <> (l.line = '+')
                    ORDER BY i.at DESC""", ns, mp)
-    avg = one("SELECT sum(voted)::float / nullif(sum(votes), 0), sum(against_line)::float / nullif(sum(with_line + against_line), 0) FROM live.mp_stat WHERE assembly = %s", ns)
-    person = one("SELECT p.person FROM live.mp m JOIN live.profile p ON p.id = m.profile WHERE m.assembly = %s AND m.no = %s", ns, mp)
+    avg = one("SELECT sum(voted)::float / nullif(sum(votes), 0), sum(against_line)::float / nullif(sum(with_line + against_line), 0) FROM pub_parlament.mp_stat WHERE assembly = %s", ns)
+    person = one("SELECT p.person FROM pub_parlament.mp m JOIN pub_parlament.profile p ON p.id = m.profile WHERE m.assembly = %s AND m.no = %s", ns, mp)
     return page(request, "mp.html", "Депутати", ns=ns, s=s, groups=groups, against=against, avg=avg, names=group_names(ns),
                 person=person[0] if person else None)
 
@@ -340,9 +359,9 @@ def mp_page(request: Request, ns: int, mp: int):
 @app.get("/api/deputat/{ns}/{mp}.json")
 def mp_api(ns: int, mp: int):
     """Every vote of the MP in time: [sitting, item, date, code, the group's line], for the strip on the page."""
-    rows = q("""SELECT v.sitting, v.item, x.date, v.code, l.line, i.topic FROM live.vote v
-                JOIN live.sitting x ON x.id = v.sitting JOIN live.item i ON i.sitting = v.sitting AND i.no = v.item
-                LEFT JOIN live.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
+    rows = q("""SELECT v.sitting, v.item, x.date, v.code, l.line, i.topic FROM pub_parlament.vote v
+                JOIN pub_parlament.sitting x ON x.id = v.sitting JOIN pub_parlament.item i ON i.sitting = v.sitting AND i.no = v.item
+                LEFT JOIN pub_parlament.line l ON l.sitting = v.sitting AND l.item = v.item AND l.grp = v.grp
                 WHERE x.assembly = %s AND v.mp = %s AND i.kind = 'vote' ORDER BY i.at, v.item""", ns, mp)
     if not rows:
         raise HTTPException(404)
@@ -353,15 +372,15 @@ def mp_api(ns: int, mp: int):
 @app.get("/grupi", response_class=HTMLResponse)
 def groups_page(request: Request, ns: int | None = None, date: dt.date | None = None):
     ns = pick_assembly(ns)
-    span = one("SELECT min(date), max(date) FROM live.sitting WHERE assembly = %s AND iv_sha IS NOT NULL", ns) if ns else None
+    span = one("SELECT min(date), max(date) FROM pub_parlament.sitting WHERE assembly = %s AND iv_sha IS NOT NULL", ns) if ns else None
     unity, pairs, order = [], [], []
     if ns:
-        unity = q("""SELECT l.grp, sum(l.with_line), sum(l.voters), count(*) FROM live.line l JOIN live.sitting s ON s.id = l.sitting
+        unity = q("""SELECT l.grp, sum(l.with_line), sum(l.voters), count(*) FROM pub_parlament.line l JOIN pub_parlament.sitting s ON s.id = l.sitting
                      WHERE s.assembly = %s AND l.line IS NOT NULL GROUP BY 1 HAVING count(*) >= 10 ORDER BY 2::float / sum(l.voters) DESC""", ns)
         order = [g for g, *_ in unity]
         pairs = q("""SELECT a.grp, b.grp, count(*), count(*) FILTER (WHERE a.line = b.line)
-                     FROM live.line a JOIN live.line b ON b.sitting = a.sitting AND b.item = a.item AND a.grp < b.grp
-                     JOIN live.sitting s ON s.id = a.sitting
+                     FROM pub_parlament.line a JOIN pub_parlament.line b ON b.sitting = a.sitting AND b.item = a.item AND a.grp < b.grp
+                     JOIN pub_parlament.sitting s ON s.id = a.sitting
                      WHERE s.assembly = %s AND a.line IS NOT NULL AND b.line IS NOT NULL GROUP BY 1, 2""", ns)
     return page(request, "groups.html", "Групи", ns=ns, unity=unity, pairs=pairs, order=order, all=assemblies(),
                 names=group_names(ns) if ns else {}, day=date.isoformat() if date else None, span=span)
@@ -371,8 +390,8 @@ def groups_page(request: Request, ns: int | None = None, date: dt.date | None = 
 def unity_api(ns: int):
     """Each group's unity by month: of its MPs who voted, the share with the group's line."""
     pick_assembly(ns)
-    rows = q("""SELECT l.grp, to_char(s.date, 'YYYY-MM'), sum(l.with_line), sum(l.voters) FROM live.line l
-                JOIN live.sitting s ON s.id = l.sitting WHERE s.assembly = %s AND l.line IS NOT NULL
+    rows = q("""SELECT l.grp, to_char(s.date, 'YYYY-MM'), sum(l.with_line), sum(l.voters) FROM pub_parlament.line l
+                JOIN pub_parlament.sitting s ON s.id = l.sitting WHERE s.assembly = %s AND l.line IS NOT NULL
                 GROUP BY 1, 2 HAVING sum(l.voters) > 0 ORDER BY 1, 2""", ns)
     series = {}
     for g, m, w, n in rows:
@@ -382,24 +401,24 @@ def unity_api(ns: int):
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources_page(request: Request):
-    reads = q("""SELECT ref, last_read, last_ok, status, error, rows FROM ops.source_state
+    reads = q("""SELECT ref, last_read, last_ok, status, error, rows FROM pub_parlament.read_state
                  WHERE ref !~ '^(sten|bill|profile)/' ORDER BY last_read DESC, ref DESC LIMIT 14""")
     # a sitting the source cannot answer was never written: it has no date here
-    bad = q("""SELECT st.ref, s.date, st.status, st.error FROM ops.source_state st
-               LEFT JOIN live.sitting s ON 'sten/' || s.id = st.ref
+    bad = q("""SELECT st.ref, s.date, st.status, st.error FROM pub_parlament.read_state st
+               LEFT JOIN pub_parlament.sitting s ON 'sten/' || s.id = st.ref
                WHERE st.ref ~ '^sten/[0-9]+$' AND st.status IN ('invalid', 'held', 'no-answer')
                ORDER BY s.date DESC NULLS LAST, st.ref""")
     counts = one("""SELECT count(*), count(*) FILTER (WHERE iv_sha IS NOT NULL), min(date) FILTER (WHERE iv_sha IS NOT NULL),
-                           min(date), count(*) FILTER (WHERE steno_sha IS NOT NULL) FROM live.sitting""")
-    missing = dict(q("""SELECT split_part(ref, '/', 1), count(*) FROM ops.source_state
+                           min(date), count(*) FILTER (WHERE steno_sha IS NOT NULL) FROM pub_parlament.sitting""")
+    missing = dict(q("""SELECT split_part(ref, '/', 1), count(*) FROM pub_parlament.read_state
                         WHERE status IN ('empty', 'no-answer') GROUP BY 1"""))
     return page(request, "sources.html", "Източници", reads=reads, bad=bad, counts=counts, missing=missing,
                 problems=freshness_problems())
 
 
 def freshness_problems():
-    with psycopg.connect(DSN) as c:
-        return checks.freshness(c)
+    with queries.connect() as c:
+        return checks.freshness(c, serving=True)
 
 
 @app.get("/how", response_class=HTMLResponse)
@@ -430,8 +449,8 @@ def votes_csv(ns: int):
 @app.get("/csv/glasuvane/{sitting}/{no}.csv")
 def vote_csv(sitting: int, no: int):
     the_vote(sitting, no)
-    rows = q("""SELECT m.name, v.grp, v.code FROM live.vote v JOIN live.sitting s ON s.id = v.sitting
-                JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""",
+    rows = q("""SELECT m.name, v.grp, v.code FROM pub_parlament.vote v JOIN pub_parlament.sitting s ON s.id = v.sitting
+                JOIN pub_parlament.mp m ON m.assembly = s.assembly AND m.no = v.mp WHERE v.sitting = %s AND v.item = %s ORDER BY v.grp, m.name""",
              sitting, no)
     return csv_response(f"glasuvane-{sitting}-{no}.csv", ["депутат", "група", "код", "вот"], [(fname(n), g, c, CODE[c]) for n, g, c in rows])
 
@@ -440,7 +459,7 @@ def vote_csv(sitting: int, no: int):
 def mps_csv(ns: int):
     pick_assembly(ns)
     rows = q("""SELECT name, grp, district, votes, voted, yes, no_, abstain, with_line, against_line, regs, present, first, last
-                FROM live.mp_stat WHERE assembly = %s ORDER BY name""", ns)
+                FROM pub_parlament.mp_stat WHERE assembly = %s ORDER BY name""", ns)
     return csv_response(f"deputati-{ns}.csv", ["депутат", "група", "избирателен район", "гласувания", "гласувал", "за", "против",
                                               "въздържал се", "с групата", "срещу групата", "регистрации", "регистриран", "от", "до"],
                         [(fname(r[0]), *r[1:]) for r in rows])
@@ -455,7 +474,7 @@ ROLE_WORDS = {"председател": "председател", "предсе�
 def speech_rows(where, *args):
     """[(sitting, no, role, name, note, grp, profile, person, text)] of the stenogram."""
     return q(f"""SELECT sp.sitting, sp.no, sp.role, sp.name, sp.note, sp.grp, sp.profile, p.person, sp.text
-                 FROM live.speech sp LEFT JOIN live.profile p ON p.id = sp.profile WHERE {where} ORDER BY sp.sitting, sp.no""", *args)
+                 FROM pub_parlament.speech sp LEFT JOIN pub_parlament.profile p ON p.id = sp.profile WHERE {where} ORDER BY sp.sitting, sp.no""", *args)
 
 
 def as_speech(r):
@@ -466,7 +485,7 @@ def as_speech(r):
 
 
 def years():
-    return q("SELECT extract(year FROM date)::int, count(*) FROM live.sitting GROUP BY 1 ORDER BY 1 DESC")
+    return q("SELECT extract(year FROM date)::int, count(*) FROM pub_parlament.sitting GROUP BY 1 ORDER BY 1 DESC")
 
 
 @app.get("/zasedaniya", response_class=HTMLResponse)
@@ -485,17 +504,17 @@ def sittings_page(request: Request, g: int | None = None, ns: int | None = None)
             raise HTTPException(404)
         where, args = "s.date >= make_date(%s, 1, 1) AND s.date < make_date(%s + 1, 1, 1)", [year, year]
     rows = q(f"""SELECT s.id, s.date, s.assembly,
-                        (SELECT count(*) FROM live.item i WHERE i.sitting = s.id AND i.kind = 'vote'),
-                        (SELECT count(*) FROM live.speech sp WHERE sp.sitting = s.id AND sp.no > 0),
+                        (SELECT count(*) FROM pub_parlament.item i WHERE i.sitting = s.id AND i.kind = 'vote'),
+                        (SELECT count(*) FROM pub_parlament.speech sp WHERE sp.sitting = s.id AND sp.no > 0),
                         coalesce(array_length(s.video, 1), 0), s.pdf, s.steno_sha IS NOT NULL
-                 FROM live.sitting s WHERE {where} ORDER BY s.date DESC, s.id DESC""", *args)
+                 FROM pub_parlament.sitting s WHERE {where} ORDER BY s.date DESC, s.id DESC""", *args)
     if ns is not None and not rows:
         raise HTTPException(404)
     return page(request, "sittings.html", "Заседания", rows=rows, years=ys, year=year, ns=ns)
 
 
 def the_sitting(sid):
-    s = one("""SELECT id, date, assembly, heading, video, pdf, steno_sha, iv, gv, note FROM live.sitting WHERE id = %s""", sid)
+    s = one("""SELECT id, date, assembly, heading, video, pdf, steno_sha, iv, gv, note FROM pub_parlament.sitting WHERE id = %s""", sid)
     if not s:
         raise HTTPException(404)
     return dict(zip(("id", "date", "assembly", "heading", "video", "pdf", "steno", "iv", "gv", "note"), s))
@@ -518,8 +537,8 @@ def sitting_page(request: Request, sid: int):
     s = the_sitting(sid)
     votes = [as_vote(r) for r in reversed(vote_rows("AND i.sitting = %s", (sid,)))]
     speeches = [as_speech(r) for r in speech_rows("sp.sitting = %s", sid)]
-    prev = one("SELECT id, date FROM live.sitting WHERE (date, id) < (%s, %s) ORDER BY date DESC, id DESC LIMIT 1", s["date"], sid)
-    after = one("SELECT id, date FROM live.sitting WHERE (date, id) > (%s, %s) ORDER BY date, id LIMIT 1", s["date"], sid)
+    prev = one("SELECT id, date FROM pub_parlament.sitting WHERE (date, id) < (%s, %s) ORDER BY date DESC, id DESC LIMIT 1", s["date"], sid)
+    after = one("SELECT id, date FROM pub_parlament.sitting WHERE (date, id) > (%s, %s) ORDER BY date, id LIMIT 1", s["date"], sid)
     return page(request, "sitting.html", "Заседания", s=s, votes=votes, speeches=speeches, speakers=speakers_of(speeches),
                 prev=prev, next=after)
 
@@ -561,29 +580,29 @@ def search_page(request: Request, ns: int | None = None, chovek: int | None = No
     tq = tsquery(text)
     rows, who = [], None
     if chovek:
-        who = one("SELECT name FROM live.profile WHERE person = %s ORDER BY assembly DESC LIMIT 1", chovek)
+        who = one("SELECT name FROM pub_parlament.profile WHERE person = %s ORDER BY assembly DESC LIMIT 1", chovek)
     if tq or chovek:
         where, args = [], []
         if tq:
-            where.append("sp.tsv @@ to_tsquery('simple', %s)")
+            where.append("to_tsvector('simple', sp.text) @@ to_tsquery('simple', %s)")
             args.append(tq)
         if ns:
             where.append("s.assembly = %s")
             args.append(ns)
         if chovek:
-            where.append("sp.profile IN (SELECT id FROM live.profile WHERE person = %s)")
+            where.append("sp.profile IN (SELECT id FROM pub_parlament.profile WHERE person = %s)")
             args.append(chovek)
         head = ("ts_headline('simple', sp.text, to_tsquery('simple', %s), 'MaxFragments=2, MinWords=6, MaxWords=26, "
                 "StartSel=\x01, StopSel=\x02, FragmentDelimiter= … ')") if tq else "left(sp.text, 300)"
         rows = q(f"""SELECT sp.sitting, sp.no, s.date, s.assembly, sp.name, sp.grp, p.person, {head}
-                     FROM live.speech sp JOIN live.sitting s ON s.id = sp.sitting LEFT JOIN live.profile p ON p.id = sp.profile
+                     FROM pub_parlament.speech sp JOIN pub_parlament.sitting s ON s.id = sp.sitting LEFT JOIN pub_parlament.profile p ON p.id = sp.profile
                      WHERE {' AND '.join(where)} ORDER BY s.date DESC, sp.sitting DESC, sp.no LIMIT {SEARCH_LIMIT + 1}""",
                  *(([tq] if tq else []) + args))
     found = [(sid, no, d, a, name, grp, person,
               Markup(str(Markup.escape(snip)).replace("\x01", "<mark>").replace("\x02", "</mark>")))
              for sid, no, d, a, name, grp, person, snip in rows[:SEARCH_LIMIT]]
     return page(request, "search.html", "Търсене", text=text, rows=found, more=len(rows) > SEARCH_LIMIT, ns=ns, chovek=chovek,
-                who=who[0] if who else None, all=q("SELECT DISTINCT s.assembly FROM live.sitting s WHERE s.steno_sha IS NOT NULL ORDER BY 1 DESC"))
+                who=who[0] if who else None, all=q("SELECT DISTINCT s.assembly FROM pub_parlament.sitting s WHERE s.steno_sha IS NOT NULL ORDER BY 1 DESC"))
 
 
 @app.get("/chovek/{person}", response_class=HTMLResponse)
@@ -591,24 +610,24 @@ def person_page(request: Request, person: int):
     """Everything about an MP across the assemblies: where, in which group and role, how they voted, what they said,
     their absences and penalties. Only the public role."""
     profs = q("""SELECT p.id, p.assembly, p.name, p.district, p.list, p.profession, p.languages, a.start, a."end"
-                 FROM live.profile p JOIN live.assembly a ON a.no = p.assembly WHERE p.person = %s ORDER BY p.assembly""", person)
+                 FROM pub_parlament.profile p JOIN pub_parlament.assembly a ON a.no = p.assembly WHERE p.person = %s ORDER BY p.assembly""", person)
     if not profs:
         raise HTTPException(404)
     ids = [r[0] for r in profs]
     ms = q("""SELECT m.profile, m.body_name, m.body_kind, m.role, m.since, m.until, b.grp
-              FROM live.membership m LEFT JOIN live.body b ON b.id = m.body WHERE m.profile = ANY(%s)
+              FROM pub_parlament.membership m LEFT JOIN pub_parlament.body b ON b.id = m.body WHERE m.profile = ANY(%s)
               ORDER BY m.since NULLS LAST, m.body_kind""", ids)
     votes = {r[0]: r for r in q("""SELECT st.assembly, st.mp, st.votes, st.voted, st.with_line, st.against_line, st.grp
-                                   FROM live.mp_stat st WHERE st.profile = ANY(%s)""", ids)}
+                                   FROM pub_parlament.mp_stat st WHERE st.profile = ANY(%s)""", ids)}
     said = {a: (n, w) for a, n, w in q("""SELECT s.assembly, count(*), sum(array_length(string_to_array(sp.text, ' '), 1))
-                                         FROM live.speech sp JOIN live.sitting s ON s.id = sp.sitting
+                                         FROM pub_parlament.speech sp JOIN pub_parlament.sitting s ON s.id = sp.sitting
                                          WHERE sp.profile = ANY(%s) GROUP BY 1""", ids)}
-    latest = q("""SELECT sp.sitting, sp.no, s.date, s.assembly, sp.grp, left(sp.text, 260) FROM live.speech sp
-                  JOIN live.sitting s ON s.id = sp.sitting WHERE sp.profile = ANY(%s) ORDER BY s.date DESC, sp.no DESC LIMIT 12""", ids)
-    absences = q("SELECT date, body_name, kind FROM live.absence WHERE profile = ANY(%s) ORDER BY date DESC", ids)
-    brought = q("""SELECT b.id, b.date, b.sign, b.title, b.adopted, b.withdrawn, b.dv_issue, b.dv_year FROM live.bill_sponsor x
-                   JOIN live.bill b ON b.id = x.bill WHERE x.profile = ANY(%s) ORDER BY b.date DESC, b.id DESC""", ids)
-    penalties = q("SELECT date, kind, note, by_name, what FROM live.penalty WHERE profile = ANY(%s) ORDER BY date DESC", ids)
+    latest = q("""SELECT sp.sitting, sp.no, s.date, s.assembly, sp.grp, left(sp.text, 260) FROM pub_parlament.speech sp
+                  JOIN pub_parlament.sitting s ON s.id = sp.sitting WHERE sp.profile = ANY(%s) ORDER BY s.date DESC, sp.no DESC LIMIT 12""", ids)
+    absences = q("SELECT date, body_name, kind FROM pub_parlament.absence WHERE profile = ANY(%s) ORDER BY date DESC", ids)
+    brought = q("""SELECT b.id, b.date, b.sign, b.title, b.adopted, b.withdrawn, b.dv_issue, b.dv_year FROM pub_parlament.bill_sponsor x
+                   JOIN pub_parlament.bill b ON b.id = x.bill WHERE x.profile = ANY(%s) ORDER BY b.date DESC, b.id DESC""", ids)
+    penalties = q("SELECT date, kind, note, by_name, what FROM pub_parlament.penalty WHERE profile = ANY(%s) ORDER BY date DESC", ids)
     # the timeline: per assembly, its span and the groups inside it, as shares of the span
     lines = []
     for pid, a, name, district, lst, prof, lang, start, end in profs:
@@ -634,23 +653,23 @@ def group_page(request: Request, ns: int, code: str):
     """A parliamentary group in an assembly: its size in time, who was in it and when, its unity, the groups it votes
     with, its leaders, how much its MPs spoke."""
     pick_assembly(ns)
-    span = one("""SELECT min(s.date), max(s.date) FROM live.item_group g JOIN live.sitting s ON s.id = g.sitting
+    span = one("""SELECT min(s.date), max(s.date) FROM pub_parlament.item_group g JOIN pub_parlament.sitting s ON s.id = g.sitting
                   WHERE s.assembly = %s AND g.grp = %s""", ns, code)
     if not span or not span[0]:
         raise HTTPException(404)
     members = q("""SELECT v.mp, m.name, p.person, min(s.date), max(s.date), count(*) FILTER (WHERE i.kind = 'vote')
-                   FROM live.vote v JOIN live.sitting s ON s.id = v.sitting JOIN live.item i ON i.sitting = v.sitting AND i.no = v.item
-                   JOIN live.mp m ON m.assembly = s.assembly AND m.no = v.mp LEFT JOIN live.profile p ON p.id = m.profile
+                   FROM pub_parlament.vote v JOIN pub_parlament.sitting s ON s.id = v.sitting JOIN pub_parlament.item i ON i.sitting = v.sitting AND i.no = v.item
+                   JOIN pub_parlament.mp m ON m.assembly = s.assembly AND m.no = v.mp LEFT JOIN pub_parlament.profile p ON p.id = m.profile
                    WHERE s.assembly = %s AND v.grp = %s GROUP BY 1, 2, 3 ORDER BY 4, 2""", ns, code)
-    unity = one("""SELECT sum(l.with_line), sum(l.voters), count(*) FROM live.line l JOIN live.sitting s ON s.id = l.sitting
+    unity = one("""SELECT sum(l.with_line), sum(l.voters), count(*) FROM pub_parlament.line l JOIN pub_parlament.sitting s ON s.id = l.sitting
                    WHERE s.assembly = %s AND l.grp = %s AND l.line IS NOT NULL""", ns, code)
     pairs = q("""SELECT b.grp, count(*), count(*) FILTER (WHERE a.line = b.line)
-                 FROM live.line a JOIN live.line b ON b.sitting = a.sitting AND b.item = a.item AND b.grp <> a.grp
-                 JOIN live.sitting s ON s.id = a.sitting
+                 FROM pub_parlament.line a JOIN pub_parlament.line b ON b.sitting = a.sitting AND b.item = a.item AND b.grp <> a.grp
+                 JOIN pub_parlament.sitting s ON s.id = a.sitting
                  WHERE s.assembly = %s AND a.grp = %s AND a.line IS NOT NULL AND b.line IS NOT NULL
                  GROUP BY 1 HAVING count(*) >= 10 ORDER BY 3::float / count(*) DESC""", ns, code)
-    leaders = q("""SELECT DISTINCT p.person, p.name, m.role, m.since, m.until FROM live.body b
-                   JOIN live.membership m ON m.body = b.id JOIN live.profile p ON p.id = m.profile
+    leaders = q("""SELECT DISTINCT p.person, p.name, m.role, m.since, m.until FROM pub_parlament.body b
+                   JOIN pub_parlament.membership m ON m.body = b.id JOIN pub_parlament.profile p ON p.id = m.profile
                    WHERE b.assembly = %s AND b.grp = %s AND m.role IS NOT NULL AND m.role NOT LIKE 'член%%'
                    ORDER BY m.since, p.name""", ns, code)
     first, last = span
@@ -663,9 +682,9 @@ def group_page(request: Request, ns: int, code: str):
 def group_api(ns: int, code: str):
     """The group's MPs on the list at the first registration of every sitting."""
     pick_assembly(ns)
-    rows = q("""SELECT s.date, g.listed FROM live.item_group g JOIN live.sitting s ON s.id = g.sitting
+    rows = q("""SELECT s.date, g.listed FROM pub_parlament.item_group g JOIN pub_parlament.sitting s ON s.id = g.sitting
                 WHERE s.assembly = %s AND g.grp = %s AND g.listed IS NOT NULL
-                  AND g.no = (SELECT min(i.no) FROM live.item i WHERE i.sitting = g.sitting AND i.kind = 'registration')
+                  AND g.no = (SELECT min(i.no) FROM pub_parlament.item i WHERE i.sitting = g.sitting AND i.kind = 'registration')
                 ORDER BY s.date""", ns, code)
     return JSONResponse({"series": [{"name": gref.info(code)[0], "color": gref.info(code)[1],
                                      "points": [[d.isoformat(), n] for d, n in rows]}]},
@@ -676,8 +695,8 @@ def group_api(ns: int, code: str):
 def assemblies_page(request: Request):
     """Every assembly since 1879 and what we hold of it."""
     rows = q("""SELECT a.no, a.start, a."end", count(s.id), count(s.steno_sha), count(s.pdf), count(s.iv_sha),
-                       (SELECT count(*) FROM live.profile p WHERE p.assembly = a.no)
-                FROM live.assembly a LEFT JOIN live.sitting s ON s.assembly = a.no GROUP BY 1, 2, 3 ORDER BY a.start DESC""")
+                       (SELECT count(*) FROM pub_parlament.profile p WHERE p.assembly = a.no)
+                FROM pub_parlament.assembly a LEFT JOIN pub_parlament.sitting s ON s.assembly = a.no GROUP BY 1, 2, 3 ORDER BY a.start DESC""")
     return page(request, "assemblies.html", "Заседания", rows=rows)
 
 
@@ -696,7 +715,7 @@ def bill_status(adopted, withdrawn, dv_issue, dv_year):
 def bills_page(request: Request, ns: int | None = None, st: str | None = None):
     """The bills of an assembly (the newest first), searchable by title and sponsor; adopted, withdrawn or not yet."""
     text = (request.query_params.get("q") or "").strip()
-    have = [a for a, in q("SELECT DISTINCT assembly FROM live.bill WHERE assembly IS NOT NULL ORDER BY 1 DESC")]
+    have = [a for a, in q("SELECT DISTINCT assembly FROM pub_parlament.bill WHERE assembly IS NOT NULL ORDER BY 1 DESC")]
     if not have:
         return page(request, "bills.html", "Законопроекти", rows=[], all=[], ns=None, text=text, st=st, total=0, more=False)
     ns = ns if ns is not None else have[0]
@@ -704,7 +723,7 @@ def bills_page(request: Request, ns: int | None = None, st: str | None = None):
         raise HTTPException(404)
     where, args = ["b.assembly = %s"], [ns]
     if text:
-        where.append("(b.title ILIKE %s OR b.sign ILIKE %s OR EXISTS (SELECT 1 FROM live.bill_sponsor x WHERE x.bill = b.id AND x.name ILIKE %s))")
+        where.append("(b.title ILIKE %s OR b.sign ILIKE %s OR EXISTS (SELECT 1 FROM pub_parlament.bill_sponsor x WHERE x.bill = b.id AND x.name ILIKE %s))")
         args += [f"%{text}%"] * 3
     if st == "priet":
         where.append("b.adopted IS NOT NULL")
@@ -713,12 +732,12 @@ def bills_page(request: Request, ns: int | None = None, st: str | None = None):
     elif st == "neprieti":
         where.append("b.adopted IS NULL AND NOT b.withdrawn")
     rows = q(f"""SELECT b.id, b.date, b.sign, b.title, b.government, b.adopted, b.withdrawn, b.dv_issue, b.dv_year,
-                        (SELECT string_agg(x.name, ', ' ORDER BY x.pos) FROM (SELECT * FROM live.bill_sponsor WHERE bill = b.id ORDER BY pos LIMIT 3) x),
-                        (SELECT count(*) FROM live.bill_sponsor x WHERE x.bill = b.id),
-                        (SELECT count(*) FROM live.bill_item i WHERE i.bill = b.id)
-                 FROM live.bill b WHERE {' AND '.join(where)} ORDER BY b.date DESC NULLS LAST, b.id DESC LIMIT {BILL_LIMIT + 1}""", *args)
+                        (SELECT string_agg(x.name, ', ' ORDER BY x.pos) FROM (SELECT * FROM pub_parlament.bill_sponsor WHERE bill = b.id ORDER BY pos LIMIT 3) x),
+                        (SELECT count(*) FROM pub_parlament.bill_sponsor x WHERE x.bill = b.id),
+                        (SELECT count(*) FROM pub_parlament.bill_item i WHERE i.bill = b.id)
+                 FROM pub_parlament.bill b WHERE {' AND '.join(where)} ORDER BY b.date DESC NULLS LAST, b.id DESC LIMIT {BILL_LIMIT + 1}""", *args)
     counts = one("""SELECT count(*), count(*) FILTER (WHERE adopted IS NOT NULL), count(*) FILTER (WHERE withdrawn),
-                           count(*) FILTER (WHERE government) FROM live.bill WHERE assembly = %s""", ns)
+                           count(*) FILTER (WHERE government) FROM pub_parlament.bill WHERE assembly = %s""", ns)
     return page(request, "bills.html", "Законопроекти", rows=rows[:BILL_LIMIT], more=len(rows) > BILL_LIMIT, all=have, ns=ns,
                 text=text, st=st, counts=counts, status=bill_status)
 
@@ -728,30 +747,30 @@ def bill_page(request: Request, bid: int):
     """A bill: who brought it, the committees, every step, its votes in the hall, and each group's side on the first and
     the second reading, where it changed."""
     b = one("""SELECT id, sign, date, title, final_title, assembly, session, withdrawn, adopted, dv_issue, dv_year, government
-               FROM live.bill WHERE id = %s""", bid)
+               FROM pub_parlament.bill WHERE id = %s""", bid)
     if not b:
         raise HTTPException(404)
     b = dict(zip(("id", "sign", "date", "title", "final", "assembly", "session", "withdrawn", "adopted", "dv_issue", "dv_year",
                   "government"), b))
-    sponsors = q("""SELECT x.name, x.profile, p.person FROM live.bill_sponsor x LEFT JOIN live.profile p ON p.id = x.profile
+    sponsors = q("""SELECT x.name, x.profile, p.person FROM pub_parlament.bill_sponsor x LEFT JOIN pub_parlament.profile p ON p.id = x.profile
                     WHERE x.bill = %s ORDER BY x.pos""", bid)
-    committees = q("SELECT name, role FROM live.bill_committee WHERE bill = %s ORDER BY role = 'водеща' DESC, name", bid)
+    committees = q("SELECT name, role FROM pub_parlament.bill_committee WHERE bill = %s ORDER BY role = 'водеща' DESC, name", bid)
     steps = q("""SELECT DISTINCT ON (st.date, st.stage, st.what) st.date, st.what, st.stage, st.committee_name,
-                        coalesce(st.sitting, (SELECT s.id FROM live.sitting s WHERE s.date = st.date AND st.stage LIKE 'зала%%' LIMIT 1))
-                 FROM live.bill_step st WHERE st.bill = %s ORDER BY st.date, st.stage, st.what, st.sitting NULLS LAST""", bid)
+                        coalesce(st.sitting, (SELECT s.id FROM pub_parlament.sitting s WHERE s.date = st.date AND st.stage LIKE 'зала%%' LIMIT 1))
+                 FROM pub_parlament.bill_step st WHERE st.bill = %s ORDER BY st.date, st.stage, st.what, st.sitting NULLS LAST""", bid)
     votes = [dict(as_vote(r[:-1]), reading=r[-1]) for r in q("""
         SELECT i.sitting, i.no, i.at, i.topic, i.yes, i.no_, i.abstain, i.voted, s.assembly,
-               (SELECT listed FROM live.item r WHERE r.sitting = i.sitting AND r.kind = 'registration' ORDER BY r.no LIMIT 1), i.mismatch, bi.reading
-        FROM live.bill_item bi JOIN live.item i ON i.sitting = bi.sitting AND i.no = bi.item JOIN live.sitting s ON s.id = i.sitting
+               (SELECT listed FROM pub_parlament.item r WHERE r.sitting = i.sitting AND r.kind = 'registration' ORDER BY r.no LIMIT 1), i.mismatch, bi.reading
+        FROM pub_parlament.bill_item bi JOIN pub_parlament.item i ON i.sitting = bi.sitting AND i.no = bi.item JOIN pub_parlament.sitting s ON s.id = i.sitting
         WHERE bi.bill = %s ORDER BY i.at, i.no""", bid)]
     # each group's side per reading: + where all its lines were for, - where all were not, ± where they differ
     sides = {}
     for reading, g, yes, no in q("""SELECT bi.reading, l.grp, count(*) FILTER (WHERE l.line = '+'), count(*) FILTER (WHERE l.line = '-')
-                                    FROM live.bill_item bi JOIN live.line l ON l.sitting = bi.sitting AND l.item = bi.item
+                                    FROM pub_parlament.bill_item bi JOIN pub_parlament.line l ON l.sitting = bi.sitting AND l.item = bi.item
                                     WHERE bi.bill = %s AND bi.reading IS NOT NULL GROUP BY 1, 2""", bid):
         sides.setdefault(g, {})[reading] = "+" if yes and not no else "-" if no and not yes else "±" if yes or no else None
-    others = q("""SELECT DISTINCT o.id, o.sign, o.title FROM live.bill_item a JOIN live.bill_item x ON x.sitting = a.sitting AND x.item = a.item AND x.bill <> a.bill
-                  JOIN live.bill o ON o.id = x.bill WHERE a.bill = %s ORDER BY o.id""", bid)
+    others = q("""SELECT DISTINCT o.id, o.sign, o.title FROM pub_parlament.bill_item a JOIN pub_parlament.bill_item x ON x.sitting = a.sitting AND x.item = a.item AND x.bill <> a.bill
+                  JOIN pub_parlament.bill o ON o.id = x.bill WHERE a.bill = %s ORDER BY o.id""", bid)
     return page(request, "bill.html", "Законопроекти", b=b, sponsors=sponsors, committees=committees, steps=steps, votes=votes,
                 sides=sorted(sides.items(), key=lambda kv: kv[0]), others=others, status=bill_status, names=group_names(b["assembly"]) if b["assembly"] else {})
 

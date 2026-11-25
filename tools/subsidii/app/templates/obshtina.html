@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_macros.html" import help, src, eur with context %}
+{% block title %}{{ m.m.name_bg }}{% endblock %}
+{% block main %}
+{% set cur = (m.series|selectattr('fy', 'equalto', s.fy)|list|first) if m.series else none %}
+<h1>{{ m.m.name_bg }}</h1>
+<p class="lede">Област {{ m.m.oblast }}.
+  {% if cur %}За {{ s.fy_row.label_bg|lower }} (справка към {{ cur.snap|date }}) ДФЗ е изплатил на получатели в общината {% if cur.eur.total is not none %}<b>{{ cur.eur.total|money }}</b>{% else %}<b>{{ cur.t.total|num }}</b> (валутата не е потвърдена){% endif %}, в <b>{{ cur.t.recipients|num }}</b> {{ 'ред' if cur.t.recipients == 1 else 'реда' }}.{% else %}За избраната година няма данни за общината.{% endif %}</p>
+<details class="explain"><summary>С прости думи</summary>
+  <p>Показваме парите, които справката на ДФЗ води на получатели с адрес в тази община. Не са пари „за жителите“. Имената на физическите лица не са тук: само броят на редовете и сумата. {{ help('names', 'имена на физически лица') }}</p></details>
+<form class="ctl"><label>Финансова година <select name="fy" onchange="this.form.submit()">{% for y in years %}<option value="{{ y.fy }}" {{ 'selected' if y.fy == s.fy }}>{{ y.fy }}</option>{% endfor %}</select></label>
+  <a href="/poluchateli?fy={{ s.fy }}&amp;obshtina={{ m.m.id }}">Всички получатели в общината</a>
+  <a href="/api/obshtini/{{ m.m.id }}.json?fy={{ s.fy }}">JSON</a>
+  <a href="https://tender.denev.work/places/{{ m.m.id }}">Поръчки и договори в Тендер ↗</a></form>
+<section class="p"><h2>По финансови години</h2><div class="sub">€ · при последната справка на всяка година</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Година</th><th class="n">Редове</th><th class="n">ЕФГЗ, €</th><th class="n">ЕЗФРСР, €</th><th class="n">Нац. бюджет, €</th><th class="n">Общо, €</th></tr></thead><tbody>
+  {% for y in m.series %}<tr><td>{{ y.label }}</td><td class="n">{{ y.t.recipients|num }}</td>{% for k in ['efgz', 'ezfrs', 'nb', 'total'] %}<td class="n" data-v="{{ y.eur[k] if y.eur[k] is not none else '' }}">{{ eur(y.eur[k], s) }}</td>{% endfor %}</tr>{% else %}<tr><td colspan="6" class="mut">няма данни</td></tr>{% endfor %}</tbody></table></div>
+  <p class="mut">Годините се сравняват само ако мерките им са същите: <a href="/sravnenie?a_fy={{ years[-1].fy if years|length > 1 else s.fy }}&amp;b_fy={{ years[0].fy }}&amp;obshtina={{ m.m.id }}">сравнение</a> {{ help('compare', 'сравнение между години') }}.</p></section>
+<div class="grid">
+  <section class="p s6"><h2>Най-големите фирми</h2><div class="sub">юридически лица, {{ s.fy }}</div>
+    <div class="scroll"><table class="sortable"><thead><tr><th>Фирма</th><th class="n">Общо, €</th></tr></thead><tbody>
+    {% for r in top %}<tr><td><a href="/poluchateli/{{ r.org_id }}">{{ r.name_bg }}</a></td><td class="n" data-v="{{ r.total_eur if r.total_eur is not none else '' }}">{{ eur(r.total_eur, s) }}</td></tr>{% else %}<tr><td colspan="2" class="mut">няма данни</td></tr>{% endfor %}</tbody></table></div></section>
+  <section class="p s6"><h2>По вид на получателя</h2><div class="sub">{{ s.fy }}</div>
+    <div class="scroll"><table><thead><tr><th>Вид</th><th class="n">Редове</th><th class="n">Общо, €</th></tr></thead><tbody>
+    {% if cur %}{% for k, row in cur.kinds.items() %}<tr><td>{{ kind_names[k] }}</td><td class="n">{{ row.recipients|num }}</td><td class="n">{{ eur(s.eur(row.total), s) }}</td></tr>{% endfor %}{% endif %}</tbody></table></div>
+    <p class="mut">Физическите лица са редове, не хора: хора не се броят по име.</p></section>
+</div>
+<section class="p"><h2>Мерки</h2><div class="sub">най-големите по сума на плащанията, {{ s.fy }}</div>
+  <div class="scroll"><table class="sortable"><thead><tr><th>Код</th><th>Мярка</th><th class="n">Общо, €</th></tr></thead><tbody>
+  {% for r in measures %}<tr><td>{{ r.code }}</td><td>{{ r.name }}</td><td class="n" data-v="{{ r.total_eur if r.total_eur is not none else '' }}">{{ eur(r.total_eur, s) }}</td></tr>{% else %}<tr><td colspan="3" class="mut">няма данни</td></tr>{% endfor %}</tbody></table></div>
+  {{ src("/export-obshtini.csv?" ~ qs, "/api/obshtini/" ~ m.m.id ~ ".json?fy=" ~ s.fy) }}</section>
+{% endblock %}

@@ -102,6 +102,22 @@ def test_impact_contracts_keep_no_natural_person():
     assert all(r["eik"] is None or len(r["eik"]) in (9, 13) for r in rows)
 
 
+def test_impact_contracts_of_version_5_keep_the_price_in_euro_of_the_source():
+    v5 = parse.impact(stream.records(FX / "v5" / f"{IMPACT}.json"))
+    first = [r for r in v5.tables["impact_contract"] if r["eik"] == "121026679" and str(r["price_bgn"]) == "31680.00"][0]
+    assert str(first["price_eur"]) == "16197.73"
+    assert all(r["price_eur"] is None for r in parse.impact(recs(IMPACT)).tables["impact_contract"])   # version 3 has none
+    # the legend decides the shape: a record of one version in an answer of the other is still an unknown or missing field
+    new = json.loads((FX / "v5" / f"{IMPACT}.json").read_text(encoding="utf-8"))["data"]
+    old = json.loads((FX / f"{IMPACT}.json").read_text(encoding="utf-8"))["data"]
+    with pytest.raises(ShapeError, match="price_eur"):
+        parse.impact([old[0], new[1]])
+    with pytest.raises(ShapeError, match="price_eur"):
+        parse.impact([new[0], old[1]])
+    with pytest.raises(ShapeError, match="цена в евро"):
+        parse.impact([new[0], dict(new[1], price_eur="16 197,73")])
+
+
 def test_eik_check_digit():
     assert parse.eik_valid("121026679") and parse.eik_valid("175382262")
     assert not parse.eik_valid("121026670") and not parse.eik_valid("1234567890") and not parse.eik_valid(None)
@@ -206,12 +222,13 @@ def test_every_fixture_is_the_shape_the_parsers_know():
         parse.count_only(recs(CONS), "title", "Заглавие", "x")
 
 
-def test_the_silver_tables_of_the_migration_are_the_columns_of_the_parsers():
+def test_the_landing_tables_of_the_migration_are_the_columns_of_the_parsers():
     from ingest.schema import TABLES
-    sql = (Path(__file__).parent.parent / "db" / "migrations" / "0001_init.sql").read_text(encoding="utf-8")
+    sql = "\n".join(f.read_text(encoding="utf-8") for f in sorted((Path(__file__).parent.parent / "db" / "migrations").glob("*.sql")))
     for table, (key, data) in TABLES.items():
-        body = re.search(rf"CREATE TABLE silver\.{table} \((.*?)\n\);", sql, re.S).group(1)
-        cols = set(re.findall(r"\b(\w+) (?:bigserial|integer|smallint|text|date|boolean|numeric|timestamptz)\b", body))
+        body = re.search(rf"CREATE TABLE zakoni_src\.{table} \((.*?)\n\);", sql, re.S).group(1)
+        cols = set(re.findall(r"^\s+(\w+)\s+(?:bigint|integer|smallint|text|date|boolean|numeric|timestamptz)\b", body, re.M))
+        cols |= set(re.findall(rf"ALTER TABLE zakoni_src\.{table} ADD COLUMN (\w+)", sql))
         assert set(key + data) <= cols, (table, set(key + data) - cols)
-        # every column of the table except the versioning ones is either a key or a data column
-        assert cols - {"id", "valid_from", "valid_to", "row_sha", "raw_sha256"} == set(key + data), table
+        # every column of the table except the load and what travels with a record is either a key or a data column
+        assert cols - {"load_id", "record_sha", "first_seen_at", "changed_at"} == set(key + data), table

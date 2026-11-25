@@ -1,6 +1,7 @@
 """The pages as rendered, with real fixture days in the test database: every page answers, and the number, the chart and the CSV
 of one scope agree. Runs on the server against pazar_test."""
 import csv
+import datetime as dt
 import io
 import json
 
@@ -8,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ingest import gold
-from tests.helpers import derive, fixture, put
+from tests.helpers import derive, fixture, publish, put
 
 D1, D2, D3 = "2026-09-29", "2026-09-30", "2026-10-01"
 LIDL, KAUFLAND, EBAG = "131071587", "131129282", "204786976"
@@ -21,6 +22,7 @@ def site(c):
     for d in (D1, D2, D3):
         put(c, d, fixture(d))
     gold.build_missing(c)
+    publish(c)
     return TestClient(main.app)
 
 
@@ -31,6 +33,7 @@ def rows_of(resp):
 def test_an_empty_database_still_answers(c):
     from app import main
     gold.load_reference(c)
+    publish(c)
     cl = TestClient(main.app)
     for url in ("/", "/karta", "/kategorii", "/verigi", "/goriva", "/proverka", "/sources", "/how", "/produkti", "/koshnica", "/promocii", "/healthz"):
         assert cl.get(url).status_code == 200, url
@@ -65,7 +68,7 @@ def test_the_cost_of_a_basket_is_the_sum_of_the_medians_and_missing_is_not_zero(
     from app import queries as Q
     b = Q.resolve(None, "6,12")
     got = Q.cost(__import__("datetime").date(2026, 9, 30), b)
-    want = sum(float(r[0]) for r in c.execute("SELECT median_eur FROM gold.category_day WHERE day = '2026-09-30' AND scope = 'country' AND category IN (6, 12)"))
+    want = sum(float(r[0]) for r in c.execute("SELECT median_eur FROM pazar.category_day WHERE day = '2026-09-30' AND scope = 'country' AND category IN (6, 12)"))
     assert got["complete"] and got["value"] == pytest.approx(want)
     whole = Q.cost(__import__("datetime").date(2026, 9, 30), Q.resolve("vsichki"))
     assert not whole["complete"] and whole["n"] < whole["of"]            # the fixture days do not hold all 101 categories
@@ -93,6 +96,7 @@ def test_a_day_without_a_chain_is_a_gap_in_its_page_not_a_zero(c):
     put(c, D2, derive(D2, drop={LIDL}))
     put(c, D3, fixture(D3))
     gold.build_missing(c)
+    publish(c)
     cl = TestClient(main.app)
     days = {r["day"]: r for r in rows_of(cl.get(f"/export-verigi/{LIDL}.csv"))}
     assert days[D2]["filed"] == "False" and days[D2]["present"] == "False" and days[D1]["filed"] == "True"
@@ -104,7 +108,7 @@ def test_a_day_without_a_chain_is_a_gap_in_its_page_not_a_zero(c):
 
 def test_product_page_series_and_csv(site, c):
     from app import queries as Q
-    rows = c.execute("SELECT chain_eik, code, name, product_id FROM gold.product WHERE chain_eik = %s ORDER BY product_id", (LIDL,)).fetchall()
+    rows = c.execute("SELECT chain_eik, code, name, product_id FROM pub_pazar.product WHERE chain_eik = %s ORDER BY product_id", (LIDL,)).fetchall()
     row = next(r for r in rows if len(Q.product_series(r[3])) >= 3)
     r = site.get(f"/produkti/{row[0]}/{row[1]}?d=2026-09-30")
     assert r.status_code == 200 and row[2] in r.text
@@ -130,3 +134,23 @@ def test_sources_json_says_the_price_set_is_not_distributed(site):
     ds = {d["id"]: d for d in j["datasets"]}
     assert ds["pazar.prices"]["distributed"] is False and ds["pazar.prices"]["licence"] is None
     assert ds["pazar.fuel"]["distributed"] is True
+
+
+def test_the_pages_read_the_serving_layer_and_say_its_version(c):
+    """A day built and not yet published is not on the pages; the publication brings it, and the header moves with it."""
+    from app import main
+    put(c, D1, fixture(D1))
+    gold.build_missing(c)
+    publish(c)
+    cl = TestClient(main.app)
+    first = cl.get("/kategorii")
+    assert first.headers["X-Publication"] and first.headers["ETag"] == f'W/"pub-{first.headers["X-Publication"]}"'
+    assert "29.09.2026" in first.text
+    put(c, D2, fixture(D2))
+    gold.build_missing(c)
+    unpublished = cl.get("/kategorii")
+    assert unpublished.headers["X-Publication"] == first.headers["X-Publication"] and "30.09.2026" not in unpublished.text
+    publish(c, dt.date(2026, 9, 28))
+    second = cl.get("/kategorii")
+    assert int(second.headers["X-Publication"]) > int(first.headers["X-Publication"]) and "30.09.2026" in second.text
+
