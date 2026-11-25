@@ -519,8 +519,8 @@ def municipality(mid, s):
         t = totals(other)
         if t["total"] is None:
             continue
-        kinds = q("""SELECT f.kind, f.recipients, f.total FROM pub_subsidii.municipality_fy f WHERE f.fy = %s AND f.snap_day = %s AND f.municipality_code = %s""",
-                  y["fy"], other.snap, m["code"])
+        kinds = q("""SELECT f.kind, f.recipients, f.total FROM pub_subsidii.municipality_fy f WHERE f.fy = %s AND f.snap_day = %s AND f.municipality_code = %s
+                     ORDER BY f.total DESC NULLS LAST, f.kind""", y["fy"], other.snap, m["code"])
         series.append(dict(fy=y["fy"], label=y["label_bg"], snap=other.snap, currency=y["currency"], t=t, kinds={k["kind"]: k for k in kinds},
                            eur={k: other.eur(t[k]) for k in ("efgz", "ezfrs", "nb", "total")}))
     return dict(m=m, series=series)
