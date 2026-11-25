@@ -44,7 +44,7 @@ def empty(conn):
 
 
 def test_the_old_database_is_replayed_built_and_proved_equal(conn):
-    from ingest import db, move, run
+    from ingest import db, move, people, run
     from tests.test_store import FX, Source, everyone, run as read
     src = Source()
     src.files["pl-sten/11159"] = (FX / "sten-310726-text.json").read_bytes()
@@ -53,6 +53,8 @@ def test_the_old_database_is_replayed_built_and_proved_equal(conn):
     old_database(conn)
     before = {t: conn.execute(f"SELECT count(*) FROM live.{t}").fetchone()[0] for t, _ in move.TABLES + move.BUILT}
     empty(conn)
+    # the deploy's migrate fills the assemblies from the reference file before the move: replay takes the old ones
+    people.assemblies(conn)
     with db.job("replay", conn=conn) as (_, st):
         move.replay(conn, db.current(), old_dsn=DSN, old_ops="old_ops")
         assert run.publish(conn) == []
