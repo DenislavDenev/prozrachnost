@@ -206,3 +206,20 @@ def test_a_promotion_is_real_only_below_the_shops_own_earlier_price(g):
     assert row[:6] == (3, 1, 2, 1, 0, 1)
     assert abs(float(row[6]) - (0.25 + 0.0 + 0.005) / 3) < 1e-4      # the average discount against the earlier price, over all three
     assert g.execute("SELECT count(*) FROM pazar.promo_day WHERE day = '2026-09-28'").fetchone()[0] == 0
+
+
+def test_a_month_of_spans_is_planned_with_its_share_of_rows_without_anomalies(g):
+    """Without statistics on (flags & 29) the planner guesses 0.5 % of the rows, chooses nested loops over millions of
+    them, and one day of observations takes minutes instead of seconds (measured 25.11.2026)."""
+    build(g, D1)
+    part = "pazar.price_span_202609"
+    n = g.execute(f"SELECT count(*) FROM {part} WHERE (flags & 29) = 0").fetchone()[0]
+    plan = g.execute(f"EXPLAIN (FORMAT JSON) SELECT * FROM {part} WHERE (flags & 29) = 0").fetchone()[0]
+    assert n > 100
+    assert plan[0]["Plan"]["Plan Rows"] >= n * 0.5
+
+
+def test_the_earlier_price_of_a_shop_and_product_has_an_index(g):
+    """The price index and the promotions look up the same shop and product a few days back."""
+    defs = [r[0] for r in g.execute("SELECT indexdef FROM pg_indexes WHERE schemaname = 'pazar' AND tablename = 'price_span'")]
+    assert any(d.endswith("(store_id, product_id, from_day)") for d in defs), defs
