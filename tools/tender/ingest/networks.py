@@ -5,6 +5,7 @@ traversal around one node is a query in app/queries.py. A component says that re
 links exist between its nodes; it does not say anyone controls anything.
 """
 import datetime as dt
+from array import array
 
 VIEWS = {"ownership": ("ownership",), "management": ("management",), "all": ("ownership", "management")}
 
@@ -30,21 +31,46 @@ def union_find(pairs):
     return {n: _find(parent, n) for n in parent}
 
 
+KIND = {"ownership": 1, "management": 2}
+STREAM = 50_000   # edges per fetch from the server
+
+
+def read_edges(conn, today):
+    """Every edge once, streamed from the server, as numbers: the node names stay in one list and an edge is two
+    places in it. Holding the rows as Python tuples took 1,5 GB for 2,1 million edges, and on 25.11.2026 the kernel
+    killed the build for it twice."""
+    index, names = {}, []
+    holders, companies, kinds, current = array("l"), array("l"), bytearray(), bytearray()
+    with conn.cursor(name="network_edges") as cur:
+        cur.itersize = STREAM
+        cur.execute("SELECT holder, company, view, valid_to FROM tender_stage.edge")
+        for h, c, v, to in cur:
+            for node, out in ((h, holders), (c, companies)):
+                i = index.get(node)
+                if i is None:
+                    i = index[node] = len(names)
+                    names.append(node)
+                out.append(i)
+            kinds.append(KIND.get(v, 0))
+            current.append(to is None or to > today)
+    return names, holders, companies, kinds, current
+
+
 def components(conn):
-    today = dt.date.today()
-    edges = conn.execute("SELECT holder, company, view, valid_to FROM tender_stage.edge").fetchall()
+    names, holders, companies, kinds, current = read_edges(conn, dt.date.today())
     stats = {}
     ids = {}
-    with conn.cursor().copy("COPY tender_stage.network_component(view, mode, node, component) FROM STDIN") as cp:
-        for view, kinds in VIEWS.items():
-            for mode in ("current", "all_history"):
-                pairs = [(h, c) for h, c, v, to in edges
-                         if v in kinds and (mode == "all_history" or to is None or to > today)]
-                comp = union_find(pairs)
+    for view, wanted in VIEWS.items():
+        codes = {KIND[k] for k in wanted}
+        for mode in ("current", "all_history"):
+            comp = union_find((holders[i], companies[i]) for i in range(len(holders))
+                              if kinds[i] in codes and (mode == "all_history" or current[i]))
+            with conn.cursor().copy("COPY tender_stage.network_component(view, mode, node, component) FROM STDIN") as cp:
                 for node, rep in comp.items():
-                    cid = ids.setdefault(rep, len(ids) + 1)
-                    cp.write_row([view, mode, node, cid])
-                stats[f"{view}/{mode}"] = len(set(comp.values()))
+                    cid = ids.setdefault((view, mode, rep), len(ids) + 1)
+                    cp.write_row([view, mode, names[node], cid])
+            stats[f"{view}/{mode}"] = len(set(comp.values()))
+            del comp
     conn.execute("CREATE INDEX ON tender_stage.network_component (node)")
     conn.execute("""
         INSERT INTO tender_stage.network_component_stats
