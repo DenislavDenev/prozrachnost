@@ -128,10 +128,11 @@ def _key(text):
 
 def compare(rows, other, ind):
     """Adds `other_<ind>` and `diff_<ind>` from the same table of another year. Only the same template is compared; a changed
-    template, a row the other year does not have, or a missing value gives None (never a zero)."""
-    if not rows or not other:
+    template, no table for the other year, a row the other year does not have, or a missing value gives None (never a zero);
+    the columns are always set, so the page shows "няма данни" for them."""
+    if not rows:
         return
-    same = rows[0]["template"] == other[0]["template"]
+    same = bool(other) and rows[0]["template"] == other[0]["template"]
     idx = {_key(d["text"]): d for d in other}
     for d in rows:
         o = idx.get(_key(d["text"])) if same else None
