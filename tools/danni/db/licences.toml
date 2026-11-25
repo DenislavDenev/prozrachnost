@@ -265,3 +265,33 @@ dataset = "subsidii.paid"
 checked_on = 2026-10-02
 display = true
 note = "the report of a state body (ДФЗ) published by Regulation (EU) 2021/2116, art. 98, no licence stated: shown with a link to the source, not handed out; natural persons masked above the threshold of the source and only summed below it"
+
+[[licence]]
+dataset = "patna-obstanovka.bgtoll"
+checked_on = 2026-11-24
+display = true
+note = "bgtoll.bg/otvoreni-danni gives CC BY 4.0 on the traffic and on the weather set: shown with a link to the source; handing out waits for an API view"
+
+[[licence]]
+dataset = "patna-obstanovka.lima"
+checked_on = 2026-11-24
+display = true
+note = "public information of a state body (АПИ, datasheet.api.bg), no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "patna-obstanovka.risk"
+checked_on = 2026-11-24
+display = true
+note = "the ArcGIS layer of ДАБДП, no licence stated: shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "patna-obstanovka.crashes"
+checked_on = 2026-11-24
+display = true
+note = "ptp.zip on mvr.bg, no licence stated on that site (the copy on data.egov.bg is CC0, but this is not read from there): shown with a link to the source, not handed out"
+
+[[licence]]
+dataset = "patna-obstanovka.status"
+checked_on = 2026-11-24
+display = true
+note = "our own record of when each source was read; shown on the map"

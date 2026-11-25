@@ -200,6 +200,21 @@ def test_a_municipality_page_and_its_numbers(client, c):
     assert client.get("/obshtini/000000000").status_code == 404
 
 
+def test_the_kinds_of_a_municipality_come_biggest_first_whatever_the_order_on_disk(client, c):
+    from app import queries as Q
+    # a municipality where the biggest kind is not the first by name, so neither the key nor the disk gives the order by chance
+    mid, code = c.execute("""SELECT m.eik, m.municipality_code FROM pub.municipality m JOIN pub_subsidii.municipality_fy f USING (municipality_code)
+                             WHERE f.fy = 2025 AND f.snap_day = (SELECT max(snap_day) FROM pub_subsidii.build WHERE fy = 2025 AND ok)
+                             GROUP BY 1, 2 HAVING count(*) > 1 AND (array_agg(f.kind ORDER BY f.total DESC))[1] <> min(f.kind)
+                             ORDER BY 2 LIMIT 1""").fetchone()
+    # the biggest row is rewritten, so on disk it comes last
+    c.execute("""UPDATE pub_subsidii.municipality_fy SET recipients = recipients WHERE (fy, snap_day, municipality_code, kind) =
+                 (SELECT fy, snap_day, municipality_code, kind FROM pub_subsidii.municipality_fy WHERE fy = 2025 AND municipality_code = %s
+                  ORDER BY total DESC LIMIT 1)""", (code,))
+    kinds = list(Q.municipality(mid, Q.resolve(2025, None, "", mid))["series"][-1]["kinds"].values())
+    assert len(kinds) > 1 and [k["total"] for k in kinds] == sorted((k["total"] for k in kinds), reverse=True)
+
+
 def test_the_comparison_says_when_the_scope_differs(client):
     j = client.get("/api/sravnenie.json?a_fy=2024&b_fy=2025").json()
     assert j["same_scope"] is False and j["measures_only_in_a"] and j["measures_only_in_b"]

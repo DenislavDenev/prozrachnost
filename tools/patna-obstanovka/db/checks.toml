@@ -1,0 +1,128 @@
+# The quality rules of Пътна обстановка. Each query returns one row: expected, actual. They run after every step;
+# a failed gating rule keeps the serving layer at the version it had. The shape of one answer (fields, types, a
+# shorter file) is checked by the parser, which refuses the answer; these rules check what is stored.
+
+[[check]]
+name = "crash_file_rows"
+title_bg = "Всеки ред на файла на МВР е или катастрофа, или пропуснат (без координати или дата)"
+kind = "reconcile"
+sql = "SELECT COALESCE(sum(f.csv_rows), 0), COALESCE(sum(f.skipped), 0) + (SELECT count(*) FROM patna_obstanovka_src.crash c JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'crashes' AND l.is_current) FROM patna_obstanovka_src.crash_file f JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'crashes' AND l.is_current"
+
+[[check]]
+name = "clean_crashes_match_landing"
+title_bg = "Действащите катастрофи са колкото в действащия файл на МВР"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM patna_obstanovka_src.crash c JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'crashes' AND l.is_current), (SELECT count(*) FROM patna_obstanovka.crash WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "clean_crash_numbers"
+title_bg = "Загиналите и ранените в действащите катастрофи са колкото в действащия файл"
+kind = "reconcile"
+sql = "SELECT (SELECT COALESCE(sum(killed * 100000 + injured), 0) FROM patna_obstanovka_src.crash c JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'crashes' AND l.is_current), (SELECT COALESCE(sum(killed * 100000 + injured), 0) FROM patna_obstanovka.crash WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "crash_row_unique"
+title_bg = "Всеки ред на файла е една действаща катастрофа"
+kind = "unique"
+sql = "SELECT 0, count(*) - count(DISTINCT row_no) FROM patna_obstanovka.crash WHERE superseded_at IS NULL"
+
+[[check]]
+name = "crash_municipality_unmatched"
+title_bg = "Катастрофи с име на община от МВР, което не съвпада с точно една община (на 10 000)"
+kind = "unmatched"
+tolerance = 30
+sql = "SELECT 0, COALESCE(round(10000.0 * count(*) FILTER (WHERE k.municipality_code IS NULL) / NULLIF(count(*), 0)), 0) FROM patna_obstanovka_src.crash c JOIN ops.load l USING (load_id) JOIN patna_obstanovka.crash k ON k.row_no = c.row_no AND k.superseded_at IS NULL WHERE l.tool = 'patna-obstanovka' AND l.source = 'crashes' AND l.is_current AND c.region IS NOT NULL"
+
+[[check]]
+name = "clean_sections_match_landing"
+title_bg = "Действащите участъци са колкото в действащото четене на ДАБДП"
+kind = "reconcile"
+sql = "SELECT (SELECT count(*) FROM patna_obstanovka_src.risk_section s JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'risk' AND l.is_current), (SELECT count(*) FROM patna_obstanovka.risk_section WHERE superseded_at IS NULL)"
+
+[[check]]
+name = "risk_layers_counted"
+title_bg = "Всеки слой на ДАБДП е прочетен колкото казва броячът на източника"
+kind = "reconcile"
+sql = "SELECT 0, count(*) FROM patna_obstanovka_src.risk_layer r JOIN ops.load l USING (load_id) WHERE l.tool = 'patna-obstanovka' AND l.source = 'risk' AND l.is_current AND r.features <> r.counted"
+
+[[check]]
+name = "risk_oblast_unmatched"
+title_bg = "Участъци, чийто District не е код на област по ЕКАТТЕ"
+kind = "unmatched"
+sql = "SELECT 0, count(*) FROM patna_obstanovka.risk_section WHERE superseded_at IS NULL AND oblast_code IS NULL"
+
+[[check]]
+name = "matches_are_current"
+title_bg = "Свързаните катастрофи сочат действащи катастрофи и участъци"
+kind = "fk"
+sql = "SELECT 0, count(*) FROM patna_obstanovka.crash_match m JOIN ops.load l ON l.load_id = m.load_id AND l.is_current WHERE NOT EXISTS (SELECT FROM patna_obstanovka.crash c WHERE c.crash_key = m.crash_key AND c.superseded_at IS NULL) OR NOT EXISTS (SELECT FROM patna_obstanovka.risk_section r WHERE r.section_id = m.section_id AND r.superseded_at IS NULL)"
+
+# Inside the publication, against the new content of the serving layer.
+[[check]]
+name = "published_crashes"
+title_bg = "Публикуваните катастрофи са колкото действащите"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM patna_obstanovka.crash WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_patna_obstanovka.crash)"
+
+[[check]]
+name = "published_sections"
+title_bg = "Публикуваните участъци са колкото действащите"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM patna_obstanovka.risk_section WHERE superseded_at IS NULL), (SELECT count(*) FROM pub_patna_obstanovka.risk_section)"
+
+[[check]]
+name = "published_stations"
+title_bg = "Публикуваните станции и съобщения са колкото в действащите отговори"
+kind = "publish"
+sql = "SELECT (SELECT count(*) FROM patna_obstanovka.traffic) + (SELECT count(*) FROM patna_obstanovka.weather) + (SELECT count(*) FROM patna_obstanovka.event), (SELECT count(*) FROM pub_patna_obstanovka.traffic) + (SELECT count(*) FROM pub_patna_obstanovka.weather) + (SELECT count(*) FROM pub_patna_obstanovka.event)"
+
+# The move from road.db to the shared database: the step `parity` records these.
+[[check]]
+name = "parity_traffic_rows"
+title_bg = "Трафик, станции: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_weather_rows"
+title_bg = "Метеостанции: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_events_rows"
+title_bg = "Съобщения на ЛИМА: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_risk_rows"
+title_bg = "Оценени участъци: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_crashes_rows"
+title_bg = "Катастрофи: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_crash_matches_rows"
+title_bg = "Свързани катастрофи: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_sources_rows"
+title_bg = "Състояние на източниците: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_killed"
+title_bg = "Сбор на загиналите: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_injured"
+title_bg = "Сбор на ранените: road.db срещу общата база"
+kind = "parity"
+
+[[check]]
+name = "parity_rows_differ"
+title_bg = "Редове, различни в поне едно поле, във всички таблици"
+kind = "parity"
