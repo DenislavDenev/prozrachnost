@@ -69,14 +69,18 @@ def _copy(old, conn, source_sql, target, cols):
 
 
 def replay(conn, r, old_dsn=OLD_DSN, old_live="live", old_ops="ops"):
-    """The old database into the shared one, from one snapshot; then the builds. Refused when the tables are not empty:
-    the move is done once (a test database is emptied by its fixtures)."""
-    if conn.execute("SELECT EXISTS (SELECT FROM parlament.sitting) OR EXISTS (SELECT FROM parlament_src.read_state)").fetchone()[0]:
+    """The old database into the shared one, from one snapshot; then the builds. Refused when a table is not empty: the
+    move is done once (a test database is emptied by its fixtures). The assemblies are the exception: the deploy's migrate
+    fills them from db/ref/assemblies.csv, and the old database's, with the dates the API refined, take their place."""
+    full = [t for t, _ in TABLES if t != "assembly"]
+    if conn.execute(" OR ".join(f"EXISTS (SELECT FROM parlament.{t})" for t in full)
+                    + " OR EXISTS (SELECT FROM parlament_src.read_state)").fetchone()[0]:
         raise RuntimeError("parlament вече има данни: replay се пуска веднъж, в празни таблици")
     conn.execute("SET synchronous_commit = off")
     old = _old(old_dsn)
     try:
         with conn.transaction():
+            conn.execute("DELETE FROM parlament.assembly")
             for table, cols in TABLES:
                 r.stats.setdefault("rows", {})[table] = _copy(old, conn, f"SELECT {cols} FROM {old_live}.{table}",
                                                               f"parlament.{table}", cols)

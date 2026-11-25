@@ -118,6 +118,10 @@ MUTATIONS = [
     ("the lines and the statistics are built at the move, not copied", "ingest/move.py",
      "    stats.rebuild(conn, voted)\n", "",
      f"{M}::test_the_old_database_is_replayed_built_and_proved_equal"),
+    ("the assemblies filled by the deploy give way to the old ones", "ingest/move.py",
+     '            conn.execute("DELETE FROM parlament.assembly")
+', "",
+     f"{M}::test_the_old_database_is_replayed_built_and_proved_equal"),
     ("parity compares the content, not only the count", "ingest/move.py",
      "            if a != b:", "            if a[0] != b[0]:",
      f"{M}::test_parity_finds_a_changed_vote_a_missing_speech_and_a_changed_result"),
