@@ -1,13 +1,11 @@
 """What the map derives from the sources: the direction of each БГТОЛ arrow, and the crashes linked to the assessed
-road sections. Both work in metres (UTM 35N) on the current clean rows."""
+road sections. Both work in metres (UTM 35N) on the current clean rows.
+
+The geometry libraries (shapely, numpy, pyproj: about 20 MB) are imported only when there is something to compute:
+the read every 15 minutes runs beside the heavy jobs without their lock and stays under 100 MB."""
 import json
 import math
 import urllib.parse
-
-from pyproj import Transformer
-from shapely.geometry import LineString, MultiLineString, Point
-from shapely.ops import transform
-from shapely.strtree import STRtree
 
 from . import http
 
@@ -20,10 +18,13 @@ OVERPASS = 'https://overpass-api.de/api/interpreter'
 
 
 def _project():
+    from pyproj import Transformer
     return Transformer.from_crs('EPSG:4326', 'EPSG:32635', always_xy=True).transform
 
 
 def _sections(conn, project, min_length=0.0):
+    from shapely.geometry import MultiLineString
+    from shapely.ops import transform
     ids, lines, layers, ratings = [], [], [], []
     for section_id, layer, rating, geometry in conn.execute(
             'SELECT section_id, layer, risk_level, geometry FROM patna_obstanovka.risk_section WHERE superseded_at IS NULL ORDER BY position'):
@@ -58,6 +59,9 @@ def bearings_from_sections(conn, everything=False):
         WHERE %s OR b.scp IS NULL OR (b.lat, b.lon) <> (t.lat, t.lon)''', (everything,)).fetchall()
     if not stations:
         return 0
+    from shapely.geometry import Point
+    from shapely.ops import transform
+    from shapely.strtree import STRtree
     project = _project()
     _, lines, layers, _ = _sections(conn, project, min_length=10)
     tree = STRtree(lines) if lines else None
@@ -107,6 +111,9 @@ def bearings_from_osm(conn, get=http.get):
                                            headers={'Content-Type': 'application/x-www-form-urlencoded'})).get('elements', []))
         except Exception:   # one batch less: those points stay without an arrow until the next read of the sections
             failed += 1
+    from shapely.geometry import LineString, Point
+    from shapely.ops import transform
+    from shapely.strtree import STRtree
     project = _project()
     lines = [transform(project, LineString(pts)) for f in features
              if len(pts := [(p['lon'], p['lat']) for p in f.get('geometry', [])]) > 1]
@@ -138,6 +145,9 @@ def bearings_from_osm(conn, get=http.get):
 
 def crash_matches(conn):
     """(crash key, section, distance in m) for every current crash that is near exactly one rated section."""
+    from shapely.geometry import Point
+    from shapely.ops import transform
+    from shapely.strtree import STRtree
     project = _project()
     ids, lines, _, ratings = _sections(conn, project)
     crashes = conn.execute('SELECT crash_key, lon, lat FROM patna_obstanovka.crash WHERE superseded_at IS NULL ORDER BY row_no').fetchall()
