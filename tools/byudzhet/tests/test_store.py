@@ -82,6 +82,28 @@ def test_a_shorter_or_emptier_read_waits_a_day(conn):
     assert conn.execute("SELECT count(*) FROM ops.change_log WHERE tool = 'byudzhet' AND cause = 'confirmed'").fetchone()[0] == 1
 
 
+def test_freshness_waits_for_the_usual_delay_of_the_next_table(conn):
+    """The real tables of August 2026 and of the second quarter of 2026. МФ uploaded the table of September on 02.11.2026
+    (33 days after the month) and that of the third quarter of 2025 on 19.12.2025 (80 days after it): before those days
+    the newest table is old, but the source is not late. The rules from db/checks.toml are judged on a given day."""
+    with pipeline.run(conn, 'byudzhet', 'test') as r:
+        for name in ('state-latest.json', 'kfp-latest.json', 'reserve-latest.json', 'debt-latest.json', 'indicators-latest.json'):
+            load(conn, r, name)
+    rules = dict(conn.execute("SELECT name, sql FROM ops.check_rule WHERE tool = 'byudzhet' AND is_active").fetchall())
+
+    def late(name, day):
+        return conn.execute(rules[name].replace('CURRENT_DATE', f"DATE '{day}'")).fetchone()[1]
+
+    assert late('monthly_recent', '2026-11-01') == 0       # 62 days after August, a day before September came
+    assert late('monthly_recent', '2026-11-29') == 0       # September 60 days old
+    assert late('monthly_recent', '2026-12-01') == 2       # September is late
+    assert late('quarterly_recent', '2026-12-18') == 0     # 171 days after the second quarter
+    assert late('quarterly_recent', '2027-01-28') == 0     # the third quarter 120 days old
+    assert late('quarterly_recent', '2027-02-02') == 5
+    conn.execute("UPDATE byudzhet.report SET superseded_at = now() WHERE kind = 'reserve'")   # no table at all is late
+    assert late('monthly_recent', '2026-11-01') > 9000
+
+
 def population(conn):
     """The registrations of 15.09.2026 as Население publishes them (pub_naselenie), for the denominator."""
     d = json.loads((F / 'population.json').read_text(encoding='utf-8'))

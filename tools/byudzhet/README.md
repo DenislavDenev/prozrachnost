@@ -16,7 +16,7 @@
 
 Настройки: `BYUDZHET_DSN` (по подразбиране `dbname=prozrachnost`), `BYUDZHET_DATA`, `BYUDZHET_FEEDBACK`, `HUB_URL`. Уеб: `uvicorn app.main:app --port 8003`. Стъпки: `python -m ingest.run --step migrate`, след това `refresh` (каталозите и всички ресурси, правилата, публикуване; `--latest-only` чете само най-новия ресурс на всеки набор), `build` (чистите таблици наново от приемната зона), `check` и `freshness`. `replay` и `parity` пренасят и сверяват старата база `byudzhet` (`BYUDZHET_OLD_DSN`). `grao` вече не прави нищо и остава, докато линията в n8n бъде махната. Всеки ход чете ресурсите от източника отново, включително същата версия: еднакво съдържание не пише нищо.
 
-Обновяване: ежедневно в 04:40 UTC; отделна проверка на свежестта. Конфигурацията за внедряване и автоматизация е в частното репо. Тестове: `BYUDZHET_TEST_DSN=dbname=byudzhet_test python -m pytest -q` (нужни са съседните `tools/danni` и `tools/naselenie`), след това `python tests/mutations.py`.
+Обновяване: ежедневно в 04:40 UTC; отделна проверка на свежестта (`db/checks.toml`). Тя мери закъснението на таблицата след последната, от края на нейния период: месечната закъснява след 60 дни, общинската след 120 (МФ качва месеца около месец след края му; виж [методологията](docs/methodology.md)). Конфигурацията за внедряване и автоматизация е в частното репо. Тестове: `BYUDZHET_TEST_DSN=dbname=byudzhet_test python -m pytest -q` (нужни са съседните `tools/danni` и `tools/naselenie`), след това `python tests/mutations.py`.
 
 Виж [източниците](docs/sources.md) и [методологията](docs/methodology.md). Това не е пълно изпълнение на общинските бюджети по пера.
 
