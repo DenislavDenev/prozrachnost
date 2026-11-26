@@ -57,21 +57,26 @@ title_bg = "Таблиците до 2025 г. са в лева, от 2026 г. в 
 kind = "reconcile"
 sql = "SELECT 0, count(*) FROM byudzhet.report WHERE superseded_at IS NULL AND currency <> CASE WHEN period_end >= '2026-01-01' THEN 'EUR' ELSE 'BGN' END"
 
-# Is the newest table of each source recent? Not gating: a late table of one source does not stop the others
+# Is the table after the newest one late? Not gating: a late table of one source does not stop the others
 # from being published. The step freshness reports it.
+# МФ uploads the table of a month about a month after it ends: 29-43 days since 2023, 55 for December
+# (created_at in listResources). The newest month is therefore normally up to about 65 days old, so the age of the
+# newest period is not the measure: the lateness of the next one is, counted from the end of its own period.
 [[check]]
 name = "monthly_recent"
-title_bg = "Последните месечни таблици (бюджет, КФП, резерв) са от последните 45 дни (дни над прага)"
+title_bg = "Таблицата за месеца след последния (бюджет, КФП, резерв) идва до 60 дни след края му (дни закъснение)"
 kind = "drop"
 gating = false
-sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - m, 9999)) - 45) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['state', 'kfp', 'reserve']) k) t"
+sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - (date_trunc('month', m) + interval '2 month' - interval '1 day')::date, 9999)) - 60) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['state', 'kfp', 'reserve']) k) t"
 
+# The municipal quarters come 46-100 days after the quarter; longer only when МФ is really late (150, 157 and 247 days
+# for the end of 2024, the end of 2025 and the first quarter of 2026).
 [[check]]
 name = "quarterly_recent"
-title_bg = "Последните таблици на общините (дълг, показатели) са от последните 150 дни (дни над прага)"
+title_bg = "Таблицата на общините (дълг, показатели) за тримесечието след последното идва до 120 дни след края му (дни закъснение)"
 kind = "drop"
 gating = false
-sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - m, 9999)) - 150) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['debt', 'indicators']) k) t"
+sql = "SELECT 0, GREATEST(0, max(COALESCE(CURRENT_DATE - (date_trunc('quarter', m) + interval '6 month' - interval '1 day')::date, 9999)) - 120) FROM (SELECT k, (SELECT max(period_end) FROM byudzhet.report r WHERE r.kind = k AND r.superseded_at IS NULL) m FROM unnest(ARRAY['debt', 'indicators']) k) t"
 
 # Judged inside the transaction of a publication, against the new content of the serving layer.
 [[check]]
