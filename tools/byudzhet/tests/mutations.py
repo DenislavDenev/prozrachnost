@@ -20,6 +20,8 @@ cases=[
  ('app/queries.py',"out['spending']+out['eu_contribution']","out['spending']",'tests/test_pages.py::test_state_chart_total_includes_eu_and_matches_published_balance'),
  ('app/main.py',"pct=r['pct']","pct=r['source_pct']",'tests/test_pages.py::test_state_hierarchy_and_empty_original_value'),
  ('app/main.py',"response.headers['X-Publication']=str(v[0])","pass",'tests/test_store.py::test_pages_read_the_serving_layer_with_its_version'),
+ ('db/checks.toml',"(date_trunc('month', m) + interval '2 month' - interval '1 day')::date","m",'tests/test_store.py::test_freshness_waits_for_the_usual_delay_of_the_next_table'),
+ ('db/checks.toml',"(date_trunc('quarter', m) + interval '6 month' - interval '1 day')::date","m",'tests/test_store.py::test_freshness_waits_for_the_usual_delay_of_the_next_table'),
 ]
 for file,old,new,test in cases:
  p=root/file;original=p.read_bytes();s=original.decode('utf-8')
